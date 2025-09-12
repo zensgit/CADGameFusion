@@ -1,0 +1,14 @@
+{
+  "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang" : 
+  {
+    "hash" : "6299cfc1a29a3e08999d12cd456593845522be7b",
+    "size" : 257166336,
+    "timestamp" : 1729056248
+  },
+  "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++" : 
+  {
+    "hash" : "6299cfc1a29a3e08999d12cd456593845522be7b",
+    "size" : 257166336,
+    "timestamp" : 1729056248
+  }
+}

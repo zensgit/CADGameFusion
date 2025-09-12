@@ -1,0 +1,15 @@
+Target dependency graph (6 targets)
+Target 'ALL_BUILD' in project 'CADGameFusion'
+➜ Explicit dependency on target 'core' in project 'CADGameFusion'
+➜ Explicit dependency on target 'core_c' in project 'CADGameFusion'
+➜ Explicit dependency on target 'editor_qt' in project 'CADGameFusion'
+➜ Explicit dependency on target 'ZERO_CHECK' in project 'CADGameFusion'
+Target 'ZERO_CHECK' in project 'CADGameFusion' (no dependencies)
+Target 'editor_qt' in project 'CADGameFusion'
+➜ Explicit dependency on target 'core_c' in project 'CADGameFusion'
+➜ Explicit dependency on target 'editor_qt_autogen' in project 'CADGameFusion'
+Target 'editor_qt_autogen' in project 'CADGameFusion'
+➜ Explicit dependency on target 'core_c' in project 'CADGameFusion'
+Target 'core_c' in project 'CADGameFusion'
+➜ Explicit dependency on target 'core' in project 'CADGameFusion'
+Target 'core' in project 'CADGameFusion' (no dependencies)

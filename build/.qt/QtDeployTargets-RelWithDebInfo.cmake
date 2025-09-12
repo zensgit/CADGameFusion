@@ -1,0 +1,6 @@
+set(__QT_DEPLOY_TARGET_core_FILE /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/RelWithDebInfo/libcore.a)
+set(__QT_DEPLOY_TARGET_core_TYPE STATIC_LIBRARY)
+set(__QT_DEPLOY_TARGET_core_c_FILE /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo/libcore_c.dylib)
+set(__QT_DEPLOY_TARGET_core_c_TYPE SHARED_LIBRARY)
+set(__QT_DEPLOY_TARGET_editor_qt_FILE /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo/editor_qt)
+set(__QT_DEPLOY_TARGET_editor_qt_TYPE EXECUTABLE)

@@ -1,0 +1,15 @@
+[requires]
+# Uncomment and adjust versions when enabling dependencies
+# clipper/6.4.2
+# mapbox-earcut/2.2.3
+
+[generators]
+CMakeDeps
+CMakeToolchain
+
+[layout]
+cmake_layout
+
+[options]
+# add package options if needed
+

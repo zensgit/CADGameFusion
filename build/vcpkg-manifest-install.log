@@ -1,0 +1,35 @@
+Detecting compiler hash for triplet arm64-osx...
+Compiler found: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++
+The following packages are already installed:
+    clipper2:arm64-osx@1.5.4
+    earcut-hpp:arm64-osx@2.2.4
+  * vcpkg-cmake:arm64-osx@2024-04-23
+  * vcpkg-cmake-config:arm64-osx@2024-05-23
+The package clipper2 can be imported via CMake FindPkgConfig module:
+
+    # Clipper2
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(Clipper2 REQUIRED IMPORTED_TARGET Clipper2)
+    target_link_libraries(main PkgConfig::Clipper2)
+
+    # Clipper2Z
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(Clipper2Z REQUIRED IMPORTED_TARGET Clipper2Z)
+    target_link_libraries(main PkgConfig::Clipper2Z)
+
+clipper2 provides CMake targets:
+
+    # Clipper2
+    find_package(Clipper2 CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE Clipper2::Clipper2)
+
+    # Clipper2Z
+    find_package(Clipper2 CONFIG REQUIRED)
+    target_link_libraries(main PRIVATE Clipper2::Clipper2Z)
+
+earcut-hpp is header-only and can be used from CMake via:
+
+  find_path(EARCUT_HPP_INCLUDE_DIRS "mapbox/earcut.hpp")
+  target_include_directories(main PRIVATE ${EARCUT_HPP_INCLUDE_DIRS})
+
+All requested installations completed successfully in: 140 us

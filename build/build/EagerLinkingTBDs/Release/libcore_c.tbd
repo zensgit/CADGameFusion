@@ -1,0 +1,57 @@
+{
+  "main_library": {
+    "compatibility_versions": [
+      {
+        "version": "0"
+      }
+    ],
+    "current_versions": [
+      {
+        "version": "0"
+      }
+    ],
+    "exported_symbols": [
+      {
+        "text": {
+          "global": [
+            "_core_document_create",
+            "_core_boolean_op_single",
+            "__ZN4core8DocumentC2Ev",
+            "__ZN4core8Document12add_polylineERKNS_8PolylineERKNSt3__112basic_stringIcNS4_11char_traitsIcEENS4_9allocatorIcEEEE",
+            "__ZN4core10boolean_opERKNSt3__16vectorINS_8PolylineENS0_9allocatorIS2_EEEES7_NS_6BoolOpE",
+            "_core_document_destroy",
+            "_core_triangulate_polygon",
+            "__ZN4core8DocumentC1Ev",
+            "_core_document_remove_entity",
+            "__ZN4core19triangulate_polygonERKNSt3__16vectorINS_4Vec2ENS0_9allocatorIS2_EEEE",
+            "__ZN4core8DocumentD2Ev",
+            "_core_offset_single",
+            "__ZN4core8Document13remove_entityEy",
+            "__ZN4core6offsetERKNSt3__16vectorINS_8PolylineENS0_9allocatorIS2_EEEEd",
+            "_core_document_add_polyline",
+            "__ZN4core8DocumentD1Ev"
+          ]
+        }
+      }
+    ],
+    "flags": [
+      {
+        "attributes": [
+          "not_app_extension_safe"
+        ]
+      }
+    ],
+    "install_names": [
+      {
+        "name": "@rpath/libcore_c.dylib"
+      }
+    ],
+    "target_info": [
+      {
+        "min_deployment": "15.1",
+        "target": "arm64-macos"
+      }
+    ]
+  },
+  "tapi_tbd_version": 5
+}
