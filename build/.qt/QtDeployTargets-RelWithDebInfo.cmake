@@ -4,3 +4,5 @@ set(__QT_DEPLOY_TARGET_core_c_FILE /Users/huazhou/Insync/hua.chau@outlook.com/On
 set(__QT_DEPLOY_TARGET_core_c_TYPE SHARED_LIBRARY)
 set(__QT_DEPLOY_TARGET_editor_qt_FILE /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo/editor_qt)
 set(__QT_DEPLOY_TARGET_editor_qt_TYPE EXECUTABLE)
+set(__QT_DEPLOY_TARGET_core_tests_FILE /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo/core_tests)
+set(__QT_DEPLOY_TARGET_core_tests_TYPE EXECUTABLE)

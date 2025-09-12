@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'core_tests' in project 'CADGameFusion'
+➜ Explicit dependency on target 'core' in project 'CADGameFusion'
+Target 'core' in project 'CADGameFusion' (no dependencies)

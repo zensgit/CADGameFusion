@@ -1,5 +1,5 @@
 Detecting compiler hash for triplet arm64-osx...
-Compiler found: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++
+Compiler found: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/c++
 The following packages are already installed:
     clipper2:arm64-osx@1.5.4
     earcut-hpp:arm64-osx@2.2.4
@@ -32,4 +32,4 @@ earcut-hpp is header-only and can be used from CMake via:
   find_path(EARCUT_HPP_INCLUDE_DIRS "mapbox/earcut.hpp")
   target_include_directories(main PRIVATE ${EARCUT_HPP_INCLUDE_DIRS})
 
-All requested installations completed successfully in: 140 us
+All requested installations completed successfully in: 137 us

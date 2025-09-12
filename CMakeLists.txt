@@ -25,5 +25,6 @@ if(BUILD_EDITOR_QT)
   add_subdirectory(editor/qt)
 endif()
 
-# Unity adapter is code-only guidance; not part of CMake build.
+add_subdirectory(tests/core)
 
+# Unity adapter is code-only guidance; not part of CMake build.

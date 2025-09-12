@@ -14,6 +14,8 @@ add_executable(editor_qt
     src/mainwindow.hpp
     src/canvas.cpp
     src/canvas.hpp
+    src/exporter.cpp
+    src/exporter.hpp
 )
 
 target_include_directories(editor_qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../..)

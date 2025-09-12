@@ -39,9 +39,3 @@ endif()
 
 set(CMAKE_BINARY_DIR "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build")
 
-string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
-       "${CMAKE_INSTALL_MANIFEST_FILES}")
-if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/core/install_local_manifest.txt"
-     "${CMAKE_INSTALL_MANIFEST_CONTENT}")
-endif()

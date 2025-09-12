@@ -11,6 +11,12 @@ namespace CADGameFusion.UnityAdapter {
         public struct Document { public IntPtr Ptr; }
 
         [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr core_get_version();
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern uint core_get_feature_flags();
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr core_document_create();
 
         [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
@@ -33,11 +39,25 @@ namespace CADGameFusion.UnityAdapter {
         [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
         public static extern int core_triangulate_polygon([In] Vec2[] pts, int n, [Out] uint[] indices, ref int index_count);
 
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int core_triangulate_polygon_rings([In] Vec2[] pts, [In] int[] ring_counts, int ring_count, IntPtr indices, ref int index_count);
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int core_triangulate_polygon_rings([In] Vec2[] pts, [In] int[] ring_counts, int ring_count, [Out] uint[] indices, ref int index_count);
+
         public static uint[] Triangulate(Vec2[] pts) {
             int count = 0;
             if (core_triangulate_polygon(pts, pts.Length, IntPtr.Zero, ref count) == 0 || count <= 0) return Array.Empty<uint>();
             var indices = new uint[count];
             if (core_triangulate_polygon(pts, pts.Length, indices, ref count) == 0) return Array.Empty<uint>();
+            return indices;
+        }
+
+        public static uint[] TriangulateRings(Vec2[] flatPts, int[] ringCounts) {
+            int count = 0;
+            if (core_triangulate_polygon_rings(flatPts, ringCounts, ringCounts.Length, IntPtr.Zero, ref count) == 0 || count <= 0) return Array.Empty<uint>();
+            var indices = new uint[count];
+            if (core_triangulate_polygon_rings(flatPts, ringCounts, ringCounts.Length, indices, ref count) == 0) return Array.Empty<uint>();
             return indices;
         }
     }

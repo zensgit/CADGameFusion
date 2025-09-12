@@ -9,19 +9,19 @@
 /* Begin PBXAggregateTarget section */
 		563138006EE7144C02282D5C /* editor_qt_autogen */ = {
 			isa = PBXAggregateTarget;
-			buildConfigurationList = 3F277E026B094CC5AECADE71 /* Build configuration list for PBXAggregateTarget "editor_qt_autogen" */;
+			buildConfigurationList = 0B8E88B335104201AFC6C1F6 /* Build configuration list for PBXAggregateTarget "editor_qt_autogen" */;
 			buildPhases = (
 				19868419CA13899BDE50676B /* Generate editor/qt/CMakeFiles/editor_qt_autogen */,
 			);
 			dependencies = (
-				1F2674AB0F444A1C8E197FC2 /* PBXTargetDependency */,
+				706F114DEFB146B0B3BEC180 /* PBXTargetDependency */,
 			);
 			name = editor_qt_autogen;
 			productName = editor_qt_autogen;
 		};
 		5EB61092487EC5FCFBD87022 /* ZERO_CHECK */ = {
 			isa = PBXAggregateTarget;
-			buildConfigurationList = DB903B1CFB0A4695A6767B37 /* Build configuration list for PBXAggregateTarget "ZERO_CHECK" */;
+			buildConfigurationList = 27499DE5065142AD9BDC0E77 /* Build configuration list for PBXAggregateTarget "ZERO_CHECK" */;
 			buildPhases = (
 				0A40BF3597B1B6C80E38E149 /* Generate CMakeFiles/ZERO_CHECK */,
 			);
@@ -32,15 +32,16 @@
 		};
 		B3E218955C477ACDE5700043 /* ALL_BUILD */ = {
 			isa = PBXAggregateTarget;
-			buildConfigurationList = CD5F9957490B443C85411071 /* Build configuration list for PBXAggregateTarget "ALL_BUILD" */;
+			buildConfigurationList = 7B2A90EDB66342EF99422F25 /* Build configuration list for PBXAggregateTarget "ALL_BUILD" */;
 			buildPhases = (
 				C28019AC71FE7696DC18F7A1 /* Generate CMakeFiles/ALL_BUILD */,
 			);
 			dependencies = (
-				F3563062AAEA4178BF2E3CD8 /* PBXTargetDependency */,
-				BB9E95F1B203486897533207 /* PBXTargetDependency */,
-				531A800238EA4D768DEA0D65 /* PBXTargetDependency */,
-				2B02531695314356A779C425 /* PBXTargetDependency */,
+				A0306C83CEFE4556B5E5D4AA /* PBXTargetDependency */,
+				5A74A83EF0254EEAA8BAC6F6 /* PBXTargetDependency */,
+				E3FD45244DB54EFCB9059EAA /* PBXTargetDependency */,
+				61BFFD6075CC4A13B65B409C /* PBXTargetDependency */,
+				B234E94CA98943D1AD25D91C /* PBXTargetDependency */,
 			);
 			name = ALL_BUILD;
 			productName = ALL_BUILD;
@@ -48,156 +49,186 @@
 /* End PBXAggregateTarget section */
 
 /* Begin PBXBuildFile section */
-		1887772FF75C4936A668C01C /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.hpp */ = {isa = PBXBuildFile; fileRef = C1897A3FEFD4453E9D8B9D9F /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.hpp */; };
-		2FD8354DD50D47F3B172DFBC /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */ = {isa = PBXBuildFile; fileRef = 13FEC8AD381B4FE18001275C /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */; };
-		316A199B5FFB4D95B86E2EC4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/ops2d.cpp */ = {isa = PBXBuildFile; fileRef = 602DD8AD38784E1BB1905F27 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/ops2d.cpp */; };
-		35E09FBB856B412CB652AB12 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/mocs_compilation.cpp */ = {isa = PBXBuildFile; fileRef = B63B0847E5794D0C92F9A3B7 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/mocs_compilation.cpp */; };
-		5290021298E2455F99891B38 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework */ = {isa = PBXBuildFile; fileRef = D7189EA45D78470692F65599 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework */; };
-		56C01FA1657142A6BC916CED /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.cpp */ = {isa = PBXBuildFile; fileRef = 87BE76E326E445F8BD5775A9 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.cpp */; };
-		B645B2EBC4364A24905CB11D /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/core_c_api.cpp */ = {isa = PBXBuildFile; fileRef = 019812279DEA4470BFC03FD4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/core_c_api.cpp */; };
-		B83B7BEEFBA14ACDA2664F88 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/document.cpp */ = {isa = PBXBuildFile; fileRef = 3B6B82E48810485287637739 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/document.cpp */; };
-		B992C07099944EE693E59408 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */ = {isa = PBXBuildFile; fileRef = 4CF72D7087E648BD942D5F8E /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */; };
-		C56D2AEE89284A3CAEBCF901 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.cpp */ = {isa = PBXBuildFile; fileRef = 93106E361CA64D92B445F3B7 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.cpp */; };
-		D92846B873E0453F8A6CFAD3 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework */ = {isa = PBXBuildFile; fileRef = 07B858D3BA6A4F34A979D4F2 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework */; };
-		E84CCF24369548E685998386 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/geometry2d.cpp */ = {isa = PBXBuildFile; fileRef = FBE501AF4E26403097A8C296 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/geometry2d.cpp */; };
-		EB561C2629D1498BB167A03A /* /Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework */ = {isa = PBXBuildFile; fileRef = D27EE5AC611C4F2399A5D6F8 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework */; };
-		EFC1C2F7BC3B4A2CA1214C4C /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.hpp */ = {isa = PBXBuildFile; fileRef = 096A8D61C2034481A810993A /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.hpp */; };
-		F8EE205F662D4AC99F2D0855 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */ = {isa = PBXBuildFile; fileRef = 192E5A636DDD42C0973D6F8E /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */; };
-		F966511CBA104356940FE1FF /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/main.cpp */ = {isa = PBXBuildFile; fileRef = 5CA31021B61949B98A66572F /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/main.cpp */; };
-		FA29C45833CE4910AEE544AF /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/commands.cpp */ = {isa = PBXBuildFile; fileRef = BB147F0D1FB149CAB984AD21 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/commands.cpp */; };
+		2EBC1FFE74B04770825D57D4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/mocs_compilation.cpp */ = {isa = PBXBuildFile; fileRef = 3E57336EEE57498FB1685FE1 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/mocs_compilation.cpp */; };
+		35B8B85B63C94DBE95275892 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/test_triangulation.cpp */ = {isa = PBXBuildFile; fileRef = F6FC982507364B2EA2E10AF4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/test_triangulation.cpp */; };
+		36E8BA696C794CC788ADC909 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/CMakeLists.txt */ = {isa = PBXBuildFile; fileRef = EF26BD1B8C104BAABBFF5E86 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/CMakeLists.txt */; };
+		45B688EA3721490B922148F4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */ = {isa = PBXBuildFile; fileRef = 86651FB9DB0749BE8846ACD9 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */; };
+		656C8ABE317D4304AEDE0B35 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/exporter.cpp */ = {isa = PBXBuildFile; fileRef = 3BA9E0F416F8492ABA727018 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/exporter.cpp */; };
+		78022F4F29A14593AD2108A4 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework */ = {isa = PBXBuildFile; fileRef = A7415C59662C490792E505B4 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework */; };
+		79D18FAC6991475EAE111134 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */ = {isa = PBXBuildFile; fileRef = FA0E3F5338D94F01AB5AF7B4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */; };
+		7F5351A195DA47CFB99EB8AA /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */ = {isa = PBXBuildFile; fileRef = 9ABCEFA1706241318203468A /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */; };
+		A4AD678E909D4C4A8D5FF7AD /* /Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework */ = {isa = PBXBuildFile; fileRef = E09B76B69F6B4948B61A300A /* /Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework */; };
+		BAED703F309A4C44BE5E16BF /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/commands.cpp */ = {isa = PBXBuildFile; fileRef = 8C047676ECD54ACAA1072ED3 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/commands.cpp */; };
+		BEFD13D5D821419BAD0EF88B /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.cpp */ = {isa = PBXBuildFile; fileRef = D17F119E68714D94B63F6EB0 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.cpp */; };
+		BF515183BF554D398E536C6C /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/exporter.hpp */ = {isa = PBXBuildFile; fileRef = C0600A4CDA1C4B8F81DECB54 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/exporter.hpp */; };
+		C0234FACCB8E4A609526F195 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/document.cpp */ = {isa = PBXBuildFile; fileRef = 1F5A59D3A9F4483D9FB7AF17 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/document.cpp */; };
+		C4D3BCA994394F6A8F7A1AE0 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.hpp */ = {isa = PBXBuildFile; fileRef = A01B5AEB494945A4BBEC32E2 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.hpp */; };
+		C84EC91C08F544F7B4364140 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/ops2d.cpp */ = {isa = PBXBuildFile; fileRef = 7EDBB13363CB44F0AFD3CB03 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/ops2d.cpp */; };
+		CAC296F510A544D88D290465 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/geometry2d.cpp */ = {isa = PBXBuildFile; fileRef = 3D77E96DB3314BC2B68F638A /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/geometry2d.cpp */; };
+		CB204470523D4BF294E6E7B5 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.cpp */ = {isa = PBXBuildFile; fileRef = B9E60389A7AD4DB0B1BFE857 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.cpp */; };
+		D2154485985249AAA3056CB9 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/main.cpp */ = {isa = PBXBuildFile; fileRef = BDA35BD80B884E4EB9DC6527 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/main.cpp */; };
+		E582BB6E35E04B2BA9E60E4A /* /Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework */ = {isa = PBXBuildFile; fileRef = 81B47FFCE0FF4047A523A4D6 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework */; };
+		EB54954373294C87A1C089FE /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.hpp */ = {isa = PBXBuildFile; fileRef = 11D7903FC21B495998D6209E /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.hpp */; };
+		F3BAF448874D42EA833B0AE1 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/core_c_api.cpp */ = {isa = PBXBuildFile; fileRef = 54C90BE6218049159CFF84B5 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/core_c_api.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildStyle section */
-		1C7FE04609AB49AA97DD62DF /* Release */ = {
-			isa = PBXBuildStyle;
-			buildSettings = {
-				COPY_PHASE_STRIP = NO;
-			};
-			name = Release;
-		};
-		5BA2D75C363040F0961FF30A /* Debug */ = {
-			isa = PBXBuildStyle;
-			buildSettings = {
-				COPY_PHASE_STRIP = NO;
-			};
-			name = Debug;
-		};
-		5D550ECD97EF48E48DD2D6C5 /* MinSizeRel */ = {
+		43B5E859AD364D95B98962CB /* MinSizeRel */ = {
 			isa = PBXBuildStyle;
 			buildSettings = {
 				COPY_PHASE_STRIP = NO;
 			};
 			name = MinSizeRel;
 		};
-		EAE725CCA21447A4885E6527 /* RelWithDebInfo */ = {
+		4DD209C6E6FC4A15A0EE1F4D /* Debug */ = {
+			isa = PBXBuildStyle;
+			buildSettings = {
+				COPY_PHASE_STRIP = NO;
+			};
+			name = Debug;
+		};
+		A24367C7FD3B497DB943B23C /* RelWithDebInfo */ = {
 			isa = PBXBuildStyle;
 			buildSettings = {
 				COPY_PHASE_STRIP = NO;
 			};
 			name = RelWithDebInfo;
 		};
+		A78303006CAE4B889776944B /* Release */ = {
+			isa = PBXBuildStyle;
+			buildSettings = {
+				COPY_PHASE_STRIP = NO;
+			};
+			name = Release;
+		};
 /* End PBXBuildStyle section */
 
 /* Begin PBXContainerItemProxy section */
-		1783323B73C849EEBBC8C9AF /* PBXContainerItemProxy */ = {
+		0E2011274C9A4134AB0FC19B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
-			containerPortal = CEE44808CF7F4AE097A8DCE2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 78485372DC662B64AC8B4420;
-			remoteInfo = core_c;
-		};
-		1D67D50B69F4486682947E5C /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = CEE44808CF7F4AE097A8DCE2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 563138006EE7144C02282D5C;
-			remoteInfo = editor_qt_autogen;
-		};
-		1F4488EC0ADB4B36ADB8F40B /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = CEE44808CF7F4AE097A8DCE2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 78485372DC662B64AC8B4420;
-			remoteInfo = core_c;
-		};
-		22B1BEB36DAB4D9F8C1301AB /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = CEE44808CF7F4AE097A8DCE2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 78485372DC662B64AC8B4420;
-			remoteInfo = core_c;
-		};
-		28A6CE86C11B4408B444E8E6 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = CEE44808CF7F4AE097A8DCE2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 213470E9090BB48F6B3498F8;
-			remoteInfo = core;
-		};
-		321B15EC8B834D49971A5E95 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = CEE44808CF7F4AE097A8DCE2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 5EB61092487EC5FCFBD87022;
-			remoteInfo = ZERO_CHECK;
-		};
-		EC7D4D09B9324C5EBF643CCD /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = CEE44808CF7F4AE097A8DCE2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 213470E9090BB48F6B3498F8;
-			remoteInfo = core;
-		};
-		F2DE8EDB7C644D7F84694633 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = CEE44808CF7F4AE097A8DCE2 /* Project object */;
+			containerPortal = 9AFA42D3C9934F2D88E97FD0 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = E4FC3EE9005F54579908C991;
 			remoteInfo = editor_qt;
 		};
+		222FAAEDCF4741689C822B0B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9AFA42D3C9934F2D88E97FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 563138006EE7144C02282D5C;
+			remoteInfo = editor_qt_autogen;
+		};
+		28185127A63246C386F060AD /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9AFA42D3C9934F2D88E97FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C5E1688B35D28FF895FA627F;
+			remoteInfo = core_tests;
+		};
+		4B738C56BF52473E94B7C511 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9AFA42D3C9934F2D88E97FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 78485372DC662B64AC8B4420;
+			remoteInfo = core_c;
+		};
+		82155E31209D4CC18EDF5259 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9AFA42D3C9934F2D88E97FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 213470E9090BB48F6B3498F8;
+			remoteInfo = core;
+		};
+		9DA82076BE5C4D26B440960F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9AFA42D3C9934F2D88E97FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5EB61092487EC5FCFBD87022;
+			remoteInfo = ZERO_CHECK;
+		};
+		C47E6D0B437F42B9A6B43204 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9AFA42D3C9934F2D88E97FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 78485372DC662B64AC8B4420;
+			remoteInfo = core_c;
+		};
+		DE52642DAE624F6CBA5B854F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9AFA42D3C9934F2D88E97FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 213470E9090BB48F6B3498F8;
+			remoteInfo = core;
+		};
+		DEED3DB6906F484798CC9C41 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9AFA42D3C9934F2D88E97FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 78485372DC662B64AC8B4420;
+			remoteInfo = core_c;
+		};
+		E7B25F4C9B91475CB7398A2D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9AFA42D3C9934F2D88E97FD0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 213470E9090BB48F6B3498F8;
+			remoteInfo = core;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		019812279DEA4470BFC03FD4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/core_c_api.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = core_c_api.cpp; path = core/src/core_c_api.cpp; sourceTree = SOURCE_ROOT; };
-		07B858D3BA6A4F34A979D4F2 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = wrapper.framework; name = QtGui.framework; path = /Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework; sourceTree = "<absolute>"; };
-		096A8D61C2034481A810993A /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.hpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; fileEncoding = 4; name = mainwindow.hpp; path = editor/qt/src/mainwindow.hpp; sourceTree = SOURCE_ROOT; };
-		13FEC8AD381B4FE18001275C /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = core/CMakeLists.txt; sourceTree = SOURCE_ROOT; };
-		192E5A636DDD42C0973D6F8E /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = editor/qt/CMakeLists.txt; sourceTree = SOURCE_ROOT; };
-		3B6B82E48810485287637739 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/document.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = document.cpp; path = core/src/document.cpp; sourceTree = SOURCE_ROOT; };
-		47A4E3D2830C4E00BDD378E7 /* core_c */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; path = libcore_c.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
-		4CF72D7087E648BD942D5F8E /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = core/CMakeLists.txt; sourceTree = SOURCE_ROOT; };
-		5CA31021B61949B98A66572F /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/main.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = main.cpp; path = editor/qt/src/main.cpp; sourceTree = SOURCE_ROOT; };
-		602DD8AD38784E1BB1905F27 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/ops2d.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = ops2d.cpp; path = core/src/ops2d.cpp; sourceTree = SOURCE_ROOT; };
-		671FDCA996694E3494D4E898 /* core */ = {isa = PBXFileReference; explicitFileType = archive.ar; path = libcore.a; sourceTree = BUILT_PRODUCTS_DIR; };
-		87BE76E326E445F8BD5775A9 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = canvas.cpp; path = editor/qt/src/canvas.cpp; sourceTree = SOURCE_ROOT; };
-		893218F9C9D24558BA4878A1 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = CMakeLists.txt; sourceTree = SOURCE_ROOT; };
-		8C8DD170434E4B83B3B76B95 /* editor_qt */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; path = editor_qt; sourceTree = BUILT_PRODUCTS_DIR; };
-		93106E361CA64D92B445F3B7 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = mainwindow.cpp; path = editor/qt/src/mainwindow.cpp; sourceTree = SOURCE_ROOT; };
-		B63B0847E5794D0C92F9A3B7 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/mocs_compilation.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = mocs_compilation.cpp; path = build/editor/qt/editor_qt_autogen/mocs_compilation.cpp; sourceTree = SOURCE_ROOT; };
-		BB147F0D1FB149CAB984AD21 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/commands.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = commands.cpp; path = core/src/commands.cpp; sourceTree = SOURCE_ROOT; };
-		C1897A3FEFD4453E9D8B9D9F /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.hpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; fileEncoding = 4; name = canvas.hpp; path = editor/qt/src/canvas.hpp; sourceTree = SOURCE_ROOT; };
-		D27EE5AC611C4F2399A5D6F8 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = wrapper.framework; name = QtWidgets.framework; path = /Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework; sourceTree = "<absolute>"; };
-		D7189EA45D78470692F65599 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = wrapper.framework; name = QtCore.framework; path = /Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework; sourceTree = "<absolute>"; };
-		E6CF25915D9F4A58A387B805 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = editor/qt/CMakeLists.txt; sourceTree = SOURCE_ROOT; };
-		FBE501AF4E26403097A8C296 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/geometry2d.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = geometry2d.cpp; path = core/src/geometry2d.cpp; sourceTree = SOURCE_ROOT; };
+		11D7903FC21B495998D6209E /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.hpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; fileEncoding = 4; name = mainwindow.hpp; path = editor/qt/src/mainwindow.hpp; sourceTree = SOURCE_ROOT; };
+		1F5A59D3A9F4483D9FB7AF17 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/document.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = document.cpp; path = core/src/document.cpp; sourceTree = SOURCE_ROOT; };
+		3493C62728824C2EBAF85081 /* editor_qt */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; path = editor_qt; sourceTree = BUILT_PRODUCTS_DIR; };
+		3BA9E0F416F8492ABA727018 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/exporter.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = exporter.cpp; path = editor/qt/src/exporter.cpp; sourceTree = SOURCE_ROOT; };
+		3D77E96DB3314BC2B68F638A /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/geometry2d.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = geometry2d.cpp; path = core/src/geometry2d.cpp; sourceTree = SOURCE_ROOT; };
+		3E57336EEE57498FB1685FE1 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/mocs_compilation.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = mocs_compilation.cpp; path = build/editor/qt/editor_qt_autogen/mocs_compilation.cpp; sourceTree = SOURCE_ROOT; };
+		54C90BE6218049159CFF84B5 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/core_c_api.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = core_c_api.cpp; path = core/src/core_c_api.cpp; sourceTree = SOURCE_ROOT; };
+		6EB1AF2FD8134061800E0276 /* core */ = {isa = PBXFileReference; explicitFileType = archive.ar; path = libcore.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		7EDBB13363CB44F0AFD3CB03 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/ops2d.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = ops2d.cpp; path = core/src/ops2d.cpp; sourceTree = SOURCE_ROOT; };
+		81B47FFCE0FF4047A523A4D6 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = wrapper.framework; name = QtGui.framework; path = /Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework; sourceTree = "<absolute>"; };
+		86651FB9DB0749BE8846ACD9 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = editor/qt/CMakeLists.txt; sourceTree = SOURCE_ROOT; };
+		8C047676ECD54ACAA1072ED3 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/commands.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = commands.cpp; path = core/src/commands.cpp; sourceTree = SOURCE_ROOT; };
+		90FAA95FF5DA4679878571DF /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = CMakeLists.txt; sourceTree = SOURCE_ROOT; };
+		9ABCEFA1706241318203468A /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = core/CMakeLists.txt; sourceTree = SOURCE_ROOT; };
+		A01B5AEB494945A4BBEC32E2 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.hpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; fileEncoding = 4; name = canvas.hpp; path = editor/qt/src/canvas.hpp; sourceTree = SOURCE_ROOT; };
+		A7415C59662C490792E505B4 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = wrapper.framework; name = QtCore.framework; path = /Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework; sourceTree = "<absolute>"; };
+		B4E8D8ACE9EC4D348D33A57E /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = editor/qt/CMakeLists.txt; sourceTree = SOURCE_ROOT; };
+		B50036F8B8B74270B9AB0CC5 /* core_tests */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; path = core_tests; sourceTree = BUILT_PRODUCTS_DIR; };
+		B9E60389A7AD4DB0B1BFE857 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = canvas.cpp; path = editor/qt/src/canvas.cpp; sourceTree = SOURCE_ROOT; };
+		BDA35BD80B884E4EB9DC6527 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/main.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = main.cpp; path = editor/qt/src/main.cpp; sourceTree = SOURCE_ROOT; };
+		C0600A4CDA1C4B8F81DECB54 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/exporter.hpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.h; fileEncoding = 4; name = exporter.hpp; path = editor/qt/src/exporter.hpp; sourceTree = SOURCE_ROOT; };
+		D17F119E68714D94B63F6EB0 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = mainwindow.cpp; path = editor/qt/src/mainwindow.cpp; sourceTree = SOURCE_ROOT; };
+		E09B76B69F6B4948B61A300A /* /Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = wrapper.framework; name = QtWidgets.framework; path = /Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework; sourceTree = "<absolute>"; };
+		EF26BD1B8C104BAABBFF5E86 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = tests/core/CMakeLists.txt; sourceTree = SOURCE_ROOT; };
+		F6FC982507364B2EA2E10AF4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/test_triangulation.cpp */ = {isa = PBXFileReference; explicitFileType = sourcecode.cpp.cpp; fileEncoding = 4; name = test_triangulation.cpp; path = tests/core/test_triangulation.cpp; sourceTree = SOURCE_ROOT; };
+		F9E68EA55E1141588594A9EB /* core_c */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.dylib"; path = libcore_c.dylib; sourceTree = BUILT_PRODUCTS_DIR; };
+		FA0E3F5338D94F01AB5AF7B4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */ = {isa = PBXFileReference; explicitFileType = sourcecode.text; fileEncoding = 4; name = CMakeLists.txt; path = core/CMakeLists.txt; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		5CEF12CC8D464323AFB9D23C /* Frameworks */ = {
+		62C806E2E95241DD9752501E /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		B0845F6C16C24E7EB17DA73C /* Frameworks */ = {
+		6BC8626D058E491B94BF3614 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		D21B18E0E11F480589240152 /* Frameworks */ = {
+		6E72DC0702EF45EDA267C708 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		82EE5FCEACAB48479EF969AF /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -207,144 +238,165 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		15FA8C60E99B4F808D608C38 /* core_c */ = {
+		045FBA6D7B8146BF9CFE769A /* ALL_BUILD */ = {
 			isa = PBXGroup;
 			children = (
-				554A24F2EEBB44279BFA2B4E /* Source Files */,
-				4CF72D7087E648BD942D5F8E /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */,
+				BEFE889CECF64FDC90B2E9F4 /* CMake Rules */,
+				90FAA95FF5DA4679878571DF /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/CMakeLists.txt */,
 			);
-			name = core_c;
+			name = ALL_BUILD;
 			sourceTree = "<group>";
 		};
-		28AB82CB4B5F40AD8D2EC474 /* Source Files */ = {
+		2FEBF0DBF55544B9BC674F3D /* editor_qt_autogen */ = {
 			isa = PBXGroup;
 			children = (
-				B63B0847E5794D0C92F9A3B7 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/mocs_compilation.cpp */,
-				87BE76E326E445F8BD5775A9 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.cpp */,
-				5CA31021B61949B98A66572F /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/main.cpp */,
-				93106E361CA64D92B445F3B7 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.cpp */,
+				FDAD1C7BEF3940BABB6EC01A /* CMake Rules */,
+				B4E8D8ACE9EC4D348D33A57E /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */,
+			);
+			name = editor_qt_autogen;
+			sourceTree = "<group>";
+		};
+		47994838DBF640FA8CF979C0 /* core_tests */ = {
+			isa = PBXGroup;
+			children = (
+				A6236A2E763A425A96584DA3 /* Source Files */,
+				EF26BD1B8C104BAABBFF5E86 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/CMakeLists.txt */,
+			);
+			name = core_tests;
+			sourceTree = "<group>";
+		};
+		4ECC0D676D52482AB6676754 /* editor_qt */ = {
+			isa = PBXGroup;
+			children = (
+				64D75D8CC2994A64BE3BCC9B /* Source Files */,
+				A7094F71AED243C9B579FB62 /* Header Files */,
+				86651FB9DB0749BE8846ACD9 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */,
+			);
+			name = editor_qt;
+			sourceTree = "<group>";
+		};
+		64D75D8CC2994A64BE3BCC9B /* Source Files */ = {
+			isa = PBXGroup;
+			children = (
+				3E57336EEE57498FB1685FE1 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/mocs_compilation.cpp */,
+				B9E60389A7AD4DB0B1BFE857 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.cpp */,
+				3BA9E0F416F8492ABA727018 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/exporter.cpp */,
+				BDA35BD80B884E4EB9DC6527 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/main.cpp */,
+				D17F119E68714D94B63F6EB0 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.cpp */,
 			);
 			name = "Source Files";
 			sourceTree = "<group>";
 		};
-		43D242D780A6489CA0C70002 /* Resources */ = {
+		7F7F1253BA3B4C77B236C075 /* core */ = {
+			isa = PBXGroup;
+			children = (
+				D612397B22074DFAA9379C6A /* Source Files */,
+				9ABCEFA1706241318203468A /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */,
+			);
+			name = core;
+			sourceTree = "<group>";
+		};
+		827C8FBE511B4572BCCE741A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6EB1AF2FD8134061800E0276 /* core */,
+				F9E68EA55E1141588594A9EB /* core_c */,
+				B50036F8B8B74270B9AB0CC5 /* core_tests */,
+				3493C62728824C2EBAF85081 /* editor_qt */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		925D9167493A4860BB22FBF5 /* Source Files */ = {
+			isa = PBXGroup;
+			children = (
+				54C90BE6218049159CFF84B5 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/core_c_api.cpp */,
+			);
+			name = "Source Files";
+			sourceTree = "<group>";
+		};
+		9E30FF9B0A3D488BA704BD45 /* core_c */ = {
+			isa = PBXGroup;
+			children = (
+				925D9167493A4860BB22FBF5 /* Source Files */,
+				FA0E3F5338D94F01AB5AF7B4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */,
+			);
+			name = core_c;
+			sourceTree = "<group>";
+		};
+		A614FF10868D406B88AEF2C7 = {
+			isa = PBXGroup;
+			children = (
+				045FBA6D7B8146BF9CFE769A /* ALL_BUILD */,
+				7F7F1253BA3B4C77B236C075 /* core */,
+				9E30FF9B0A3D488BA704BD45 /* core_c */,
+				4ECC0D676D52482AB6676754 /* editor_qt */,
+				2FEBF0DBF55544B9BC674F3D /* editor_qt_autogen */,
+				47994838DBF640FA8CF979C0 /* core_tests */,
+				827C8FBE511B4572BCCE741A /* Products */,
+				FECA248B45B042979B5620C7 /* Frameworks */,
+				FDE66FAC98694E14A195E6FA /* Resources */,
+			);
+			sourceTree = "<group>";
+		};
+		A6236A2E763A425A96584DA3 /* Source Files */ = {
+			isa = PBXGroup;
+			children = (
+				F6FC982507364B2EA2E10AF4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/test_triangulation.cpp */,
+			);
+			name = "Source Files";
+			sourceTree = "<group>";
+		};
+		A7094F71AED243C9B579FB62 /* Header Files */ = {
+			isa = PBXGroup;
+			children = (
+				A01B5AEB494945A4BBEC32E2 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.hpp */,
+				C0600A4CDA1C4B8F81DECB54 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/exporter.hpp */,
+				11D7903FC21B495998D6209E /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.hpp */,
+			);
+			name = "Header Files";
+			sourceTree = "<group>";
+		};
+		BEFE889CECF64FDC90B2E9F4 /* CMake Rules */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = "CMake Rules";
+			sourceTree = "<group>";
+		};
+		D612397B22074DFAA9379C6A /* Source Files */ = {
+			isa = PBXGroup;
+			children = (
+				8C047676ECD54ACAA1072ED3 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/commands.cpp */,
+				1F5A59D3A9F4483D9FB7AF17 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/document.cpp */,
+				3D77E96DB3314BC2B68F638A /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/geometry2d.cpp */,
+				7EDBB13363CB44F0AFD3CB03 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/ops2d.cpp */,
+			);
+			name = "Source Files";
+			sourceTree = "<group>";
+		};
+		FDAD1C7BEF3940BABB6EC01A /* CMake Rules */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = "CMake Rules";
+			sourceTree = "<group>";
+		};
+		FDE66FAC98694E14A195E6FA /* Resources */ = {
 			isa = PBXGroup;
 			children = (
 			);
 			name = Resources;
 			sourceTree = "<group>";
 		};
-		53062742E20B437AB6B31066 /* CMake Rules */ = {
+		FECA248B45B042979B5620C7 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-			);
-			name = "CMake Rules";
-			sourceTree = "<group>";
-		};
-		554A24F2EEBB44279BFA2B4E /* Source Files */ = {
-			isa = PBXGroup;
-			children = (
-				019812279DEA4470BFC03FD4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/core_c_api.cpp */,
-			);
-			name = "Source Files";
-			sourceTree = "<group>";
-		};
-		58414B50AB4345C2B2759485 /* Source Files */ = {
-			isa = PBXGroup;
-			children = (
-				BB147F0D1FB149CAB984AD21 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/commands.cpp */,
-				3B6B82E48810485287637739 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/document.cpp */,
-				FBE501AF4E26403097A8C296 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/geometry2d.cpp */,
-				602DD8AD38784E1BB1905F27 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/ops2d.cpp */,
-			);
-			name = "Source Files";
-			sourceTree = "<group>";
-		};
-		765EAAE41CA84021AF1B5015 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				671FDCA996694E3494D4E898 /* core */,
-				47A4E3D2830C4E00BDD378E7 /* core_c */,
-				8C8DD170434E4B83B3B76B95 /* editor_qt */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
-		7AAE5ACE8CDA4899B529F1D5 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				D27EE5AC611C4F2399A5D6F8 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework */,
-				07B858D3BA6A4F34A979D4F2 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework */,
-				D7189EA45D78470692F65599 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework */,
+				E09B76B69F6B4948B61A300A /* /Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework */,
+				81B47FFCE0FF4047A523A4D6 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework */,
+				A7415C59662C490792E505B4 /* /Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		8ACF9A3C245C4E888B8C4122 /* editor_qt_autogen */ = {
-			isa = PBXGroup;
-			children = (
-				53062742E20B437AB6B31066 /* CMake Rules */,
-				E6CF25915D9F4A58A387B805 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */,
-			);
-			name = editor_qt_autogen;
-			sourceTree = "<group>";
-		};
-		8FF4356AA5654560A9185496 /* Header Files */ = {
-			isa = PBXGroup;
-			children = (
-				C1897A3FEFD4453E9D8B9D9F /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.hpp */,
-				096A8D61C2034481A810993A /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.hpp */,
-			);
-			name = "Header Files";
-			sourceTree = "<group>";
-		};
-		9F8CAFB5514A4359AD54A879 = {
-			isa = PBXGroup;
-			children = (
-				E2B6815164CC48B38340E4AF /* ALL_BUILD */,
-				A25C30F41A884592B0E72A40 /* core */,
-				15FA8C60E99B4F808D608C38 /* core_c */,
-				F60CB73CF95F4FF9BD75AE87 /* editor_qt */,
-				8ACF9A3C245C4E888B8C4122 /* editor_qt_autogen */,
-				765EAAE41CA84021AF1B5015 /* Products */,
-				7AAE5ACE8CDA4899B529F1D5 /* Frameworks */,
-				43D242D780A6489CA0C70002 /* Resources */,
-			);
-			sourceTree = "<group>";
-		};
-		A25C30F41A884592B0E72A40 /* core */ = {
-			isa = PBXGroup;
-			children = (
-				58414B50AB4345C2B2759485 /* Source Files */,
-				13FEC8AD381B4FE18001275C /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/CMakeLists.txt */,
-			);
-			name = core;
-			sourceTree = "<group>";
-		};
-		D15980001BBA41B08D9094E1 /* CMake Rules */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			name = "CMake Rules";
-			sourceTree = "<group>";
-		};
-		E2B6815164CC48B38340E4AF /* ALL_BUILD */ = {
-			isa = PBXGroup;
-			children = (
-				D15980001BBA41B08D9094E1 /* CMake Rules */,
-				893218F9C9D24558BA4878A1 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/CMakeLists.txt */,
-			);
-			name = ALL_BUILD;
-			sourceTree = "<group>";
-		};
-		F60CB73CF95F4FF9BD75AE87 /* editor_qt */ = {
-			isa = PBXGroup;
-			children = (
-				28AB82CB4B5F40AD8D2EC474 /* Source Files */,
-				8FF4356AA5654560A9185496 /* Header Files */,
-				192E5A636DDD42C0973D6F8E /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/CMakeLists.txt */,
-			);
-			name = editor_qt;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -352,10 +404,10 @@
 /* Begin PBXNativeTarget section */
 		213470E9090BB48F6B3498F8 /* core */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = D3997055421344BE9ECD6F39 /* Build configuration list for PBXNativeTarget "core" */;
+			buildConfigurationList = D95FC1162AA84F53A49980B0 /* Build configuration list for PBXNativeTarget "core" */;
 			buildPhases = (
-				60C9DE07CEBA46DDA5DA2AAA /* Sources */,
-				5CEF12CC8D464323AFB9D23C /* Frameworks */,
+				F24CC704E6C14550A8F8663E /* Sources */,
+				62C806E2E95241DD9752501E /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -363,75 +415,93 @@
 			);
 			name = core;
 			productName = core;
-			productReference = 671FDCA996694E3494D4E898 /* core */;
+			productReference = 6EB1AF2FD8134061800E0276 /* core */;
 			productType = "com.apple.product-type.library.static";
 		};
 		78485372DC662B64AC8B4420 /* core_c */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 97B56F85095A4DD5BE44765C /* Build configuration list for PBXNativeTarget "core_c" */;
+			buildConfigurationList = 5CE3A1D0D79C4D2D85314FC0 /* Build configuration list for PBXNativeTarget "core_c" */;
 			buildPhases = (
-				A27B3AB740C04953BBA55399 /* Sources */,
-				D21B18E0E11F480589240152 /* Frameworks */,
+				18C95D6A4876441A90E775B1 /* Sources */,
+				6BC8626D058E491B94BF3614 /* Frameworks */,
 				F6D44004224451D9260EEC5A /* CMake PostBuild Rules */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				35D626D0113341188583F1CE /* PBXTargetDependency */,
+				06693EDB612F40B18E3E91A8 /* PBXTargetDependency */,
 			);
 			name = core_c;
 			productName = core_c;
-			productReference = 47A4E3D2830C4E00BDD378E7 /* core_c */;
+			productReference = F9E68EA55E1141588594A9EB /* core_c */;
 			productType = "com.apple.product-type.library.dynamic";
 		};
-		E4FC3EE9005F54579908C991 /* editor_qt */ = {
+		C5E1688B35D28FF895FA627F /* core_tests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 22947A10FB39410EAE0F9C1B /* Build configuration list for PBXNativeTarget "editor_qt" */;
+			buildConfigurationList = 66DB22BCDE3A48A59F64C40B /* Build configuration list for PBXNativeTarget "core_tests" */;
 			buildPhases = (
-				4F13134545F4463DBA26DA63 /* Sources */,
-				B0845F6C16C24E7EB17DA73C /* Frameworks */,
+				41F6BF1B12A640C9817FA30F /* Sources */,
+				82EE5FCEACAB48479EF969AF /* Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				387ED3C6B4C34FE89A2205DE /* PBXTargetDependency */,
-				26C1DB25401646CC803E1869 /* PBXTargetDependency */,
+				12AE76594D0740A2B6D01A7D /* PBXTargetDependency */,
+			);
+			name = core_tests;
+			productName = core_tests;
+			productReference = B50036F8B8B74270B9AB0CC5 /* core_tests */;
+			productType = "com.apple.product-type.tool";
+		};
+		E4FC3EE9005F54579908C991 /* editor_qt */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F091F2598B2141068ECEB027 /* Build configuration list for PBXNativeTarget "editor_qt" */;
+			buildPhases = (
+				366D000CB84240E5A34D3CF9 /* Sources */,
+				6E72DC0702EF45EDA267C708 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				CE3EB13AC4FA4801B94B8761 /* PBXTargetDependency */,
+				C9B4C1935F9B448B973B9D46 /* PBXTargetDependency */,
 			);
 			name = editor_qt;
 			productName = editor_qt;
-			productReference = 8C8DD170434E4B83B3B76B95 /* editor_qt */;
+			productReference = 3493C62728824C2EBAF85081 /* editor_qt */;
 			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		CEE44808CF7F4AE097A8DCE2 /* Project object */ = {
+		9AFA42D3C9934F2D88E97FD0 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1610;
 			};
-			buildConfigurationList = 5A925382E21B4F358D1600AF /* Build configuration list for PBXProject "CADGameFusion" */;
+			buildConfigurationList = 76F5EFC3C0A74E45BBE2AB5D /* Build configuration list for PBXProject "CADGameFusion" */;
 			buildSettings = {
 			};
 			buildStyles = (
-				5BA2D75C363040F0961FF30A /* Debug */,
-				1C7FE04609AB49AA97DD62DF /* Release */,
-				5D550ECD97EF48E48DD2D6C5 /* MinSizeRel */,
-				EAE725CCA21447A4885E6527 /* RelWithDebInfo */,
+				4DD209C6E6FC4A15A0EE1F4D /* Debug */,
+				A78303006CAE4B889776944B /* Release */,
+				43B5E859AD364D95B98962CB /* MinSizeRel */,
+				A24367C7FD3B497DB943B23C /* RelWithDebInfo */,
 			);
 			compatibilityVersion = "Xcode 3.2";
 			hasScannedForEncodings = 0;
-			mainGroup = 9F8CAFB5514A4359AD54A879;
+			mainGroup = A614FF10868D406B88AEF2C7;
 			projectDirPath = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion";
 			projectRoot = "";
 			targets = (
 				B3E218955C477ACDE5700043 /* ALL_BUILD */,
+				5EB61092487EC5FCFBD87022 /* ZERO_CHECK */,
 				213470E9090BB48F6B3498F8 /* core */,
 				78485372DC662B64AC8B4420 /* core_c */,
+				C5E1688B35D28FF895FA627F /* core_tests */,
 				E4FC3EE9005F54579908C991 /* editor_qt */,
 				563138006EE7144C02282D5C /* editor_qt_autogen */,
-				5EB61092487EC5FCFBD87022 /* ZERO_CHECK */,
 			);
 		};
 /* End PBXProject section */
@@ -486,19 +556,31 @@ fi
 			shellScript = "set -e
 if test \"$CONFIGURATION\" = \"Debug\"; then :
   cd /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt
-  /Applications/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json Debug
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json Debug
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json Release
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json MinSizeRel
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json RelWithDebInfo
 fi
 if test \"$CONFIGURATION\" = \"Release\"; then :
   cd /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt
-  /Applications/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json Release
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json Debug
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json Release
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json MinSizeRel
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json RelWithDebInfo
 fi
 if test \"$CONFIGURATION\" = \"MinSizeRel\"; then :
   cd /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt
-  /Applications/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json MinSizeRel
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json Debug
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json Release
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json MinSizeRel
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json RelWithDebInfo
 fi
 if test \"$CONFIGURATION\" = \"RelWithDebInfo\"; then :
   cd /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt
-  /Applications/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json RelWithDebInfo
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json Debug
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json Release
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json MinSizeRel
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_autogen /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir/AutogenInfo.json RelWithDebInfo
 fi
 ";
 			showEnvVarsInLog = 0;
@@ -587,8 +669,6 @@ exit 0";
 			buildActionMask = 2147483647;
 			files = (
 			);
-			inputPaths = (
-			);
 			name = "CMake PostBuild Rules";
 			outputPaths = (
 			);
@@ -597,19 +677,19 @@ exit 0";
 			shellScript = "set -e
 if test \"$CONFIGURATION\" = \"Debug\"; then :
   cd /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/core
-  /Applications/CMake.app/Contents/bin/cmake -E cmake_symlink_library /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug/libcore_c.dylib
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_symlink_library /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug/libcore_c.dylib
 fi
 if test \"$CONFIGURATION\" = \"Release\"; then :
   cd /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/core
-  /Applications/CMake.app/Contents/bin/cmake -E cmake_symlink_library /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Release/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Release/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Release/libcore_c.dylib
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_symlink_library /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Release/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Release/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Release/libcore_c.dylib
 fi
 if test \"$CONFIGURATION\" = \"MinSizeRel\"; then :
   cd /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/core
-  /Applications/CMake.app/Contents/bin/cmake -E cmake_symlink_library /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel/libcore_c.dylib
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_symlink_library /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel/libcore_c.dylib
 fi
 if test \"$CONFIGURATION\" = \"RelWithDebInfo\"; then :
   cd /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/core
-  /Applications/CMake.app/Contents/bin/cmake -E cmake_symlink_library /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo/libcore_c.dylib
+  /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/vcpkg/downloads/tools/cmake-3.30.1-osx/cmake-3.30.1-macos-universal/CMake.app/Contents/bin/cmake -E cmake_symlink_library /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo/libcore_c.dylib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo/libcore_c.dylib
 fi
 ";
 			showEnvVarsInLog = 0;
@@ -617,97 +697,116 @@ fi
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		4F13134545F4463DBA26DA63 /* Sources */ = {
+		18C95D6A4876441A90E775B1 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				35E09FBB856B412CB652AB12 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/mocs_compilation.cpp */,
-				56C01FA1657142A6BC916CED /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.cpp */,
-				F966511CBA104356940FE1FF /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/main.cpp */,
-				C56D2AEE89284A3CAEBCF901 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.cpp */,
+				F3BAF448874D42EA833B0AE1 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/core_c_api.cpp */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		60C9DE07CEBA46DDA5DA2AAA /* Sources */ = {
+		366D000CB84240E5A34D3CF9 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				FA29C45833CE4910AEE544AF /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/commands.cpp */,
-				B83B7BEEFBA14ACDA2664F88 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/document.cpp */,
-				E84CCF24369548E685998386 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/geometry2d.cpp */,
-				316A199B5FFB4D95B86E2EC4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/ops2d.cpp */,
+				2EBC1FFE74B04770825D57D4 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/mocs_compilation.cpp */,
+				CB204470523D4BF294E6E7B5 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/canvas.cpp */,
+				656C8ABE317D4304AEDE0B35 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/exporter.cpp */,
+				D2154485985249AAA3056CB9 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/main.cpp */,
+				BEFD13D5D821419BAD0EF88B /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/src/mainwindow.cpp */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		A27B3AB740C04953BBA55399 /* Sources */ = {
+		41F6BF1B12A640C9817FA30F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B645B2EBC4364A24905CB11D /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/core_c_api.cpp */,
+				35B8B85B63C94DBE95275892 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/test_triangulation.cpp */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F24CC704E6C14550A8F8663E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BAED703F309A4C44BE5E16BF /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/commands.cpp */,
+				C0234FACCB8E4A609526F195 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/document.cpp */,
+				CAC296F510A544D88D290465 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/geometry2d.cpp */,
+				C84EC91C08F544F7B4364140 /* /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/src/ops2d.cpp */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		1F2674AB0F444A1C8E197FC2 /* PBXTargetDependency */ = {
+		06693EDB612F40B18E3E91A8 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 213470E9090BB48F6B3498F8 /* core */;
+			targetProxy = DE52642DAE624F6CBA5B854F /* PBXContainerItemProxy */;
+		};
+		12AE76594D0740A2B6D01A7D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 213470E9090BB48F6B3498F8 /* core */;
+			targetProxy = E7B25F4C9B91475CB7398A2D /* PBXContainerItemProxy */;
+		};
+		5A74A83EF0254EEAA8BAC6F6 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 78485372DC662B64AC8B4420 /* core_c */;
-			targetProxy = 1F4488EC0ADB4B36ADB8F40B /* PBXContainerItemProxy */;
+			targetProxy = 4B738C56BF52473E94B7C511 /* PBXContainerItemProxy */;
 		};
-		26C1DB25401646CC803E1869 /* PBXTargetDependency */ = {
+		61BFFD6075CC4A13B65B409C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 563138006EE7144C02282D5C /* editor_qt_autogen */;
-			targetProxy = 1D67D50B69F4486682947E5C /* PBXContainerItemProxy */;
+			target = C5E1688B35D28FF895FA627F /* core_tests */;
+			targetProxy = 28185127A63246C386F060AD /* PBXContainerItemProxy */;
 		};
-		2B02531695314356A779C425 /* PBXTargetDependency */ = {
+		706F114DEFB146B0B3BEC180 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 78485372DC662B64AC8B4420 /* core_c */;
+			targetProxy = DEED3DB6906F484798CC9C41 /* PBXContainerItemProxy */;
+		};
+		A0306C83CEFE4556B5E5D4AA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 213470E9090BB48F6B3498F8 /* core */;
+			targetProxy = 82155E31209D4CC18EDF5259 /* PBXContainerItemProxy */;
+		};
+		B234E94CA98943D1AD25D91C /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 5EB61092487EC5FCFBD87022 /* ZERO_CHECK */;
-			targetProxy = 321B15EC8B834D49971A5E95 /* PBXContainerItemProxy */;
+			targetProxy = 9DA82076BE5C4D26B440960F /* PBXContainerItemProxy */;
 		};
-		35D626D0113341188583F1CE /* PBXTargetDependency */ = {
+		C9B4C1935F9B448B973B9D46 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 213470E9090BB48F6B3498F8 /* core */;
-			targetProxy = 28A6CE86C11B4408B444E8E6 /* PBXContainerItemProxy */;
+			target = 563138006EE7144C02282D5C /* editor_qt_autogen */;
+			targetProxy = 222FAAEDCF4741689C822B0B /* PBXContainerItemProxy */;
 		};
-		387ED3C6B4C34FE89A2205DE /* PBXTargetDependency */ = {
+		CE3EB13AC4FA4801B94B8761 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 78485372DC662B64AC8B4420 /* core_c */;
-			targetProxy = 1783323B73C849EEBBC8C9AF /* PBXContainerItemProxy */;
+			targetProxy = C47E6D0B437F42B9A6B43204 /* PBXContainerItemProxy */;
 		};
-		531A800238EA4D768DEA0D65 /* PBXTargetDependency */ = {
+		E3FD45244DB54EFCB9059EAA /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = E4FC3EE9005F54579908C991 /* editor_qt */;
-			targetProxy = F2DE8EDB7C644D7F84694633 /* PBXContainerItemProxy */;
-		};
-		BB9E95F1B203486897533207 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 78485372DC662B64AC8B4420 /* core_c */;
-			targetProxy = 22B1BEB36DAB4D9F8C1301AB /* PBXContainerItemProxy */;
-		};
-		F3563062AAEA4178BF2E3CD8 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 213470E9090BB48F6B3498F8 /* core */;
-			targetProxy = EC7D4D09B9324C5EBF643CCD /* PBXContainerItemProxy */;
+			targetProxy = 0E2011274C9A4134AB0FC19B /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		0171C30BC33E4164A1AFF520 /* MinSizeRel */ = {
+		01EA81A754CB419081E72207 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
 				COMBINE_HIDPI_IMAGES = YES;
-				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/MinSizeRel";
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/Release";
 				EXECUTABLE_PREFIX = lib;
 				EXECUTABLE_SUFFIX = .a;
 				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
 				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = s;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,"$(inherited)");
+				GCC_OPTIMIZATION_LEVEL = 3;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,USE_CLIPPER2,"'CLIPPER2_MAX_DECIMAL_PRECISION=8'","$(inherited)");
 				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/include","$(inherited)");
+				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
 				INSTALL_PATH = "";
 				LIBRARY_STYLE = STATIC;
 				ONLY_ACTIVE_ARCH = NO;
@@ -716,67 +815,14 @@ fi
 				OTHER_REZFLAGS = "";
 				PRODUCT_NAME = core;
 				SECTORDER_FLAGS = "";
+				SYSTEM_HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/include","$(inherited)");
 				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
 				USE_HEADERMAP = NO;
 				WARNING_CFLAGS = ("$(inherited)");
 			};
-			name = MinSizeRel;
+			name = Release;
 		};
-		0A5E0ABBC8554B979F625C82 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				INSTALL_PATH = "";
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_LDFLAGS = ("","$(inherited)");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = editor_qt_autogen;
-				SECTORDER_FLAGS = "";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = Debug;
-		};
-		174C65B64FEA4980A051201F /* MinSizeRel */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				INSTALL_PATH = "";
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_LDFLAGS = ("","$(inherited)");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = ZERO_CHECK;
-				SECTORDER_FLAGS = "";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = MinSizeRel;
-		};
-		1B7C8100054E46BF9D2E239F /* RelWithDebInfo */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = arm64;
-				SDKROOT = "";
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SYMROOT = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build";
-			};
-			name = RelWithDebInfo;
-		};
-		1CA5A7AD47B94D7F957067BC /* Debug */ = {
+		01FBCED3CDC7434B88E47CE6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -790,14 +836,14 @@ fi
 				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
 				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
 				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",core_c_EXPORTS,CORE_BUILD,USE_EARCUT,"$(inherited)");
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",core_c_EXPORTS,CORE_BUILD,USE_EARCUT,USE_CLIPPER2,"$(inherited)");
 				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
 				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
 				INSTALL_PATH = "@rpath";
 				LIBRARY_STYLE = DYNAMIC;
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_CPLUSPLUSFLAGS = "   '-std=gnu++17' -fPIC ";
-				OTHER_LDFLAGS = (" -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/Debug/libcore.a","$(inherited)");
+				OTHER_LDFLAGS = (" -dynamiclib -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/Debug/libcore.a","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/debug/lib/libClipper2.a","-lm","$(inherited)");
 				OTHER_REZFLAGS = "";
 				PRODUCT_NAME = core_c;
 				SECTORDER_FLAGS = "";
@@ -807,82 +853,28 @@ fi
 			};
 			name = Debug;
 		};
-		1E93BA46831A48C282D25603 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = arm64;
-				SDKROOT = "";
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SYMROOT = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build";
-			};
-			name = Release;
-		};
-		25F84846C4AD433C93AC6598 /* Release */ = {
+		1163D39B84FD44759F5A29C4 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
 				COMBINE_HIDPI_IMAGES = YES;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				INSTALL_PATH = "";
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_LDFLAGS = ("","$(inherited)");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = ZERO_CHECK;
-				SECTORDER_FLAGS = "";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = Release;
-		};
-		2E3CEB259E154E65A9EFBB87 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				INSTALL_PATH = "";
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_LDFLAGS = ("","$(inherited)");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = ALL_BUILD;
-				SECTORDER_FLAGS = "";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = Debug;
-		};
-		37592F3AE7854947853EF3A9 /* RelWithDebInfo */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo";
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Release";
 				DYLIB_COMPATIBILITY_VERSION = "";
 				DYLIB_CURRENT_VERSION = "";
 				EXECUTABLE_PREFIX = lib;
 				EXECUTABLE_SUFFIX = .dylib;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
 				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 2;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",core_c_EXPORTS,CORE_BUILD,USE_EARCUT,"$(inherited)");
+				GCC_OPTIMIZATION_LEVEL = 3;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",core_c_EXPORTS,CORE_BUILD,USE_EARCUT,USE_CLIPPER2,"$(inherited)");
 				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
 				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
 				INSTALL_PATH = "@rpath";
 				LIBRARY_STYLE = DYNAMIC;
 				ONLY_ACTIVE_ARCH = NO;
-				OTHER_CPLUSPLUSFLAGS = "       -DNDEBUG '-std=gnu++17' -fPIC ";
-				OTHER_LDFLAGS = (" -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/RelWithDebInfo/libcore.a","$(inherited)");
+				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' -fPIC ";
+				OTHER_LDFLAGS = (" -dynamiclib -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/Release/libcore.a","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/lib/libClipper2.a","-lm","$(inherited)");
 				OTHER_REZFLAGS = "";
 				PRODUCT_NAME = core_c;
 				SECTORDER_FLAGS = "";
@@ -890,165 +882,9 @@ fi
 				USE_HEADERMAP = NO;
 				WARNING_CFLAGS = ("$(inherited)");
 			};
-			name = RelWithDebInfo;
+			name = Release;
 		};
-		5502BCFC8D104C0FA21EE09D /* MinSizeRel */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = arm64;
-				SDKROOT = "";
-				SWIFT_COMPILATION_MODE = wholemodule;
-				SYMROOT = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build";
-			};
-			name = MinSizeRel;
-		};
-		6564017FEB26447BAC813B6C /* RelWithDebInfo */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/RelWithDebInfo";
-				EXECUTABLE_PREFIX = lib;
-				EXECUTABLE_SUFFIX = .a;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 2;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,"$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/include","$(inherited)");
-				INSTALL_PATH = "";
-				LIBRARY_STYLE = STATIC;
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_CPLUSPLUSFLAGS = "       -DNDEBUG '-std=gnu++17' -fPIC -Wall -Wextra -Wno-unused-parameter ";
-				OTHER_LIBTOOLFLAGS = ("");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = core;
-				SECTORDER_FLAGS = "";
-				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = RelWithDebInfo;
-		};
-		76C20190D0C649B4A4CACBC8 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ARCHS = arm64;
-				SDKROOT = "";
-				SYMROOT = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build";
-			};
-			name = Debug;
-		};
-		76DF0385722A4EFB97E74369 /* RelWithDebInfo */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				INSTALL_PATH = "";
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_LDFLAGS = ("","$(inherited)");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = ZERO_CHECK;
-				SECTORDER_FLAGS = "";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = RelWithDebInfo;
-		};
-		78667A7F4CAE408BA68EE634 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug";
-				EXECUTABLE_PREFIX = "";
-				EXECUTABLE_SUFFIX = "";
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",QT_WIDGETS_LIB,QT_CORE_LIB,QT_GUI_LIB,"$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/include_Debug","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/../..","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
-				INSTALL_PATH = "";
-				LD_NO_PIE = NO;
-				LD_RUNPATH_SEARCH_PATHS = ("/Users/huazhou/Qt/6.9.2/macos/lib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug","$(inherited)");
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_CPLUSPLUSFLAGS = "   '-std=gnu++17' -fPIE ";
-				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names",/Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework/Versions/A/QtWidgets,"/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug/libcore_c.dylib",/Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework/Versions/A/QtGui,"-framework AppKit","-framework OpenGL","-framework ImageIO","-framework Metal",/Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework/Versions/A/QtCore,"-framework IOKit","-framework DiskArbitration","-framework UniformTypeIdentifiers","$(inherited)");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = editor_qt;
-				SECTORDER_FLAGS = "";
-				SYSTEM_FRAMEWORK_SEARCH_PATHS = (/Users/huazhou/Qt/6.9.2/macos/lib,"$(inherited)");
-				SYSTEM_HEADER_SEARCH_PATHS = (/Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework/Headers,/Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework/Headers,"/Users/huazhou/Qt/6.9.2/macos/mkspecs/macx-clang",/Users/huazhou/Qt/6.9.2/macos/include,/Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework/Headers,"$(inherited)");
-				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/editor_qt.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = Debug;
-		};
-		798F8F6F601A4EF7BD6EE2B5 /* MinSizeRel */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel";
-				EXECUTABLE_PREFIX = "";
-				EXECUTABLE_SUFFIX = "";
-				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = s;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",QT_WIDGETS_LIB,QT_CORE_LIB,QT_NO_DEBUG,QT_GUI_LIB,"$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/include_MinSizeRel","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/../..","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
-				INSTALL_PATH = "";
-				LD_NO_PIE = NO;
-				LD_RUNPATH_SEARCH_PATHS = ("/Users/huazhou/Qt/6.9.2/macos/lib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel","$(inherited)");
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' -fPIE ";
-				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names",/Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework/Versions/A/QtWidgets,"/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel/libcore_c.dylib",/Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework/Versions/A/QtGui,"-framework AppKit","-framework OpenGL","-framework ImageIO","-framework Metal",/Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework/Versions/A/QtCore,"-framework IOKit","-framework DiskArbitration","-framework UniformTypeIdentifiers","$(inherited)");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = editor_qt;
-				SECTORDER_FLAGS = "";
-				SYSTEM_FRAMEWORK_SEARCH_PATHS = (/Users/huazhou/Qt/6.9.2/macos/lib,"$(inherited)");
-				SYSTEM_HEADER_SEARCH_PATHS = (/Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework/Headers,/Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework/Headers,"/Users/huazhou/Qt/6.9.2/macos/mkspecs/macx-clang",/Users/huazhou/Qt/6.9.2/macos/include,/Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework/Headers,"$(inherited)");
-				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/editor_qt.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = MinSizeRel;
-		};
-		7B763D8EF4D8407EAB9D1936 /* RelWithDebInfo */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				INSTALL_PATH = "";
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_LDFLAGS = ("","$(inherited)");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = ALL_BUILD;
-				SECTORDER_FLAGS = "";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = RelWithDebInfo;
-		};
-		80C585E7BA93458B8445FB8E /* RelWithDebInfo */ = {
+		1B7F6744B86742CBB962422E /* RelWithDebInfo */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -1080,7 +916,443 @@ fi
 			};
 			name = RelWithDebInfo;
 		};
-		8CA7BC1B8CD54F41AE67DA91 /* Release */ = {
+		29C57B8F384D4DF6900C57DF /* MinSizeRel */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/MinSizeRel";
+				EXECUTABLE_PREFIX = lib;
+				EXECUTABLE_SUFFIX = .a;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = s;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,USE_CLIPPER2,"'CLIPPER2_MAX_DECIMAL_PRECISION=8'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
+				INSTALL_PATH = "";
+				LIBRARY_STYLE = STATIC;
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' -fPIC -Wall -Wextra -Wno-unused-parameter ";
+				OTHER_LIBTOOLFLAGS = ("");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = core;
+				SECTORDER_FLAGS = "";
+				SYSTEM_HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/include","$(inherited)");
+				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = MinSizeRel;
+		};
+		2A91D8023BFC456887BE78A6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ZERO_CHECK;
+				SECTORDER_FLAGS = "";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Release;
+		};
+		2AAA657D2CDF4815BF73032B /* RelWithDebInfo */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/RelWithDebInfo";
+				EXECUTABLE_PREFIX = lib;
+				EXECUTABLE_SUFFIX = .a;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 2;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,USE_CLIPPER2,"'CLIPPER2_MAX_DECIMAL_PRECISION=8'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
+				INSTALL_PATH = "";
+				LIBRARY_STYLE = STATIC;
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "       -DNDEBUG '-std=gnu++17' -fPIC -Wall -Wextra -Wno-unused-parameter ";
+				OTHER_LIBTOOLFLAGS = ("");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = core;
+				SECTORDER_FLAGS = "";
+				SYSTEM_HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/include","$(inherited)");
+				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = RelWithDebInfo;
+		};
+		370B7F3617CA4C50A92C5841 /* RelWithDebInfo */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo";
+				EXECUTABLE_PREFIX = "";
+				EXECUTABLE_SUFFIX = "";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 2;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,USE_CLIPPER2,"$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/../../core/include","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
+				INSTALL_PATH = "";
+				LD_NO_PIE = NO;
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "       -DNDEBUG '-std=gnu++17' -fPIE ";
+				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/RelWithDebInfo/libcore.a","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/lib/libClipper2.a","-lm","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = core_tests;
+				SECTORDER_FLAGS = "";
+				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core_tests.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = RelWithDebInfo;
+		};
+		37C0DF7A1FBF4B3C9903FDE1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = editor_qt_autogen;
+				SECTORDER_FLAGS = "";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Debug;
+		};
+		3CA0EEA49B014D02B8949037 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ALL_BUILD;
+				SECTORDER_FLAGS = "";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Release;
+		};
+		547079A989934506BE37A3DB /* MinSizeRel */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel";
+				EXECUTABLE_PREFIX = "";
+				EXECUTABLE_SUFFIX = "";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = s;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",QT_WIDGETS_LIB,QT_CORE_LIB,QT_NO_DEBUG,QT_GUI_LIB,"$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/include_MinSizeRel","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/../..","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
+				INSTALL_PATH = "";
+				LD_NO_PIE = NO;
+				LD_RUNPATH_SEARCH_PATHS = ("/Users/huazhou/Qt/6.9.2/macos/lib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel","$(inherited)");
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' -fPIE ";
+				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names",/Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework/Versions/A/QtWidgets,"/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel/libcore_c.dylib",/Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework/Versions/A/QtGui,"-framework AppKit","-framework OpenGL","-framework ImageIO","-framework Metal",/Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework/Versions/A/QtCore,"-framework IOKit","-framework DiskArbitration","-framework UniformTypeIdentifiers","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = editor_qt;
+				SECTORDER_FLAGS = "";
+				SYSTEM_FRAMEWORK_SEARCH_PATHS = (/Users/huazhou/Qt/6.9.2/macos/lib,"$(inherited)");
+				SYSTEM_HEADER_SEARCH_PATHS = (/Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework/Headers,/Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework/Headers,"/Users/huazhou/Qt/6.9.2/macos/mkspecs/macx-clang",/Users/huazhou/Qt/6.9.2/macos/include,/Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework/Headers,"$(inherited)");
+				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/editor_qt.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = MinSizeRel;
+		};
+		67E07B80B8CB409CA662D148 /* MinSizeRel */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel";
+				DYLIB_COMPATIBILITY_VERSION = "";
+				DYLIB_CURRENT_VERSION = "";
+				EXECUTABLE_PREFIX = lib;
+				EXECUTABLE_SUFFIX = .dylib;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = s;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",core_c_EXPORTS,CORE_BUILD,USE_EARCUT,USE_CLIPPER2,"$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
+				INSTALL_PATH = "@rpath";
+				LIBRARY_STYLE = DYNAMIC;
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' -fPIC ";
+				OTHER_LDFLAGS = (" -dynamiclib -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/MinSizeRel/libcore.a","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/lib/libClipper2.a","-lm","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = core_c;
+				SECTORDER_FLAGS = "";
+				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core_c.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = MinSizeRel;
+		};
+		6FD2224DDF16418DAFBEEBE8 /* MinSizeRel */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel";
+				EXECUTABLE_PREFIX = "";
+				EXECUTABLE_SUFFIX = "";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = s;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,USE_CLIPPER2,"$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/../../core/include","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
+				INSTALL_PATH = "";
+				LD_NO_PIE = NO;
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' -fPIE ";
+				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/MinSizeRel/libcore.a","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/lib/libClipper2.a","-lm","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = core_tests;
+				SECTORDER_FLAGS = "";
+				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core_tests.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = MinSizeRel;
+		};
+		70C0B1DE4C0E4D83B7A0196B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/Debug";
+				EXECUTABLE_PREFIX = lib;
+				EXECUTABLE_SUFFIX = .a;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,USE_CLIPPER2,"'CLIPPER2_MAX_DECIMAL_PRECISION=8'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
+				INSTALL_PATH = "";
+				LIBRARY_STYLE = STATIC;
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "   '-std=gnu++17' -fPIC -Wall -Wextra -Wno-unused-parameter ";
+				OTHER_LIBTOOLFLAGS = ("");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = core;
+				SECTORDER_FLAGS = "";
+				SYSTEM_HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/include","$(inherited)");
+				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Debug;
+		};
+		731F4888BF764CAF8969DBCD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug";
+				EXECUTABLE_PREFIX = "";
+				EXECUTABLE_SUFFIX = "";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",QT_WIDGETS_LIB,QT_CORE_LIB,QT_GUI_LIB,"$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/editor_qt_autogen/include_Debug","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/editor/qt/../..","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
+				INSTALL_PATH = "";
+				LD_NO_PIE = NO;
+				LD_RUNPATH_SEARCH_PATHS = ("/Users/huazhou/Qt/6.9.2/macos/lib /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug","$(inherited)");
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "   '-std=gnu++17' -fPIE ";
+				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names",/Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework/Versions/A/QtWidgets,"/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug/libcore_c.dylib",/Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework/Versions/A/QtGui,"-framework AppKit","-framework OpenGL","-framework ImageIO","-framework Metal",/Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework/Versions/A/QtCore,"-framework IOKit","-framework DiskArbitration","-framework UniformTypeIdentifiers","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = editor_qt;
+				SECTORDER_FLAGS = "";
+				SYSTEM_FRAMEWORK_SEARCH_PATHS = (/Users/huazhou/Qt/6.9.2/macos/lib,"$(inherited)");
+				SYSTEM_HEADER_SEARCH_PATHS = (/Users/huazhou/Qt/6.9.2/macos/lib/QtWidgets.framework/Headers,/Users/huazhou/Qt/6.9.2/macos/lib/QtCore.framework/Headers,"/Users/huazhou/Qt/6.9.2/macos/mkspecs/macx-clang",/Users/huazhou/Qt/6.9.2/macos/include,/Users/huazhou/Qt/6.9.2/macos/lib/QtGui.framework/Headers,"$(inherited)");
+				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/editor_qt.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Debug;
+		};
+		7F956193FE7D4D5C8268A9DA /* MinSizeRel */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = editor_qt_autogen;
+				SECTORDER_FLAGS = "";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = MinSizeRel;
+		};
+		831A3812A5C5407CB6F74CDB /* MinSizeRel */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				SDKROOT = "";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SYMROOT = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build";
+			};
+			name = MinSizeRel;
+		};
+		8929687E86F5415DBF4625A3 /* MinSizeRel */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ZERO_CHECK;
+				SECTORDER_FLAGS = "";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = MinSizeRel;
+		};
+		9B7B4FFA04AD40A5B6AE4AAA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = editor_qt_autogen;
+				SECTORDER_FLAGS = "";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Release;
+		};
+		A7BF523363D1483BAA51AEF0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Release";
+				EXECUTABLE_PREFIX = "";
+				EXECUTABLE_SUFFIX = "";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 3;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,USE_CLIPPER2,"$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/../../core/include","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
+				INSTALL_PATH = "";
+				LD_NO_PIE = NO;
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' -fPIE ";
+				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/Release/libcore.a","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/lib/libClipper2.a","-lm","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = core_tests;
+				SECTORDER_FLAGS = "";
+				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core_tests.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Release;
+		};
+		BCB63850BFFF48ADA0376061 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				INSTALL_PATH = "";
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_LDFLAGS = ("","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = ALL_BUILD;
+				SECTORDER_FLAGS = "";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Debug;
+		};
+		C9BABD03CF424CED83C3095E /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -1112,96 +1384,39 @@ fi
 			};
 			name = Release;
 		};
-		96E194B40FB94E1899475EB0 /* Release */ = {
+		D65C223D29A8483887552732 /* MinSizeRel */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
 				COMBINE_HIDPI_IMAGES = YES;
-				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/Release";
-				EXECUTABLE_PREFIX = lib;
-				EXECUTABLE_SUFFIX = .a;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
 				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 3;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,"$(inherited)");
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
 				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/include","$(inherited)");
 				INSTALL_PATH = "";
-				LIBRARY_STYLE = STATIC;
 				ONLY_ACTIVE_ARCH = NO;
-				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' -fPIC -Wall -Wextra -Wno-unused-parameter ";
-				OTHER_LIBTOOLFLAGS = ("");
+				OTHER_LDFLAGS = ("","$(inherited)");
 				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = core;
+				PRODUCT_NAME = ALL_BUILD;
 				SECTORDER_FLAGS = "";
-				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = Release;
-		};
-		9B267283B10B466E916098C6 /* MinSizeRel */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/MinSizeRel";
-				DYLIB_COMPATIBILITY_VERSION = "";
-				DYLIB_CURRENT_VERSION = "";
-				EXECUTABLE_PREFIX = lib;
-				EXECUTABLE_SUFFIX = .dylib;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = s;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",core_c_EXPORTS,CORE_BUILD,USE_EARCUT,"$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
-				INSTALL_PATH = "@rpath";
-				LIBRARY_STYLE = DYNAMIC;
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' -fPIC ";
-				OTHER_LDFLAGS = (" -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/MinSizeRel/libcore.a","$(inherited)");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = core_c;
-				SECTORDER_FLAGS = "";
-				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core_c.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
 				USE_HEADERMAP = NO;
 				WARNING_CFLAGS = ("$(inherited)");
 			};
 			name = MinSizeRel;
 		};
-		A57F8B8DEB1145629C7C70F8 /* Debug */ = {
+		D6E93460A00B4D08BB3B4DB9 /* RelWithDebInfo */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/Debug";
-				EXECUTABLE_PREFIX = lib;
-				EXECUTABLE_SUFFIX = .a;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,"$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/include","$(inherited)");
-				INSTALL_PATH = "";
-				LIBRARY_STYLE = STATIC;
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_CPLUSPLUSFLAGS = "   '-std=gnu++17' -fPIC -Wall -Wextra -Wno-unused-parameter ";
-				OTHER_LIBTOOLFLAGS = ("");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = core;
-				SECTORDER_FLAGS = "";
-				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
+				SDKROOT = "";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SYMROOT = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build";
 			};
-			name = Debug;
+			name = RelWithDebInfo;
 		};
-		A682F61F4B2E4C9788FA65EB /* Debug */ = {
+		D8665D3375C34E5081245613 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -1223,28 +1438,28 @@ fi
 			};
 			name = Debug;
 		};
-		C0E6F10B9E0D474CA6363122 /* Release */ = {
+		D956FFEB623B4517BC6FDAB2 /* RelWithDebInfo */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ARCHS = arm64;
 				COMBINE_HIDPI_IMAGES = YES;
-				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Release";
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/RelWithDebInfo";
 				DYLIB_COMPATIBILITY_VERSION = "";
 				DYLIB_CURRENT_VERSION = "";
 				EXECUTABLE_PREFIX = lib;
 				EXECUTABLE_SUFFIX = .dylib;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = NO;
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
 				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 3;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",core_c_EXPORTS,CORE_BUILD,USE_EARCUT,"$(inherited)");
+				GCC_OPTIMIZATION_LEVEL = 2;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",core_c_EXPORTS,CORE_BUILD,USE_EARCUT,USE_CLIPPER2,"$(inherited)");
 				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
 				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
 				INSTALL_PATH = "@rpath";
 				LIBRARY_STYLE = DYNAMIC;
 				ONLY_ACTIVE_ARCH = NO;
-				OTHER_CPLUSPLUSFLAGS = "    -DNDEBUG '-std=gnu++17' -fPIC ";
-				OTHER_LDFLAGS = (" -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/Release/libcore.a","$(inherited)");
+				OTHER_CPLUSPLUSFLAGS = "       -DNDEBUG '-std=gnu++17' -fPIC ";
+				OTHER_LDFLAGS = (" -dynamiclib -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/RelWithDebInfo/libcore.a","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/lib/libClipper2.a","-lm","$(inherited)");
 				OTHER_REZFLAGS = "";
 				PRODUCT_NAME = core_c;
 				SECTORDER_FLAGS = "";
@@ -1252,9 +1467,57 @@ fi
 				USE_HEADERMAP = NO;
 				WARNING_CFLAGS = ("$(inherited)");
 			};
+			name = RelWithDebInfo;
+		};
+		DB359DB0E3AE4DB4A2C762B6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				SDKROOT = "";
+				SYMROOT = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build";
+			};
+			name = Debug;
+		};
+		E770654F2C1B450D81F907BC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				SDKROOT = "";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SYMROOT = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build";
+			};
 			name = Release;
 		};
-		CB0725C5AC5D43E89C2C335D /* Release */ = {
+		EA586ADD76C6432DAF9AE42A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				COMBINE_HIDPI_IMAGES = YES;
+				CONFIGURATION_BUILD_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/bin/Debug";
+				EXECUTABLE_PREFIX = "";
+				EXECUTABLE_SUFFIX = "";
+				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
+				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'",USE_EARCUT,USE_CLIPPER2,"$(inherited)");
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				HEADER_SEARCH_PATHS = ("/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/tests/core/../../core/include","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/core/include","$(inherited)");
+				INSTALL_PATH = "";
+				LD_NO_PIE = NO;
+				ONLY_ACTIVE_ARCH = NO;
+				OTHER_CPLUSPLUSFLAGS = "   '-std=gnu++17' -fPIE ";
+				OTHER_LDFLAGS = (" -Wl,-search_paths_first -Wl,-headerpad_max_install_names","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/lib/Debug/libcore.a","/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/vcpkg_installed/arm64-osx/debug/lib/libClipper2.a","-lm","$(inherited)");
+				OTHER_REZFLAGS = "";
+				PRODUCT_NAME = core_tests;
+				SECTORDER_FLAGS = "";
+				TARGET_TEMP_DIR = "/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/build/core_tests.build/$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)";
+				USE_HEADERMAP = NO;
+				WARNING_CFLAGS = ("$(inherited)");
+			};
+			name = Debug;
+		};
+		EBD45128E9CA40E881112542 /* RelWithDebInfo */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -1269,14 +1532,14 @@ fi
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_LDFLAGS = ("","$(inherited)");
 				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = editor_qt_autogen;
+				PRODUCT_NAME = ALL_BUILD;
 				SECTORDER_FLAGS = "";
 				USE_HEADERMAP = NO;
 				WARNING_CFLAGS = ("$(inherited)");
 			};
-			name = Release;
+			name = RelWithDebInfo;
 		};
-		CC6A1A98D1C44954B838AD7B /* RelWithDebInfo */ = {
+		EF9BFE966D6545E0BA1DB478 /* RelWithDebInfo */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -1298,7 +1561,7 @@ fi
 			};
 			name = RelWithDebInfo;
 		};
-		D6AC5FB96CB04DA28FF17AA8 /* MinSizeRel */ = {
+		EFB099302011490ABC943AAE /* RelWithDebInfo */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -1313,138 +1576,105 @@ fi
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_LDFLAGS = ("","$(inherited)");
 				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = editor_qt_autogen;
+				PRODUCT_NAME = ZERO_CHECK;
 				SECTORDER_FLAGS = "";
 				USE_HEADERMAP = NO;
 				WARNING_CFLAGS = ("$(inherited)");
 			};
-			name = MinSizeRel;
-		};
-		F25C6BE1B28C4FB5B7E2DC0E /* MinSizeRel */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				INSTALL_PATH = "";
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_LDFLAGS = ("","$(inherited)");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = ALL_BUILD;
-				SECTORDER_FLAGS = "";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = MinSizeRel;
-		};
-		F9941330A13C46C8AEC1C75A /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_SEARCH_USER_PATHS = NO;
-				ARCHS = arm64;
-				COMBINE_HIDPI_IMAGES = YES;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_INLINES_ARE_PRIVATE_EXTERN = NO;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				GCC_PREPROCESSOR_DEFINITIONS = ("'CMAKE_INTDIR=\"$(CONFIGURATION)$(EFFECTIVE_PLATFORM_NAME)\"'","$(inherited)");
-				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
-				INSTALL_PATH = "";
-				ONLY_ACTIVE_ARCH = NO;
-				OTHER_LDFLAGS = ("","$(inherited)");
-				OTHER_REZFLAGS = "";
-				PRODUCT_NAME = ALL_BUILD;
-				SECTORDER_FLAGS = "";
-				USE_HEADERMAP = NO;
-				WARNING_CFLAGS = ("$(inherited)");
-			};
-			name = Release;
+			name = RelWithDebInfo;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		22947A10FB39410EAE0F9C1B /* Build configuration list for PBXNativeTarget "editor_qt" */ = {
+		0B8E88B335104201AFC6C1F6 /* Build configuration list for PBXAggregateTarget "editor_qt_autogen" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				78667A7F4CAE408BA68EE634 /* Debug */,
-				8CA7BC1B8CD54F41AE67DA91 /* Release */,
-				798F8F6F601A4EF7BD6EE2B5 /* MinSizeRel */,
-				80C585E7BA93458B8445FB8E /* RelWithDebInfo */,
+				37C0DF7A1FBF4B3C9903FDE1 /* Debug */,
+				9B7B4FFA04AD40A5B6AE4AAA /* Release */,
+				7F956193FE7D4D5C8268A9DA /* MinSizeRel */,
+				EF9BFE966D6545E0BA1DB478 /* RelWithDebInfo */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		3F277E026B094CC5AECADE71 /* Build configuration list for PBXAggregateTarget "editor_qt_autogen" */ = {
+		27499DE5065142AD9BDC0E77 /* Build configuration list for PBXAggregateTarget "ZERO_CHECK" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				0A5E0ABBC8554B979F625C82 /* Debug */,
-				CB0725C5AC5D43E89C2C335D /* Release */,
-				D6AC5FB96CB04DA28FF17AA8 /* MinSizeRel */,
-				CC6A1A98D1C44954B838AD7B /* RelWithDebInfo */,
+				D8665D3375C34E5081245613 /* Debug */,
+				2A91D8023BFC456887BE78A6 /* Release */,
+				8929687E86F5415DBF4625A3 /* MinSizeRel */,
+				EFB099302011490ABC943AAE /* RelWithDebInfo */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		5A925382E21B4F358D1600AF /* Build configuration list for PBXProject "CADGameFusion" */ = {
+		5CE3A1D0D79C4D2D85314FC0 /* Build configuration list for PBXNativeTarget "core_c" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				76C20190D0C649B4A4CACBC8 /* Debug */,
-				1E93BA46831A48C282D25603 /* Release */,
-				5502BCFC8D104C0FA21EE09D /* MinSizeRel */,
-				1B7C8100054E46BF9D2E239F /* RelWithDebInfo */,
+				01FBCED3CDC7434B88E47CE6 /* Debug */,
+				1163D39B84FD44759F5A29C4 /* Release */,
+				67E07B80B8CB409CA662D148 /* MinSizeRel */,
+				D956FFEB623B4517BC6FDAB2 /* RelWithDebInfo */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		97B56F85095A4DD5BE44765C /* Build configuration list for PBXNativeTarget "core_c" */ = {
+		66DB22BCDE3A48A59F64C40B /* Build configuration list for PBXNativeTarget "core_tests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				1CA5A7AD47B94D7F957067BC /* Debug */,
-				C0E6F10B9E0D474CA6363122 /* Release */,
-				9B267283B10B466E916098C6 /* MinSizeRel */,
-				37592F3AE7854947853EF3A9 /* RelWithDebInfo */,
+				EA586ADD76C6432DAF9AE42A /* Debug */,
+				A7BF523363D1483BAA51AEF0 /* Release */,
+				6FD2224DDF16418DAFBEEBE8 /* MinSizeRel */,
+				370B7F3617CA4C50A92C5841 /* RelWithDebInfo */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		CD5F9957490B443C85411071 /* Build configuration list for PBXAggregateTarget "ALL_BUILD" */ = {
+		76F5EFC3C0A74E45BBE2AB5D /* Build configuration list for PBXProject "CADGameFusion" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				2E3CEB259E154E65A9EFBB87 /* Debug */,
-				F9941330A13C46C8AEC1C75A /* Release */,
-				F25C6BE1B28C4FB5B7E2DC0E /* MinSizeRel */,
-				7B763D8EF4D8407EAB9D1936 /* RelWithDebInfo */,
+				DB359DB0E3AE4DB4A2C762B6 /* Debug */,
+				E770654F2C1B450D81F907BC /* Release */,
+				831A3812A5C5407CB6F74CDB /* MinSizeRel */,
+				D6E93460A00B4D08BB3B4DB9 /* RelWithDebInfo */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		D3997055421344BE9ECD6F39 /* Build configuration list for PBXNativeTarget "core" */ = {
+		7B2A90EDB66342EF99422F25 /* Build configuration list for PBXAggregateTarget "ALL_BUILD" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A57F8B8DEB1145629C7C70F8 /* Debug */,
-				96E194B40FB94E1899475EB0 /* Release */,
-				0171C30BC33E4164A1AFF520 /* MinSizeRel */,
-				6564017FEB26447BAC813B6C /* RelWithDebInfo */,
+				BCB63850BFFF48ADA0376061 /* Debug */,
+				3CA0EEA49B014D02B8949037 /* Release */,
+				D65C223D29A8483887552732 /* MinSizeRel */,
+				EBD45128E9CA40E881112542 /* RelWithDebInfo */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		DB903B1CFB0A4695A6767B37 /* Build configuration list for PBXAggregateTarget "ZERO_CHECK" */ = {
+		D95FC1162AA84F53A49980B0 /* Build configuration list for PBXNativeTarget "core" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				A682F61F4B2E4C9788FA65EB /* Debug */,
-				25F84846C4AD433C93AC6598 /* Release */,
-				174C65B64FEA4980A051201F /* MinSizeRel */,
-				76DF0385722A4EFB97E74369 /* RelWithDebInfo */,
+				70C0B1DE4C0E4D83B7A0196B /* Debug */,
+				01EA81A754CB419081E72207 /* Release */,
+				29C57B8F384D4DF6900C57DF /* MinSizeRel */,
+				2AAA657D2CDF4815BF73032B /* RelWithDebInfo */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		F091F2598B2141068ECEB027 /* Build configuration list for PBXNativeTarget "editor_qt" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				731F4888BF764CAF8969DBCD /* Debug */,
+				C9BABD03CF424CED83C3095E /* Release */,
+				547079A989934506BE37A3DB /* MinSizeRel */,
+				1B7F6744B86742CBB962422E /* RelWithDebInfo */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = CEE44808CF7F4AE097A8DCE2 /* Project object */;
+	rootObject = 9AFA42D3C9934F2D88E97FD0 /* Project object */;
 }

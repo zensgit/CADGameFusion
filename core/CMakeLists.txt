@@ -22,13 +22,13 @@ if (EARCUT_INCLUDE_DIR)
   target_include_directories(core PRIVATE ${EARCUT_INCLUDE_DIR})
 endif()
 
-# Temporarily disable Clipper2 to get build working
-# TODO: Fix clipper2 header path issues
-# find_package(Clipper2 CONFIG QUIET)
-# if (Clipper2_FOUND)
-#   target_compile_definitions(core PUBLIC USE_CLIPPER2)
-#   target_link_libraries(core PRIVATE Clipper2::Clipper2)
-# endif()
+# Use vcpkg's Clipper2
+find_package(Clipper2 CONFIG REQUIRED)
+if (Clipper2_FOUND)
+  target_compile_definitions(core PUBLIC USE_CLIPPER2)
+  target_link_libraries(core PRIVATE Clipper2::Clipper2)
+  message(STATUS "Clipper2 found and enabled")
+endif()
 
 add_library(core_c SHARED
     src/core_c_api.cpp

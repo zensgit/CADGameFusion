@@ -1,0 +1,87 @@
+# Core C API — Reference
+
+Version: 0.1 (kept in sync with source)
+
+Headers and binaries
+- Header: `core/include/core/core_c_api.h`
+- Shared library target: `core_c` (Windows: core_c.dll; macOS: libcore_c.dylib; Linux: libcore_c.so)
+
+Conventions
+- Memory: callers allocate buffers; use two-call query-then-fill where sizes are unknown.
+- Coordinates: double-precision in world units. 2D only in this MVP.
+- Polylines: boolean/offset expect closed rings (first equals last). Triangulation accepts unique vertices or closed; API normalizes internally.
+- Return values: 1 = success, 0 = failure.
+
+Types
+- `typedef uint64_t core_entity_id;`
+- `typedef struct core_vec2 { double x, y; } core_vec2;`
+- `typedef struct core_document core_document;` (opaque)
+
+Document lifecycle
+- `core_document* core_document_create();`
+- `void core_document_destroy(core_document* doc);`
+
+Entities (demo scope)
+- `core_entity_id core_document_add_polyline(core_document* doc, const core_vec2* pts, int n);`
+  - Adds a polyline entity; n points. Returns entity id (>0) or 0 on failure.
+- `int core_document_remove_entity(core_document* doc, core_entity_id id);`
+  - Removes entity by id. Returns 1 on success.
+
+Triangulation
+- `int core_triangulate_polygon(const core_vec2* pts, int n, unsigned int* indices, int* index_count);`
+  - Two-call pattern: query with `indices=NULL` to get `index_count` (3*k), then fill.
+  - Uses earcut when available (USE_EARCUT), else convex-fan fallback (demo only).
+
+Boolean and Offset (single-contour helpers)
+- `int core_boolean_op_single(const core_vec2* subj, int subj_n, const core_vec2* clip, int clip_n, int op, core_vec2* out_pts, int* out_counts, int* poly_count, int* total_pts);`
+  - op: 0=union, 1=difference, 2=intersection, 3=xor.
+  - Two-call pattern: query to get sizes, then allocate and fill. Requires Clipper2.
+- `int core_offset_single(const core_vec2* poly, int n, double delta, core_vec2* out_pts, int* out_counts, int* poly_count, int* total_pts);`
+  - Positive delta offsets outward. Same two-call pattern.
+
+Examples
+```c
+// Triangulation example
+core_vec2 rect[5] = {{0,0},{100,0},{100,60},{0,60},{0,0}};
+int idxCount = 0;
+if (core_triangulate_polygon(rect, 5, NULL, &idxCount) && idxCount > 0) {
+    unsigned int* idx = (unsigned int*)malloc(sizeof(unsigned int)*idxCount);
+    if (core_triangulate_polygon(rect, 5, idx, &idxCount)) {
+        // use triangles
+    }
+    free(idx);
+}
+
+// Boolean union example
+core_vec2 A[] = {{0,0},{100,0},{100,100},{0,100},{0,0}};
+core_vec2 B[] = {{50,50},{150,50},{150,150},{50,150},{50,50}};
+int poly_count=0, total_pts=0;
+if (core_boolean_op_single(A,5,B,5,0,NULL,NULL,&poly_count,&total_pts) && poly_count>0) {
+    core_vec2* out_pts = (core_vec2*)malloc(sizeof(core_vec2)*total_pts);
+    int* counts = (int*)malloc(sizeof(int)*poly_count);
+    if (core_boolean_op_single(A,5,B,5,0,out_pts,counts,&poly_count,&total_pts)) {
+        // iterate rings with counts[i]
+    }
+    free(out_pts); free(counts);
+}
+```
+
+Unity (C#) via P/Invoke
+- Bindings: `adapters/unity/CoreBindings.cs`
+```csharp
+var pts = new CADGameFusion.UnityAdapter.CoreBindings.Vec2[]{ new(){x=0,y=0}, new(){x=1,y=0}, new(){x=1,y=1}, new(){x=0,y=0} };
+int n = pts.Length, count = 0;
+if (CADGameFusion.UnityAdapter.CoreBindings.core_triangulate_polygon(pts, n, IntPtr.Zero, ref count) != 0 && count > 0) {
+    var indices = new uint[count];
+    CADGameFusion.UnityAdapter.CoreBindings.core_triangulate_polygon(pts, n, indices, ref count);
+}
+```
+
+Notes
+- Versioning & features
+  - `const char* core_get_version();` returns semantic version string (e.g., "0.1.0").
+  - `unsigned int core_get_feature_flags();` bit 0 = USE_EARCUT, bit 1 = USE_CLIPPER2.
+- Validate sizes before allocation; check return codes.
+- Ensure rings are valid for boolean/offset; winding rules may apply.
+- Thread-safety: not guaranteed; use per-thread docs or synchronize.
+- Consider adding a `core_get_version()` for ABI checks in future.

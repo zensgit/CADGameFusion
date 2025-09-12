@@ -13,6 +13,8 @@ private slots:
     void triangulateSample();
     void demoBoolean();
     void demoOffset();
+    void showAboutCore();
+    void exportSceneAction();
 private:
     QListWidget* list_{};
 };

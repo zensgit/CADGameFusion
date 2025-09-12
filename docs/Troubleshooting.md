@@ -1,0 +1,63 @@
+# Troubleshooting
+
+Common build/run issues and fixes.
+
+## CMake not found
+- Symptom: `bash: cmake: command not found`
+- Fix: install CMake or use the app binary path
+  - macOS: `brew install cmake` or `/Applications/CMake.app/Contents/bin/cmake`
+  - Windows: `winget install Kitware.CMake`
+  - Linux: `sudo apt-get install cmake`
+- Scripts accept `CMAKE_BIN` env to point to cmake: `CMAKE_BIN=/Applications/CMake.app/Contents/bin/cmake ./scripts/build_core.sh`
+
+## vcpkg ports not found
+- Symptom: `... ports/earcut: error: earcut does not exist`
+- Cause: wrong port name
+- Fix: use `earcut-hpp` (header-only) and `clipper2`. Already set in `vcpkg.json`.
+- Tip: `./vcpkg/vcpkg search earcut` to confirm names.
+
+## Generator mismatch / missing build tool
+- Symptom: `Does not match the generator used previously: Unix Makefiles` or `CMAKE_MAKE_PROGRAM not set`
+- Fix: remove build cache: `rm -rf build` and reconfigure
+- Scripts pick a generator automatically:
+  - Prefer Ninja if available (`brew install ninja`)
+  - Else Xcode on macOS; MSVC on Windows
+
+## Qt not detected
+- Symptom: `find_package(Qt6 ...)` fails
+- Fix: provide the Qt CMake prefix path:
+  - `./scripts/build_editor.sh /Applications/Qt/6.x/macos`
+  - or set `-DCMAKE_PREFIX_PATH=/path/to/Qt/6.x/<platform>`
+- The script also auto-detects common locations (`/Applications/Qt`, `~/Qt`).
+
+## Clipper2/earcut not active
+- Symptom: Boolean/Offset/Triangulate return empty or fallback
+- Fix: build with vcpkg toolchain and manifest mode:
+  - `-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_MANIFEST_MODE=ON`
+- CMake defines `USE_CLIPPER2` and/or `USE_EARCUT` when headers/libs are found.
+
+## Unity cannot load core_c
+- Symptom: DllNotFoundException / plugin not found
+- Fix:
+  - Place the library under `Assets/Plugins/<Platform>/` with correct name:
+    - Windows: `core_c.dll`
+    - macOS: `libcore_c.dylib`
+    - Linux: `libcore_c.so`
+  - Architecture must match the Unity Editor/Player (x86_64 vs arm64).
+  - On macOS Gatekeeper may block unsigned dylibs; allow from Security & Privacy or codesign locally for distribution.
+
+## Symbol not found or ABI mismatch
+- Ensure `CoreBindings.cs` uses `CallingConvention.Cdecl` and correct struct layout.
+- Keep `core_c` and `CoreBindings.cs` versions in sync; consider adding a `core_get_version()` API.
+
+## Selection feels hard
+- Adjust hit threshold (pixels) in `editor/qt/src/canvas.cpp` (default 12 px).
+- Cosmetic pens are enabled; line width stays constant across zoom.
+
+## Clean rebuild
+- `rm -rf build` then re-run scripts.
+
+## Logs
+- vcpkg manifest log: `build/vcpkg-manifest-install.log`
+- CMake configure log: `build/CMakeFiles/CMakeConfigureLog.yaml`
+
