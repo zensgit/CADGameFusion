@@ -3,10 +3,12 @@ using System.IO;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using CADGameFusion;
 
 public class WatchAndReload : MonoBehaviour {
     public string exportBasePath;
     public float pollInterval = 1.0f;
+    public bool preferGltf = true; // Toggle for glTF preference
 
     string lastSceneDir = null;
     float timer = 0f;
@@ -39,12 +41,27 @@ public class WatchAndReload : MonoBehaviour {
                 var mf = meshGo.AddComponent<MeshFilter>();
                 var mr = meshGo.AddComponent<MeshRenderer>();
                 mr.sharedMaterial = new Material(Shader.Find("Standard"));
+                // Prefer glTF if enabled and available
+                if (preferGltf) {
+                    var gltfPath = Path.Combine(Path.GetDirectoryName(json), 
+                        Path.GetFileName(json).Replace("group_", "mesh_group_").Replace(".json", ".gltf"));
+                    
+                    if (File.Exists(gltfPath)) {
+                        Debug.Log($"[glTF] Loading mesh from {Path.GetFileName(gltfPath)}");
+                        var gltfMesh = MinimalGltfLoader.LoadGltfMesh(gltfPath);
+                        if (gltfMesh != null) { 
+                            mf.sharedMesh = gltfMesh; 
+                            continue; 
+                        }
+                        Debug.LogWarning($"[glTF] Failed to load {Path.GetFileName(gltfPath)}, falling back to JSON triangulation");
+                    }
+                }
                 // Build polygon with holes using core C API triangulation (rings)
                 if (data.root.flat_pts != null && data.root.ring_counts != null) {
                     // Prepare flat points for C API
                     var pts = new CADGameFusion.UnityAdapter.CoreBindings.Vec2[data.root.flat_pts.Length];
                     for (int i=0;i<pts.Length;i++) pts[i] = new CADGameFusion.UnityAdapter.CoreBindings.Vec2{ x=data.root.flat_pts[i].x, y=data.root.flat_pts[i].y };
-                    var indices = CoreBindings.TriangulateRings(pts, data.root.ring_counts);
+                    var indices = CADGameFusion.UnityAdapter.CoreBindings.TriangulateRings(pts, data.root.ring_counts);
                     if (indices.Length == 0) {
                         Debug.LogWarning("TriangulateRings returned empty; falling back to outer-only fan.");
                         // fallback: outer-only fan

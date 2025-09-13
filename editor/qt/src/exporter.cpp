@@ -37,7 +37,7 @@ static double signedArea(const QVector<QPointF>& ring) {
     return 0.5 * a;
 }
 
-ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir) {
+ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, int kinds, double unitScale) {
     ExportResult res;
     QDir dir(baseDir);
     const QString sceneDir = makeSceneDir(dir);
@@ -70,10 +70,12 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir) 
             roles.append(a > 0.0 ? 0 : 1);
         }
         root.insert("ring_roles", roles);
-        QJsonDocument doc(root);
-        const QString fn = sdir.filePath(QString("group_%1.json").arg(it.groupId));
-        QFile f(fn);
-        if (f.open(QIODevice::WriteOnly)) { f.write(doc.toJson()); f.close(); res.written << fn; }
+        if (kinds & ExportJSON) {
+            QJsonDocument doc(root);
+            const QString fn = sdir.filePath(QString("group_%1.json").arg(it.groupId));
+            QFile f(fn);
+            if (f.open(QIODevice::WriteOnly)) { f.write(doc.toJson()); f.close(); res.written << fn; }
+        }
 
         // Also write minimal glTF + bin for this group (positions + indices)
         // 1) Build flat points and ring counts for triangulation
@@ -81,7 +83,7 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir) 
         QVector<int> rc; flat.reserve(128);
         for (const auto& ring : it.rings) {
             rc.push_back(ring.size());
-            for (const auto& p : ring) flat.push_back(core_vec2{p.x(), p.y()});
+            for (const auto& p : ring) flat.push_back(core_vec2{p.x()*unitScale, p.y()*unitScale});
         }
         // 2) Triangulate via C API (rings)
         int idxCount = 0;
@@ -92,7 +94,7 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir) 
         const QString gltfPath = sdir.filePath(gltfName);
 
         bool triangulated = false;
-        if (!flat.isEmpty() && !rc.isEmpty()) {
+        if ((kinds & ExportGLTF) && !flat.isEmpty() && !rc.isEmpty()) {
             if (core_triangulate_polygon_rings(flat.data(), rc.data(), rc.size(), nullptr, &idxCount) && idxCount > 0) {
                 QVector<unsigned int> indices; indices.resize(idxCount);
                 if (core_triangulate_polygon_rings(flat.data(), rc.data(), rc.size(), indices.data(), &idxCount)) {
@@ -157,5 +159,79 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir) 
     // TODO: materials, normals, colors as future work
     res.sceneDir = sceneDir;
     res.ok = true;
+    res.validationReport = validateExportedScene(sceneDir, kinds);
     return res;
+}
+
+QString validateExportedScene(const QString& sceneDir, int kinds) {
+    QStringList lines;
+    QDir d(sceneDir);
+    if (!d.exists()) return "Scene dir does not exist";
+    if (kinds & ExportJSON) {
+        auto jsons = d.entryList(QStringList()<<"group_*.json", QDir::Files);
+        lines << QString("JSON files: %1").arg(jsons.size());
+        for (const auto& f : jsons) {
+            QFile jf(d.filePath(f)); if (!jf.open(QIODevice::ReadOnly)) { lines << QString("- %1: open failed").arg(f); continue; }
+            auto doc = QJsonDocument::fromJson(jf.readAll()); jf.close();
+            if (!doc.isObject()) { lines << QString("- %1: not JSON object").arg(f); continue; }
+            auto o = doc.object();
+            bool ok1=o.contains("flat_pts"), ok2=o.contains("ring_counts");
+            lines << QString("- %1: flat_pts=%2, ring_counts=%3").arg(f).arg(ok1?"ok":"miss").arg(ok2?"ok":"miss");
+        }
+    }
+    if (kinds & ExportGLTF) {
+        auto gltfs = d.entryList(QStringList()<<"mesh_group_*.gltf", QDir::Files);
+        auto bins = d.entryList(QStringList()<<"mesh_group_*.bin", QDir::Files);
+        lines << QString("glTF files: %1, bin files: %2").arg(gltfs.size()).arg(bins.size());
+        for (const auto& f : gltfs) {
+            QFile gf(d.filePath(f)); if (!gf.open(QIODevice::ReadOnly)) { lines << QString("- %1: open failed").arg(f); continue; }
+            auto gdoc = QJsonDocument::fromJson(gf.readAll()); gf.close();
+            if (!gdoc.isObject()) { lines << QString("- %1: invalid JSON").arg(f); continue; }
+            auto o = gdoc.object();
+            auto asset = o.value("asset").toObject();
+            bool v20 = (asset.value("version").toString() == "2.0");
+            auto buffers = o.value("buffers").toArray();
+            auto bufferViews = o.value("bufferViews").toArray();
+            auto accessors = o.value("accessors").toArray();
+            auto meshes = o.value("meshes").toArray();
+            QString status = v20 && !buffers.isEmpty() && !accessors.isEmpty() && !meshes.isEmpty() ? "ok" : "incomplete";
+            // Check bin size matches
+            QString binUri = buffers.at(0).toObject().value("uri").toString();
+            int byteLen = buffers.at(0).toObject().value("byteLength").toInt();
+            QFileInfo bi(d.filePath(binUri));
+            bool binOk = bi.exists() && (bi.size() == byteLen);
+            // Check POSITION accessor and indices accessor basic properties
+            bool posOk=false, idxOk=false;
+            if (!meshes.isEmpty()) {
+                auto prims = meshes.at(0).toObject().value("primitives").toArray();
+                if (!prims.isEmpty()) {
+                    int posAcc = prims.at(0).toObject().value("attributes").toObject().value("POSITION").toInt(-1);
+                    int idxAcc = prims.at(0).toObject().value("indices").toInt(-1);
+                    if (posAcc>=0 && posAcc<accessors.size()) {
+                        auto acc = accessors.at(posAcc).toObject();
+                        posOk = (acc.value("componentType").toInt()==5126 /*FLOAT*/) && (acc.value("type").toString()=="VEC3") && (acc.value("count").toInt()>0);
+                        int bv = acc.value("bufferView").toInt(-1); if (bv>=0 && bv<bufferViews.size()) {
+                            int off = bufferViews.at(bv).toObject().value("byteOffset").toInt(); int len = bufferViews.at(bv).toObject().value("byteLength").toInt();
+                            posOk = posOk && (off+len<=byteLen);
+                        }
+                    }
+                    if (idxAcc>=0 && idxAcc<accessors.size()) {
+                        auto acc = accessors.at(idxAcc).toObject();
+                        idxOk = (acc.value("componentType").toInt()==5125 /*UNSIGNED_INT*/) && (acc.value("type").toString()=="SCALAR") && (acc.value("count").toInt()>0);
+                        int bv = acc.value("bufferView").toInt(-1); if (bv>=0 && bv<bufferViews.size()) {
+                            int off = bufferViews.at(bv).toObject().value("byteOffset").toInt(); int len = bufferViews.at(bv).toObject().value("byteLength").toInt();
+                            idxOk = idxOk && (off+len<=byteLen);
+                        }
+                    }
+                }
+            }
+            lines << QString("- %1: asset=%2, bin=%3, pos=%4, idx=%5")
+                        .arg(f)
+                        .arg(v20?"ok":"bad")
+                        .arg(binOk?"ok":"bad")
+                        .arg(posOk?"ok":"bad")
+                        .arg(idxOk?"ok":"bad");
+        }
+    }
+    return lines.join('\n');
 }

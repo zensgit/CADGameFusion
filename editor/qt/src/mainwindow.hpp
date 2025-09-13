@@ -15,6 +15,8 @@ private slots:
     void demoOffset();
     void showAboutCore();
     void exportSceneAction();
+    void exportSceneActionImpl(int kinds);
+    void exportWithOptions();
 private:
     QListWidget* list_{};
 };

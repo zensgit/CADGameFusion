@@ -15,8 +15,13 @@ struct ExportResult {
     QString sceneDir;
     QStringList written;
     QString error;
+    QString validationReport;
 };
 
-// Simple exporter: writes per-group JSON (rings) and a single glTF stub (placeholder)
-ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir);
+enum ExportKind { ExportJSON = 1, ExportGLTF = 2 };
 
+// Simple exporter: writes per-group JSON (rings) and/or a minimal glTF
+ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, int kinds, double unitScale);
+
+// Validate exported scene directory (basic structural checks); returns human-readable report
+QString validateExportedScene(const QString& sceneDir, int kinds);

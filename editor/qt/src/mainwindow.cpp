@@ -55,8 +55,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
     // File menu (first)
     auto* fileMenu = menuBar()->addMenu("File");
-    auto* actExport = fileMenu->addAction("Export Scene...");
+    auto* actExport = fileMenu->addAction("Export Scene (JSON+glTF)...");
     connect(actExport, &QAction::triggered, this, &MainWindow::exportSceneAction);
+    auto* actExportJson = fileMenu->addAction("Export Scene (JSON only)...");
+    connect(actExportJson, &QAction::triggered, [this]{ exportSceneActionImpl(ExportJSON); });
+    auto* actExportGltf = fileMenu->addAction("Export Scene (glTF only)...");
+    connect(actExportGltf, &QAction::triggered, [this]{ exportSceneActionImpl(ExportGLTF); });
+    fileMenu->addSeparator();
+    auto* actExportOpt = fileMenu->addAction("Export with Options...");
+    connect(actExportOpt, &QAction::triggered, this, &MainWindow::exportWithOptions);
 
     // Help menu
     auto* helpMenu = menuBar()->addMenu("Help");
@@ -174,6 +181,10 @@ void MainWindow::showAboutCore() {
 }
 
 void MainWindow::exportSceneAction() {
+    exportSceneActionImpl(ExportJSON | ExportGLTF);
+}
+
+void MainWindow::exportSceneActionImpl(int kinds) {
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
     if (!canvas) return;
     QString base = QFileDialog::getExistingDirectory(this, "Select export base directory");
@@ -187,7 +198,49 @@ void MainWindow::exportSceneAction() {
     for (auto it = groups.begin(); it != groups.end(); ++it) {
         ExportItem e; e.groupId = it.key(); e.rings = it.value(); items.push_back(e);
     }
-    ExportResult r = exportScene(items, QDir(base));
-    if (r.ok) QMessageBox::information(this, "Export", QString("Exported to %1\nFiles:\n%2").arg(r.sceneDir, r.written.join("\n")));
+    // Unit scale (TODO: read from Document settings; use 1.0 for now)
+    double unitScale = 1.0;
+    ExportResult r = exportScene(items, QDir(base), kinds, unitScale);
+    if (r.ok) QMessageBox::information(this, "Export", QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")));
+    else QMessageBox::warning(this, "Export", QString("Export failed: %1").arg(r.error));
+}
+
+void MainWindow::exportWithOptions() {
+    // Simple inline dialog (future: move to its own class/UI)
+    QDialog dlg(this);
+    dlg.setWindowTitle("Export Options");
+    QFormLayout* form = new QFormLayout(&dlg);
+    QCheckBox* cbJson = new QCheckBox("Export JSON", &dlg);
+    QCheckBox* cbGltf = new QCheckBox("Export glTF", &dlg);
+    QDoubleSpinBox* sbScale = new QDoubleSpinBox(&dlg);
+    sbScale->setRange(1e-6, 1e6);
+    sbScale->setDecimals(6);
+    sbScale->setValue(1.0);
+    form->addRow(cbJson);
+    form->addRow(cbGltf);
+    form->addRow("Unit Scale", sbScale);
+    QDialogButtonBox* btns = new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel, &dlg);
+    form->addRow(btns);
+    // Load persisted settings
+    QSettings st;
+    cbJson->setChecked(st.value("export/json", true).toBool());
+    cbGltf->setChecked(st.value("export/gltf", true).toBool());
+    sbScale->setValue(st.value("export/unitScale", 1.0).toDouble());
+    QObject::connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    QObject::connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    if (dlg.exec() != QDialog::Accepted) return;
+    // Persist
+    st.setValue("export/json", cbJson->isChecked());
+    st.setValue("export/gltf", cbGltf->isChecked());
+    st.setValue("export/unitScale", sbScale->value());
+    int kinds = 0; if (cbJson->isChecked()) kinds |= ExportJSON; if (cbGltf->isChecked()) kinds |= ExportGLTF;
+    if (kinds == 0) { QMessageBox::warning(this, "Export", "Please select at least one export kind."); return; }
+    // Collect and export
+    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget()); if (!canvas) return;
+    QString base = QFileDialog::getExistingDirectory(this, "Select export base directory"); if (base.isEmpty()) return;
+    QMap<int, QVector<QVector<QPointF>>> groups; for (const auto& pv : canvas->polylinesData()) groups[pv.groupId].push_back(pv.pts);
+    QVector<ExportItem> items; for (auto it = groups.begin(); it != groups.end(); ++it) { ExportItem e; e.groupId = it.key(); e.rings = it.value(); items.push_back(e);} 
+    ExportResult r = exportScene(items, QDir(base), kinds, sbScale->value());
+    if (r.ok) QMessageBox::information(this, "Export", QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")));
     else QMessageBox::warning(this, "Export", QString("Export failed: %1").arg(r.error));
 }
