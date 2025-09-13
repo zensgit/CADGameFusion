@@ -2,13 +2,9 @@ name: Core CI
 
 on:
   push:
-    paths:
-      - 'CADGameFusion/**'
-      - '.github/workflows/cadgamefusion-core.yml'
+    branches: [ main ]
   pull_request:
-    paths:
-      - 'CADGameFusion/**'
-      - '.github/workflows/cadgamefusion-core.yml'
+    branches: [ main ]
 
 jobs:
   build:
@@ -22,8 +18,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check project structure
+        run: |
+          echo "=== Current directory ==="
+          pwd
+          echo "=== Directory contents ==="
+          ls -la
+          echo "=== CMakeLists.txt exists? ==="
+          test -f CMakeLists.txt && echo "Yes" || echo "No"
+          echo "=== Core directory ==="
+          ls -la core/ || echo "core/ not found"
+
       - name: Configure
-        run: cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_VERBOSE_MAKEFILE=ON
+        run: |
+          echo "=== Running CMake configure ==="
+          cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_VERBOSE_MAKEFILE=ON || (echo "CMake failed with exit code $?" && exit 1)
 
       - name: Build
         run: cmake --build build --config Release --parallel -- -v
