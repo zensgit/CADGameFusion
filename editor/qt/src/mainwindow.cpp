@@ -216,9 +216,13 @@ void MainWindow::exportWithOptions() {
     sbScale->setRange(1e-6, 1e6);
     sbScale->setDecimals(6);
     sbScale->setValue(1.0);
+    QComboBox* cbRange = new QComboBox(&dlg);
+    cbRange->addItem("All Groups", 0);
+    cbRange->addItem("Selected Group Only", 1);
     form->addRow(cbJson);
     form->addRow(cbGltf);
     form->addRow("Unit Scale", sbScale);
+    form->addRow("Range", cbRange);
     QDialogButtonBox* btns = new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel, &dlg);
     form->addRow(btns);
     // Load persisted settings
@@ -226,6 +230,7 @@ void MainWindow::exportWithOptions() {
     cbJson->setChecked(st.value("export/json", true).toBool());
     cbGltf->setChecked(st.value("export/gltf", true).toBool());
     sbScale->setValue(st.value("export/unitScale", 1.0).toDouble());
+    cbRange->setCurrentIndex(st.value("export/range", 0).toInt());
     QObject::connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     QObject::connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     if (dlg.exec() != QDialog::Accepted) return;
@@ -233,12 +238,19 @@ void MainWindow::exportWithOptions() {
     st.setValue("export/json", cbJson->isChecked());
     st.setValue("export/gltf", cbGltf->isChecked());
     st.setValue("export/unitScale", sbScale->value());
+    st.setValue("export/range", cbRange->currentIndex());
     int kinds = 0; if (cbJson->isChecked()) kinds |= ExportJSON; if (cbGltf->isChecked()) kinds |= ExportGLTF;
     if (kinds == 0) { QMessageBox::warning(this, "Export", "Please select at least one export kind."); return; }
     // Collect and export
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget()); if (!canvas) return;
     QString base = QFileDialog::getExistingDirectory(this, "Select export base directory"); if (base.isEmpty()) return;
-    QMap<int, QVector<QVector<QPointF>>> groups; for (const auto& pv : canvas->polylinesData()) groups[pv.groupId].push_back(pv.pts);
+    QMap<int, QVector<QVector<QPointF>>> groups;
+    int selGid = canvas->selectedGroupId();
+    const bool onlySelected = (cbRange->currentIndex()==1 && selGid!=-1);
+    for (const auto& pv : canvas->polylinesData()) {
+        if (onlySelected && pv.groupId != selGid) continue;
+        groups[pv.groupId].push_back(pv.pts);
+    }
     QVector<ExportItem> items; for (auto it = groups.begin(); it != groups.end(); ++it) { ExportItem e; e.groupId = it.key(); e.rings = it.value(); items.push_back(e);} 
     ExportResult r = exportScene(items, QDir(base), kinds, sbScale->value());
     if (r.ok) QMessageBox::information(this, "Export", QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")));

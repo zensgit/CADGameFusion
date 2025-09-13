@@ -15,19 +15,22 @@ else()
   target_compile_options(core PRIVATE -Wall -Wextra -Wno-unused-parameter)
 endif()
 
-# Try to detect header-only deps (vcpkg manifest recommended)
+# Try to detect header-only deps (optional)
 find_path(EARCUT_INCLUDE_DIR NAMES mapbox/earcut.hpp)
 if (EARCUT_INCLUDE_DIR)
   target_compile_definitions(core PUBLIC USE_EARCUT)
   target_include_directories(core PRIVATE ${EARCUT_INCLUDE_DIR})
+  message(STATUS "Earcut header found; enabling USE_EARCUT")
 endif()
 
-# Use vcpkg's Clipper2
-find_package(Clipper2 CONFIG REQUIRED)
+# Try to detect Clipper2 (optional)
+find_package(Clipper2 CONFIG QUIET)
 if (Clipper2_FOUND)
   target_compile_definitions(core PUBLIC USE_CLIPPER2)
   target_link_libraries(core PRIVATE Clipper2::Clipper2)
-  message(STATUS "Clipper2 found and enabled")
+  message(STATUS "Clipper2 found; enabling USE_CLIPPER2")
+else()
+  message(STATUS "Clipper2 not found; boolean/offset will be stubs")
 endif()
 
 add_library(core_c SHARED

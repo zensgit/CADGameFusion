@@ -252,6 +252,11 @@ void CanvasWidget::addTriMesh(const QVector<QPointF>& vertices, const QVector<un
 
 int CanvasWidget::newGroupId() { return nextGroupId_++; }
 
+int CanvasWidget::selectedGroupId() const {
+    if (selected_>=0 && selected_<polylines_.size()) return polylines_[selected_].groupId;
+    return -1;
+}
+
 void CanvasWidget::selectGroup(const QPoint& pos) {
     const double th = 12.0; // pixels
     

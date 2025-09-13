@@ -19,6 +19,7 @@ public:
 
     struct PolyVis { QVector<QPointF> pts; QColor color; int groupId; };
     const QVector<PolyVis>& polylinesData() const { return polylines_; }
+    int selectedGroupId() const;
     void selectGroup(const QPoint& pos);  // Alt+Click to select entire group
 
 protected:
