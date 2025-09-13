@@ -48,7 +48,16 @@ jobs:
           }
 
       - name: Build
-        run: cmake --build build --config Release --parallel -- -v
+        run: |
+          echo "=== Starting build ==="
+          cmake --build build --config Release --parallel 2 2>&1 | tee build_output.log || {
+            echo "=== Build failed with exit code $? ==="
+            echo "=== Last 100 lines of build output ==="
+            tail -100 build_output.log
+            echo "=== Finding error messages ==="
+            grep -i "error" build_output.log | head -20 || true
+            exit 1
+          }
 
       - name: List build outputs
         run: |
