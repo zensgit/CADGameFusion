@@ -35,7 +35,17 @@ jobs:
         run: |
           echo "=== Running CMake configure ==="
           cmake --version
-          cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release || (echo "CMake failed with exit code $?"; cat build/CMakeFiles/CMakeOutput.log 2>/dev/null || true; exit 1)
+          echo "=== Attempting CMake configuration ==="
+          cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release 2>&1 | tee cmake_output.log || {
+            echo "=== CMake failed with exit code $? ==="
+            echo "=== CMake output log ==="
+            cat cmake_output.log
+            echo "=== CMakeError.log ==="
+            cat build/CMakeFiles/CMakeError.log 2>/dev/null || echo "No CMakeError.log"
+            echo "=== CMakeCache.txt ==="
+            head -50 build/CMakeCache.txt 2>/dev/null || echo "No CMakeCache.txt"
+            exit 1
+          }
 
       - name: Build
         run: cmake --build build --config Release --parallel -- -v
