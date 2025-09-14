@@ -13,8 +13,8 @@ static std::vector<Vec2> rect(double x0, double y0, double x1, double y1) {
 int main() {
     // Boolean basics (if CLIPPER2 available, expect non-empty)
     {
-        std::vector<Polyline> A{{0,core::EntityType::Polyline,"A",nullptr}}; A[0].points = rect(0,0,10,10);
-        std::vector<Polyline> B{{0,core::EntityType::Polyline,"B",nullptr}}; B[0].points = rect(5,5,15,15);
+        std::vector<Polyline> A(1); A[0].points = rect(0,0,10,10);
+        std::vector<Polyline> B(1); B[0].points = rect(5,5,15,15);
         auto U = boolean_op(A,B,BoolOp::Union);
         auto I = boolean_op(A,B,BoolOp::Intersection);
         auto D = boolean_op(A,B,BoolOp::Difference);
@@ -48,7 +48,7 @@ int main() {
 
     // Offset basics (if CLIPPER2 available)
     {
-        std::vector<Polyline> A{{0,core::EntityType::Polyline,"A",nullptr}}; A[0].points = rect(0,0,10,10);
+        std::vector<Polyline> A(1); A[0].points = rect(0,0,10,10);
         auto O = offset(A, 1.0);
 #if defined(USE_CLIPPER2)
         // Area after positive offset should be larger than original
