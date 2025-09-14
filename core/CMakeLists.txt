@@ -12,6 +12,9 @@ add_library(core STATIC
 target_include_directories(core PUBLIC include)
 target_compile_features(core PUBLIC cxx_std_17)
 
+# Need -fPIC for static library when used in shared library
+set_property(TARGET core PROPERTY POSITION_INDEPENDENT_CODE ON)
+
 # Optional: Compiler warnings
 if(MSVC)
     target_compile_options(core PRIVATE /W3)
