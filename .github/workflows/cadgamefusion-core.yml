@@ -53,13 +53,30 @@ jobs:
         shell: bash
         run: |
           echo "=== Running CMake configure ==="
-          cmake --version
-          echo "=== Attempting CMake configuration ==="
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --version || echo "CMake not found!"
+          echo "=== Checking CMakeLists.txt ==="
+          if [ -f "CMakeLists.txt" ]; then
+            echo "Main CMakeLists.txt exists"
+            head -5 CMakeLists.txt
           else
-            cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release
+            echo "ERROR: CMakeLists.txt not found!"
+            ls -la
+            exit 1
           fi
+          echo "=== Attempting CMake configuration ==="
+          cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release 2>&1 || {
+            echo "=== CMake configuration failed ==="
+            echo "=== Checking for error details ==="
+            if [ -f "build/CMakeFiles/CMakeOutput.log" ]; then
+              echo "--- CMakeOutput.log ---"
+              tail -50 build/CMakeFiles/CMakeOutput.log
+            fi
+            if [ -f "build/CMakeFiles/CMakeError.log" ]; then
+              echo "--- CMakeError.log ---"
+              tail -50 build/CMakeFiles/CMakeError.log
+            fi
+            exit 1
+          }
 
       - name: Build
         shell: bash
