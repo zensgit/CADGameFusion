@@ -15,19 +15,6 @@ jobs:
       fail-fast: false  # Continue other jobs even if one fails
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        include:
-          - os: ubuntu-latest
-            cmake_generator: "Unix Makefiles"
-            test_prefix: "./"
-            test_suffix: ""
-          - os: macos-latest
-            cmake_generator: "Unix Makefiles"
-            test_prefix: "./"
-            test_suffix: ""
-          - os: windows-latest
-            cmake_generator: "Visual Studio 17 2022"
-            test_prefix: ""
-            test_suffix: ".exe"
 
     steps:
       - name: Checkout
@@ -68,14 +55,11 @@ jobs:
           echo "=== Running CMake configure ==="
           cmake --version
           echo "=== Attempting CMake configuration ==="
-          cmake -S . -B build \
-            -G "${{ matrix.cmake_generator }}" \
-            -DBUILD_EDITOR_QT=OFF \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_VERBOSE_MAKEFILE=ON || {
-            echo "=== CMake failed ==="
-            exit 1
-          }
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release
+          else
+            cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release
+          fi
 
       - name: Build
         shell: bash
@@ -115,10 +99,14 @@ jobs:
           echo "Test directory: $TEST_DIR"
           ls -la "$TEST_DIR" 2>/dev/null || echo "Test directory not found"
           
+          # Determine test suffix
+          TEST_SUFFIX=""
+          [ "${{ runner.os }}" == "Windows" ] && TEST_SUFFIX=".exe"
+          
           # Run simple test
           echo "=== Running simple test ==="
-          if [ -f "$TEST_DIR/test_simple${{ matrix.test_suffix }}" ]; then
-            "$TEST_DIR/test_simple${{ matrix.test_suffix }}"
+          if [ -f "$TEST_DIR/test_simple$TEST_SUFFIX" ]; then
+            "$TEST_DIR/test_simple$TEST_SUFFIX"
             echo "✅ Simple test passed"
           else
             echo "⚠️ Simple test not found"
@@ -126,8 +114,8 @@ jobs:
           
           # Run triangulation test
           echo "=== Running triangulation test ==="
-          if [ -f "$TEST_DIR/core_tests_triangulation${{ matrix.test_suffix }}" ]; then
-            "$TEST_DIR/core_tests_triangulation${{ matrix.test_suffix }}"
+          if [ -f "$TEST_DIR/core_tests_triangulation$TEST_SUFFIX" ]; then
+            "$TEST_DIR/core_tests_triangulation$TEST_SUFFIX"
             echo "✅ Triangulation test passed"
           else
             echo "⚠️ Triangulation test not found (core may not be built)"
@@ -135,8 +123,8 @@ jobs:
           
           # Run boolean/offset test
           echo "=== Running boolean/offset test ==="
-          if [ -f "$TEST_DIR/core_tests_boolean_offset${{ matrix.test_suffix }}" ]; then
-            "$TEST_DIR/core_tests_boolean_offset${{ matrix.test_suffix }}"
+          if [ -f "$TEST_DIR/core_tests_boolean_offset$TEST_SUFFIX" ]; then
+            "$TEST_DIR/core_tests_boolean_offset$TEST_SUFFIX"
             echo "✅ Boolean/offset test passed"
           else
             echo "⚠️ Boolean/offset test not found (Clipper2 may not be available)"
