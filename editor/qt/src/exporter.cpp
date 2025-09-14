@@ -37,7 +37,8 @@ static double signedArea(const QVector<QPointF>& ring) {
     return 0.5 * a;
 }
 
-ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, int kinds, double unitScale) {
+ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, int kinds, double unitScale,
+                        const QJsonObject& meta, bool writeRingRoles) {
     ExportResult res;
     QDir dir(baseDir);
     const QString sceneDir = makeSceneDir(dir);
@@ -64,12 +65,18 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, 
         root.insert("ring_counts", counts);
 
         // ring_roles: 0=outer(CCW), 1=hole(CW) by orientation heuristic
-        QJsonArray roles;
-        for (const auto& ring : it.rings) {
-            double a = signedArea(ring);
-            roles.append(a > 0.0 ? 0 : 1);
+        if (writeRingRoles) {
+            QJsonArray roles;
+            for (const auto& ring : it.rings) {
+                double a = signedArea(ring);
+                roles.append(a > 0.0 ? 0 : 1);
+            }
+            root.insert("ring_roles", roles);
         }
-        root.insert("ring_roles", roles);
+
+        if (!meta.isEmpty()) {
+            root.insert("meta", meta);
+        }
         if (kinds & ExportJSON) {
             QJsonDocument doc(root);
             const QString fn = sdir.filePath(QString("group_%1.json").arg(it.groupId));

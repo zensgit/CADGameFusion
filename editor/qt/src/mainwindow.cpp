@@ -15,10 +15,13 @@
 #include <QDoubleSpinBox>
 #include <QDialogButtonBox>
 #include <QSettings>
+#include <QDesktopServices>
+#include <QUrl>
 
 #include "core/core_c_api.h"
 #include "canvas.hpp"
 #include "exporter.hpp"
+#include "export_dialog.hpp"
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("CADGameFusion - Qt Editor");
@@ -214,52 +217,35 @@ void MainWindow::exportSceneActionImpl(int kinds) {
 
 void MainWindow::exportWithOptions() {
     // Simple inline dialog (future: move to its own class/UI)
-    QDialog dlg(this);
-    dlg.setWindowTitle("Export Options");
-    QFormLayout* form = new QFormLayout(&dlg);
-    QCheckBox* cbJson = new QCheckBox("Export JSON", &dlg);
-    QCheckBox* cbGltf = new QCheckBox("Export glTF", &dlg);
-    QDoubleSpinBox* sbScale = new QDoubleSpinBox(&dlg);
-    sbScale->setRange(1e-6, 1e6);
-    sbScale->setDecimals(6);
-    sbScale->setValue(1.0);
-    QComboBox* cbRange = new QComboBox(&dlg);
-    cbRange->addItem("All Groups", 0);
-    cbRange->addItem("Selected Group Only", 1);
-    form->addRow(cbJson);
-    form->addRow(cbGltf);
-    form->addRow("Unit Scale", sbScale);
-    form->addRow("Range", cbRange);
-    QDialogButtonBox* btns = new QDialogButtonBox(QDialogButtonBox::Ok|QDialogButtonBox::Cancel, &dlg);
-    form->addRow(btns);
-    // Load persisted settings
-    QSettings st;
-    cbJson->setChecked(st.value("export/json", true).toBool());
-    cbGltf->setChecked(st.value("export/gltf", true).toBool());
-    sbScale->setValue(st.value("export/unitScale", 1.0).toDouble());
-    cbRange->setCurrentIndex(st.value("export/range", 0).toInt());
-    QObject::connect(btns, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
-    QObject::connect(btns, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-    if (dlg.exec() != QDialog::Accepted) return;
-    // Persist
-    st.setValue("export/json", cbJson->isChecked());
-    st.setValue("export/gltf", cbGltf->isChecked());
-    st.setValue("export/unitScale", sbScale->value());
-    st.setValue("export/range", cbRange->currentIndex());
-    int kinds = 0; if (cbJson->isChecked()) kinds |= ExportJSON; if (cbGltf->isChecked()) kinds |= ExportGLTF;
-    if (kinds == 0) { QMessageBox::warning(this, "Export", "Please select at least one export kind."); return; }
-    // Collect and export
+    // Use ExportDialog for options
+    ExportDialog::ExportOptions opts;
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget()); if (!canvas) return;
+    int selGid = canvas->selectedGroupId();
+    if (!ExportDialog::getExportOptions(this, nullptr, selGid, opts)) return;
+
+    int kinds = 0;
+    if (opts.format == "json") kinds |= ExportJSON;
+    else if (opts.format == "gltf") kinds |= ExportGLTF;
+    else /*unity*/ { kinds |= (ExportJSON|ExportGLTF); }
+
+    // Collect and export
     QString base = QFileDialog::getExistingDirectory(this, "Select export base directory"); if (base.isEmpty()) return;
     QMap<int, QVector<QVector<QPointF>>> groups;
-    int selGid = canvas->selectedGroupId();
-    const bool onlySelected = (cbRange->currentIndex()==1 && selGid!=-1);
+    const bool onlySelected = (opts.range == ExportDialog::SelectedGroupOnly && selGid!=-1);
     for (const auto& pv : canvas->polylinesData()) {
         if (onlySelected && pv.groupId != selGid) continue;
         groups[pv.groupId].push_back(pv.pts);
     }
     QVector<ExportItem> items; for (auto it = groups.begin(); it != groups.end(); ++it) { ExportItem e; e.groupId = it.key(); e.rings = it.value(); items.push_back(e);} 
-    ExportResult r = exportScene(items, QDir(base), kinds, sbScale->value());
-    if (r.ok) QMessageBox::information(this, "Export", QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")));
-    else QMessageBox::warning(this, "Export", QString("Export failed: %1").arg(r.error));
+    QJsonObject meta; meta["joinType"] = static_cast<int>(opts.joinType); meta["miterLimit"] = opts.miterLimit;
+    ExportResult r = exportScene(items, QDir(base), kinds, 1.0 /*unitScale - TODO: from doc settings*/, meta, opts.exportRingRoles);
+    if (r.ok) {
+        auto reply = QMessageBox::information(this, "Export", QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")),
+                                             QMessageBox::Ok | QMessageBox::Open);
+        if (reply == QMessageBox::Open) {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(r.sceneDir));
+        }
+    } else {
+        QMessageBox::warning(this, "Export", QString("Export failed: %1").arg(r.error));
+    }
 }
