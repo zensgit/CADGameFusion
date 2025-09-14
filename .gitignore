@@ -1,1 +1,46 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+.build/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+CTestTestfile.cmake
+Testing/
+install_manifest.txt
+*.cmake
+
+# vcpkg
 vcpkg/
+vcpkg_installed/
+
+# Compiled files
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.out
+*.app
+
+# IDE files  
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Prerequisites
+*.d
+
+# Precompiled Headers
+*.gch
+*.pch
