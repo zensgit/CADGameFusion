@@ -112,6 +112,9 @@ void ExportDialog::setupUI() {
     m_useDocUnitCheck = new QCheckBox(tr("Use document unit scale"), this);
     m_useDocUnitCheck->setChecked(true);
     m_formLayout->addRow(m_useDocUnitCheck);
+    m_docUnitLabel = new QLabel(tr("Document unit scale: 1.0"), this);
+    m_docUnitLabel->setEnabled(false);
+    m_formLayout->addRow(m_docUnitLabel);
     m_unitScaleSpin = new QDoubleSpinBox(this);
     m_unitScaleSpin->setRange(1e-6, 1e6);
     m_unitScaleSpin->setDecimals(6);
@@ -240,6 +243,14 @@ void ExportDialog::updateUIState() {
     onFormatChanged(m_formatCombo->currentText());
     // Unit scale spin enabled only when not using document unit
     m_unitScaleSpin->setEnabled(!m_useDocUnitCheck->isChecked());
+    // Update document unit label
+    double docUnit = 1.0;
+    if (m_document) {
+        // DocumentSettings.unit_scale
+        // We cannot include full header here to access internals beyond accessor; using interface
+        docUnit = m_document->settings().unit_scale;
+    }
+    m_docUnitLabel->setText(tr("Document unit scale: %1").arg(docUnit));
 }
 
 void ExportDialog::saveSettings() {

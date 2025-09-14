@@ -17,6 +17,7 @@
 #include <QSettings>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QClipboard>
 
 #include "core/core_c_api.h"
 #include "canvas.hpp"
@@ -211,8 +212,23 @@ void MainWindow::exportSceneActionImpl(int kinds) {
     // Unit scale (TODO: read from Document settings; use 1.0 for now)
     double unitScale = 1.0;
     ExportResult r = exportScene(items, QDir(base), kinds, unitScale);
-    if (r.ok) QMessageBox::information(this, "Export", QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")));
-    else QMessageBox::warning(this, "Export", QString("Export failed: %1").arg(r.error));
+    if (r.ok) {
+        QMessageBox box(this);
+        box.setWindowTitle("Export");
+        box.setText(QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")));
+        QPushButton* openBtn = box.addButton(tr("Open"), QMessageBox::ActionRole);
+        QPushButton* copyBtn = box.addButton(tr("Copy Path"), QMessageBox::ActionRole);
+        box.addButton(QMessageBox::Ok);
+        box.exec();
+        if (box.clickedButton() == openBtn) {
+            QDesktopServices::openUrl(QUrl::fromLocalFile(r.sceneDir));
+        } else if (box.clickedButton() == copyBtn) {
+            QApplication::clipboard()->setText(r.sceneDir);
+            statusBar()->showMessage("Export path copied", 2000);
+        }
+    } else {
+        QMessageBox::warning(this, "Export", QString("Export failed: %1").arg(r.error));
+    }
 }
 
 void MainWindow::exportWithOptions() {
@@ -243,10 +259,18 @@ void MainWindow::exportWithOptions() {
     QJsonObject meta; meta["joinType"] = static_cast<int>(opts.joinType); meta["miterLimit"] = opts.miterLimit; meta["unitScale"] = unitScale; meta["useDocUnit"] = opts.useDocUnit;
     ExportResult r = exportScene(items, QDir(base), kinds, unitScale, meta, opts.exportRingRoles);
     if (r.ok) {
-        auto reply = QMessageBox::information(this, "Export", QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")),
-                                             QMessageBox::Ok | QMessageBox::Open);
-        if (reply == QMessageBox::Open) {
+        QMessageBox box(this);
+        box.setWindowTitle("Export");
+        box.setText(QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")));
+        QPushButton* openBtn = box.addButton(tr("Open"), QMessageBox::ActionRole);
+        QPushButton* copyBtn = box.addButton(tr("Copy Path"), QMessageBox::ActionRole);
+        box.addButton(QMessageBox::Ok);
+        box.exec();
+        if (box.clickedButton() == openBtn) {
             QDesktopServices::openUrl(QUrl::fromLocalFile(r.sceneDir));
+        } else if (box.clickedButton() == copyBtn) {
+            QApplication::clipboard()->setText(r.sceneDir);
+            statusBar()->showMessage("Export path copied", 2000);
         }
     } else {
         QMessageBox::warning(this, "Export", QString("Export failed: %1").arg(r.error));

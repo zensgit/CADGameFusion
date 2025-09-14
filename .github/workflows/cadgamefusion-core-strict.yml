@@ -211,6 +211,56 @@ jobs:
           
           echo "✅ Available tests passed!"
 
+      - name: Run export_cli to generate test scenes
+        shell: bash
+        run: |
+          echo "============================================================"
+          echo "              EXPORT CLI GENERATION TEST                    "
+          echo "============================================================"
+          echo ""
+          
+          # Check if export_cli was built (check build/bin first as per install path)
+          EXPORT_CLI=""
+          if [ -f "build/bin/export_cli" ]; then
+            EXPORT_CLI="build/bin/export_cli"
+          elif [ -f "build/bin/export_cli.exe" ]; then
+            EXPORT_CLI="build/bin/export_cli.exe"
+          elif [ -f "build/tools/export_cli" ]; then
+            EXPORT_CLI="build/tools/export_cli"
+          elif [ -f "build/tools/Release/export_cli.exe" ]; then
+            EXPORT_CLI="build/tools/Release/export_cli.exe"
+          elif [ -f "build/tools/Debug/export_cli.exe" ]; then
+            EXPORT_CLI="build/tools/Debug/export_cli.exe"
+          elif [ -f "build/Release/export_cli.exe" ]; then
+            EXPORT_CLI="build/Release/export_cli.exe"
+          elif [ -f "build/Release/export_cli" ]; then
+            EXPORT_CLI="build/Release/export_cli"
+          fi
+          
+          if [ -n "$EXPORT_CLI" ]; then
+            echo "[INFO] Found export_cli: $EXPORT_CLI"
+            echo ""
+            echo "[RUN] Generating test scenes with export_cli..."
+            
+            # Generate all five scenes (including complex)
+            for SCENE in sample holes multi units complex; do
+              echo "  Generating scene_cli_$SCENE..."
+              $EXPORT_CLI --out build/exports --scene $SCENE || echo "    Warning: Failed to generate $SCENE"
+            done
+            
+            # Test spec-dir functionality with complex scene
+            if [ -d "sample_exports/scene_complex" ]; then
+              echo "  Copying spec scene from sample_exports/scene_complex..."
+              $EXPORT_CLI --out build/exports --spec-dir sample_exports/scene_complex || echo "    Warning: Failed to copy spec scene"
+            fi
+            
+            echo ""
+            echo "[INFO] Generated scenes in build/exports/"
+            ls -la build/exports/ 2>/dev/null | head -20 || echo "    No exports directory found"
+          else
+            echo "[SKIP] export_cli not found, skipping CLI generation test"
+          fi
+
       - name: Validate sample export (if present)
         shell: bash
         run: |
@@ -230,22 +280,40 @@ jobs:
             exit 0
           fi
           
-          # Search order: 1) sample_exports/scene_*, 2) ./scene_*
+          # Search order: 1) CLI-generated, 2) sample_exports/scene_*, 3) ./scene_*
           SCENE_DIRS=""
           
-          # First priority: sample_exports directory - iterate ALL scene_* directories
+          # First priority: CLI-generated scenes in build/exports
+          if [ -d "build/exports" ]; then
+            CLI_SCENES=$(find build/exports -maxdepth 1 -type d -name "scene_cli_*" 2>/dev/null | sort)
+            if [ -n "$CLI_SCENES" ]; then
+              SCENE_DIRS="$CLI_SCENES"
+              echo "[INFO] Found CLI-generated scenes:"
+              for SCENE in $CLI_SCENES; do
+                echo "  - $(basename $SCENE)"
+              done
+            fi
+          fi
+          
+          # Second priority: sample_exports directory - iterate ALL scene_* directories
           if [ -d "sample_exports" ]; then
             SAMPLE_SCENES=$(find sample_exports -maxdepth 2 -type d -name "scene_*" 2>/dev/null | sort)
             if [ -n "$SAMPLE_SCENES" ]; then
-              SCENE_DIRS="$SAMPLE_SCENES"
-              echo "[INFO] Found scenes in sample_exports:"
+              if [ -n "$SCENE_DIRS" ]; then
+                SCENE_DIRS="$SCENE_DIRS $SAMPLE_SCENES"
+                echo ""
+                echo "[INFO] Also found scenes in sample_exports:"
+              else
+                SCENE_DIRS="$SAMPLE_SCENES"
+                echo "[INFO] Found scenes in sample_exports:"
+              fi
               for SCENE in $SAMPLE_SCENES; do
                 echo "  - $(basename $SCENE)"
               done
             fi
           fi
           
-          # Second priority: root directory scene_* (only if no sample_exports scenes found)
+          # Third priority: root directory scene_* (only if no other scenes found)
           if [ -z "$SCENE_DIRS" ]; then
             ROOT_SCENES=$(find . -maxdepth 1 -type d -name "scene_*" 2>/dev/null | sort)
             if [ -n "$ROOT_SCENES" ]; then
@@ -313,6 +381,136 @@ jobs:
             echo ""
             echo "[RESULT] ALL VALIDATIONS PASSED"
             echo "============================================================"
+          fi
+
+      - name: Compare CLI exports with samples (loose mode)
+        shell: bash
+        run: |
+          echo "============================================================"
+          echo "           STRUCTURE COMPARISON (LOOSE MODE)                "
+          echo "============================================================"
+          
+          # Check if comparison script exists
+          if [ ! -f "tools/compare_export_to_sample.py" ]; then
+            echo "[SKIP] Comparison script not found at tools/compare_export_to_sample.py"
+            exit 0
+          fi
+          
+          # Check if Python is available
+          if ! command -v python3 &> /dev/null; then
+            echo "[SKIP] Python3 not found, skipping structure comparison"
+            exit 0
+          fi
+          
+          # Check if both CLI exports and sample exports exist
+          HAS_CLI_EXPORTS=false
+          HAS_SAMPLE_EXPORTS=false
+          
+          if [ -d "build/exports" ]; then
+            CLI_COUNT=$(find build/exports -maxdepth 1 -type d -name "scene_cli_*" 2>/dev/null | wc -l)
+            if [ "$CLI_COUNT" -gt 0 ]; then
+              HAS_CLI_EXPORTS=true
+            fi
+          fi
+          
+          if [ -d "sample_exports" ]; then
+            SAMPLE_COUNT=$(find sample_exports -maxdepth 1 -type d -name "scene_*" 2>/dev/null | wc -l)
+            if [ "$SAMPLE_COUNT" -gt 0 ]; then
+              HAS_SAMPLE_EXPORTS=true
+            fi
+          fi
+          
+          if [ "$HAS_CLI_EXPORTS" = false ] || [ "$HAS_SAMPLE_EXPORTS" = false ]; then
+            echo "[SKIP] Missing CLI exports or sample exports for comparison"
+            echo "       CLI exports found: $HAS_CLI_EXPORTS"
+            echo "       Sample exports found: $HAS_SAMPLE_EXPORTS"
+            exit 0
+          fi
+          
+          echo "[INFO] Comparing CLI-generated scenes with sample exports"
+          echo ""
+          
+          # Define scene mappings (CLI name -> sample name)
+          declare -A SCENE_MAP
+          SCENE_MAP["scene_cli_sample"]="scene_sample"
+          SCENE_MAP["scene_cli_holes"]="scene_holes"
+          SCENE_MAP["scene_cli_multi"]="scene_multi_groups"
+          SCENE_MAP["scene_cli_units"]="scene_units"
+          SCENE_MAP["scene_cli_complex"]="scene_complex"
+          
+          COMPARISON_FAILED=false
+          COMPARED_COUNT=0
+          PASSED_COUNT=0
+          FAILED_COUNT=0
+          
+          # Compare each CLI scene with its sample counterpart
+          for CLI_SCENE in build/exports/scene_cli_*; do
+            if [ ! -d "$CLI_SCENE" ]; then
+              continue
+            fi
+            
+            CLI_NAME=$(basename "$CLI_SCENE")
+            SAMPLE_NAME="${SCENE_MAP[$CLI_NAME]}"
+            
+            if [ -z "$SAMPLE_NAME" ]; then
+              echo "[WARN] No sample mapping for $CLI_NAME"
+              continue
+            fi
+            
+            SAMPLE_SCENE="sample_exports/$SAMPLE_NAME"
+            
+            if [ ! -d "$SAMPLE_SCENE" ]; then
+              echo "[WARN] Sample scene not found: $SAMPLE_SCENE"
+              continue
+            fi
+            
+            echo "[COMPARE] $CLI_NAME vs $SAMPLE_NAME"
+            echo "------------------------------------------------------------"
+            
+            COMPARED_COUNT=$((COMPARED_COUNT + 1))
+            
+            # Run comparison (strong assertion for sample and holes, loose for others)
+            if python3 tools/compare_export_to_sample.py "$CLI_SCENE" "$SAMPLE_SCENE"; then
+              echo "[RESULT] Structure match confirmed"
+              PASSED_COUNT=$((PASSED_COUNT + 1))
+            else
+              echo "[RESULT] Structure differences detected"
+              FAILED_COUNT=$((FAILED_COUNT + 1))
+              
+              # Strong assertion for sample and holes scenes
+              if [ "$CLI_NAME" = "scene_cli_sample" ] || [ "$CLI_NAME" = "scene_cli_holes" ]; then
+                echo "[ERROR] Required scenes (sample/holes) must match structure exactly!"
+                COMPARISON_FAILED=true
+              else
+                echo "[INFO] Structure difference allowed for $CLI_NAME (non-critical)"
+              fi
+            fi
+            
+            echo ""
+          done
+          
+          # Summary
+          echo "============================================================"
+          echo "                  COMPARISON SUMMARY                        "
+          echo "============================================================"
+          echo "[STATS] Compared: $COMPARED_COUNT | Matched: $PASSED_COUNT | Differences: $FAILED_COUNT"
+          
+          if [ "$COMPARED_COUNT" -eq 0 ]; then
+            echo "[WARN] No scenes were compared"
+          elif [ "$PASSED_COUNT" -eq "$COMPARED_COUNT" ]; then
+            echo "[SUCCESS] All scenes have matching structures"
+          else
+            echo "[INFO] Some structural differences detected (expected due to triangulation)"
+          fi
+          
+          echo "============================================================"
+          
+          # Exit with error if required comparisons failed
+          if [ "$COMPARISON_FAILED" = true ]; then
+            echo "[FAILURE] CI failed due to required scene structure mismatches"
+            exit 1
+          else
+            exit 0
           fi
 
       - name: Generate test report

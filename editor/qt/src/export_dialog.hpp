@@ -12,6 +12,7 @@ class QDialogButtonBox;
 class QFormLayout;
 class QPushButton;
 class QSettings;
+class QLabel;
 QT_END_NAMESPACE
 
 namespace core {
@@ -88,6 +89,7 @@ private:
     QDoubleSpinBox* m_miterLimitSpin;
     QCheckBox* m_useDocUnitCheck;
     QDoubleSpinBox* m_unitScaleSpin;
+    QLabel* m_docUnitLabel;
     QPushButton* m_openDirButton;
     QPushButton* m_copyReportButton;
     QDialogButtonBox* m_buttonBox;

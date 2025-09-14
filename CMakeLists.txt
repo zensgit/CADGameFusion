@@ -7,4 +7,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add subdirectories
 add_subdirectory(core)
-add_subdirectory(tests)
+add_subdirectory(editor/qt)
+add_subdirectory(tests/core)
+add_subdirectory(tools)

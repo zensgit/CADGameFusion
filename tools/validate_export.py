@@ -205,6 +205,52 @@ class ExportValidator:
                              3: 'LINE_STRIP', 4: 'TRIANGLES', 5: 'TRIANGLE_STRIP', 
                              6: 'TRIANGLE_FAN'}
                 self.info.append(f"  [OK] Primitive mode: {mode_names.get(mode, f'Unknown({mode})')}")
+
+                # Full consistency checks
+                try:
+                    accessors = data.get('accessors', [])
+                    bufferViews = data.get('bufferViews', [])
+                    buffers = data.get('buffers', [])
+                    if not buffers:
+                        raise ValueError('no buffers')
+                    pos_idx = prim.get('attributes',{}).get('POSITION', -1)
+                    ind_idx = prim.get('indices', -1)
+                    if isinstance(pos_idx, int) and isinstance(ind_idx, int) and pos_idx>=0 and ind_idx>=0:
+                        pos_acc = accessors[pos_idx]
+                        ind_acc = accessors[ind_idx]
+                        pos_bv = bufferViews[pos_acc['bufferView']]
+                        ind_bv = bufferViews[ind_acc['bufferView']]
+                        # POSITION format and size
+                        if not (pos_acc.get('componentType')==5126 and pos_acc.get('type')=='VEC3'):
+                            self.errors.append(f"{gltf_path.name}: POSITION accessor wrong format")
+                        pos_count = int(pos_acc.get('count',0))
+                        exp_pos_bytes = pos_count * 3 * 4
+                        if int(pos_bv.get('byteLength',0)) != exp_pos_bytes:
+                            self.warnings.append(f"{gltf_path.name}: POSITION bufferView length {pos_bv.get('byteLength')} != {exp_pos_bytes}")
+                        # Indices format and count
+                        if not (ind_acc.get('componentType')==5125 and ind_acc.get('type')=='SCALAR'):
+                            self.errors.append(f"{gltf_path.name}: indices accessor wrong format")
+                        ind_count = int(ind_acc.get('count',0))
+                        if ind_count <= 0 or ind_count % 3 != 0:
+                            self.errors.append(f"{gltf_path.name}: indices count not multiple of 3: {ind_count}")
+                        exp_ind_bytes = ind_count * 4
+                        if int(ind_bv.get('byteLength',0)) != exp_ind_bytes:
+                            self.warnings.append(f"{gltf_path.name}: indices bufferView length {ind_bv.get('byteLength')} != {exp_ind_bytes}")
+                        # Full index range check
+                        bin_path = gltf_path.with_suffix('.bin')
+                        with open(bin_path, 'rb') as bf:
+                            start = int(ind_bv.get('byteOffset',0)) + int(ind_acc.get('byteOffset',0))
+                            bf.seek(start)
+                            data_bytes = bf.read(exp_ind_bytes)
+                        for i in range(0, len(data_bytes), 4):
+                            idx = struct.unpack('<I', data_bytes[i:i+4])[0]
+                            if idx >= pos_count:
+                                self.errors.append(f"{gltf_path.name}: index {idx} out of range (verts={pos_count})")
+                                break
+                    else:
+                        self.errors.append(f"{gltf_path.name}: Missing POSITION/indices accessors")
+                except Exception as ex:
+                    self.errors.append(f"{gltf_path.name}: consistency check failed: {ex}")
         
         return True
     

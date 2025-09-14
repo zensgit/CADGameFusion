@@ -3,12 +3,11 @@
 Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity adapter using a C API.
 
 ## CI Status
-Note: Replace `OWNER/REPO` below with your actual GitHub org/repo to enable badges.
 
 - Core CI (lenient):
-  - ![Core CI](https://github.com/OWNER/REPO/actions/workflows/cadgamefusion-core.yml/badge.svg)
+  - ![Core CI](https://github.com/zensgit/CADGameFusion/actions/workflows/cadgamefusion-core.yml/badge.svg)
 - Core CI (strict deps):
-  - ![Core CI (strict)](https://github.com/OWNER/REPO/actions/workflows/cadgamefusion-core-strict.yml/badge.svg)
+  - ![Core CI (strict)](https://github.com/zensgit/CADGameFusion/actions/workflows/cadgamefusion-core-strict.yml/badge.svg)
 
 CI tracks:
 - Lenient: builds without vcpkg; features are optional (stubs used if deps are missing). Fast and stable smoke tests across platforms.
@@ -78,3 +77,88 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
  - CI Validation Reports (examples):
    - `CI_FINAL_TEST_REPORT.md`
    - `EXPORT_VALIDATION_TEST_REPORT.md`
+
+## Sample Exports and Validation
+- Sample scenes are provided under `sample_exports/`:
+  - `scene_sample`: minimal rectangle (JSON + glTF)
+  - `scene_holes`: outer + hole (JSON carries hole semantics)
+  - `scene_multi_groups`: multiple groups (group_0..2)
+  - `scene_units`: large unit scale example (unitScale=1000.0)
+- Validate a scene locally:
+  - `python3 CADGameFusion/tools/validate_export.py CADGameFusion/sample_exports/scene_sample`
+- CI (strict) automatically validates all `sample_exports/scene_*` directories on all platforms.
+
+### Using Export CLI
+
+The export CLI tool generates test scenes in JSON + glTF + binary formats for validation and testing.
+
+#### Building the Tool
+```bash
+# Build from repository root
+cmake -S . -B build -DBUILD_EDITOR_QT=OFF
+cmake --build build --target export_cli
+
+# Location of built executable:
+# - Linux/macOS: build/tools/export_cli
+# - Windows: build/tools/Release/export_cli.exe
+```
+
+#### Generating Five Scene Types
+
+1. **Sample** - Basic rectangle (4 vertices, 1 ring)
+   ```bash
+   build/tools/export_cli --out build/exports --scene sample
+   ```
+
+2. **Holes** - Rectangle with hole (8 vertices, 2 rings)
+   ```bash
+   build/tools/export_cli --out build/exports --scene holes
+   ```
+
+3. **Multi** - Three groups with different join types (Miter/Round/Bevel)
+   ```bash
+   build/tools/export_cli --out build/exports --scene multi
+   ```
+
+4. **Units** - Scaled rectangle (1000x unit scale)
+   ```bash
+   build/tools/export_cli --out build/exports --scene units
+   ```
+
+5. **Complex** - L-shaped polygon with 2 holes (14 vertices, 3 rings)
+   ```bash
+   build/tools/export_cli --out build/exports --scene complex
+   ```
+
+#### Local Validation
+```bash
+# Validate a single scene
+python3 tools/validate_export.py build/exports/scene_cli_sample
+
+# Validate all generated scenes
+for scene in build/exports/scene_cli_*; do
+  echo "Validating $(basename $scene)..."
+  python3 tools/validate_export.py "$scene"
+done
+
+# Compare with sample exports for structure consistency
+python3 tools/compare_export_to_sample.py \
+  build/exports/scene_cli_sample \
+  sample_exports/scene_sample
+```
+
+#### Copying from Spec Directory
+```bash
+# Copy existing scene files from a spec directory
+build/tools/export_cli --out build/exports \
+  --spec-dir sample_exports/scene_complex
+
+# Validate the copied scene
+python3 tools/validate_export.py build/exports/scene_cli_spec
+```
+
+#### Command Options
+- `--out <dir>` : Output directory (default: build/exports)
+- `--scene <name>` : Scene type: sample|holes|multi|units|complex
+- `--unit <scale>` : Unit scale factor (default: 1.0)
+- `--spec-dir <dir>` : Copy scenes from specified directory
