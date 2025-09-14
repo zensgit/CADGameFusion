@@ -51,18 +51,24 @@ jobs:
         run: |
           if [ "${{ runner.os }}" == "Windows" ]; then
             # Use Microsoft's vcpkg
-            git clone https://github.com/Microsoft/vcpkg.git C:/vcpkg 2>/dev/null || true
-            cd C:/vcpkg
+            if [ ! -d "C:/vcpkg" ]; then
+              git clone https://github.com/Microsoft/vcpkg.git C:/vcpkg
+            fi
+            pushd C:/vcpkg
             git pull
             ./bootstrap-vcpkg.bat -disableMetrics
+            popd
             echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
             echo "C:/vcpkg" >> $GITHUB_PATH
           else
             # Linux/macOS
-            git clone https://github.com/Microsoft/vcpkg.git ~/vcpkg 2>/dev/null || true
-            cd ~/vcpkg
+            if [ ! -d "$HOME/vcpkg" ]; then
+              git clone https://github.com/Microsoft/vcpkg.git $HOME/vcpkg
+            fi
+            pushd $HOME/vcpkg
             git pull
             ./bootstrap-vcpkg.sh -disableMetrics
+            popd
             echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
             echo "$HOME/vcpkg" >> $GITHUB_PATH
           fi
