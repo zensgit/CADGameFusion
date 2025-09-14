@@ -16,6 +16,8 @@ add_executable(editor_qt
     src/canvas.hpp
     src/exporter.cpp
     src/exporter.hpp
+    src/export_dialog.cpp
+    src/export_dialog.hpp
 )
 
 target_include_directories(editor_qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../..)

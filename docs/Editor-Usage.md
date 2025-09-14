@@ -1,45 +1,71 @@
-# Qt Editor — Usage and Shortcuts
+# Editor Usage
 
-This document summarizes how the Qt editor demo works, key operations, and the current interaction model.
+Qt editor keyboard shortcuts and operations.
 
-Version: 0.1 (kept in sync with source)
+## Basic Controls
+- **Alt+Click**: Select polyline at point
+- **Ctrl+Click**: Multi-select (add to selection)
+- **Ctrl+A**: Select all entities
+- **Delete/Backspace**: Delete selected entities
+- **Esc**: Clear selection
 
-## Canvas Basics
-- Background grid with cosmetic lines; X axis (cyan), Y axis (red).
-- Pan: Middle mouse button drag, or Alt + Left-drag.
-- Zoom: Mouse wheel (zooms around the cursor, keeping world point under the mouse fixed).
-- Selection: Click near an edge (12 px threshold) to select a polyline. Selected line highlights in amber.
+## Tools
+- **Add Polyline**: Creates a sample rectangle
+- **Triangulate**: Triangulates selected polylines
+- **Boolean**: Demo boolean operation (union)
+- **Offset**: Demo offset operation
 
-## Toolbar Actions
-- Add Polyline: Adds a closed rectangle {0,0}->{W,0}->{W,H}->{0,H}->{0,0}.
-- Triangulate: Triangulates a rectangle and adds each triangle as a closed polyline; all triangles share one group.
-- Boolean: Computes union of two rectangles and displays all result rings; all rings share one group.
-- Offset: Offsets a rectangle (delta > 0) and displays the resulting ring(s); all rings share one group.
-- Delete Selected: Removes the currently selected polyline only.
-- Delete Similar: Removes the whole group of the selected item (preferred); if no group, removes polylines of the same color.
-- Clear All: Removes all polylines and any triangle wireframe.
+## Export Options
 
-Notes:
-- Boolean and Offset require Clipper2 via vcpkg to be active (USE_CLIPPER2 defined). If unavailable, the result may be empty with a status hint.
-- Triangulate uses earcut when available (USE_EARCUT); otherwise a convex-fan fallback is used (demo only).
+### Export Dialog (Ctrl+E)
+The export dialog provides comprehensive control over export settings:
 
-## Grouping Semantics
-- Each toolbar action creates a new groupId; all polylines created by that action belong to the same group.
-- Delete Selected removes just one polyline; Delete Similar removes the entire group.
-- This solves the UX issue of needing multiple deletes for a triangulated mesh: select one triangle edge, then Delete Similar (or Shift+Delete in code) to remove the whole batch.
+#### Format Options
+- **JSON**: CAD data with optional metadata
+  - Ring roles: Export ring classification (outer/hole)
+- **glTF**: 3D format for visualization
+  - Include holes: Enable hole triangulation
+- **Unity**: Unity-compatible format
 
-## Visual Details
-- Cosmetic pens are used for grid/axes/curves, so stroke width remains constant regardless of zoom.
-- Selection threshold is 12 px; adjust in `editor/qt/src/canvas.cpp` if needed.
+#### Export Range
+- **All Groups**: Export entire document
+- **Selected Group Only**: Export only the currently selected group
 
-## Known Limitations (Demo Scope)
-- Selection is a simple edge proximity test, scanning back-to-front. For larger scenes, add a spatial index (quadtree) to accelerate hit-testing.
-- Boolean/Offset currently render all rings the same; to distinguish outer/holes, consider styling (different colors/dashes) and winding checks.
-- Document model is not persisted in the editor (the C API document is used only to demo API calls). A persistent Document would own entities; Canvas would render from it.
+#### Offset Metadata
+These settings are saved as metadata for future offset operations:
+- **Join Type**: Miter, Round, or Bevel
+- **Miter Limit**: Maximum miter extension (1.0-10.0)
 
-## Where to Look in Code
-- Canvas widget: `editor/qt/src/canvas.{hpp,cpp}` (rendering, panning/zooming, hit-testing, deletion logic, grouping)
-- Main window/actions: `editor/qt/src/mainwindow.cpp` (toolbar actions and group assignment)
-- C API: `core/include/core/core_c_api.h` and `core/src/core_c_api.cpp`
-- 2D ops: `core/include/core/ops2d.hpp` and `core/src/ops2d.cpp`
+#### Actions
+- **Open Export Directory**: Quick access to last export location
+- **Copy Report**: Copy configuration report to clipboard
 
+### Export Validation Checklist
+1. ✅ Verify export format matches intended use case
+2. ✅ Check export range (all vs selected)
+3. ✅ For glTF/Unity: Enable holes if needed
+4. ✅ For JSON: Consider ring roles for topology preservation
+5. ✅ Review offset metadata for future operations
+6. ✅ Test exported files in target application
+
+## CI/CD Features
+
+### Optional vcpkg Support
+The project now supports optional vcpkg integration in CI:
+- Automatically detects and uses vcpkg when available
+- Falls back to stub implementations when vcpkg is not present
+- Caching improves CI performance on subsequent runs
+
+### Enhanced Testing
+When CLIPPER2 is available, tests include:
+- **Boolean Operations**: Disjoint, shared edge, and contained geometry tests
+- **Offset Operations**: Various join types with area and point count assertions
+- **Strict Assertions**: Mathematical verification using Shoelace formula
+
+### Build Status
+The CI system tests on:
+- Ubuntu (latest)
+- macOS (latest)
+- Windows (latest)
+
+All platforms must pass for successful merge.

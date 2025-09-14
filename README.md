@@ -26,18 +26,22 @@ export VCPKG_ROOT="$(pwd)/vcpkg"
 - `adapters/unity/` — C# P/Invoke bindings to call the C API from Unity.
 - `docs/` — Purpose, plan, and editor usage docs.
 
-## Build (with vcpkg)
-Using vcpkg (recommended) to supply deps (earcut, clipper2):
+## Build (with optional vcpkg)
+The project supports optional dependencies (earcut, clipper2) via vcpkg:
 ```bash
+# Optional: Setup vcpkg for enhanced features
 git clone https://github.com/microsoft/vcpkg.git
 ./vcpkg/bootstrap-vcpkg.sh # or .bat on Windows
 export VCPKG_ROOT=$(pwd)/vcpkg
 
+# Build with automatic dependency detection
 cmake -S CADGameFusion -B build \
   -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
   -DVCPKG_MANIFEST_MODE=ON -DBUILD_EDITOR_QT=ON
 cmake --build build --config Release
 ```
+
+Note: The project will build without vcpkg, using stub implementations for advanced features.
 
 ## Unity Integration (Runtime P/Invoke)
 - Copy `build/bin/<platform>/core_c` shared library into `YourUnityProject/Assets/Plugins/<Platform>`.

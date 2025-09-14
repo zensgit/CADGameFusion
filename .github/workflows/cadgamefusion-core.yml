@@ -32,6 +32,12 @@ jobs:
           echo "=== Core directory ==="
           ls -la core/ || echo "core/ not found"
 
+      - name: Setup vcpkg (optional)
+        uses: lukka/run-vcpkg@v11
+        continue-on-error: true
+        with:
+          vcpkgGitCommitId: 'c9fa965c2a1b1334469b4539063f3ce95383653c'
+          
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -64,7 +70,12 @@ jobs:
             exit 1
           fi
           echo "=== Attempting CMake configuration ==="
-          cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release 2>&1 || {
+          CMAKE_ARGS="-DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release"
+          if [ -d "$VCPKG_ROOT" ]; then
+            echo "vcpkg detected at: $VCPKG_ROOT"
+            CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          fi
+          cmake -S . -B build $CMAKE_ARGS 2>&1 || {
             echo "=== CMake configuration failed ==="
             echo "=== Checking for error details ==="
             if [ -f "build/CMakeFiles/CMakeOutput.log" ]; then
@@ -145,6 +156,15 @@ jobs:
             echo "✅ Boolean/offset test passed"
           else
             echo "⚠️ Boolean/offset test not found (Clipper2 may not be available)"
+          fi
+          
+          # Run strict test (with enhanced assertions)
+          echo "=== Running strict test ==="
+          if [ -f "$TEST_DIR/core_tests_strict$TEST_SUFFIX" ]; then
+            "$TEST_DIR/core_tests_strict$TEST_SUFFIX"
+            echo "✅ Strict test passed"
+          else
+            echo "⚠️ Strict test not found"
           fi
           
           echo "=== Test run complete ==="

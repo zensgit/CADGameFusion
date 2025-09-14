@@ -8,6 +8,13 @@
 #include <QMessageBox>
 #include <QFileDialog>
 #include <QDir>
+#include <QDialog>
+#include <QFormLayout>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QDoubleSpinBox>
+#include <QDialogButtonBox>
+#include <QSettings>
 
 #include "core/core_c_api.h"
 #include "canvas.hpp"
