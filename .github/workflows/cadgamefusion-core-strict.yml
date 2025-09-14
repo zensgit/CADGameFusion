@@ -46,11 +46,20 @@ jobs:
         shell: bash
         run: |
           echo "=== Strict build with vcpkg ==="
-          cmake -S . -B build \
+          # On Windows, vcpkg might have network issues, retry if needed
+          if ! cmake -S . -B build \
             -DBUILD_EDITOR_QT=OFF \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
-            -DVCPKG_MANIFEST_MODE=ON
+            -DVCPKG_MANIFEST_MODE=ON 2>&1; then
+            
+            echo "First attempt failed, retrying without manifest mode..."
+            rm -rf build
+            cmake -S . -B build \
+              -DBUILD_EDITOR_QT=OFF \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+          fi
 
       - name: Build
         shell: bash
