@@ -50,21 +50,33 @@ jobs:
         shell: bash
         run: |
           if [ "${{ runner.os }}" == "Windows" ]; then
-            # Use Microsoft's vcpkg
-            if [ ! -d "C:/vcpkg" ]; then
-              git clone https://github.com/Microsoft/vcpkg.git C:/vcpkg
+            # Windows: Use C:/vcpkg
+            VCPKG_DIR="C:/vcpkg"
+            if [ -d "$VCPKG_DIR/.git" ]; then
+              echo "vcpkg exists, updating..."
+              (cd "$VCPKG_DIR" && git pull)
+            else
+              echo "Cloning vcpkg..."
+              rm -rf "$VCPKG_DIR"
+              git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"
             fi
-            (cd C:/vcpkg && git pull && ./bootstrap-vcpkg.bat -disableMetrics)
-            echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
-            echo "C:/vcpkg" >> $GITHUB_PATH
+            (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.bat -disableMetrics)
+            echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
+            echo "$VCPKG_DIR" >> $GITHUB_PATH
           else
-            # Linux/macOS
-            if [ ! -d "$HOME/vcpkg" ]; then
-              git clone https://github.com/Microsoft/vcpkg.git $HOME/vcpkg
+            # Linux/macOS: Use ~/vcpkg
+            VCPKG_DIR="$HOME/vcpkg"
+            if [ -d "$VCPKG_DIR/.git" ]; then
+              echo "vcpkg exists, updating..."
+              (cd "$VCPKG_DIR" && git pull)
+            else
+              echo "Cloning vcpkg..."
+              rm -rf "$VCPKG_DIR"
+              git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"
             fi
-            (cd $HOME/vcpkg && git pull && ./bootstrap-vcpkg.sh -disableMetrics)
-            echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
-            echo "$HOME/vcpkg" >> $GITHUB_PATH
+            (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.sh -disableMetrics)
+            echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
+            echo "$VCPKG_DIR" >> $GITHUB_PATH
           fi
           
       - name: Install dependencies (Linux)
