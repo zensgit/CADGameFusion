@@ -5,6 +5,7 @@ add_library(core STATIC
     src/document.cpp
     src/commands.cpp
     src/ops2d.cpp
+    src/core_c_api.cpp
 )
 
 target_include_directories(core PUBLIC include)
