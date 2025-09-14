@@ -1,4 +1,5 @@
 #include "core/ops2d.hpp"
+#include "core/document.hpp"
 #include <cassert>
 #include <vector>
 #include <cmath>
