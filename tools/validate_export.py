@@ -8,8 +8,14 @@ import json
 import os
 import sys
 import struct
+import io
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
+
+# Force UTF-8 encoding for Windows
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 class ExportValidator:
     """Validates exported scene directories"""
@@ -22,7 +28,7 @@ class ExportValidator:
         
     def validate(self) -> bool:
         """Main validation entry point"""
-        print(f"🔍 Validating export directory: {self.scene_dir}")
+        print(f"[VALIDATE] Checking export directory: {self.scene_dir}")
         print("=" * 60)
         
         if not self.scene_dir.exists():
@@ -33,7 +39,7 @@ class ExportValidator:
         json_files = list(self.scene_dir.glob("group_*.json"))
         gltf_files = list(self.scene_dir.glob("mesh_group_*.gltf"))
         
-        print(f"📁 Found {len(json_files)} JSON files and {len(gltf_files)} glTF files")
+        print(f"[INFO] Found {len(json_files)} JSON files and {len(gltf_files)} glTF files")
         
         # Validate each JSON file
         for json_file in json_files:
@@ -53,7 +59,7 @@ class ExportValidator:
     
     def validate_json(self, json_path: Path) -> bool:
         """Validate a single JSON export file"""
-        print(f"\n📄 Validating {json_path.name}...")
+        print(f"\n[JSON] Validating {json_path.name}...")
         
         try:
             with open(json_path, 'r') as f:
@@ -68,7 +74,7 @@ class ExportValidator:
             if field not in data:
                 self.errors.append(f"{json_path.name}: Missing required field '{field}'")
             else:
-                self.info.append(f"  ✓ Has {field}")
+                self.info.append(f"  [OK] Has {field}")
         
         # Validate data consistency
         if 'flat_pts' in data and 'ring_counts' in data:
@@ -85,7 +91,7 @@ class ExportValidator:
                         f"expected {expected_pts} from ring_counts, got {actual_pts}"
                     )
                 else:
-                    self.info.append(f"  ✓ Point count consistent ({actual_pts} points in {len(ring_counts)} rings)")
+                    self.info.append(f"  [OK] Point count consistent ({actual_pts} points in {len(ring_counts)} rings)")
         
         # Check optional fields
         if 'ring_roles' in data:
@@ -96,11 +102,11 @@ class ExportValidator:
                     f"doesn't match ring_counts ({len(data['ring_counts'])})"
                 )
             else:
-                self.info.append(f"  ✓ Has ring_roles ({len(roles)} roles)")
+                self.info.append(f"  [OK] Has ring_roles ({len(roles)} roles)")
         
         if 'meta' in data:
             meta = data['meta']
-            self.info.append(f"  ✓ Has meta: {list(meta.keys())}")
+            self.info.append(f"  [OK] Has meta: {list(meta.keys())}")
             
             # Validate meta fields from updated mainwindow.cpp
             expected_meta = ['joinType', 'miterLimit', 'unitScale', 'useDocUnit']
@@ -112,7 +118,7 @@ class ExportValidator:
     
     def validate_gltf(self, gltf_path: Path) -> bool:
         """Validate a single glTF export file"""
-        print(f"\n🎨 Validating {gltf_path.name}...")
+        print(f"\n[GLTF] Validating {gltf_path.name}...")
         
         try:
             with open(gltf_path, 'r') as f:
@@ -131,7 +137,7 @@ class ExportValidator:
             if version != "2.0":
                 self.warnings.append(f"{gltf_path.name}: Unexpected glTF version {version}")
             else:
-                self.info.append(f"  ✓ glTF version 2.0")
+                self.info.append(f"  [OK] glTF version 2.0")
         
         # Check required top-level properties
         required = ['buffers', 'bufferViews', 'accessors']
@@ -140,7 +146,7 @@ class ExportValidator:
                 self.errors.append(f"{gltf_path.name}: Missing required field '{field}'")
             else:
                 count = len(data[field]) if isinstance(data[field], list) else 0
-                self.info.append(f"  ✓ Has {field} ({count} items)")
+                self.info.append(f"  [OK] Has {field} ({count} items)")
         
         # Check binary file exists
         bin_path = gltf_path.with_suffix('.bin')
@@ -148,7 +154,7 @@ class ExportValidator:
             self.errors.append(f"{gltf_path.name}: Missing binary file {bin_path.name}")
         else:
             bin_size = bin_path.stat().st_size
-            self.info.append(f"  ✓ Binary file exists ({bin_size} bytes)")
+            self.info.append(f"  [OK] Binary file exists ({bin_size} bytes)")
             
             # Validate buffer size matches binary
             if 'buffers' in data and data['buffers']:
@@ -160,7 +166,7 @@ class ExportValidator:
                             f"glTF says {buffer['byteLength']}, binary is {bin_size}"
                         )
                     else:
-                        self.info.append(f"  ✓ Buffer size matches binary")
+                        self.info.append(f"  [OK] Buffer size matches binary")
         
         # Check meshes
         if 'meshes' in data and data['meshes']:
@@ -171,7 +177,7 @@ class ExportValidator:
                 # Check for required attributes
                 if 'attributes' in prim:
                     if 'POSITION' in prim['attributes']:
-                        self.info.append(f"  ✓ Has POSITION attribute")
+                        self.info.append(f"  [OK] Has POSITION attribute")
                     else:
                         self.errors.append(f"{gltf_path.name}: Missing POSITION attribute")
                 
@@ -180,13 +186,13 @@ class ExportValidator:
                 mode_names = {0: 'POINTS', 1: 'LINES', 2: 'LINE_LOOP', 
                              3: 'LINE_STRIP', 4: 'TRIANGLES', 5: 'TRIANGLE_STRIP', 
                              6: 'TRIANGLE_FAN'}
-                self.info.append(f"  ✓ Primitive mode: {mode_names.get(mode, f'Unknown({mode})')}")
+                self.info.append(f"  [OK] Primitive mode: {mode_names.get(mode, f'Unknown({mode})')}")
         
         return True
     
     def check_consistency(self, json_files: List[Path], gltf_files: List[Path]):
         """Check consistency between JSON and glTF exports"""
-        print(f"\n🔗 Checking consistency...")
+        print(f"\n[CHECK] Verifying consistency...")
         
         # Extract group IDs from filenames
         json_groups = set()
@@ -214,7 +220,7 @@ class ExportValidator:
         # Check if same groups are exported
         if json_groups and gltf_groups:
             if json_groups == gltf_groups:
-                self.info.append(f"  ✓ Consistent group IDs: {sorted(json_groups)}")
+                self.info.append(f"  [OK] Consistent group IDs: {sorted(json_groups)}")
             else:
                 only_json = json_groups - gltf_groups
                 only_gltf = gltf_groups - json_groups
@@ -226,31 +232,31 @@ class ExportValidator:
     def print_results(self):
         """Print validation results"""
         print("\n" + "=" * 60)
-        print("📊 VALIDATION RESULTS")
+        print("VALIDATION RESULTS")
         print("=" * 60)
         
         if self.info:
-            print("\n✅ Valid items:")
+            print("\n[PASS] Valid items:")
             for msg in self.info:
                 print(f"  {msg}")
         
         if self.warnings:
-            print(f"\n⚠️  Warnings ({len(self.warnings)}):")
+            print(f"\n[WARN] Warnings ({len(self.warnings)}):")
             for msg in self.warnings:
                 print(f"  • {msg}")
         
         if self.errors:
-            print(f"\n❌ Errors ({len(self.errors)}):")
+            print(f"\n[ERROR] Errors ({len(self.errors)}):")
             for msg in self.errors:
                 print(f"  • {msg}")
         
         print("\n" + "=" * 60)
         if self.errors:
-            print("❌ VALIDATION FAILED")
+            print("[FAIL] VALIDATION FAILED")
         elif self.warnings:
-            print("⚠️  VALIDATION PASSED WITH WARNINGS")
+            print("[WARN] VALIDATION PASSED WITH WARNINGS")
         else:
-            print("✅ VALIDATION PASSED")
+            print("[PASS] VALIDATION PASSED")
         print("=" * 60)
 
 
