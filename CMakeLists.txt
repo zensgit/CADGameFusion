@@ -1,4 +1,10 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.16)
 project(CADGameFusion)
 
-add_executable(hello hello.cpp)
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Add subdirectories
+add_subdirectory(core)
+add_subdirectory(tests)
