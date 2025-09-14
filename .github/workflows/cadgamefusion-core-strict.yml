@@ -54,10 +54,7 @@ jobs:
             if [ ! -d "C:/vcpkg" ]; then
               git clone https://github.com/Microsoft/vcpkg.git C:/vcpkg
             fi
-            pushd C:/vcpkg
-            git pull
-            ./bootstrap-vcpkg.bat -disableMetrics
-            popd
+            (cd C:/vcpkg && git pull && ./bootstrap-vcpkg.bat -disableMetrics)
             echo "VCPKG_ROOT=C:/vcpkg" >> $GITHUB_ENV
             echo "C:/vcpkg" >> $GITHUB_PATH
           else
@@ -65,10 +62,7 @@ jobs:
             if [ ! -d "$HOME/vcpkg" ]; then
               git clone https://github.com/Microsoft/vcpkg.git $HOME/vcpkg
             fi
-            pushd $HOME/vcpkg
-            git pull
-            ./bootstrap-vcpkg.sh -disableMetrics
-            popd
+            (cd $HOME/vcpkg && git pull && ./bootstrap-vcpkg.sh -disableMetrics)
             echo "VCPKG_ROOT=$HOME/vcpkg" >> $GITHUB_ENV
             echo "$HOME/vcpkg" >> $GITHUB_PATH
           fi
