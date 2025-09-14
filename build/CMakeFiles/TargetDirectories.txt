@@ -1,9 +1,0 @@
-/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/CMakeFiles/ALL_BUILD.dir
-/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/CMakeFiles/ZERO_CHECK.dir
-/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/core/CMakeFiles/core.dir
-/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/core/CMakeFiles/core_c.dir
-/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt.dir
-/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/editor_qt_autogen.dir
-/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/ALL_BUILD.dir
-/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/editor/qt/CMakeFiles/ZERO_CHECK.dir
-/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion/build/tests/core/CMakeFiles/core_tests.dir

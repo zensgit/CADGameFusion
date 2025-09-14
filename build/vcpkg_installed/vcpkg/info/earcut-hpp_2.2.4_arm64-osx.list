@@ -1,9 +1,0 @@
-arm64-osx/
-arm64-osx/include/
-arm64-osx/include/mapbox/
-arm64-osx/include/mapbox/earcut.hpp
-arm64-osx/share/
-arm64-osx/share/earcut-hpp/
-arm64-osx/share/earcut-hpp/copyright
-arm64-osx/share/earcut-hpp/vcpkg.spdx.json
-arm64-osx/share/earcut-hpp/vcpkg_abi_info.txt

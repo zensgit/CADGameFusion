@@ -1,9 +1,0 @@
-Target dependency graph (4 targets)
-Target 'editor_qt' in project 'CADGameFusion'
-➜ Explicit dependency on target 'core_c' in project 'CADGameFusion'
-➜ Explicit dependency on target 'editor_qt_autogen' in project 'CADGameFusion'
-Target 'editor_qt_autogen' in project 'CADGameFusion'
-➜ Explicit dependency on target 'core_c' in project 'CADGameFusion'
-Target 'core_c' in project 'CADGameFusion'
-➜ Explicit dependency on target 'core' in project 'CADGameFusion'
-Target 'core' in project 'CADGameFusion' (no dependencies)

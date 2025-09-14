@@ -1,9 +1,0 @@
-{
-	"InstallScripts" : 
-	[
-		"/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/\u5e94\u7528/GitHub/CADGameFusion/build/cmake_install.cmake",
-		"/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/\u5e94\u7528/GitHub/CADGameFusion/build/core/cmake_install.cmake",
-		"/Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/\u5e94\u7528/GitHub/CADGameFusion/build/editor/qt/cmake_install.cmake"
-	],
-	"Parallel" : false
-}
