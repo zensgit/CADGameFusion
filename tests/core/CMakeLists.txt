@@ -13,7 +13,7 @@ if(TARGET core)
     target_include_directories(core_tests_boolean_offset PRIVATE ../../core/include)
     target_link_libraries(core_tests_boolean_offset PRIVATE core)
     
-    # Add strict test for CLIPPER2 functionality
+    # Strict test (always built, but behavior depends on USE_CLIPPER2)
     add_executable(core_tests_strict test_boolean_offset_strict.cpp)
     target_include_directories(core_tests_strict PRIVATE ../../core/include)
     target_link_libraries(core_tests_strict PRIVATE core)

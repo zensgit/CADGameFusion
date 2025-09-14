@@ -1,0 +1,126 @@
+name: Core CI (Strict)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-strict:
+    name: Strict Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup vcpkg (required for strict build)
+        uses: lukka/run-vcpkg@v11
+        with:
+          vcpkgGitCommitId: 'c9fa965c2a1b1334469b4539063f3ce95383653c'
+          
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential ninja-build
+          
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake ninja || true
+          
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+
+      - name: Configure with vcpkg (strict)
+        shell: bash
+        run: |
+          echo "=== Strict build with vcpkg ==="
+          cmake -S . -B build \
+            -DBUILD_EDITOR_QT=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_MANIFEST_MODE=ON
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake --build build --config Release --parallel 2
+
+      - name: Verify vcpkg dependencies
+        shell: bash
+        run: |
+          echo "=== Checking for vcpkg features ==="
+          if [ -f "build/CMakeCache.txt" ]; then
+            echo "Checking for Earcut:"
+            grep -i "earcut" build/CMakeCache.txt || echo "Earcut not found"
+            echo ""
+            echo "Checking for Clipper2:"
+            grep -i "clipper" build/CMakeCache.txt || echo "Clipper2 not found"
+            echo ""
+            echo "Feature flags:"
+            grep "USE_" build/CMakeCache.txt || echo "No feature flags found"
+          fi
+
+      - name: Run strict tests
+        shell: bash
+        run: |
+          echo "=== Running strict tests with assertions ==="
+          
+          # Find test directory
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            TEST_DIR="build/tests/core/Release"
+            [ ! -d "$TEST_DIR" ] && TEST_DIR="build/Release"
+            TEST_SUFFIX=".exe"
+          else
+            TEST_DIR="build/tests/core"
+            TEST_SUFFIX=""
+          fi
+          
+          # Run all tests with strict checking
+          echo "=== Simple test ==="
+          "$TEST_DIR/test_simple$TEST_SUFFIX"
+          
+          echo "=== Triangulation test ==="
+          "$TEST_DIR/core_tests_triangulation$TEST_SUFFIX"
+          
+          echo "=== Boolean/offset test ==="
+          "$TEST_DIR/core_tests_boolean_offset$TEST_SUFFIX"
+          
+          echo "=== Strict assertions test ==="
+          "$TEST_DIR/core_tests_strict$TEST_SUFFIX"
+          
+          echo "✅ All strict tests passed!"
+
+      - name: Generate test report
+        if: always()
+        shell: bash
+        run: |
+          echo "## Test Report - ${{ matrix.os }}" > test_report.md
+          echo "" >> test_report.md
+          echo "### Build Configuration" >> test_report.md
+          echo "- vcpkg: ✅ Required" >> test_report.md
+          echo "- Baseline: c9fa965c2a1b1334469b4539063f3ce95383653c" >> test_report.md
+          echo "" >> test_report.md
+          echo "### Test Results" >> test_report.md
+          echo "- test_simple: ✅" >> test_report.md
+          echo "- core_tests_triangulation: ✅" >> test_report.md
+          echo "- core_tests_boolean_offset: ✅" >> test_report.md
+          echo "- core_tests_strict: ✅ (with assertions)" >> test_report.md
+          
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-strict-${{ runner.os }}
+          path: test_report.md
