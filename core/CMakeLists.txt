@@ -15,6 +15,9 @@ target_compile_features(core PUBLIC cxx_std_17)
 # Need -fPIC for static library when used in shared library
 set_property(TARGET core PROPERTY POSITION_INDEPENDENT_CODE ON)
 
+# Define CORE_BUILD when building the library (for Windows DLL exports)
+target_compile_definitions(core PRIVATE CORE_BUILD)
+
 # Optional: Compiler warnings
 if(MSVC)
     target_compile_options(core PRIVATE /W3)
@@ -36,3 +39,5 @@ endif()
 add_library(core_c SHARED src/core_c_api.cpp)
 target_link_libraries(core_c PRIVATE core)
 target_include_directories(core_c PUBLIC include)
+# Define CORE_BUILD when building the shared library (for Windows DLL exports)
+target_compile_definitions(core_c PRIVATE CORE_BUILD)
