@@ -34,6 +34,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Check project structure
+        shell: bash
         run: |
           echo "=== Current directory ==="
           pwd
@@ -86,9 +87,15 @@ jobs:
           }
 
       - name: List build outputs
+        shell: bash
         run: |
-          echo "-- build/bin --" && ls -la build/bin || true
-          echo "-- build tree --" && find build -maxdepth 2 -type f | sed -n '1,200p' || true
+          echo "-- build/bin --" && ls -la build/bin 2>/dev/null || echo "No build/bin"
+          echo "-- Finding executables --"
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            find build -name "*.exe" 2>/dev/null | head -20 || echo "No .exe files found"
+          else
+            find build -type f -executable 2>/dev/null | head -20 || echo "No executables found"
+          fi
 
       - name: Run core tests
         shell: bash
@@ -139,11 +146,14 @@ jobs:
 
       - name: Show CMake logs
         if: always()
+        shell: bash
         run: |
-          echo "---- CMake configure log ----"
-          test -f build/CMakeFiles/CMakeConfigureLog.yaml && sed -n '1,400p' build/CMakeFiles/CMakeConfigureLog.yaml || echo "(no configure log)"
-          echo "---- CMake feature status ----"
-          grep -E "(USE_EARCUT|USE_CLIPPER2|Found|NOT FOUND)" build/CMakeFiles/CMakeOutput.log 2>/dev/null || echo "(features not logged)"
+          echo "---- CMake configuration summary ----"
+          if [ -f "build/CMakeCache.txt" ]; then
+            grep -E "(CMAKE_BUILD_TYPE|CMAKE_CXX_COMPILER|USE_)" build/CMakeCache.txt | head -20 || true
+          else
+            echo "No CMakeCache.txt found"
+          fi
 
       - name: Upload build logs
         if: always()
