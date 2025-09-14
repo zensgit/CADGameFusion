@@ -48,6 +48,23 @@ These settings are saved as metadata for future offset operations:
 5. ✅ Review offset metadata for future operations
 6. ✅ Test exported files in target application
 
+### Detailed Export Behavior
+- JSON
+  - Files: `group_#.json`
+  - Fields: `group_id`, `flat_pts`, `ring_counts`, optional `ring_roles` (0=outer, 1=hole), `meta` (joinType, miterLimit, unitScale, useDocUnit)
+  - Compatibility: also writes `groupId` for backward/forward compatibility
+- glTF
+  - Files: `mesh_group_#.gltf` + `mesh_group_#.bin`
+  - Attributes: POSITION(float32, Z=0), indices(uint32), `mode`=TRIANGLES
+  - Includes `validation_report.txt` summarizing checks
+
+### Validation (Local & CI)
+- Run local validation:
+  - `python3 CADGameFusion/tools/validate_export.py /path/to/scene_*`
+- Script checks:
+  - JSON: required fields, count consistency, `ring_roles`, `meta`
+  - glTF: version, buffer/bin consistency, POSITION/indices, primitive mode, basic index range sanity
+
 ## CI/CD Features
 
 ### Optional vcpkg Support

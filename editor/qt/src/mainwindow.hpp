@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QMainWindow>
+#include "core/document.hpp"
 
 class QListWidget;
 
@@ -19,4 +20,6 @@ private slots:
     void exportWithOptions();
 private:
     QListWidget* list_{};
+    // Persistent document context (for settings like unit scale)
+    core::Document m_document;
 };

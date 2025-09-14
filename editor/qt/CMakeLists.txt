@@ -22,7 +22,7 @@ add_executable(editor_qt
 
 target_include_directories(editor_qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 
-target_link_libraries(editor_qt PRIVATE Qt6::Widgets core_c)
+target_link_libraries(editor_qt PRIVATE Qt6::Widgets core_c core)
 
 if (WIN32)
   set_target_properties(editor_qt PROPERTIES WIN32_EXECUTABLE YES)

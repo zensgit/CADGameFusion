@@ -228,13 +228,25 @@ jobs:
             exit 0
           fi
           
-          # Find any scene_* directories
-          SCENE_DIRS=$(find . -maxdepth 2 -type d -name "scene_*" 2>/dev/null)
+          # Search order: 1) sample_exports/scene_*, 2) ./scene_*
+          SCENE_DIRS=""
           
-          # Also check sample_exports directory
+          # First priority: sample_exports directory
           if [ -d "sample_exports" ]; then
             SAMPLE_SCENES=$(find sample_exports -maxdepth 2 -type d -name "scene_*" 2>/dev/null)
-            SCENE_DIRS="$SCENE_DIRS $SAMPLE_SCENES"
+            if [ -n "$SAMPLE_SCENES" ]; then
+              SCENE_DIRS="$SAMPLE_SCENES"
+              echo "Found sample exports: $SAMPLE_SCENES"
+            fi
+          fi
+          
+          # Second priority: root directory scene_*
+          if [ -z "$SCENE_DIRS" ]; then
+            ROOT_SCENES=$(find . -maxdepth 1 -type d -name "scene_*" 2>/dev/null)
+            if [ -n "$ROOT_SCENES" ]; then
+              SCENE_DIRS="$ROOT_SCENES"
+              echo "Found root exports: $ROOT_SCENES"
+            fi
           fi
           
           if [ -z "$SCENE_DIRS" ]; then

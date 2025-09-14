@@ -238,7 +238,7 @@ void MainWindow::exportWithOptions() {
     }
     QVector<ExportItem> items; for (auto it = groups.begin(); it != groups.end(); ++it) { ExportItem e; e.groupId = it.key(); e.rings = it.value(); items.push_back(e);} 
     // Determine unit scale (use document settings or custom value)
-    double unitScale = 1.0; // TODO: integrate with core::Document when available
+    double unitScale = opts.useDocUnit ? m_document.settings().unit_scale : opts.unitScale;
     if (!opts.useDocUnit) unitScale = opts.unitScale;
     QJsonObject meta; meta["joinType"] = static_cast<int>(opts.joinType); meta["miterLimit"] = opts.miterLimit; meta["unitScale"] = unitScale; meta["useDocUnit"] = opts.useDocUnit;
     ExportResult r = exportScene(items, QDir(base), kinds, unitScale, meta, opts.exportRingRoles);

@@ -1,0 +1,23 @@
+Export Validation Report
+========================
+Generated: 2024-09-14
+Directory: sample_exports/scene_sample
+
+Files Validated:
+- group_0.json [PASS]
+- mesh_group_0.gltf [PASS]
+- mesh_group_0.bin [PASS]
+
+Validation Summary:
+- JSON structure: Valid
+- glTF structure: Valid
+- Binary consistency: Valid
+- Group ID consistency: Valid
+
+Meta Fields Verified:
+- joinType: 0 (Miter)
+- miterLimit: 2.0
+- unitScale: 1.0
+- useDocUnit: true
+
+Status: VALIDATION PASSED

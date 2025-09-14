@@ -68,8 +68,15 @@ class ExportValidator:
             self.errors.append(f"{json_path.name}: Failed to parse JSON - {e}")
             return False
         
-        # Check required fields
-        required_fields = ['group_id', 'flat_pts', 'ring_counts']
+        # Check required fields (support both group_id and groupId)
+        has_group_id = 'group_id' in data or 'groupId' in data
+        if not has_group_id:
+            self.errors.append(f"{json_path.name}: Missing required field 'group_id' or 'groupId'")
+        else:
+            group_field = 'group_id' if 'group_id' in data else 'groupId'
+            self.info.append(f"  [OK] Has {group_field}")
+        
+        required_fields = ['flat_pts', 'ring_counts']
         for field in required_fields:
             if field not in data:
                 self.errors.append(f"{json_path.name}: Missing required field '{field}'")
@@ -81,9 +88,20 @@ class ExportValidator:
             flat_pts = data['flat_pts']
             ring_counts = data['ring_counts']
             
+            # Handle both array format and object format for flat_pts
+            if flat_pts and isinstance(flat_pts[0], dict):
+                # Object format: [{"x": 0, "y": 0}, ...]
+                actual_pts = len(flat_pts)
+                self.info.append(f"  [OK] Points in object format (x,y)")
+            elif flat_pts and isinstance(flat_pts[0], (int, float)):
+                # Array format: [0, 0, 1, 0, ...]
+                actual_pts = len(flat_pts) // 2
+                self.info.append(f"  [OK] Points in array format")
+            else:
+                actual_pts = len(flat_pts) if flat_pts else 0
+            
             if ring_counts:
                 expected_pts = sum(ring_counts)
-                actual_pts = len(flat_pts)
                 
                 if expected_pts != actual_pts:
                     self.errors.append(
