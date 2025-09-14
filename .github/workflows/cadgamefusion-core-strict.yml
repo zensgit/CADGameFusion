@@ -20,6 +20,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Cache vcpkg for faster builds
+      - name: Cache vcpkg
+        uses: actions/cache@v3
+        with:
+          path: |
+            ${{ github.workspace }}/vcpkg
+            ~/.cache/vcpkg
+            ~/AppData/Local/vcpkg
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-
+
       - name: Setup vcpkg (required for strict build)
         uses: lukka/run-vcpkg@v11
         with:
@@ -46,19 +58,54 @@ jobs:
         shell: bash
         run: |
           echo "=== Strict build with vcpkg ==="
-          # On Windows, vcpkg might have network issues, retry if needed
-          if ! cmake -S . -B build \
-            -DBUILD_EDITOR_QT=OFF \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
-            -DVCPKG_MANIFEST_MODE=ON 2>&1; then
+          
+          # Windows-specific retry logic with network error handling
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            echo "Windows detected - implementing enhanced retry mechanism"
+            MAX_RETRIES=3
+            RETRY_COUNT=0
             
-            echo "First attempt failed, retrying without manifest mode..."
-            rm -rf build
-            cmake -S . -B build \
+            while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+              echo "Attempt $((RETRY_COUNT+1)) of $MAX_RETRIES"
+              
+              if cmake -S . -B build \
+                -DBUILD_EDITOR_QT=OFF \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+                -DVCPKG_MANIFEST_MODE=ON 2>&1; then
+                echo "✅ Configuration successful"
+                break
+              else
+                RETRY_COUNT=$((RETRY_COUNT+1))
+                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                  echo "⚠️ Configuration failed, waiting 10 seconds before retry..."
+                  sleep 10
+                  rm -rf build
+                else
+                  echo "❌ All retries exhausted, trying fallback configuration"
+                  rm -rf build
+                  cmake -S . -B build \
+                    -DBUILD_EDITOR_QT=OFF \
+                    -DCMAKE_BUILD_TYPE=Release \
+                    -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+                fi
+              fi
+            done
+          else
+            # Non-Windows: single attempt with fallback
+            if ! cmake -S . -B build \
               -DBUILD_EDITOR_QT=OFF \
               -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+              -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+              -DVCPKG_MANIFEST_MODE=ON 2>&1; then
+              
+              echo "First attempt failed, retrying without manifest mode..."
+              rm -rf build
+              cmake -S . -B build \
+                -DBUILD_EDITOR_QT=OFF \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake
+            fi
           fi
 
       - name: Build

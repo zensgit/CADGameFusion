@@ -49,6 +49,8 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, 
     for (const auto& it : items) {
         QJsonObject root;
         root.insert("groupId", it.groupId);
+        // Backward/forward compatibility: also write snake_case key if external tools expect it
+        root.insert("group_id", it.groupId);
         // legacy polygons (optional)
         QJsonArray polys;
         for (const auto& ring : it.rings) { QJsonObject poly; poly.insert("outer", toJsonRing(ring)); poly.insert("holes", QJsonArray{}); polys.append(poly); }
@@ -148,7 +150,7 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, 
                     });
                     gltf.insert("accessors", accessors);
                     QJsonArray primitives;
-                    primitives.append(QJsonObject{{"attributes", QJsonObject{{"POSITION",0}}}, {"indices",1}});
+                    primitives.append(QJsonObject{{"attributes", QJsonObject{{"POSITION",0}}}, {"indices",1}, {"mode",4}}); // 4 = TRIANGLES
                     QJsonArray meshes;
                     meshes.append(QJsonObject{{"primitives", primitives}});
                     gltf.insert("meshes", meshes);
@@ -167,6 +169,13 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, 
     res.sceneDir = sceneDir;
     res.ok = true;
     res.validationReport = validateExportedScene(sceneDir, kinds);
+    // Persist validation report alongside exports for external tooling
+    QFile vr(sdir.filePath("validation_report.txt"));
+    if (vr.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        vr.write(res.validationReport.toUtf8());
+        vr.close();
+        res.written << sdir.filePath("validation_report.txt");
+    }
     return res;
 }
 
