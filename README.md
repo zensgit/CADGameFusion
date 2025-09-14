@@ -2,6 +2,18 @@
 
 Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity adapter using a C API.
 
+## CI Status
+Note: Replace `OWNER/REPO` below with your actual GitHub org/repo to enable badges.
+
+- Core CI (lenient):
+  - ![Core CI](https://github.com/OWNER/REPO/actions/workflows/cadgamefusion-core.yml/badge.svg)
+- Core CI (strict deps):
+  - ![Core CI (strict)](https://github.com/OWNER/REPO/actions/workflows/cadgamefusion-core-strict.yml/badge.svg)
+
+CI tracks:
+- Lenient: builds without vcpkg; features are optional (stubs used if deps are missing). Fast and stable smoke tests across platforms.
+- Strict: uses vcpkg baseline to enable earcut/clipper2 and runs strict assertions and export validation on Ubuntu/macOS/Windows.
+
 ## Quick Start (with scripts)
 - Prerequisites: Git, CMake, C++17 compiler. For Qt editor, install Qt 6.
 - Bootstrap vcpkg and build:
@@ -63,3 +75,6 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
 - Build From Source: `docs/Build-From-Source.md`
 - Troubleshooting: `docs/Troubleshooting.md`
 - Contributing: `docs/Contributing.md`
+ - CI Validation Reports (examples):
+   - `CI_FINAL_TEST_REPORT.md`
+   - `EXPORT_VALIDATION_TEST_REPORT.md`

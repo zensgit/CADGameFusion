@@ -214,67 +214,105 @@ jobs:
       - name: Validate sample export (if present)
         shell: bash
         run: |
-          echo "=== Export Validation ==="
+          echo "============================================================"
+          echo "                    EXPORT VALIDATION                       "
+          echo "============================================================"
           
           # Check if Python is available
           if ! command -v python3 &> /dev/null; then
-            echo "⚠️ Python3 not found, skipping export validation"
+            echo "[SKIP] Python3 not found, skipping export validation"
             exit 0
           fi
           
           # Check if validation script exists
           if [ ! -f "tools/validate_export.py" ]; then
-            echo "⚠️ Validation script not found at tools/validate_export.py"
+            echo "[SKIP] Validation script not found at tools/validate_export.py"
             exit 0
           fi
           
           # Search order: 1) sample_exports/scene_*, 2) ./scene_*
           SCENE_DIRS=""
           
-          # First priority: sample_exports directory
+          # First priority: sample_exports directory - iterate ALL scene_* directories
           if [ -d "sample_exports" ]; then
-            SAMPLE_SCENES=$(find sample_exports -maxdepth 2 -type d -name "scene_*" 2>/dev/null)
+            SAMPLE_SCENES=$(find sample_exports -maxdepth 2 -type d -name "scene_*" 2>/dev/null | sort)
             if [ -n "$SAMPLE_SCENES" ]; then
               SCENE_DIRS="$SAMPLE_SCENES"
-              echo "Found sample exports: $SAMPLE_SCENES"
+              echo "[INFO] Found scenes in sample_exports:"
+              for SCENE in $SAMPLE_SCENES; do
+                echo "  - $(basename $SCENE)"
+              done
             fi
           fi
           
-          # Second priority: root directory scene_*
+          # Second priority: root directory scene_* (only if no sample_exports scenes found)
           if [ -z "$SCENE_DIRS" ]; then
-            ROOT_SCENES=$(find . -maxdepth 1 -type d -name "scene_*" 2>/dev/null)
+            ROOT_SCENES=$(find . -maxdepth 1 -type d -name "scene_*" 2>/dev/null | sort)
             if [ -n "$ROOT_SCENES" ]; then
               SCENE_DIRS="$ROOT_SCENES"
-              echo "Found root exports: $ROOT_SCENES"
+              echo "[INFO] Found scenes in root directory:"
+              for SCENE in $ROOT_SCENES; do
+                echo "  - $(basename $SCENE)"
+              done
             fi
           fi
           
           if [ -z "$SCENE_DIRS" ]; then
-            echo "ℹ️ No scene directories found, skipping validation"
-            echo "   (To enable validation, create a scene_* directory with exported files)"
+            echo "[SKIP] No scene directories found, skipping validation"
+            echo "       (To enable validation, create scene_* directories with exported files)"
             exit 0
           fi
           
-          # Validate each scene directory
+          # Count total scenes
+          TOTAL_SCENES=$(echo "$SCENE_DIRS" | wc -w)
+          echo ""
+          echo "[INFO] Total scenes to validate: $TOTAL_SCENES"
+          echo "============================================================"
+          
+          # Validate each scene directory and collect results
           VALIDATION_FAILED=false
+          PASSED_COUNT=0
+          FAILED_COUNT=0
+          FAILED_SCENES=""
+          
           for SCENE in $SCENE_DIRS; do
+            SCENE_NAME=$(basename "$SCENE")
             echo ""
-            echo "Validating: $SCENE"
+            echo "[VALIDATE] Scene: $SCENE_NAME"
+            echo "------------------------------------------------------------"
+            
             if python3 tools/validate_export.py "$SCENE"; then
-              echo "✅ Validation passed for $SCENE"
+              echo "[RESULT] $SCENE_NAME: PASSED"
+              PASSED_COUNT=$((PASSED_COUNT + 1))
             else
-              echo "❌ Validation failed for $SCENE"
+              echo "[RESULT] $SCENE_NAME: FAILED"
+              FAILED_COUNT=$((FAILED_COUNT + 1))
+              FAILED_SCENES="$FAILED_SCENES $SCENE_NAME"
               VALIDATION_FAILED=true
             fi
           done
           
+          # Summary output
+          echo ""
+          echo "============================================================"
+          echo "                    VALIDATION SUMMARY                      "
+          echo "============================================================"
+          echo "[STATS] Total: $TOTAL_SCENES | Passed: $PASSED_COUNT | Failed: $FAILED_COUNT"
+          
           if [ "$VALIDATION_FAILED" = true ]; then
             echo ""
-            echo "❌ Some validations failed"
+            echo "[FAILED] The following scenes failed validation:"
+            for SCENE in $FAILED_SCENES; do
+              echo "  - $SCENE"
+            done
+            echo ""
+            echo "[RESULT] VALIDATION FAILED"
+            echo "============================================================"
             exit 1
           else
             echo ""
-            echo "✅ All export validations passed!"
+            echo "[RESULT] ALL VALIDATIONS PASSED"
+            echo "============================================================"
           fi
 
       - name: Generate test report
