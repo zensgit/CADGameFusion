@@ -19,6 +19,7 @@
 #include <QUrl>
 #include <QFileInfo>
 #include <QDir>
+#include <QTextStream>
 
 QJsonObject ExportDialog::ExportOptions::toJson() const {
     QJsonObject json;
@@ -28,6 +29,8 @@ QJsonObject ExportDialog::ExportOptions::toJson() const {
     json["exportRingRoles"] = exportRingRoles;
     json["joinType"] = static_cast<int>(joinType);
     json["miterLimit"] = miterLimit;
+    json["useDocUnit"] = useDocUnit;
+    json["unitScale"] = unitScale;
     return json;
 }
 
@@ -39,6 +42,8 @@ ExportDialog::ExportOptions ExportDialog::ExportOptions::fromJson(const QJsonObj
     opts.exportRingRoles = json["exportRingRoles"].toBool(false);
     opts.joinType = static_cast<JoinType>(json["joinType"].toInt(0));
     opts.miterLimit = json["miterLimit"].toDouble(2.0);
+    opts.useDocUnit = json["useDocUnit"].toBool(true);
+    opts.unitScale = json["unitScale"].toDouble(1.0);
     return opts;
 }
 
@@ -102,6 +107,16 @@ void ExportDialog::setupUI() {
     m_miterLimitSpin->setValue(2.0);
     m_miterLimitSpin->setDecimals(1);
     m_formLayout->addRow(tr("Miter Limit:"), m_miterLimitSpin);
+
+    // Unit scale options
+    m_useDocUnitCheck = new QCheckBox(tr("Use document unit scale"), this);
+    m_useDocUnitCheck->setChecked(true);
+    m_formLayout->addRow(m_useDocUnitCheck);
+    m_unitScaleSpin = new QDoubleSpinBox(this);
+    m_unitScaleSpin->setRange(1e-6, 1e6);
+    m_unitScaleSpin->setDecimals(6);
+    m_unitScaleSpin->setValue(1.0);
+    m_formLayout->addRow(tr("Unit Scale:"), m_unitScaleSpin);
     
     mainLayout->addLayout(m_formLayout);
     
@@ -133,6 +148,7 @@ void ExportDialog::setupUI() {
             this, &ExportDialog::onCopyReport);
     connect(m_buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(m_buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(m_useDocUnitCheck, &QCheckBox::toggled, [this](bool){ updateUIState(); });
     
     updateUIState();
 }
@@ -161,6 +177,8 @@ ExportDialog::ExportOptions ExportDialog::getOptions() const {
     opts.exportRingRoles = m_ringRolesCheck->isChecked();
     opts.joinType = static_cast<JoinType>(m_joinTypeCombo->currentData().toInt());
     opts.miterLimit = m_miterLimitSpin->value();
+    opts.useDocUnit = m_useDocUnitCheck->isChecked();
+    opts.unitScale = m_unitScaleSpin->value();
     return opts;
 }
 
@@ -220,6 +238,8 @@ void ExportDialog::updateUIState() {
     
     // Update other UI elements as needed
     onFormatChanged(m_formatCombo->currentText());
+    // Unit scale spin enabled only when not using document unit
+    m_unitScaleSpin->setEnabled(!m_useDocUnitCheck->isChecked());
 }
 
 void ExportDialog::saveSettings() {

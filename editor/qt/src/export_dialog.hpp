@@ -40,6 +40,8 @@ public:
         bool exportRingRoles;
         JoinType joinType;
         double miterLimit;
+        bool useDocUnit;
+        double unitScale;
         
         // Convert to JSON for metadata
         QJsonObject toJson() const;
@@ -84,6 +86,8 @@ private:
     QCheckBox* m_ringRolesCheck;
     QComboBox* m_joinTypeCombo;
     QDoubleSpinBox* m_miterLimitSpin;
+    QCheckBox* m_useDocUnitCheck;
+    QDoubleSpinBox* m_unitScaleSpin;
     QPushButton* m_openDirButton;
     QPushButton* m_copyReportButton;
     QDialogButtonBox* m_buttonBox;

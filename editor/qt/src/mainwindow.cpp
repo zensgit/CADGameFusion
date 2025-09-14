@@ -237,8 +237,11 @@ void MainWindow::exportWithOptions() {
         groups[pv.groupId].push_back(pv.pts);
     }
     QVector<ExportItem> items; for (auto it = groups.begin(); it != groups.end(); ++it) { ExportItem e; e.groupId = it.key(); e.rings = it.value(); items.push_back(e);} 
-    QJsonObject meta; meta["joinType"] = static_cast<int>(opts.joinType); meta["miterLimit"] = opts.miterLimit;
-    ExportResult r = exportScene(items, QDir(base), kinds, 1.0 /*unitScale - TODO: from doc settings*/, meta, opts.exportRingRoles);
+    // Determine unit scale (use document settings or custom value)
+    double unitScale = 1.0; // TODO: integrate with core::Document when available
+    if (!opts.useDocUnit) unitScale = opts.unitScale;
+    QJsonObject meta; meta["joinType"] = static_cast<int>(opts.joinType); meta["miterLimit"] = opts.miterLimit; meta["unitScale"] = unitScale; meta["useDocUnit"] = opts.useDocUnit;
+    ExportResult r = exportScene(items, QDir(base), kinds, unitScale, meta, opts.exportRingRoles);
     if (r.ok) {
         auto reply = QMessageBox::information(this, "Export", QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")),
                                              QMessageBox::Ok | QMessageBox::Open);

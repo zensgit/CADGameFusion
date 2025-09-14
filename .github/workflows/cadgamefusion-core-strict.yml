@@ -211,6 +211,60 @@ jobs:
           
           echo "✅ Available tests passed!"
 
+      - name: Validate sample export (if present)
+        shell: bash
+        run: |
+          echo "=== Export Validation ==="
+          
+          # Check if Python is available
+          if ! command -v python3 &> /dev/null; then
+            echo "⚠️ Python3 not found, skipping export validation"
+            exit 0
+          fi
+          
+          # Check if validation script exists
+          if [ ! -f "tools/validate_export.py" ]; then
+            echo "⚠️ Validation script not found at tools/validate_export.py"
+            exit 0
+          fi
+          
+          # Find any scene_* directories
+          SCENE_DIRS=$(find . -maxdepth 2 -type d -name "scene_*" 2>/dev/null)
+          
+          # Also check sample_exports directory
+          if [ -d "sample_exports" ]; then
+            SAMPLE_SCENES=$(find sample_exports -maxdepth 2 -type d -name "scene_*" 2>/dev/null)
+            SCENE_DIRS="$SCENE_DIRS $SAMPLE_SCENES"
+          fi
+          
+          if [ -z "$SCENE_DIRS" ]; then
+            echo "ℹ️ No scene directories found, skipping validation"
+            echo "   (To enable validation, create a scene_* directory with exported files)"
+            exit 0
+          fi
+          
+          # Validate each scene directory
+          VALIDATION_FAILED=false
+          for SCENE in $SCENE_DIRS; do
+            echo ""
+            echo "Validating: $SCENE"
+            if python3 tools/validate_export.py "$SCENE"; then
+              echo "✅ Validation passed for $SCENE"
+            else
+              echo "❌ Validation failed for $SCENE"
+              VALIDATION_FAILED=true
+            fi
+          done
+          
+          if [ "$VALIDATION_FAILED" = true ]; then
+            echo ""
+            echo "❌ Some validations failed"
+            exit 1
+          else
+            echo ""
+            echo "✅ All export validations passed!"
+          fi
+
       - name: Generate test report
         if: always()
         shell: bash
