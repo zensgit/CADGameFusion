@@ -9,6 +9,7 @@ target_link_libraries(export_cli PRIVATE core_c)
 # Include directories
 target_include_directories(export_cli PRIVATE 
     ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/tools
 )
 
 # C++17 for filesystem

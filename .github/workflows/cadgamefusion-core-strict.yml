@@ -202,6 +202,11 @@ jobs:
             "$TEST_DIR/core_tests_boolean_offset$TEST_SUFFIX"
           fi
           
+          if [ -f "$TEST_DIR/core_tests_complex_strict$TEST_SUFFIX" ]; then
+            echo "=== Complex strict test (L-shaped with holes) ==="
+            "$TEST_DIR/core_tests_complex_strict$TEST_SUFFIX"
+          fi
+          
           if [ -f "$TEST_DIR/core_tests_strict$TEST_SUFFIX" ]; then
             echo "=== Strict assertions test ==="
             "$TEST_DIR/core_tests_strict$TEST_SUFFIX"
@@ -247,11 +252,17 @@ jobs:
               echo "  Generating scene_cli_$SCENE..."
               $EXPORT_CLI --out build/exports --scene $SCENE || echo "    Warning: Failed to generate $SCENE"
             done
-            
+
             # Test spec-dir functionality with complex scene
             if [ -d "sample_exports/scene_complex" ]; then
               echo "  Copying spec scene from sample_exports/scene_complex..."
               $EXPORT_CLI --out build/exports --spec-dir sample_exports/scene_complex || echo "    Warning: Failed to copy spec scene"
+            fi
+
+            # Test JSON --spec functionality using provided spec file
+            if [ -f "tools/specs/scene_complex_spec.json" ]; then
+              echo "  Generating from JSON spec tools/specs/scene_complex_spec.json..."
+              $EXPORT_CLI --out build/exports --spec tools/specs/scene_complex_spec.json || echo "    Warning: Failed to generate from spec JSON"
             fi
             
             echo ""
@@ -349,7 +360,8 @@ jobs:
             echo "[VALIDATE] Scene: $SCENE_NAME"
             echo "------------------------------------------------------------"
             
-            if python3 tools/validate_export.py "$SCENE"; then
+            # Attempt schema validation as best-effort; do not fail CI if jsonschema is missing
+            if python3 tools/validate_export.py "$SCENE" --schema; then
               echo "[RESULT] $SCENE_NAME: PASSED"
               PASSED_COUNT=$((PASSED_COUNT + 1))
             else
@@ -437,6 +449,7 @@ jobs:
           SCENE_MAP["scene_cli_multi"]="scene_multi_groups"
           SCENE_MAP["scene_cli_units"]="scene_units"
           SCENE_MAP["scene_cli_complex"]="scene_complex"
+          SCENE_MAP["scene_cli_scene_complex_spec"]="scene_complex"
           
           COMPARISON_FAILED=false
           COMPARED_COUNT=0
@@ -469,7 +482,7 @@ jobs:
             
             COMPARED_COUNT=$((COMPARED_COUNT + 1))
             
-            # Run comparison (strong assertion for sample and holes, loose for others)
+            # Run comparison (strong assertion for sample, holes, and complex)
             if python3 tools/compare_export_to_sample.py "$CLI_SCENE" "$SAMPLE_SCENE"; then
               echo "[RESULT] Structure match confirmed"
               PASSED_COUNT=$((PASSED_COUNT + 1))
@@ -477,9 +490,9 @@ jobs:
               echo "[RESULT] Structure differences detected"
               FAILED_COUNT=$((FAILED_COUNT + 1))
               
-              # Strong assertion for sample and holes scenes
-              if [ "$CLI_NAME" = "scene_cli_sample" ] || [ "$CLI_NAME" = "scene_cli_holes" ]; then
-                echo "[ERROR] Required scenes (sample/holes) must match structure exactly!"
+              # Strong assertion for sample, holes, complex, and spec-complex scenes
+              if [ "$CLI_NAME" = "scene_cli_sample" ] || [ "$CLI_NAME" = "scene_cli_holes" ] || [ "$CLI_NAME" = "scene_cli_complex" ] || [ "$CLI_NAME" = "scene_cli_scene_complex_spec" ]; then
+                echo "[ERROR] Required scenes (sample/holes/complex/spec) must match structure exactly!"
                 COMPARISON_FAILED=true
               else
                 echo "[INFO] Structure difference allowed for $CLI_NAME (non-critical)"

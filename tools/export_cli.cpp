@@ -15,6 +15,7 @@ struct ExportOptions {
     std::string scene = "sample";
     double unitScale = 1.0;
     std::string specDir; // when set, copy from spec directory
+    std::string specFile; // when set, read JSON spec file
 };
 
 // Scene definitions
@@ -323,6 +324,200 @@ void exportScene(const std::string& outputDir, const std::string& sceneName,
     std::cout << "Exported " << sceneName << " to " << sceneDir << "\n";
 }
 
+// Minimal ad-hoc parser for flat_pts + ring_counts (+ ring_roles) JSON.
+// This supports our provided specs without external deps.
+static std::vector<SceneData> parseSpecFile(const std::string& path) {
+    std::ifstream f(path);
+    if (!f.is_open()) throw std::runtime_error("Failed to open spec file: " + path);
+    std::stringstream buffer; buffer << f.rdbuf(); f.close();
+    const std::string s = buffer.str();
+
+    // Helper: find matching ']' for '[' at pos
+    auto match_rbracket = [&](size_t open_pos) -> size_t {
+        int depth = 0;
+        for (size_t i = open_pos; i < s.size(); ++i) {
+            if (s[i] == '[') depth++;
+            else if (s[i] == ']') { depth--; if (depth == 0) return i; }
+        }
+        return std::string::npos;
+    };
+
+    // Parse rings in object format: rings: [ [ {x,y}, ... ], ... ]
+    auto parse_rings_objects = [&]() -> std::vector<std::vector<core_vec2>> {
+        std::vector<std::vector<core_vec2>> rings_out;
+        auto pos = s.find("\"rings\"");
+        if (pos == std::string::npos) return rings_out;
+        pos = s.find('[', pos);
+        if (pos == std::string::npos) return rings_out;
+        size_t rings_open = pos;
+        size_t rings_close = match_rbracket(rings_open);
+        if (rings_close == std::string::npos) return rings_out;
+        size_t i = rings_open + 1;
+        while (i < rings_close) {
+            // find next ring '['
+            size_t ring_open = s.find('[', i);
+            if (ring_open == std::string::npos || ring_open >= rings_close) break;
+            size_t ring_close = match_rbracket(ring_open);
+            if (ring_close == std::string::npos || ring_close > rings_close) break;
+            std::string ring_sub = s.substr(ring_open, ring_close - ring_open + 1);
+            std::vector<core_vec2> ring_pts;
+            size_t cursor = 0;
+            while (true) {
+                size_t xk = ring_sub.find("\"x\"", cursor);
+                if (xk == std::string::npos) break;
+                size_t xcolon = ring_sub.find(':', xk);
+                size_t xend = ring_sub.find_first_of(",}\n\r\t ", xcolon + 1);
+                if (xcolon == std::string::npos) break;
+                double x = std::stod(ring_sub.substr(xcolon + 1, (xend == std::string::npos ? ring_sub.size() : xend) - (xcolon + 1)));
+                size_t yk = ring_sub.find("\"y\"", xend == std::string::npos ? xcolon + 1 : xend + 1);
+                if (yk == std::string::npos) break;
+                size_t ycolon = ring_sub.find(':', yk);
+                size_t yend = ring_sub.find_first_of(",}\n\r\t ", ycolon + 1);
+                double y = std::stod(ring_sub.substr(ycolon + 1, (yend == std::string::npos ? ring_sub.size() : yend) - (ycolon + 1)));
+                ring_pts.push_back(core_vec2{ x, y });
+                cursor = (yend == std::string::npos ? ring_sub.size() : yend + 1);
+            }
+            if (!ring_pts.empty()) rings_out.push_back(std::move(ring_pts));
+            i = ring_close + 1;
+        }
+        return rings_out;
+    };
+
+    auto findIntArray = [&](const std::string& key) -> std::vector<int> {
+        std::vector<int> out; out.reserve(8);
+        auto pos = s.find("\"" + key + "\"");
+        if (pos == std::string::npos) return out;
+        pos = s.find('[', pos);
+        if (pos == std::string::npos) return out;
+        int depth = 1; size_t i = pos + 1; std::string num;
+        auto flush = [&]() {
+            if (!num.empty()) { out.push_back(std::stoi(num)); num.clear(); }
+        };
+        for (; i < s.size(); ++i) {
+            if (s[i] == '[') depth++;
+            else if (s[i] == ']') { depth--; if (depth == 0) { flush(); break; } }
+            else if ((s[i] >= '0' && s[i] <= '9') || s[i] == '-' ) num.push_back(s[i]);
+            else if (s[i] == ',' || s[i] == ' ' || s[i] == '\n' || s[i] == '\r' || s[i] == '\t') { flush(); }
+        }
+        return out;
+    };
+
+    auto findDoublePairs = [&](const std::string& key) -> std::vector<core_vec2> {
+        std::vector<core_vec2> pts; pts.reserve(32);
+        auto pos = s.find("\"" + key + "\"");
+        if (pos == std::string::npos) return pts;
+        pos = s.find('[', pos);
+        if (pos == std::string::npos) return pts;
+        int depth = 1; size_t i = pos + 1;
+        // Try to parse either objects with x/y or arrays [x,y]
+        while (i < s.size() && depth > 0) {
+            if (s[i] == '{') {
+                // parse { "x": num, "y": num }
+                size_t j = i;
+                double x = 0.0, y = 0.0; bool hasX=false, hasY=false;
+                while (j < s.size()) {
+                    if (s[j] == '}') { i = j + 1; break; }
+                    auto xk = s.find("\"x\"", j);
+                    auto yk = s.find("\"y\"", j);
+                    if (xk != std::string::npos && xk < s.find('}', j)) {
+                        auto colon = s.find(':', xk);
+                        auto end = s.find_first_of(",}\n\r\t ", colon+1);
+                        x = std::stod(s.substr(colon+1, end - (colon+1))); hasX=true; j = end;
+                    } else if (yk != std::string::npos && yk < s.find('}', j)) {
+                        auto colon = s.find(':', yk);
+                        auto end = s.find_first_of(",}\n\r\t ", colon+1);
+                        y = std::stod(s.substr(colon+1, end - (colon+1))); hasY=true; j = end;
+                    } else { j++; }
+                }
+                if (hasX && hasY) pts.push_back(core_vec2{ x, y });
+            } else if (s[i] == '[') {
+                // parse [x,y]
+                size_t j = i + 1;
+                // skip whitespace
+                while (j < s.size() && (s[j]==' '||s[j]=='\n'||s[j]=='\r'||s[j]=='\t')) j++;
+                size_t j2 = s.find(',', j);
+                size_t j3 = s.find(']', j2 == std::string::npos ? j : j2 + 1);
+                if (j2 != std::string::npos && j3 != std::string::npos) {
+                    double x = std::stod(s.substr(j, j2 - j));
+                    double y = std::stod(s.substr(j2+1, j3 - (j2+1)));
+                    pts.push_back(core_vec2{ x, y });
+                    i = j3 + 1;
+                } else {
+                    i++;
+                }
+            } else if (s[i] == ']') {
+                depth--; i++;
+            } else if (s[i] == '[') {
+                depth++; i++;
+            } else { i++; }
+        }
+        return pts;
+    };
+
+    auto findIntValue = [&](const std::string& key, int defVal) -> int {
+        auto pos = s.find("\"" + key + "\"");
+        if (pos == std::string::npos) return defVal;
+        pos = s.find(':', pos);
+        if (pos == std::string::npos) return defVal;
+        size_t end = s.find_first_of(",}\n\r\t ", pos+1);
+        return std::stoi(s.substr(pos+1, end - (pos+1)));
+    };
+
+    auto findBoolValue = [&](const std::string& key, bool defVal) -> bool {
+        auto pos = s.find("\"" + key + "\"");
+        if (pos == std::string::npos) return defVal;
+        pos = s.find(':', pos);
+        if (pos == std::string::npos) return defVal;
+        auto sub = s.substr(pos+1, 5);
+        if (sub.find("true") != std::string::npos) return true;
+        if (sub.find("false") != std::string::npos) return false;
+        return defVal;
+    };
+
+    std::vector<SceneData> result;
+
+    // Single-scene support: prefer rings if present, else flat_pts + ring_counts
+    SceneData sc{};
+    sc.groupId = findIntValue("group_id", findIntValue("groupId", 0));
+    sc.joinType = findIntValue("joinType", 0);
+    sc.miterLimit = 2.0;
+    sc.useDocUnit = findBoolValue("useDocUnit", true);
+
+    auto rings = parse_rings_objects();
+    if (!rings.empty()) {
+        // Flatten
+        std::vector<int> counts; counts.reserve(rings.size());
+        std::vector<core_vec2> pts;
+        for (const auto& ring : rings) {
+            counts.push_back(static_cast<int>(ring.size()));
+            pts.insert(pts.end(), ring.begin(), ring.end());
+        }
+        std::vector<int> roles = findIntArray("ring_roles");
+        if (roles.empty()) {
+            roles.push_back(0); for (size_t i = 1; i < counts.size(); ++i) roles.push_back(1);
+        }
+        sc.points = std::move(pts);
+        sc.ringCounts = std::move(counts);
+        sc.ringRoles = std::move(roles);
+    } else {
+        auto counts = findIntArray("ring_counts");
+        auto roles  = findIntArray("ring_roles");
+        auto pts    = findDoublePairs("flat_pts");
+        if (pts.empty() || counts.empty()) {
+            throw std::runtime_error("Spec must contain 'rings' or 'flat_pts' + 'ring_counts'");
+        }
+        if (roles.empty() && !counts.empty()) {
+            roles.push_back(0); for (size_t i = 1; i < counts.size(); ++i) roles.push_back(1);
+        }
+        sc.points = std::move(pts);
+        sc.ringCounts = std::move(counts);
+        sc.ringRoles = std::move(roles);
+    }
+
+    result.push_back(std::move(sc));
+    return result;
+}
+
 void parseArgs(int argc, char* argv[], ExportOptions& opts) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -335,12 +530,15 @@ void parseArgs(int argc, char* argv[], ExportOptions& opts) {
             opts.unitScale = std::stod(argv[++i]);
         } else if (arg == "--spec-dir" && i + 1 < argc) {
             opts.specDir = argv[++i];
+        } else if (arg == "--spec" && i + 1 < argc) {
+            opts.specFile = argv[++i];
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: export_cli [options]\n";
             std::cout << "  --out <dir>    Output directory (default: build/exports)\n";
             std::cout << "  --scene <name> Scene name: sample|holes|multi|units|complex (default: sample)\n";
             std::cout << "  --unit <scale> Unit scale (default: 1.0)\n";
-            std::cout << "  --spec-dir <d> Use scene spec directory (copies group_*.json and mesh_group_*).\n";
+            std::cout << "  --spec-dir <d> Copy scene files from spec directory (group_*.json, mesh_group_*)\n";
+            std::cout << "  --spec <file>  Read JSON spec and generate scene(s)\n";
             exit(0);
         }
     }
@@ -350,6 +548,16 @@ int main(int argc, char* argv[]) {
     ExportOptions opts;
     parseArgs(argc, argv, opts);
     
+    // Validate mutually exclusive options
+    if (!opts.specDir.empty() && !opts.specFile.empty()) {
+        std::cerr << "Options --spec-dir and --spec are mutually exclusive.\n";
+        return 2;
+    }
+    if (!opts.specFile.empty() && !opts.scene.empty() && opts.scene != "sample") {
+        // If user provided both --spec and --scene, we ignore scene but warn (scene defaults to sample)
+        std::cerr << "[WARN] --spec provided; ignoring --scene option.\n";
+    }
+
     // Create output directory
     fs::create_directories(opts.outputDir);
     
@@ -369,6 +577,21 @@ int main(int argc, char* argv[]) {
         }
         std::cout << "Copied spec scene from " << opts.specDir << " to " << sceneDir << "\n";
         return 0;
+    }
+
+    // If spec JSON provided, parse and export
+    if (!opts.specFile.empty()) {
+        try {
+            auto scenes = parseSpecFile(opts.specFile);
+            // Use file stem as scene name for clarity
+            std::string stem = fs::path(opts.specFile).stem().string();
+            if (stem.empty()) stem = "spec";
+            exportScene(opts.outputDir, stem, scenes, opts.unitScale);
+            return 0;
+        } catch (const std::exception& e) {
+            std::cerr << "[ERROR] Failed to parse spec: " << e.what() << "\n";
+            return 3;
+        }
     }
 
     // Export requested scene

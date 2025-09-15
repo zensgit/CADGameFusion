@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cadgamefusion/schemas/cli_spec.schema.json",
+  "title": "CADGameFusion Export CLI Spec",
+  "type": ["object", "array"],
+  "description": "Spec for export_cli --spec input. Supports a single scene object or an object with a 'scenes' array.",
+  "oneOf": [
+    { "$ref": "#/definitions/SceneWrapper" },
+    { "$ref": "#/definitions/Scene" }
+  ],
+  "definitions": {
+    "Vec2": {
+      "type": "object",
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      },
+      "additionalProperties": false
+    },
+    "Meta": {
+      "type": "object",
+      "properties": {
+        "joinType": { "type": "integer" },
+        "miterLimit": { "type": "number" },
+        "unitScale": { "type": "number" },
+        "useDocUnit": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "Scene": {
+      "type": "object",
+      "properties": {
+        "group_id": { "type": "integer" },
+        "groupId": { "type": "integer" },
+        "flat_pts": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Vec2" },
+          "minItems": 1
+        },
+        "ring_counts": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 1 },
+          "minItems": 1
+        },
+        "ring_roles": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "meta": { "$ref": "#/definitions/Meta" }
+      },
+      "required": ["flat_pts", "ring_counts"],
+      "additionalProperties": true
+    },
+    "SceneWrapper": {
+      "type": "object",
+      "required": ["scenes"],
+      "properties": {
+        "scenes": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Scene" },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
+

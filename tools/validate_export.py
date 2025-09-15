@@ -326,15 +326,33 @@ class ExportValidator:
 
 def main():
     """Main entry point"""
-    if len(sys.argv) < 2:
-        print("Usage: python validate_export.py <scene_directory>")
-        print("Example: python validate_export.py scene_20240914_123456")
-        sys.exit(1)
-    
-    scene_dir = sys.argv[1]
-    validator = ExportValidator(scene_dir)
-    
+    import argparse
+    parser = argparse.ArgumentParser(description="Validate a CADGameFusion scene export directory")
+    parser.add_argument('scene_dir', help='Path to scene directory')
+    parser.add_argument('--schema', action='store_true', help='Validate JSON against schema if jsonschema is available')
+    args = parser.parse_args()
+
+    validator = ExportValidator(args.scene_dir)
     success = validator.validate()
+
+    # Optional JSON Schema validation for group_*.json
+    if args.schema:
+        try:
+            import jsonschema
+            schema_path = Path(__file__).resolve().parents[1] / 'docs' / 'schemas' / 'export_group.schema.json'
+            with open(schema_path, 'r') as sf:
+                schema = json.load(sf)
+            for jpath in sorted(Path(args.scene_dir).glob('group_*.json')):
+                with open(jpath, 'r') as jf:
+                    data = json.load(jf)
+                jsonschema.validate(instance=data, schema=schema)
+            print('[SCHEMA] JSON Schema validation passed')
+        except ImportError:
+            print('[SCHEMA] jsonschema not installed; skipping schema validation')
+        except Exception as ex:
+            print(f'[SCHEMA] Validation failed: {ex}')
+            success = False
+
     sys.exit(0 if success else 1)
 
 

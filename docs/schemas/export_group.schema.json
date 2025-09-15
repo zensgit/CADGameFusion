@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cadgamefusion/schemas/export_group.schema.json",
+  "title": "CADGameFusion Group Export",
+  "type": "object",
+  "description": "Schema for group_*.json files exported by CADGameFusion.",
+  "properties": {
+    "group_id": { "type": "integer" },
+    "groupId": { "type": "integer" },
+    "flat_pts": {
+      "description": "Polygon points for all rings concatenated. Either array of {x,y} objects or [x,y] arrays.",
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["x", "y"],
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        ]
+      },
+      "minItems": 3
+    },
+    "ring_counts": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1 },
+      "minItems": 1
+    },
+    "ring_roles": {
+      "type": "array",
+      "description": "Role of each ring: 0=outer, 1=hole",
+      "items": { 
+        "type": "integer",
+        "enum": [0, 1]
+      }
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "joinType": { "type": "integer" },
+        "miterLimit": { "type": "number" },
+        "unitScale": { "type": "number" },
+        "useDocUnit": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "required": ["flat_pts", "ring_counts"],
+  "additionalProperties": true
+}
+

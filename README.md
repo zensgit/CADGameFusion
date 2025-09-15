@@ -162,3 +162,14 @@ python3 tools/validate_export.py build/exports/scene_cli_spec
 - `--scene <name>` : Scene type: sample|holes|multi|units|complex
 - `--unit <scale>` : Unit scale factor (default: 1.0)
 - `--spec-dir <dir>` : Copy scenes from specified directory
+ - `--spec <file>` : Read JSON spec and generate scene(s)
+
+#### Generating from a JSON Spec
+```bash
+# Use provided complex scene spec
+build/tools/export_cli --out build/exports \
+  --spec CADGameFusion/tools/specs/scene_complex_spec.json
+
+# Validate
+python3 tools/validate_export.py build/exports/scene_cli_scene_complex_spec
+```
