@@ -145,6 +145,11 @@ done
 python3 tools/compare_export_to_sample.py \
   build/exports/scene_cli_sample \
   sample_exports/scene_sample
+
+# Field-level numeric comparison (strict, with tolerance)
+python3 tools/compare_fields.py \
+  build/exports/scene_cli_complex \
+  sample_exports/scene_complex --rtol 1e-6
 ```
 
 #### Copying from Spec Directory

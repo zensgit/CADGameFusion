@@ -551,6 +551,106 @@ jobs:
             exit 0
           fi
 
+      - name: Field-level comparison (strict for all scenes)
+        if: always()
+        shell: bash
+        run: |
+          echo "============================================================" > field_compare_report.txt
+          echo "       FIELD-LEVEL COMPARISON (STRICT NUMERIC)              " >> field_compare_report.txt
+          echo "============================================================" >> field_compare_report.txt
+
+          if ! command -v python3 &> /dev/null; then
+            echo "[SKIP] Python3 not found, skipping field-level comparison" | tee -a field_compare_report.txt
+            exit 0
+          fi
+
+          FAIL=false
+          RTOL="${FIELD_COMPARE_RTOL:-1e-6}"
+          echo "Tolerance (rtol): $RTOL" | tee -a field_compare_report.txt
+          declare -a PAIRS_STRICT
+          PAIRS_STRICT+=("build/exports/scene_cli_sample sample_exports/scene_sample")
+          PAIRS_STRICT+=("build/exports/scene_cli_holes sample_exports/scene_holes")
+          PAIRS_STRICT+=("build/exports/scene_cli_complex sample_exports/scene_complex")
+          PAIRS_STRICT+=("build/exports/scene_cli_scene_complex_spec sample_exports/scene_complex")
+
+          declare -a PAIRS_LOOSE_UNITS
+          PAIRS_LOOSE_UNITS+=("build/exports/scene_cli_units sample_exports/scene_units")
+          declare -a PAIRS_LOOSE_MULTI
+          PAIRS_LOOSE_MULTI+=("build/exports/scene_cli_multi sample_exports/scene_multi_groups")
+
+          mkdir -p field_reports
+          for ENTRY in "${PAIRS_STRICT[@]}"; do
+            L=$(echo "$ENTRY" | awk '{print $1}')
+            R=$(echo "$ENTRY" | awk '{print $2}')
+            echo "" >> field_compare_report.txt
+            echo "[CHECK] $L  vs  $R" | tee -a field_compare_report.txt
+            if [ -d "$L" ] && [ -d "$R" ]; then
+              OUT_JSON="field_reports/$(basename "$L")__vs__$(basename "$R").json"
+              if python3 tools/compare_fields.py "$L" "$R" --rtol "$RTOL" --json-out "$OUT_JSON" --meta-mode on >> field_compare_report.txt 2>&1; then
+                echo "[RESULT] PASS" | tee -a field_compare_report.txt
+              else
+                echo "[RESULT] FAIL" | tee -a field_compare_report.txt
+                FAIL=true
+              fi
+            else
+              echo "[SKIP] One or both scenes missing" | tee -a field_compare_report.txt
+            fi
+          done
+
+          # Strict comparison for units: counts-only but meta must match; allow glTF presence mismatch
+          for ENTRY in "${PAIRS_LOOSE_UNITS[@]}"; do
+            L=$(echo "$ENTRY" | awk '{print $1}')
+            R=$(echo "$ENTRY" | awk '{print $2}')
+            echo "" >> field_compare_report.txt
+            echo "[CHECK-LOOSE (units meta on)] $L  vs  $R" | tee -a field_compare_report.txt
+            if [ -d "$L" ] && [ -d "$R" ]; then
+              OUT_JSON="field_reports/$(basename "$L")__vs__$(basename "$R").json"
+              if python3 tools/compare_fields.py "$L" "$R" --rtol "$RTOL" --json-out "$OUT_JSON" --allow-gltf-mismatch --mode counts-only --meta-mode on >> field_compare_report.txt 2>&1; then
+                echo "[RESULT] PASS (units strict)" | tee -a field_compare_report.txt
+              else
+                echo "[RESULT] FAIL (units strict)" | tee -a field_compare_report.txt
+                FAIL=true
+              fi
+            else
+              echo "[SKIP] One or both scenes missing" | tee -a field_compare_report.txt
+            fi
+          done
+
+          # Strict comparison for multi: counts-only; allow glTF presence mismatch; meta must match
+          for ENTRY in "${PAIRS_LOOSE_MULTI[@]}"; do
+            L=$(echo "$ENTRY" | awk '{print $1}')
+            R=$(echo "$ENTRY" | awk '{print $2}')
+            echo "" >> field_compare_report.txt
+            echo "[CHECK (multi strict)] $L  vs  $R" | tee -a field_compare_report.txt
+            if [ -d "$L" ] && [ -d "$R" ]; then
+              OUT_JSON="field_reports/$(basename "$L")__vs__$(basename "$R").json"
+              if python3 tools/compare_fields.py "$L" "$R" --rtol "$RTOL" --json-out "$OUT_JSON" --allow-gltf-mismatch --mode counts-only --meta-mode on >> field_compare_report.txt 2>&1; then
+                echo "[RESULT] PASS (multi strict)" | tee -a field_compare_report.txt
+              else
+                echo "[RESULT] FAIL (multi strict)" | tee -a field_compare_report.txt
+                FAIL=true
+              fi
+            else
+              echo "[SKIP] One or both scenes missing" | tee -a field_compare_report.txt
+            fi
+          done
+
+          if [ "$FAIL" = true ]; then
+            echo "[FAILURE] Field-level comparison failed" | tee -a field_compare_report.txt
+            exit 1
+          else
+            echo "[SUCCESS] Field-level comparison passed" | tee -a field_compare_report.txt
+          fi
+
+      - name: Upload field comparison report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: field-compare-report-${{ runner.os }}
+          path: |
+            field_compare_report.txt
+            field_reports/*.json
+
       - name: Generate JSON Schema validation report
         if: always()
         shell: bash
@@ -660,3 +760,46 @@ PY
         with:
           name: test-report-strict-${{ runner.os }}
           path: test_report.md
+
+      - name: Append field comparison summary to test report
+        if: always()
+        shell: bash
+        run: |
+          if [ -f "field_compare_report.txt" ]; then
+            echo "" >> test_report.md
+            echo "### Field-level Comparison Summary" >> test_report.md
+            echo '```' >> test_report.md
+            tail -n 50 field_compare_report.txt >> test_report.md || cat field_compare_report.txt >> test_report.md
+            echo '```' >> test_report.md
+          fi
+
+      - name: Summarize field JSON reports into test report
+        if: always()
+        shell: bash
+        run: |
+          if [ -d "field_reports" ]; then
+            echo "" >> test_report.md
+            echo "### Field-level JSON Report Overview" >> test_report.md
+            python3 - "$PWD/field_reports" << 'PY' >> test_report.md
+import sys, json
+from pathlib import Path
+root = Path(sys.argv[1])
+files = sorted(root.glob('*.json'))
+print('')
+if not files:
+    print('(no field JSON reports)')
+else:
+    print('| Pair | Status | Errors |')
+    print('|------|--------|--------|')
+    for fp in files:
+        try:
+            d = json.load(open(fp,'r'))
+            left = Path(d.get('left','')).name or fp.name.split('__vs__')[0]
+            right = Path(d.get('right','')).name or fp.name.split('__vs__')[1]
+            status = d.get('status','unknown')
+            err_cnt = len(d.get('errors',[]))
+            print(f'| {left} vs {right} | {status} | {err_cnt} |')
+        except Exception as ex:
+            print(f'| {fp.name} | error | 1 |')
+PY
+          fi
