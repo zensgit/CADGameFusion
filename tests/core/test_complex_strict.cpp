@@ -1,12 +1,25 @@
 // test_complex_strict.cpp
 // Strict test for L-shaped polygon with two holes triangulation
 
-#include <gtest/gtest.h>
 #include <vector>
 #include <iostream>
+#include <cassert>
 #include "core_triangulate.h"
 
-TEST(ComplexStrictTest, LShapedWithTwoHoles) {
+#ifdef GTEST_FOUND
+#include <gtest/gtest.h>
+#define TEST_FUNC(test_suite, test_name) TEST(test_suite, test_name)
+#define EXPECT_GT(a, b) EXPECT_GT(a, b)
+#define EXPECT_EQ(a, b) EXPECT_EQ(a, b)
+#define EXPECT_TRUE(a) EXPECT_TRUE(a)
+#else
+#define TEST_FUNC(test_suite, test_name) void test_suite##_##test_name()
+#define EXPECT_GT(a, b) assert((a) > (b))
+#define EXPECT_EQ(a, b) assert((a) == (b))
+#define EXPECT_TRUE(a) assert(a)
+#endif
+
+TEST_FUNC(ComplexStrictTest, LShapedWithTwoHoles) {
     // L-shaped outer ring (6 vertices, counter-clockwise)
     std::vector<float> points = {
         0.0f, 0.0f,  // 0
@@ -150,15 +163,26 @@ TEST(ComplexStrictTest, EmptyInput) {
 }
 
 int main(int argc, char **argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    
     std::cout << "=== Complex Strict Triangulation Tests ===" << std::endl;
 #ifdef USE_EARCUT
     std::cout << "[INFO] Running with earcut enabled" << std::endl;
 #else
     std::cout << "[INFO] Running without earcut (fallback mode)" << std::endl;
 #endif
-    
+
+#ifdef GTEST_FOUND
+    ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+#else
+    std::cout << "[INFO] Running without GTest (using assert-based tests)" << std::endl;
+    
+    // Manually run tests
+    ComplexStrictTest_LShapedWithTwoHoles();
+    ComplexStrictTest_DeepNestedHoles();
+    ComplexStrictTest_EdgeCases();
+    
+    std::cout << "[PASS] All tests completed successfully" << std::endl;
+    return 0;
+#endif
 }
 
