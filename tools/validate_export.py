@@ -330,6 +330,7 @@ def main():
     parser = argparse.ArgumentParser(description="Validate a CADGameFusion scene export directory")
     parser.add_argument('scene_dir', help='Path to scene directory')
     parser.add_argument('--schema', action='store_true', help='Validate JSON against schema if jsonschema is available')
+    parser.add_argument('--stats-out', type=str, default='', help='Append concise stats for this scene to the given file')
     args = parser.parse_args()
 
     validator = ExportValidator(args.scene_dir)
@@ -352,6 +353,51 @@ def main():
         except Exception as ex:
             print(f'[SCHEMA] Validation failed: {ex}')
             success = False
+
+    # Optional stats output
+    if args.stats_out:
+        try:
+            scene_path = Path(args.scene_dir)
+            scene_name = scene_path.name
+            # Compute stats
+            json_files = sorted(scene_path.glob('group_*.json'))
+            gltf_files = sorted(scene_path.glob('mesh_group_*.gltf'))
+            json_groups = len(json_files)
+            json_points = 0
+            json_rings = 0
+            for jf in json_files:
+                with open(jf, 'r') as f:
+                    d = json.load(f)
+                rc = d.get('ring_counts', [])
+                json_rings += len(rc)
+                fp = d.get('flat_pts', [])
+                if fp and isinstance(fp[0], dict):
+                    json_points += len(fp)
+                elif fp and isinstance(fp[0], (int, float)):
+                    json_points += len(fp) // 2
+            gltf_vertices = 0
+            gltf_indices = 0
+            for gf in gltf_files:
+                try:
+                    with open(gf, 'r') as f:
+                        g = json.load(f)
+                    prim = g.get('meshes', [{}])[0].get('primitives', [{}])[0]
+                    pos_idx = prim.get('attributes', {}).get('POSITION', -1)
+                    ind_idx = prim.get('indices', -1)
+                    acc = g.get('accessors', [])
+                    if isinstance(pos_idx, int) and pos_idx >= 0 and pos_idx < len(acc):
+                        gltf_vertices += int(acc[pos_idx].get('count', 0))
+                    if isinstance(ind_idx, int) and ind_idx >= 0 and ind_idx < len(acc):
+                        gltf_indices += int(acc[ind_idx].get('count', 0))
+                except Exception:
+                    pass
+            triangles = gltf_indices // 3 if gltf_indices else 0
+            ok_flag = 'YES' if success else 'NO'
+            line = f"scene={scene_name}, json_groups={json_groups}, json_points={json_points}, json_rings={json_rings}, gltf_vertices={gltf_vertices if gltf_files else 'NA'}, gltf_indices={gltf_indices if gltf_files else 'NA'}, triangles={triangles if gltf_files else 'NA'}, ok={ok_flag}\n"
+            with open(args.stats_out, 'a', encoding='utf-8') as outf:
+                outf.write(line)
+        except Exception as ex:
+            print(f"[STATS] Failed to write stats: {ex}")
 
     sys.exit(0 if success else 1)
 

@@ -366,14 +366,16 @@ jobs:
           FAILED_COUNT=0
           FAILED_SCENES=""
           
+          STATS_FILE="consistency_stats.txt"
+          : > "$STATS_FILE"
           for SCENE in $SCENE_DIRS; do
             SCENE_NAME=$(basename "$SCENE")
             echo ""
             echo "[VALIDATE] Scene: $SCENE_NAME"
             echo "------------------------------------------------------------"
             
-            # Attempt schema validation as best-effort; do not fail CI if jsonschema is missing
-            if python3 tools/validate_export.py "$SCENE" --schema; then
+            # Run validation with schema and append stats for consistency report
+            if python3 tools/validate_export.py "$SCENE" --schema --stats-out "$STATS_FILE"; then
               echo "[RESULT] $SCENE_NAME: PASSED"
               PASSED_COUNT=$((PASSED_COUNT + 1))
             else
@@ -405,6 +407,16 @@ jobs:
             echo ""
             echo "[RESULT] ALL VALIDATIONS PASSED"
             echo "============================================================"
+          fi
+
+          echo "" >> test_report.md
+          echo "### Consistency Stats" >> test_report.md
+          if [ -f "$STATS_FILE" ]; then
+            echo '```' >> test_report.md
+            cat "$STATS_FILE" >> test_report.md
+            echo '```' >> test_report.md
+          else
+            echo "(no stats generated)" >> test_report.md
           fi
 
       - name: Compare CLI exports with samples (loose mode)

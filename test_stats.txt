@@ -1,0 +1,5 @@
+scene=scene_complex, json_groups=1, json_points=14, json_rings=3, gltf_vertices=14, gltf_indices=12, triangles=4, ok=YES
+scene=scene_holes, json_groups=1, json_points=8, json_rings=2, gltf_vertices=4, gltf_indices=6, triangles=2, ok=YES
+scene=scene_multi_groups, json_groups=3, json_points=12, json_rings=3, gltf_vertices=NA, gltf_indices=NA, triangles=NA, ok=YES
+scene=scene_sample, json_groups=1, json_points=4, json_rings=1, gltf_vertices=4, gltf_indices=9, triangles=3, ok=YES
+scene=scene_units, json_groups=1, json_points=4, json_rings=1, gltf_vertices=NA, gltf_indices=NA, triangles=NA, ok=YES
