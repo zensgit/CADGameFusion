@@ -155,6 +155,11 @@ jobs:
         shell: bash
         run: |
           cmake --build build --config Release --parallel 2
+          
+      - name: Install built tools
+        shell: bash
+        run: |
+          cmake --install build --config Release --prefix build
 
       - name: Verify vcpkg dependencies
         shell: bash
