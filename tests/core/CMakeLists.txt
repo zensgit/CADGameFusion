@@ -21,7 +21,7 @@ if(TARGET core)
     # Complex scene triangulation strict test (requires earcut to be effective)
     add_executable(core_tests_complex_strict test_complex_strict.cpp)
     target_include_directories(core_tests_complex_strict PRIVATE ../../core/include)
-    target_link_libraries(core_tests_complex_strict PRIVATE core)
+    target_link_libraries(core_tests_complex_strict PRIVATE core_c)
     
     # Add GTest if available
     find_package(GTest QUIET)
