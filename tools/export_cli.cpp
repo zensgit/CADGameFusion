@@ -195,16 +195,20 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
     if (scene.ringRoles.size() > 1 && scene.ringRoles[1] == 1) {
         // Has holes - use rings API if available
         success = core_triangulate_polygon_rings(
-            scene.points.data(), scene.points.size(),
-            scene.ringCounts.data(), scene.ringCounts.size(),
-            nullptr, &indexCount);
+            reinterpret_cast<const core_vec2*>(scene.points.data()),
+            scene.ringCounts.data(),
+            static_cast<int>(scene.ringCounts.size()),
+            nullptr, 
+            &indexCount);
         
         if (success && indexCount > 0) {
             indices.resize(indexCount);
             core_triangulate_polygon_rings(
-                scene.points.data(), scene.points.size(),
-                scene.ringCounts.data(), scene.ringCounts.size(),
-                indices.data(), &indexCount);
+                reinterpret_cast<const core_vec2*>(scene.points.data()),
+                scene.ringCounts.data(),
+                static_cast<int>(scene.ringCounts.size()),
+                indices.data(),
+                &indexCount);
         }
     } else {
         // Simple polygon - use basic triangulation
