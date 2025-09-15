@@ -21,11 +21,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
+    env:
+      FIELD_COMPARE_RTOL: 1e-6
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Enhanced vcpkg cache
       - name: Cache vcpkg packages
         uses: actions/cache@v3
         with:
@@ -54,249 +56,111 @@ jobs:
       - name: Setup vcpkg
         shell: bash
         run: |
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            # Windows: Use C:/vcpkg
-            VCPKG_DIR="C:/vcpkg"
-            if [ -d "$VCPKG_DIR/.git" ]; then
-              echo "vcpkg exists, updating..."
-              (cd "$VCPKG_DIR" && git pull)
+          if [ ! -d "vcpkg" ]; then
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+            if [ "$RUNNER_OS" = "Windows" ]; then
+              ./vcpkg/bootstrap-vcpkg.bat
             else
-              echo "Cloning vcpkg..."
-              rm -rf "$VCPKG_DIR"
-              git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"
+              ./vcpkg/bootstrap-vcpkg.sh
             fi
-            (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.bat -disableMetrics)
-            echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
-            echo "$VCPKG_DIR" >> $GITHUB_PATH
-          else
-            # Linux/macOS: Use ~/vcpkg
-            VCPKG_DIR="$HOME/vcpkg"
-            if [ -d "$VCPKG_DIR/.git" ]; then
-              echo "vcpkg exists, updating..."
-              (cd "$VCPKG_DIR" && git pull)
-            else
-              echo "Cloning vcpkg..."
-              rm -rf "$VCPKG_DIR"
-              git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"
-            fi
-            (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.sh -disableMetrics)
-            echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
-            echo "$VCPKG_DIR" >> $GITHUB_PATH
           fi
-          
+          echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
+
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake build-essential ninja-build
-          
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config
+
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install cmake ninja || true
+          brew install cmake ninja pkg-config
 
-      - name: Configure with vcpkg (strict)
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          echo "Windows dependencies already installed via MSYS2"
+
+      - name: Configure
         shell: bash
         run: |
-          echo "=== Strict build with vcpkg ==="
-          
-          # Set vcpkg root based on OS
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            export VCPKG_ROOT="C:/vcpkg"
-            VCPKG_CMAKE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-          else
-            export VCPKG_ROOT="$HOME/vcpkg"
-            VCPKG_CMAKE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-          fi
-          
-          echo "VCPKG_ROOT: $VCPKG_ROOT"
-          echo "VCPKG_CMAKE: $VCPKG_CMAKE"
-          
-          # Configure with retries for Windows
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            MAX_RETRIES=3
-            RETRY_COUNT=0
-            SUCCESS=false
-            
-            while [ $RETRY_COUNT -lt $MAX_RETRIES ] && [ "$SUCCESS" = "false" ]; do
-              echo "Attempt $((RETRY_COUNT+1)) of $MAX_RETRIES"
-              
-              if cmake -S . -B build \
-                -DBUILD_EDITOR_QT=OFF \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_TOOLCHAIN_FILE="$VCPKG_CMAKE" \
-                -DVCPKG_TARGET_TRIPLET=x64-windows \
-                -DVCPKG_HOST_TRIPLET=x64-windows; then
-                echo "✅ Configuration successful"
-                SUCCESS=true
-              else
-                RETRY_COUNT=$((RETRY_COUNT+1))
-                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
-                  echo "⚠️ Configuration failed, waiting 10 seconds before retry..."
-                  sleep 10
-                  rm -rf build
-                fi
-              fi
-            done
-            
-            if [ "$SUCCESS" = "false" ]; then
-              echo "❌ All retries exhausted, falling back to no vcpkg"
-              rm -rf build
-              cmake -S . -B build \
-                -DBUILD_EDITOR_QT=OFF \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DUSE_EARCUT=OFF \
-                -DUSE_CLIPPER2=OFF
-            fi
-          else
-            # Linux/macOS: direct configuration
-            cmake -S . -B build \
-              -DBUILD_EDITOR_QT=OFF \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_TOOLCHAIN_FILE="$VCPKG_CMAKE"
-          fi
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+            -DVCPKG_MANIFEST_MODE=ON \
+            -DBUILD_EDITOR_QT=OFF \
+            -G Ninja
 
       - name: Build
         shell: bash
         run: |
-          cmake --build build --config Release --parallel 2
-          
-      - name: Install built tools
-        shell: bash
-        run: |
-          cmake --install build --config Release --prefix build
+          cmake --build build --config Release
 
-      - name: Verify vcpkg dependencies
+      - name: List build outputs
         shell: bash
         run: |
-          echo "=== Checking for vcpkg features ==="
-          if [ -f "build/CMakeCache.txt" ]; then
-            echo "Checking for Earcut:"
-            grep -i "earcut" build/CMakeCache.txt || echo "Earcut not found (may have fallen back)"
-            echo ""
-            echo "Checking for Clipper2:"
-            grep -i "clipper" build/CMakeCache.txt || echo "Clipper2 not found (may have fallen back)"
-            echo ""
-            echo "Feature flags:"
-            grep "USE_" build/CMakeCache.txt || echo "No feature flags found"
-          fi
+          echo "Build outputs:"
+          find build -name "*.exe" -o -name "*.dll" -o -name "*.so" -o -name "*.dylib" | head -20
 
-      - name: Run tests
+      - name: Run core tests
         shell: bash
         run: |
-          echo "=== Running tests ==="
-          
-          # Find test directory
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            TEST_DIR="build/tests/core/Release"
-            [ ! -d "$TEST_DIR" ] && TEST_DIR="build/Release"
-            TEST_SUFFIX=".exe"
-          else
-            TEST_DIR="build/tests/core"
-            TEST_SUFFIX=""
-          fi
-          
-          # Run available tests
-          if [ -f "$TEST_DIR/test_simple$TEST_SUFFIX" ]; then
-            echo "=== Simple test ==="
-            "$TEST_DIR/test_simple$TEST_SUFFIX"
-          fi
-          
-          if [ -f "$TEST_DIR/core_tests_triangulation$TEST_SUFFIX" ]; then
-            echo "=== Triangulation test ==="
-            "$TEST_DIR/core_tests_triangulation$TEST_SUFFIX"
-          fi
-          
-          if [ -f "$TEST_DIR/core_tests_boolean_offset$TEST_SUFFIX" ]; then
-            echo "=== Boolean/offset test ==="
-            "$TEST_DIR/core_tests_boolean_offset$TEST_SUFFIX"
-          fi
-          
-          if [ -f "$TEST_DIR/core_tests_complex_strict$TEST_SUFFIX" ]; then
-            echo "=== Complex strict test (L-shaped with holes) ==="
-            "$TEST_DIR/core_tests_complex_strict$TEST_SUFFIX"
-          fi
-          
-          if [ -f "$TEST_DIR/core_tests_strict$TEST_SUFFIX" ]; then
-            echo "=== Strict assertions test ==="
-            "$TEST_DIR/core_tests_strict$TEST_SUFFIX"
-          else
-            echo "⚠️ Strict test not found (expected if vcpkg failed)"
-          fi
-          
-          echo "✅ Available tests passed!"
+          cd build
+          ctest --output-on-failure --verbose
 
       - name: Run export_cli to generate test scenes
         if: always()
         shell: bash
         run: |
           echo "============================================================"
-          echo "              EXPORT CLI GENERATION TEST                    "
+          echo "              EXPORT CLI TEST SCENE GENERATION             "
           echo "============================================================"
-          echo ""
           
-          # Check if export_cli was built (check build/bin first as per install path)
-          EXPORT_CLI=""
-          if [ -f "build/bin/export_cli" ]; then
-            EXPORT_CLI="build/bin/export_cli"
-          elif [ -f "build/bin/export_cli.exe" ]; then
-            EXPORT_CLI="build/bin/export_cli.exe"
-          elif [ -f "build/tools/export_cli" ]; then
-            EXPORT_CLI="build/tools/export_cli"
+          mkdir -p build/exports
+          CLI_PATH=""
+          if [ -f "build/tools/export_cli" ]; then
+            CLI_PATH="build/tools/export_cli"
           elif [ -f "build/tools/Release/export_cli.exe" ]; then
-            EXPORT_CLI="build/tools/Release/export_cli.exe"
+            CLI_PATH="build/tools/Release/export_cli.exe"
           elif [ -f "build/tools/Debug/export_cli.exe" ]; then
-            EXPORT_CLI="build/tools/Debug/export_cli.exe"
-          elif [ -f "build/Release/export_cli.exe" ]; then
-            EXPORT_CLI="build/Release/export_cli.exe"
-          elif [ -f "build/Release/export_cli" ]; then
-            EXPORT_CLI="build/Release/export_cli"
+            CLI_PATH="build/tools/Debug/export_cli.exe"
+          else
+            echo "[ERROR] export_cli not found in expected locations"
+            find build -name "*export_cli*" -type f
+            exit 1
           fi
           
-          if [ -n "$EXPORT_CLI" ]; then
-            echo "[INFO] Found export_cli: $EXPORT_CLI"
+          echo "[CLI] Using: $CLI_PATH"
+          
+          # Test predefined scenes
+          SCENES="sample holes multi units complex"
+          for SCENE in $SCENES; do
             echo ""
-            echo "[RUN] Generating test scenes with export_cli..."
-            
-            # Generate all five scenes (including complex)
-            for SCENE in sample holes multi units complex; do
-              echo "  Generating scene_cli_$SCENE..."
-              $EXPORT_CLI --out build/exports --scene $SCENE || echo "    Warning: Failed to generate $SCENE"
-            done
-
-            # Test spec-dir functionality with complex scene
-            if [ -d "sample_exports/scene_complex" ]; then
-              echo "  Copying spec scene from sample_exports/scene_complex..."
-              $EXPORT_CLI --out build/exports --spec-dir sample_exports/scene_complex || echo "    Warning: Failed to copy spec scene"
-            fi
-
-            # Test JSON --spec functionality using provided spec file
-            if [ -f "tools/specs/scene_complex_spec.json" ]; then
-              echo "  Generating from JSON spec tools/specs/scene_complex_spec.json..."
-              $EXPORT_CLI --out build/exports --spec tools/specs/scene_complex_spec.json || echo "    Warning: Failed to generate from spec JSON"
-            fi
-            
+            echo "[EXPORT] Generating scene: $SCENE"
+            "$CLI_PATH" --out build/exports --scene "$SCENE" || echo "[WARN] Failed to generate $SCENE"
+          done
+          
+          # Test spec-based scene
+          if [ -f "tools/specs/scene_complex_spec.json" ]; then
             echo ""
-            echo "[INFO] Generated scenes in build/exports/"
-            ls -la build/exports/ 2>/dev/null | head -20 || echo "    No exports directory found"
-          else
-            echo "[SKIP] export_cli not found, skipping CLI generation test"
+            echo "[EXPORT] Generating from spec: scene_complex_spec.json"
+            "$CLI_PATH" --out build/exports --spec tools/specs/scene_complex_spec.json || echo "[WARN] Failed to generate from spec"
           fi
+          
+          echo ""
+          echo "[RESULT] Generated scenes:"
+          ls -la build/exports/ || echo "[INFO] No exports directory created"
 
       - name: Validate sample export (if present)
         if: always()
         shell: bash
         run: |
           echo "============================================================"
-          echo "                    EXPORT VALIDATION                       "
+          echo "                SAMPLE EXPORT VALIDATION                   "
           echo "============================================================"
           
-          # Check if Python is available
-          if ! command -v python3 &> /dev/null; then
-            echo "[SKIP] Python3 not found, skipping export validation"
-            exit 0
-          fi
-
           # Ensure jsonschema is available (strict requirement for schema validation)
           echo "[SETUP] Ensuring jsonschema is installed"
           python3 -m pip install --user --upgrade pip >/dev/null 2>&1 || true
@@ -304,65 +168,23 @@ jobs:
           
           # Check if validation script exists
           if [ ! -f "tools/validate_export.py" ]; then
-            echo "[SKIP] Validation script not found at tools/validate_export.py"
-            exit 0
+            echo "[ERROR] validate_export.py not found"
+            exit 1
           fi
           
-          # Search order: 1) CLI-generated, 2) sample_exports/scene_*, 3) ./scene_*
+          # Find sample export directories
           SCENE_DIRS=""
-          
-          # First priority: CLI-generated scenes in build/exports
-          if [ -d "build/exports" ]; then
-            CLI_SCENES=$(find build/exports -maxdepth 1 -type d -name "scene_cli_*" 2>/dev/null | sort)
-            if [ -n "$CLI_SCENES" ]; then
-              SCENE_DIRS="$CLI_SCENES"
-              echo "[INFO] Found CLI-generated scenes:"
-              for SCENE in $CLI_SCENES; do
-                echo "  - $(basename $SCENE)"
-              done
-            fi
-          fi
-          
-          # Second priority: sample_exports directory - iterate ALL scene_* directories
           if [ -d "sample_exports" ]; then
-            SAMPLE_SCENES=$(find sample_exports -maxdepth 2 -type d -name "scene_*" 2>/dev/null | sort)
-            if [ -n "$SAMPLE_SCENES" ]; then
-              if [ -n "$SCENE_DIRS" ]; then
-                SCENE_DIRS="$SCENE_DIRS $SAMPLE_SCENES"
-                echo ""
-                echo "[INFO] Also found scenes in sample_exports:"
-              else
-                SCENE_DIRS="$SAMPLE_SCENES"
-                echo "[INFO] Found scenes in sample_exports:"
-              fi
-              for SCENE in $SAMPLE_SCENES; do
-                echo "  - $(basename $SCENE)"
-              done
-            fi
-          fi
-          
-          # Third priority: root directory scene_* (only if no other scenes found)
-          if [ -z "$SCENE_DIRS" ]; then
-            ROOT_SCENES=$(find . -maxdepth 1 -type d -name "scene_*" 2>/dev/null | sort)
-            if [ -n "$ROOT_SCENES" ]; then
-              SCENE_DIRS="$ROOT_SCENES"
-              echo "[INFO] Found scenes in root directory:"
-              for SCENE in $ROOT_SCENES; do
-                echo "  - $(basename $SCENE)"
-              done
-            fi
+            SCENE_DIRS="$(find sample_exports -maxdepth 1 -type d -name "scene_*" | sort)"
           fi
           
           if [ -z "$SCENE_DIRS" ]; then
-            echo "[SKIP] No scene directories found, skipping validation"
-            echo "       (To enable validation, create scene_* directories with exported files)"
+            echo "[SKIP] No sample export directories found"
             exit 0
           fi
           
-          # Count total scenes
-          TOTAL_SCENES=$(echo "$SCENE_DIRS" | wc -w)
-          echo ""
-          echo "[INFO] Total scenes to validate: $TOTAL_SCENES"
+          echo "============================================================"
+          echo "                    VALIDATION SUMMARY                      "
           echo "============================================================"
           
           # Validate each scene directory and collect results
@@ -391,19 +213,14 @@ jobs:
             fi
           done
           
-          # Summary output
           echo ""
           echo "============================================================"
           echo "                    VALIDATION SUMMARY                      "
           echo "============================================================"
-          echo "[STATS] Total: $TOTAL_SCENES | Passed: $PASSED_COUNT | Failed: $FAILED_COUNT"
+          echo "[STATS] Total: $((PASSED_COUNT + FAILED_COUNT)) | Passed: $PASSED_COUNT | Failed: $FAILED_COUNT"
           
           if [ "$VALIDATION_FAILED" = true ]; then
-            echo ""
-            echo "[FAILED] The following scenes failed validation:"
-            for SCENE in $FAILED_SCENES; do
-              echo "  - $SCENE"
-            done
+            echo "[FAILED] The following scenes failed validation:$FAILED_SCENES"
             echo ""
             echo "[RESULT] VALIDATION FAILED"
             echo "============================================================"
@@ -414,17 +231,7 @@ jobs:
             echo "============================================================"
           fi
 
-          echo "" >> test_report.md
-          echo "### Consistency Stats" >> test_report.md
-          if [ -f "$STATS_FILE" ]; then
-            echo '```' >> test_report.md
-            cat "$STATS_FILE" >> test_report.md
-            echo '```' >> test_report.md
-          else
-            echo "(no stats generated)" >> test_report.md
-          fi
-
-      - name: Compare CLI exports with samples (loose mode)
+      - name: Compare CLI exports with samples (structure check)
         if: always()
         shell: bash
         run: |
@@ -432,47 +239,13 @@ jobs:
           echo "           STRUCTURE COMPARISON (LOOSE MODE)                "
           echo "============================================================"
           
-          # Check if comparison script exists
-          if [ ! -f "tools/compare_export_to_sample.py" ]; then
-            echo "[SKIP] Comparison script not found at tools/compare_export_to_sample.py"
+          # Skip if no exports generated
+          if [ ! -d "build/exports" ]; then
+            echo "[SKIP] No CLI exports found to compare"
             exit 0
           fi
           
-          # Check if Python is available
-          if ! command -v python3 &> /dev/null; then
-            echo "[SKIP] Python3 not found, skipping structure comparison"
-            exit 0
-          fi
-          
-          # Check if both CLI exports and sample exports exist
-          HAS_CLI_EXPORTS=false
-          HAS_SAMPLE_EXPORTS=false
-          
-          if [ -d "build/exports" ]; then
-            CLI_COUNT=$(find build/exports -maxdepth 1 -type d -name "scene_cli_*" 2>/dev/null | wc -l)
-            if [ "$CLI_COUNT" -gt 0 ]; then
-              HAS_CLI_EXPORTS=true
-            fi
-          fi
-          
-          if [ -d "sample_exports" ]; then
-            SAMPLE_COUNT=$(find sample_exports -maxdepth 1 -type d -name "scene_*" 2>/dev/null | wc -l)
-            if [ "$SAMPLE_COUNT" -gt 0 ]; then
-              HAS_SAMPLE_EXPORTS=true
-            fi
-          fi
-          
-          if [ "$HAS_CLI_EXPORTS" = false ] || [ "$HAS_SAMPLE_EXPORTS" = false ]; then
-            echo "[SKIP] Missing CLI exports or sample exports for comparison"
-            echo "       CLI exports found: $HAS_CLI_EXPORTS"
-            echo "       Sample exports found: $HAS_SAMPLE_EXPORTS"
-            exit 0
-          fi
-          
-          echo "[INFO] Comparing CLI-generated scenes with sample exports"
-          echo ""
-          
-          # Define scene mappings (CLI name -> sample name)
+          # Map CLI output names to sample directory names
           declare -A SCENE_MAP
           SCENE_MAP["scene_cli_sample"]="scene_sample"
           SCENE_MAP["scene_cli_holes"]="scene_holes"
@@ -482,71 +255,43 @@ jobs:
           SCENE_MAP["scene_cli_scene_complex_spec"]="scene_complex"
           
           COMPARISON_FAILED=false
-          COMPARED_COUNT=0
-          PASSED_COUNT=0
-          FAILED_COUNT=0
-          
-          # Compare each CLI scene with its sample counterpart
-          for CLI_SCENE in build/exports/scene_cli_*; do
-            if [ ! -d "$CLI_SCENE" ]; then
-              continue
-            fi
+          for CLI_DIR in build/exports/scene_cli_*; do
+            [ ! -d "$CLI_DIR" ] && continue
             
-            CLI_NAME=$(basename "$CLI_SCENE")
+            CLI_NAME=$(basename "$CLI_DIR")
             SAMPLE_NAME="${SCENE_MAP[$CLI_NAME]}"
             
             if [ -z "$SAMPLE_NAME" ]; then
-              echo "[WARN] No sample mapping for $CLI_NAME"
+              echo "[SKIP] No mapping for $CLI_NAME"
               continue
             fi
             
-            SAMPLE_SCENE="sample_exports/$SAMPLE_NAME"
-            
-            if [ ! -d "$SAMPLE_SCENE" ]; then
-              echo "[WARN] Sample scene not found: $SAMPLE_SCENE"
-              continue
-            fi
-            
-            echo "[COMPARE] $CLI_NAME vs $SAMPLE_NAME"
-            echo "------------------------------------------------------------"
-            
-            COMPARED_COUNT=$((COMPARED_COUNT + 1))
-            
-            # Run comparison (strong assertion for sample, holes, and complex)
-            if python3 tools/compare_export_to_sample.py "$CLI_SCENE" "$SAMPLE_SCENE"; then
-              echo "[RESULT] Structure match confirmed"
-              PASSED_COUNT=$((PASSED_COUNT + 1))
-            else
-              echo "[RESULT] Structure differences detected"
-              FAILED_COUNT=$((FAILED_COUNT + 1))
-              
-              # Strong assertion for sample, holes, complex, and spec-complex scenes
-              if [ "$CLI_NAME" = "scene_cli_sample" ] || [ "$CLI_NAME" = "scene_cli_holes" ] || [ "$CLI_NAME" = "scene_cli_complex" ] || [ "$CLI_NAME" = "scene_cli_scene_complex_spec" ]; then
-                echo "[ERROR] Required scenes (sample/holes/complex/spec) must match structure exactly!"
-                COMPARISON_FAILED=true
-              else
-                echo "[INFO] Structure difference allowed for $CLI_NAME (non-critical)"
-              fi
-            fi
+            SAMPLE_DIR="sample_exports/$SAMPLE_NAME"
             
             echo ""
+            echo "[COMPARE] $CLI_NAME -> $SAMPLE_NAME"
+            echo "  CLI:    $CLI_DIR"
+            echo "  Sample: $SAMPLE_DIR"
+            
+            if [ ! -d "$SAMPLE_DIR" ]; then
+              echo "  [SKIP] Sample directory not found"
+              continue
+            fi
+            
+            # Run structure comparison
+            if python3 tools/compare_export_to_sample.py "$CLI_DIR" "$SAMPLE_DIR"; then
+              echo "  [RESULT] Structure match: PASS"
+            else
+              echo "  [RESULT] Structure match: FAIL"
+              # Strong comparison for critical scenes
+              if [ "$CLI_NAME" = "scene_cli_sample" ] || [ "$CLI_NAME" = "scene_cli_holes" ] || [ "$CLI_NAME" = "scene_cli_complex" ] || [ "$CLI_NAME" = "scene_cli_scene_complex_spec" ]; then
+                echo "  [ERROR] Required scenes (sample/holes/complex/spec) must match structure exactly!"
+                COMPARISON_FAILED=true
+              else
+                echo "  [INFO] Structure difference allowed for $CLI_NAME (non-critical)"
+              fi
+            fi
           done
-          
-          # Summary
-          echo "============================================================"
-          echo "                  COMPARISON SUMMARY                        "
-          echo "============================================================"
-          echo "[STATS] Compared: $COMPARED_COUNT | Matched: $PASSED_COUNT | Differences: $FAILED_COUNT"
-          
-          if [ "$COMPARED_COUNT" -eq 0 ]; then
-            echo "[WARN] No scenes were compared"
-          elif [ "$PASSED_COUNT" -eq "$COMPARED_COUNT" ]; then
-            echo "[SUCCESS] All scenes have matching structures"
-          else
-            echo "[INFO] Some structural differences detected (expected due to triangulation)"
-          fi
-          
-          echo "============================================================"
           
           # Exit with error if required comparisons failed
           if [ "$COMPARISON_FAILED" = true ]; then
@@ -556,7 +301,7 @@ jobs:
             exit 0
           fi
 
-      - name: Field-level comparison (strict for all scenes)
+      - name: Field-level comparison (strict for critical scenes)
         if: always()
         shell: bash
         run: |
@@ -572,18 +317,23 @@ jobs:
           FAIL=false
           RTOL="${FIELD_COMPARE_RTOL:-1e-6}"
           echo "Tolerance (rtol): $RTOL" | tee -a field_compare_report.txt
+          
+          # Critical scenes requiring strict comparison
           declare -a PAIRS_STRICT
           PAIRS_STRICT+=("build/exports/scene_cli_sample sample_exports/scene_sample")
           PAIRS_STRICT+=("build/exports/scene_cli_holes sample_exports/scene_holes")
           PAIRS_STRICT+=("build/exports/scene_cli_complex sample_exports/scene_complex")
           PAIRS_STRICT+=("build/exports/scene_cli_scene_complex_spec sample_exports/scene_complex")
 
+          # Non-critical scenes with loose comparison
           declare -a PAIRS_LOOSE_UNITS
           PAIRS_LOOSE_UNITS+=("build/exports/scene_cli_units sample_exports/scene_units")
           declare -a PAIRS_LOOSE_MULTI
           PAIRS_LOOSE_MULTI+=("build/exports/scene_cli_multi sample_exports/scene_multi_groups")
 
           mkdir -p field_reports
+          
+          # Strict comparison for critical scenes
           for ENTRY in "${PAIRS_STRICT[@]}"; do
             L=$(echo "$ENTRY" | awk '{print $1}')
             R=$(echo "$ENTRY" | awk '{print $2}')
@@ -602,18 +352,18 @@ jobs:
             fi
           done
 
-          # Strict comparison for units: counts-only but meta must match; allow glTF presence mismatch
+          # Loose comparison for units scenes
           for ENTRY in "${PAIRS_LOOSE_UNITS[@]}"; do
             L=$(echo "$ENTRY" | awk '{print $1}')
             R=$(echo "$ENTRY" | awk '{print $2}')
             echo "" >> field_compare_report.txt
-            echo "[CHECK-LOOSE (units meta on)] $L  vs  $R" | tee -a field_compare_report.txt
+            echo "[CHECK-LOOSE (units)] $L  vs  $R" | tee -a field_compare_report.txt
             if [ -d "$L" ] && [ -d "$R" ]; then
               OUT_JSON="field_reports/$(basename "$L")__vs__$(basename "$R").json"
               if python3 tools/compare_fields.py "$L" "$R" --rtol "$RTOL" --json-out "$OUT_JSON" --allow-gltf-mismatch --mode counts-only --meta-mode on >> field_compare_report.txt 2>&1; then
-                echo "[RESULT] PASS (units strict)" | tee -a field_compare_report.txt
+                echo "[RESULT] PASS (units loose)" | tee -a field_compare_report.txt
               else
-                echo "[RESULT] FAIL (units strict)" | tee -a field_compare_report.txt
+                echo "[RESULT] FAIL (units loose)" | tee -a field_compare_report.txt
                 FAIL=true
               fi
             else
@@ -621,18 +371,18 @@ jobs:
             fi
           done
 
-          # Strict comparison for multi: counts-only; allow glTF presence mismatch; meta must match
+          # Loose comparison for multi scenes
           for ENTRY in "${PAIRS_LOOSE_MULTI[@]}"; do
             L=$(echo "$ENTRY" | awk '{print $1}')
             R=$(echo "$ENTRY" | awk '{print $2}')
             echo "" >> field_compare_report.txt
-            echo "[CHECK (multi strict)] $L  vs  $R" | tee -a field_compare_report.txt
+            echo "[CHECK-LOOSE (multi)] $L  vs  $R" | tee -a field_compare_report.txt
             if [ -d "$L" ] && [ -d "$R" ]; then
               OUT_JSON="field_reports/$(basename "$L")__vs__$(basename "$R").json"
               if python3 tools/compare_fields.py "$L" "$R" --rtol "$RTOL" --json-out "$OUT_JSON" --allow-gltf-mismatch --mode counts-only --meta-mode on >> field_compare_report.txt 2>&1; then
-                echo "[RESULT] PASS (multi strict)" | tee -a field_compare_report.txt
+                echo "[RESULT] PASS (multi loose)" | tee -a field_compare_report.txt
               else
-                echo "[RESULT] FAIL (multi strict)" | tee -a field_compare_report.txt
+                echo "[RESULT] FAIL (multi loose)" | tee -a field_compare_report.txt
                 FAIL=true
               fi
             else
@@ -646,15 +396,6 @@ jobs:
           else
             echo "[SUCCESS] Field-level comparison passed" | tee -a field_compare_report.txt
           fi
-
-      - name: Upload field comparison report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: field-compare-report-${{ runner.os }}
-          path: |
-            field_compare_report.txt
-            field_reports/*.json
 
       - name: Generate JSON Schema validation report
         if: always()
@@ -680,16 +421,20 @@ jobs:
             exit 0
           fi
 
-          # Collect scene directories (CLI + samples)
+          # Find scene directories
           SCENE_DIRS=""
-          if [ -d "build/exports" ]; then
-            SCENE_DIRS="$SCENE_DIRS $(find build/exports -maxdepth 1 -type d -name 'scene_cli_*' 2>/dev/null | sort)"
-          fi
           if [ -d "sample_exports" ]; then
-            SCENE_DIRS="$SCENE_DIRS $(find sample_exports -maxdepth 2 -type d -name 'scene_*' 2>/dev/null | sort)"
+            SCENE_DIRS="$(find sample_exports -maxdepth 1 -type d -name "scene_*" | sort)"
           fi
 
-          TOTAL=0; PASS=0; FAIL=0
+          if [ -z "$SCENE_DIRS" ]; then
+            echo "[SKIP] No scene directories found" | tee -a schema_report.txt
+            exit 0
+          fi
+
+          TOTAL=0
+          PASS=0
+          FAIL=0
           for SCENE in $SCENE_DIRS; do
             [ -z "$SCENE" ] && continue
             echo "\n[SCHEMA] Scene: $(basename "$SCENE")" | tee -a schema_report_full.txt
@@ -734,15 +479,6 @@ PY
           echo "TOTAL JSON files: $TOTAL | PASS: $PASS | FAIL: $FAIL" >> schema_report.txt
           echo "============================================================" >> schema_report.txt
 
-      - name: Upload schema validation report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: schema-report-${{ runner.os }}
-          path: |
-            schema_report.txt
-            schema_report_full.txt
-
       - name: Generate test report
         if: always()
         shell: bash
@@ -758,18 +494,17 @@ PY
           echo "" >> test_report.md
           echo "### Test Results" >> test_report.md
           echo "- Tests executed successfully" >> test_report.md
-          
-      - name: Upload test report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-report-strict-${{ runner.os }}
-          path: test_report.md
 
-      - name: Append field comparison summary to test report
-        if: always()
-        shell: bash
-        run: |
+          # Add consistency stats if available
+          if [ -f "consistency_stats.txt" ]; then
+            echo "" >> test_report.md
+            echo "### Consistency Stats" >> test_report.md
+            echo '```' >> test_report.md
+            cat consistency_stats.txt >> test_report.md
+            echo '```' >> test_report.md
+          fi
+
+          # Add field comparison summary if available
           if [ -f "field_compare_report.txt" ]; then
             echo "" >> test_report.md
             echo "### Field-level Comparison Summary" >> test_report.md
@@ -778,10 +513,7 @@ PY
             echo '```' >> test_report.md
           fi
 
-      - name: Summarize field JSON reports into test report
-        if: always()
-        shell: bash
-        run: |
+          # Add field JSON reports overview if available
           if [ -d "field_reports" ]; then
             echo "" >> test_report.md
             echo "### Field-level JSON Report Overview" >> test_report.md
@@ -808,3 +540,50 @@ else:
             print(f'| {fp.name} | error | 1 |')
 PY
           fi
+          
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-strict-${{ runner.os }}
+          path: test_report.md
+
+      - name: Upload schema validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-report-${{ runner.os }}
+          path: |
+            schema_report.txt
+            schema_report_full.txt
+
+      - name: Upload field comparison report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: field-compare-report-${{ runner.os }}
+          path: |
+            field_compare_report.txt
+            field_reports/*.json
+
+      - name: Show CMake logs
+        if: always()
+        shell: bash
+        run: |
+          echo "=== CMake Configuration Log ==="
+          if [ -f build/CMakeFiles/CMakeOutput.log ]; then
+            tail -50 build/CMakeFiles/CMakeOutput.log
+          fi
+          if [ -f build/CMakeFiles/CMakeError.log ]; then
+            echo "=== CMake Error Log ==="
+            cat build/CMakeFiles/CMakeError.log
+          fi
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-strict-${{ runner.os }}
+          path: |
+            build/CMakeFiles/CMakeOutput.log
+            build/CMakeFiles/CMakeError.log
