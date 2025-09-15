@@ -7,6 +7,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add subdirectories
 add_subdirectory(core)
-add_subdirectory(editor/qt)
+
+# Optional: Qt Editor (default ON unless explicitly disabled)
+option(BUILD_EDITOR_QT "Build Qt editor" ON)
+if(BUILD_EDITOR_QT)
+    add_subdirectory(editor/qt)
+endif()
+
 add_subdirectory(tests/core)
 add_subdirectory(tools)
