@@ -4,7 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <cassert>
-#include "core_triangulate.h"
+#include "core/core_c_api.h"
 
 #ifdef GTEST_FOUND
 #include <gtest/gtest.h>
