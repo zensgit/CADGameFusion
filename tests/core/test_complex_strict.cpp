@@ -17,12 +17,13 @@
 #define SUCCEED() SUCCEED()
 #else
 #define TEST_FUNC(test_suite, test_name) void test_suite##_##test_name()
-#define EXPECT_GT(a, b) assert((a) > (b))
-#define EXPECT_LT(a, b) assert((a) < (b))
-#define EXPECT_EQ(a, b) assert((a) == (b))
-#define EXPECT_TRUE(a) assert(a)
-#define EXPECT_FALSE(a) assert(!(a))
-#define SUCCEED() ((void)0)
+// Simple assert-based macros that ignore the message
+#define EXPECT_GT(a, b) assert((a) > (b)); if(false) std::cout
+#define EXPECT_LT(a, b) assert((a) < (b)); if(false) std::cout
+#define EXPECT_EQ(a, b) assert((a) == (b)); if(false) std::cout
+#define EXPECT_TRUE(a) assert(a); if(false) std::cout
+#define EXPECT_FALSE(a) assert(!(a)); if(false) std::cout
+#define SUCCEED() if(false) std::cout
 #endif
 
 TEST_FUNC(ComplexStrictTest, LShapedWithTwoHoles) {
