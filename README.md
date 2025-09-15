@@ -6,8 +6,22 @@ Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity ada
 
 - Core CI (lenient):
   - ![Core CI](https://github.com/zensgit/CADGameFusion/actions/workflows/cadgamefusion-core.yml/badge.svg)
-- Core CI (strict deps):
-  - ![Core CI (strict)](https://github.com/zensgit/CADGameFusion/actions/workflows/cadgamefusion-core-strict.yml/badge.svg)
+- Core Strict - Build and Tests:
+  - ![Core Strict - Build and Tests](https://github.com/zensgit/CADGameFusion/actions/workflows/core-strict-build-tests.yml/badge.svg)
+- Core Strict - Exports, Validation, Comparison:
+  - ![Core Strict - Exports, Validation, Comparison](https://github.com/zensgit/CADGameFusion/actions/workflows/strict-exports.yml/badge.svg)
+
+## Maintenance
+- Refresh golden samples (concave, nested_holes): run the workflow
+  "Maintenance - Refresh Golden Samples" from the Actions tab.
+  - It builds `export_cli` (with official nlohmann/json), runs
+    `tools/refresh_golden_samples.sh`, validates results with
+    `tools/validate_export.py --schema`, and uploads updated samples
+    as artifacts.
+  - Optional input `rtol` (default `1e-6`) controls numeric tolerance for
+    the validation statistics step.
+  - You can also run locally: `bash tools/refresh_golden_samples.sh` and then
+    `python3 tools/validate_export.py sample_exports/scene_concave --schema`.
 
 CI tracks:
 - Lenient: builds without vcpkg; features are optional (stubs used if deps are missing). Fast and stable smoke tests across platforms.
@@ -178,3 +192,15 @@ build/tools/export_cli --out build/exports \
 # Validate
 python3 tools/validate_export.py build/exports/scene_cli_scene_complex_spec
 ```
+# Adjusting strict validation tolerance
+You can run the "Core Strict - Exports, Validation, Comparison" workflow with a custom rtol via workflow_dispatch input (default 1e-6). This sets FIELD_COMPARE_RTOL for field-level numeric comparisons.
+# JSON spec parsing (official header)
+- To enable the full JSON parser for `--spec`, place the official single-header from nlohmann/json into `tools/third_party/json.hpp` and configure with `-DCADGF_USE_NLOHMANN_JSON=ON`.
+- The CI (strict-exports workflow) includes a hard check for the header's version macros; if not present, the workflow fails with guidance to vendor the official header.
+
+### CI Gates (Strict Exports)
+- Structure-level comparison: sample, holes, complex, spec-complex, concave, nested_holes must match the golden samples exactly.
+- Field-level comparison (numeric):
+  - Full mode (coordinates + meta): sample, holes, complex, spec-complex, concave, nested_holes
+  - Counts-only + meta: units, multi (glTF presence mismatches allowed)
+- Tolerance: default rtol=1e-6; can be adjusted via workflow_dispatch input when needed.

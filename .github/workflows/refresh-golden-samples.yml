@@ -1,0 +1,58 @@
+name: Maintenance - Refresh Golden Samples
+
+on:
+  workflow_dispatch:
+    inputs:
+      rtol:
+        description: 'Validation tolerance (rtol)'
+        required: false
+        default: '1e-6'
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: refresh-golden-samples-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build python3-pip
+          python3 -m pip install --user --upgrade pip jsonschema
+
+      - name: Configure (no vcpkg)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -G Ninja
+
+      - name: Build export_cli
+        run: cmake --build build --config Release --target export_cli --parallel 2
+
+      - name: Refresh golden samples from specs
+        run: |
+          chmod +x tools/refresh_golden_samples.sh
+          ./tools/refresh_golden_samples.sh
+
+      - name: Validate refreshed scenes (schema + stats)
+        env:
+          RTOL: ${{ github.event.inputs.rtol || '1e-6' }}
+        run: |
+          echo "Validating sample_exports/scene_concave"
+          python3 tools/validate_export.py sample_exports/scene_concave --schema --stats-out stats.txt
+          echo "Validating sample_exports/scene_nested_holes"
+          python3 tools/validate_export.py sample_exports/scene_nested_holes --schema --stats-out stats.txt
+          echo '--- Consistency Stats ---'
+          cat stats.txt || true
+
+      - name: Upload refreshed golden samples
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-samples-${{ github.run_id }}
+          path: |
+            sample_exports/scene_concave
+            sample_exports/scene_nested_holes
+            stats.txt
+

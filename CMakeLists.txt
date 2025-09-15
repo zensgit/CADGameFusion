@@ -14,5 +14,11 @@ if(BUILD_EDITOR_QT)
     add_subdirectory(editor/qt)
 endif()
 
+option(CADGF_USE_NLOHMANN_JSON "Use vendored nlohmann/json for --spec parsing" OFF)
+if(CADGF_USE_NLOHMANN_JSON)
+    add_compile_definitions(CADGF_USE_NLOHMANN_JSON)
+endif()
+
 add_subdirectory(tests/core)
 add_subdirectory(tools)
+add_subdirectory(tests/tools)

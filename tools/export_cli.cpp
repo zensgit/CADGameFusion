@@ -29,6 +29,35 @@ struct SceneData {
     bool useDocUnit;
 };
 
+static double signedArea(const std::vector<core_vec2>& pts, size_t start, size_t count) {
+    if (count < 3) return 0.0;
+    double a = 0.0;
+    for (size_t i = 0; i < count; ++i) {
+        const auto& p0 = pts[start + i];
+        const auto& p1 = pts[start + ((i + 1) % count)];
+        a += (p0.x * p1.y) - (p1.x * p0.y);
+    }
+    return a * 0.5;
+}
+
+static void normalizeOrientation(SceneData& scene) {
+    // Ensure outer rings CCW, holes CW, based on ringRoles (0 outer-like, 1 hole)
+    size_t offset = 0;
+    for (size_t r = 0; r < scene.ringCounts.size(); ++r) {
+        int cnt = scene.ringCounts[r];
+        if (cnt <= 2) { offset += cnt; continue; }
+        double area = signedArea(scene.points, offset, static_cast<size_t>(cnt));
+        bool isHole = (r < scene.ringRoles.size() ? scene.ringRoles[r] == 1 : (r > 0));
+        // For outer (desired CCW): area should be > 0; for hole (desired CW): area should be < 0
+        bool needFlip = (!isHole && area < 0.0) || (isHole && area > 0.0);
+        if (needFlip) {
+            // Reverse the segment [offset, offset+cnt)
+            std::reverse(scene.points.begin() + static_cast<long>(offset), scene.points.begin() + static_cast<long>(offset + cnt));
+        }
+        offset += cnt;
+    }
+}
+
 SceneData createSampleScene() {
     SceneData scene;
     scene.points = {{0,0}, {100,0}, {100,100}, {0,100}};
@@ -273,6 +302,19 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
     size_t vertexByteLength = vertices.size() * sizeof(float);
     size_t indexByteLength = indices.size() * sizeof(unsigned int);
     size_t totalByteLength = vertexByteLength + indexByteLength;
+
+    // Compute POSITION min/max (AABB)
+    float minX = std::numeric_limits<float>::infinity();
+    float minY = std::numeric_limits<float>::infinity();
+    float maxX = -std::numeric_limits<float>::infinity();
+    float maxY = -std::numeric_limits<float>::infinity();
+    for (size_t i = 0; i + 2 < vertices.size(); i += 3) {
+        float x = vertices[i];
+        float y = vertices[i + 1];
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
+    }
+    if (!std::isfinite(minX)) { minX = minY = 0.0f; maxX = maxY = 0.0f; }
     
     gltfFile << "{\n";
     gltfFile << "  \"asset\": { \"version\": \"2.0\" },\n";
@@ -289,7 +331,7 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
     gltfFile << "  \"accessors\": [\n";
     gltfFile << "    { \"bufferView\": 0, \"byteOffset\": 0, \"componentType\": 5126, "
              << "\"count\": " << vertexCount << ", \"type\": \"VEC3\",\n";
-    gltfFile << "      \"min\": [0,0,0], \"max\": [1000,1000,0] },\n";
+    gltfFile << "      \"min\": [" << minX << "," << minY << ",0], \"max\": [" << maxX << "," << maxY << ",0] },\n";
     gltfFile << "    { \"bufferView\": 1, \"byteOffset\": 0, \"componentType\": 5125, "
              << "\"count\": " << indices.size() << ", \"type\": \"SCALAR\" }\n";
     gltfFile << "  ],\n";
@@ -310,7 +352,9 @@ void exportScene(const std::string& outputDir, const std::string& sceneName,
     std::string sceneDir = outputDir + "/scene_cli_" + sceneName;
     fs::create_directories(sceneDir);
     
-    for (const auto& scene : scenes) {
+    for (auto scene : scenes) {
+        // Normalize ring orientation for stability
+        normalizeOrientation(scene);
         std::string baseName = "group_" + std::to_string(scene.groupId);
         
         // Write JSON
@@ -328,199 +372,66 @@ void exportScene(const std::string& outputDir, const std::string& sceneName,
     std::cout << "Exported " << sceneName << " to " << sceneDir << "\n";
 }
 
-// Minimal ad-hoc parser for flat_pts + ring_counts (+ ring_roles) JSON.
-// This supports our provided specs without external deps.
-static std::vector<SceneData> parseSpecFile(const std::string& path) {
-    std::ifstream f(path);
-    if (!f.is_open()) throw std::runtime_error("Failed to open spec file: " + path);
-    std::stringstream buffer; buffer << f.rdbuf(); f.close();
-    const std::string s = buffer.str();
+    // Parse spec JSON using nlohmann/json when available; no fallback in strict mode
+    #ifdef CADGF_USE_NLOHMANN_JSON
+    #include "third_party/json.hpp" // expected to be official nlohmann/json single-header
+    #endif
+    
+    static std::vector<SceneData> parseSpecFile(const std::string& path) {
+    #ifdef CADGF_USE_NLOHMANN_JSON
+        using nlohmann::json;
+        std::ifstream f(path);
+        if (!f.is_open()) throw std::runtime_error("Failed to open spec file: " + path);
+        json j; f >> j; f.close();
 
-    // Helper: find matching ']' for '[' at pos
-    auto match_rbracket = [&](size_t open_pos) -> size_t {
-        int depth = 0;
-        for (size_t i = open_pos; i < s.size(); ++i) {
-            if (s[i] == '[') depth++;
-            else if (s[i] == ']') { depth--; if (depth == 0) return i; }
-        }
-        return std::string::npos;
-    };
+        auto parse_one = [](const json& js) -> SceneData {
+            SceneData sc{};
+            sc.groupId    = js.value("group_id", js.value("groupId", 0));
+            sc.joinType   = js.contains("meta") ? js["meta"].value("joinType", 0) : 0;
+            sc.miterLimit = js.contains("meta") ? js["meta"].value("miterLimit", 2.0) : 2.0;
+            sc.useDocUnit = js.contains("meta") ? js["meta"].value("useDocUnit", true) : true;
 
-    // Parse rings in object format: rings: [ [ {x,y}, ... ], ... ]
-    auto parse_rings_objects = [&]() -> std::vector<std::vector<core_vec2>> {
-        std::vector<std::vector<core_vec2>> rings_out;
-        auto pos = s.find("\"rings\"");
-        if (pos == std::string::npos) return rings_out;
-        pos = s.find('[', pos);
-        if (pos == std::string::npos) return rings_out;
-        size_t rings_open = pos;
-        size_t rings_close = match_rbracket(rings_open);
-        if (rings_close == std::string::npos) return rings_out;
-        size_t i = rings_open + 1;
-        while (i < rings_close) {
-            // find next ring '['
-            size_t ring_open = s.find('[', i);
-            if (ring_open == std::string::npos || ring_open >= rings_close) break;
-            size_t ring_close = match_rbracket(ring_open);
-            if (ring_close == std::string::npos || ring_close > rings_close) break;
-            std::string ring_sub = s.substr(ring_open, ring_close - ring_open + 1);
-            std::vector<core_vec2> ring_pts;
-            size_t cursor = 0;
-            while (true) {
-                size_t xk = ring_sub.find("\"x\"", cursor);
-                if (xk == std::string::npos) break;
-                size_t xcolon = ring_sub.find(':', xk);
-                size_t xend = ring_sub.find_first_of(",}\n\r\t ", xcolon + 1);
-                if (xcolon == std::string::npos) break;
-                double x = std::stod(ring_sub.substr(xcolon + 1, (xend == std::string::npos ? ring_sub.size() : xend) - (xcolon + 1)));
-                size_t yk = ring_sub.find("\"y\"", xend == std::string::npos ? xcolon + 1 : xend + 1);
-                if (yk == std::string::npos) break;
-                size_t ycolon = ring_sub.find(':', yk);
-                size_t yend = ring_sub.find_first_of(",}\n\r\t ", ycolon + 1);
-                double y = std::stod(ring_sub.substr(ycolon + 1, (yend == std::string::npos ? ring_sub.size() : yend) - (ycolon + 1)));
-                ring_pts.push_back(core_vec2{ x, y });
-                cursor = (yend == std::string::npos ? ring_sub.size() : yend + 1);
+            std::vector<int> counts;
+            std::vector<int> roles;
+            std::vector<core_vec2> pts;
+
+            if (js.contains("rings")) {
+                for (const auto& ring : js.at("rings")) {
+                    int cnt = 0;
+                    for (const auto& p : ring) {
+                        if (p.is_object()) pts.push_back(core_vec2{ p.value("x",0.0), p.value("y",0.0) });
+                        else if (p.is_array() && p.size()>=2) pts.push_back(core_vec2{ p[0].get<double>(), p[1].get<double>() });
+                        cnt++;
+                    }
+                    counts.push_back(cnt);
+                }
+                if (js.contains("ring_roles")) for (const auto& rr : js.at("ring_roles")) roles.push_back(rr.get<int>());
+            } else {
+                if (js.contains("flat_pts")) {
+                    for (const auto& p : js.at("flat_pts")) {
+                        if (p.is_object()) pts.push_back(core_vec2{ p.value("x",0.0), p.value("y",0.0) });
+                        else if (p.is_array() && p.size()>=2) pts.push_back(core_vec2{ p[0].get<double>(), p[1].get<double>() });
+                    }
+                }
+                if (js.contains("ring_counts")) for (const auto& c : js.at("ring_counts")) counts.push_back(c.get<int>());
+                if (js.contains("ring_roles")) for (const auto& rr : js.at("ring_roles")) roles.push_back(rr.get<int>());
             }
-            if (!ring_pts.empty()) rings_out.push_back(std::move(ring_pts));
-            i = ring_close + 1;
-        }
-        return rings_out;
-    };
 
-    auto findIntArray = [&](const std::string& key) -> std::vector<int> {
-        std::vector<int> out; out.reserve(8);
-        auto pos = s.find("\"" + key + "\"");
-        if (pos == std::string::npos) return out;
-        pos = s.find('[', pos);
-        if (pos == std::string::npos) return out;
-        int depth = 1; size_t i = pos + 1; std::string num;
-        auto flush = [&]() {
-            if (!num.empty()) { out.push_back(std::stoi(num)); num.clear(); }
+            if (roles.empty() && !counts.empty()) { roles.push_back(0); for (size_t i=1;i<counts.size();++i) roles.push_back(1);}        
+            if (pts.empty() || counts.empty()) throw std::runtime_error("Spec must contain 'rings' or 'flat_pts' + 'ring_counts'");
+
+            sc.points = std::move(pts); sc.ringCounts = std::move(counts); sc.ringRoles = std::move(roles);
+            return sc;
         };
-        for (; i < s.size(); ++i) {
-            if (s[i] == '[') depth++;
-            else if (s[i] == ']') { depth--; if (depth == 0) { flush(); break; } }
-            else if ((s[i] >= '0' && s[i] <= '9') || s[i] == '-' ) num.push_back(s[i]);
-            else if (s[i] == ',' || s[i] == ' ' || s[i] == '\n' || s[i] == '\r' || s[i] == '\t') { flush(); }
-        }
+
+        std::vector<SceneData> out;
+        if (j.contains("scenes")) { for (const auto& it : j.at("scenes")) out.push_back(parse_one(it)); }
+        else { out.push_back(parse_one(j)); }
         return out;
-    };
-
-    auto findDoublePairs = [&](const std::string& key) -> std::vector<core_vec2> {
-        std::vector<core_vec2> pts; pts.reserve(32);
-        auto pos = s.find("\"" + key + "\"");
-        if (pos == std::string::npos) return pts;
-        pos = s.find('[', pos);
-        if (pos == std::string::npos) return pts;
-        int depth = 1; size_t i = pos + 1;
-        // Try to parse either objects with x/y or arrays [x,y]
-        while (i < s.size() && depth > 0) {
-            if (s[i] == '{') {
-                // parse { "x": num, "y": num }
-                size_t j = i;
-                double x = 0.0, y = 0.0; bool hasX=false, hasY=false;
-                while (j < s.size()) {
-                    if (s[j] == '}') { i = j + 1; break; }
-                    auto xk = s.find("\"x\"", j);
-                    auto yk = s.find("\"y\"", j);
-                    if (xk != std::string::npos && xk < s.find('}', j)) {
-                        auto colon = s.find(':', xk);
-                        auto end = s.find_first_of(",}\n\r\t ", colon+1);
-                        x = std::stod(s.substr(colon+1, end - (colon+1))); hasX=true; j = end;
-                    } else if (yk != std::string::npos && yk < s.find('}', j)) {
-                        auto colon = s.find(':', yk);
-                        auto end = s.find_first_of(",}\n\r\t ", colon+1);
-                        y = std::stod(s.substr(colon+1, end - (colon+1))); hasY=true; j = end;
-                    } else { j++; }
-                }
-                if (hasX && hasY) pts.push_back(core_vec2{ x, y });
-            } else if (s[i] == '[') {
-                // parse [x,y]
-                size_t j = i + 1;
-                // skip whitespace
-                while (j < s.size() && (s[j]==' '||s[j]=='\n'||s[j]=='\r'||s[j]=='\t')) j++;
-                size_t j2 = s.find(',', j);
-                size_t j3 = s.find(']', j2 == std::string::npos ? j : j2 + 1);
-                if (j2 != std::string::npos && j3 != std::string::npos) {
-                    double x = std::stod(s.substr(j, j2 - j));
-                    double y = std::stod(s.substr(j2+1, j3 - (j2+1)));
-                    pts.push_back(core_vec2{ x, y });
-                    i = j3 + 1;
-                } else {
-                    i++;
-                }
-            } else if (s[i] == ']') {
-                depth--; i++;
-            } else if (s[i] == '[') {
-                depth++; i++;
-            } else { i++; }
-        }
-        return pts;
-    };
-
-    auto findIntValue = [&](const std::string& key, int defVal) -> int {
-        auto pos = s.find("\"" + key + "\"");
-        if (pos == std::string::npos) return defVal;
-        pos = s.find(':', pos);
-        if (pos == std::string::npos) return defVal;
-        size_t end = s.find_first_of(",}\n\r\t ", pos+1);
-        return std::stoi(s.substr(pos+1, end - (pos+1)));
-    };
-
-    auto findBoolValue = [&](const std::string& key, bool defVal) -> bool {
-        auto pos = s.find("\"" + key + "\"");
-        if (pos == std::string::npos) return defVal;
-        pos = s.find(':', pos);
-        if (pos == std::string::npos) return defVal;
-        auto sub = s.substr(pos+1, 5);
-        if (sub.find("true") != std::string::npos) return true;
-        if (sub.find("false") != std::string::npos) return false;
-        return defVal;
-    };
-
-    std::vector<SceneData> result;
-
-    // Single-scene support: prefer rings if present, else flat_pts + ring_counts
-    SceneData sc{};
-    sc.groupId = findIntValue("group_id", findIntValue("groupId", 0));
-    sc.joinType = findIntValue("joinType", 0);
-    sc.miterLimit = 2.0;
-    sc.useDocUnit = findBoolValue("useDocUnit", true);
-
-    auto rings = parse_rings_objects();
-    if (!rings.empty()) {
-        // Flatten
-        std::vector<int> counts; counts.reserve(rings.size());
-        std::vector<core_vec2> pts;
-        for (const auto& ring : rings) {
-            counts.push_back(static_cast<int>(ring.size()));
-            pts.insert(pts.end(), ring.begin(), ring.end());
-        }
-        std::vector<int> roles = findIntArray("ring_roles");
-        if (roles.empty()) {
-            roles.push_back(0); for (size_t i = 1; i < counts.size(); ++i) roles.push_back(1);
-        }
-        sc.points = std::move(pts);
-        sc.ringCounts = std::move(counts);
-        sc.ringRoles = std::move(roles);
-    } else {
-        auto counts = findIntArray("ring_counts");
-        auto roles  = findIntArray("ring_roles");
-        auto pts    = findDoublePairs("flat_pts");
-        if (pts.empty() || counts.empty()) {
-            throw std::runtime_error("Spec must contain 'rings' or 'flat_pts' + 'ring_counts'");
-        }
-        if (roles.empty() && !counts.empty()) {
-            roles.push_back(0); for (size_t i = 1; i < counts.size(); ++i) roles.push_back(1);
-        }
-        sc.points = std::move(pts);
-        sc.ringCounts = std::move(counts);
-        sc.ringRoles = std::move(roles);
+    #else
+        throw std::runtime_error("This build does not enable CADGF_USE_NLOHMANN_JSON; --spec is unavailable");
+    #endif
     }
-
-    result.push_back(std::move(sc));
-    return result;
-}
 
 void parseArgs(int argc, char* argv[], ExportOptions& opts) {
     for (int i = 1; i < argc; ++i) {

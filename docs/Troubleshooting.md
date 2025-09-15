@@ -36,6 +36,26 @@ Common build/run issues and fixes.
   - `-DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake -DVCPKG_MANIFEST_MODE=ON`
 - CMake defines `USE_CLIPPER2` and/or `USE_EARCUT` when headers/libs are found.
 
+## JSON spec parsing fails
+- Symptom: `--spec` errors out or CI fails at "Check vendored nlohmann/json header (hard check)".
+- Causes:
+  - `tools/third_party/json.hpp` is missing or not the official nlohmann/json single-header.
+  - The build was configured without `-DCADGF_USE_NLOHMANN_JSON=ON`.
+- Fix:
+  - Download the official header from https://github.com/nlohmann/json (single_include/nlohmann/json.hpp) and place it at `tools/third_party/json.hpp`.
+  - Reconfigure with `-DCADGF_USE_NLOHMANN_JSON=ON`.
+  - Rerun the strict exports workflow (Ubuntu) or your local build.
+
+## Field-level comparison fails
+- Symptom: CI fails during field-level (numeric) comparison.
+- Notes:
+  - Critical scenes (sample/holes/complex/spec/concave/nested_holes) use full-mode coordinate + meta checks with tolerance (default rtol=1e-6).
+  - `units`/`multi` use counts-only + meta; glTF presence mismatches are allowed.
+- Fix:
+  - If minor float discrepancies are expected, rerun workflow with a higher tolerance (e.g., `rtol=1e-5` via workflow_dispatch input).
+  - Ensure sample_exports are up-to-date and not modified locally.
+  - Verify export_cli uses the same unit scale and meta configuration.
+
 ## Unity cannot load core_c
 - Symptom: DllNotFoundException / plugin not found
 - Fix:
@@ -60,4 +80,3 @@ Common build/run issues and fixes.
 ## Logs
 - vcpkg manifest log: `build/vcpkg-manifest-install.log`
 - CMake configure log: `build/CMakeFiles/CMakeConfigureLog.yaml`
-
