@@ -8,9 +8,10 @@ on:
   workflow_dispatch:
     inputs:
       debug:
-        description: 'Debug mode'
+        description: 'Enable debug mode'
         required: false
         default: 'false'
+        type: boolean
 
 jobs:
   exports-validation-comparison:
