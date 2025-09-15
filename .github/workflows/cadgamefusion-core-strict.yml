@@ -291,6 +291,11 @@ jobs:
             echo "[SKIP] Python3 not found, skipping export validation"
             exit 0
           fi
+
+          # Ensure jsonschema is available (strict requirement for schema validation)
+          echo "[SETUP] Ensuring jsonschema is installed"
+          python3 -m pip install --user --upgrade pip >/dev/null 2>&1 || true
+          python3 -m pip install --user jsonschema >/dev/null 2>&1 || true
           
           # Check if validation script exists
           if [ ! -f "tools/validate_export.py" ]; then
@@ -533,6 +538,93 @@ jobs:
           else
             exit 0
           fi
+
+      - name: Generate JSON Schema validation report
+        if: always()
+        shell: bash
+        run: |
+          echo "============================================================" > schema_report.txt
+          echo "            JSON SCHEMA VALIDATION REPORT                    " >> schema_report.txt
+          echo "============================================================" >> schema_report.txt
+          echo "# JSON Schema Validation (export_group.schema.json)" > schema_report_full.txt
+          echo "" >> schema_report_full.txt
+
+          # Ensure Python and jsonschema
+          if ! command -v python3 &> /dev/null; then
+            echo "[SKIP] Python3 not found, skipping schema report" | tee -a schema_report.txt
+            exit 0
+          fi
+          python3 -m pip install --user --upgrade pip >/dev/null 2>&1 || true
+          python3 -m pip install --user jsonschema >/dev/null 2>&1 || true
+
+          SCHEMA_PATH="docs/schemas/export_group.schema.json"
+          if [ ! -f "$SCHEMA_PATH" ]; then
+            echo "[SKIP] Schema file not found: $SCHEMA_PATH" | tee -a schema_report.txt
+            exit 0
+          fi
+
+          # Collect scene directories (CLI + samples)
+          SCENE_DIRS=""
+          if [ -d "build/exports" ]; then
+            SCENE_DIRS="$SCENE_DIRS $(find build/exports -maxdepth 1 -type d -name 'scene_cli_*' 2>/dev/null | sort)"
+          fi
+          if [ -d "sample_exports" ]; then
+            SCENE_DIRS="$SCENE_DIRS $(find sample_exports -maxdepth 2 -type d -name 'scene_*' 2>/dev/null | sort)"
+          fi
+
+          TOTAL=0; PASS=0; FAIL=0
+          for SCENE in $SCENE_DIRS; do
+            [ -z "$SCENE" ] && continue
+            echo "\n[SCHEMA] Scene: $(basename "$SCENE")" | tee -a schema_report_full.txt
+            echo "Scene $(basename "$SCENE"):" >> schema_report.txt
+            SHAD=0; SPASS=0; SFAIL=0
+            for J in "$SCENE"/group_*.json; do
+              [ ! -f "$J" ] && continue
+              TOTAL=$((TOTAL+1)); SHAD=1
+              python3 - "$J" << 'PY' 2>> schema_report_full.txt
+import json, sys
+from pathlib import Path
+import jsonschema
+schema_path = Path('docs/schemas/export_group.schema.json')
+schema = json.load(open(schema_path, 'r'))
+path = Path(sys.argv[1])
+data = json.load(open(path, 'r'))
+try:
+    jsonschema.validate(instance=data, schema=schema)
+    print(f"[PASS] {path}")
+    sys.exit(0)
+except Exception as e:
+    print(f"[FAIL] {path}: {e}")
+    sys.exit(1)
+PY
+              if [ $? -eq 0 ]; then
+                echo "  - $(basename "$J"): PASS" >> schema_report.txt
+                PASS=$((PASS+1)); SPASS=$((SPASS+1))
+              else
+                echo "  - $(basename "$J"): FAIL" >> schema_report.txt
+                FAIL=$((FAIL+1)); SFAIL=$((SFAIL+1))
+              fi
+            done
+            if [ $SHAD -eq 0 ]; then
+              echo "  (no group_*.json files)" >> schema_report.txt
+            else
+              echo "  Scene summary: PASS=$SPASS FAIL=$SFAIL" >> schema_report.txt
+            fi
+          done
+
+          echo "" >> schema_report.txt
+          echo "============================================================" >> schema_report.txt
+          echo "TOTAL JSON files: $TOTAL | PASS: $PASS | FAIL: $FAIL" >> schema_report.txt
+          echo "============================================================" >> schema_report.txt
+
+      - name: Upload schema validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-report-${{ runner.os }}
+          path: |
+            schema_report.txt
+            schema_report_full.txt
 
       - name: Generate test report
         if: always()
