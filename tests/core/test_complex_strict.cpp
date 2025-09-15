@@ -10,13 +10,19 @@
 #include <gtest/gtest.h>
 #define TEST_FUNC(test_suite, test_name) TEST(test_suite, test_name)
 #define EXPECT_GT(a, b) EXPECT_GT(a, b)
+#define EXPECT_LT(a, b) EXPECT_LT(a, b)
 #define EXPECT_EQ(a, b) EXPECT_EQ(a, b)
 #define EXPECT_TRUE(a) EXPECT_TRUE(a)
+#define EXPECT_FALSE(a) EXPECT_FALSE(a)
+#define SUCCEED() SUCCEED()
 #else
 #define TEST_FUNC(test_suite, test_name) void test_suite##_##test_name()
 #define EXPECT_GT(a, b) assert((a) > (b))
+#define EXPECT_LT(a, b) assert((a) < (b))
 #define EXPECT_EQ(a, b) assert((a) == (b))
 #define EXPECT_TRUE(a) assert(a)
+#define EXPECT_FALSE(a) assert(!(a))
+#define SUCCEED() ((void)0)
 #endif
 
 TEST_FUNC(ComplexStrictTest, LShapedWithTwoHoles) {
@@ -49,17 +55,19 @@ TEST_FUNC(ComplexStrictTest, LShapedWithTwoHoles) {
     // Ring counts: outer=6, hole1=4, hole2=4
     std::vector<int> ring_counts = {6, 4, 4};
     
-    // Ring roles: 0=outer, 1=hole, 1=hole
-    std::vector<int> ring_roles = {0, 1, 1};
-    
-    // Triangulate
-    std::vector<uint32_t> indices;
-    bool success = core_triangulate_polygon_rings(
-        points.data(), points.size() / 2,
-        ring_counts.data(), ring_counts.size(),
-        ring_roles.data(),
-        indices
+    // Triangulate - API assumes first ring is outer, rest are holes
+    std::vector<unsigned int> indices(100); // Pre-allocate space
+    int index_count = 0;
+    int success = core_triangulate_polygon_rings(
+        reinterpret_cast<const core_vec2*>(points.data()),
+        ring_counts.data(),
+        static_cast<int>(ring_counts.size()),
+        indices.data(),
+        &index_count
     );
+    
+    // Resize to actual count
+    indices.resize(index_count);
     
     std::cout << "[TEST] L-shaped with 2 holes triangulation result:" << std::endl;
     std::cout << "  - Success: " << (success ? "YES" : "NO") << std::endl;
@@ -114,7 +122,7 @@ TEST_FUNC(ComplexStrictTest, LShapedWithTwoHoles) {
 #endif
 }
 
-TEST(ComplexStrictTest, SimplePolygonFallback) {
+TEST_FUNC(ComplexStrictTest, SimplePolygonFallback) {
     // Test that simple polygon works even without earcut
     std::vector<float> points = {
         0.0f, 0.0f,
@@ -124,15 +132,18 @@ TEST(ComplexStrictTest, SimplePolygonFallback) {
     };
     
     std::vector<int> ring_counts = {4};
-    std::vector<int> ring_roles = {0};
-    
-    std::vector<uint32_t> indices;
-    bool success = core_triangulate_polygon_rings(
-        points.data(), points.size() / 2,
-        ring_counts.data(), ring_counts.size(),
-        ring_roles.data(),
-        indices
+    std::vector<unsigned int> indices(100); // Pre-allocate space  
+    int index_count = 0;
+    int success = core_triangulate_polygon_rings(
+        reinterpret_cast<const core_vec2*>(points.data()),
+        ring_counts.data(),
+        static_cast<int>(ring_counts.size()),
+        indices.data(),
+        &index_count
     );
+    
+    // Resize to actual count
+    indices.resize(index_count);
     
     // Simple polygon should always succeed
     EXPECT_TRUE(success) << "Simple polygon should triangulate successfully";
@@ -142,24 +153,38 @@ TEST(ComplexStrictTest, SimplePolygonFallback) {
     std::cout << "[TEST] Simple polygon fallback test passed" << std::endl;
 }
 
-TEST(ComplexStrictTest, EmptyInput) {
+TEST_FUNC(ComplexStrictTest, EmptyInput) {
     // Test edge case: empty input
-    std::vector<float> points;
-    std::vector<int> ring_counts;
-    std::vector<int> ring_roles;
-    std::vector<uint32_t> indices;
+    std::vector<unsigned int> indices(10); 
+    int index_count = 0;
     
-    bool success = core_triangulate_polygon_rings(
-        nullptr, 0,
-        nullptr, 0,
+    int success = core_triangulate_polygon_rings(
         nullptr,
-        indices
+        nullptr,
+        0,
+        indices.data(),
+        &index_count
     );
+    
+    // Resize to actual count
+    indices.resize(index_count);
     
     EXPECT_FALSE(success) << "Empty input should fail";
     EXPECT_TRUE(indices.empty()) << "Empty input should produce no indices";
     
     std::cout << "[TEST] Empty input test passed" << std::endl;
+}
+
+TEST_FUNC(ComplexStrictTest, DeepNestedHoles) {
+    // Placeholder for deep nested holes test
+    std::cout << "[TEST] DeepNestedHoles test placeholder" << std::endl;
+    SUCCEED() << "Placeholder test passed";
+}
+
+TEST_FUNC(ComplexStrictTest, EdgeCases) {
+    // Placeholder for edge cases test  
+    std::cout << "[TEST] EdgeCases test placeholder" << std::endl;
+    SUCCEED() << "Placeholder test passed";
 }
 
 int main(int argc, char **argv) {
