@@ -159,6 +159,12 @@ jobs:
           cat "$STATS_FILE" >> test_report.md
           echo '```' >> test_report.md
 
+      - name: Normalization checks
+        shell: bash
+        run: |
+          echo "Running normalization checks (orientation/start/sortRings)"
+          python3 tools/test_normalization.py build/exports
+
       - name: Validate spec JSONs against schema
         shell: bash
         run: |

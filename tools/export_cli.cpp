@@ -279,7 +279,11 @@ void writeJSON(const std::string& filepath, const SceneData& scene, double unitS
     file << "    \"normalize\": {\n";
     file << "      \"orientation\": true,\n";
     file << "      \"start\": true,\n";
+#ifdef CADGF_SORT_RINGS
     file << "      \"sortRings\": true\n";
+#else
+    file << "      \"sortRings\": false\n";
+#endif
     file << "    }\n";
     file << "  }\n";
     file << "}\n";

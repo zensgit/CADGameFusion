@@ -50,7 +50,16 @@
         "joinType": { "type": "integer" },
         "miterLimit": { "type": "number" },
         "unitScale": { "type": "number" },
-        "useDocUnit": { "type": "boolean" }
+        "useDocUnit": { "type": "boolean" },
+        "normalize": {
+          "type": "object",
+          "properties": {
+            "orientation": { "type": "boolean" },
+            "start": { "type": "boolean" },
+            "sortRings": { "type": "boolean" }
+          },
+          "additionalProperties": true
+        }
       },
       "additionalProperties": true
     }
@@ -58,4 +67,3 @@
   "required": ["flat_pts", "ring_counts"],
   "additionalProperties": true
 }
-
