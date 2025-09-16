@@ -30,6 +30,11 @@ Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity ada
   refresh goldens first via the maintenance workflow, then enable the flag in
   the main strict exports workflow configure step.
 
+### Strict Exports workflow modes (vcpkg toggle)
+- Default mode (use_vcpkg=false): Ninja + system toolchain, skips vcpkg cache/setup for faster runs.
+- Full mode (use_vcpkg=true): Uses vcpkg toolchain + binary cache for full dependency validation.
+- How to use: Actions → Core Strict - Exports, Validation, Comparison → Run workflow → set `use_vcpkg` as needed.
+
 CI tracks:
 - Lenient: builds without vcpkg; features are optional (stubs used if deps are missing). Fast and stable smoke tests across platforms.
 - Strict: uses vcpkg baseline to enable earcut/clipper2 and runs strict assertions and export validation on Ubuntu/macOS/Windows.
