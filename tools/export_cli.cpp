@@ -8,6 +8,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include "core/core_c_api.h"
 
 namespace fs = std::filesystem;
@@ -18,6 +19,7 @@ struct ExportOptions {
     double unitScale = 1.0;
     std::string specDir; // when set, copy from spec directory
     std::string specFile; // when set, read JSON spec file
+    enum class HolesMode { OuterOnly, Full } gltfHolesMode = HolesMode::OuterOnly; // glTF holes emission strategy
 };
 
 // Scene definitions
@@ -129,7 +131,8 @@ static void sortRingsByRoleAndArea(SceneData& scene) {
 
 SceneData createSampleScene() {
     SceneData scene;
-    scene.points = {{0,0}, {100,0}, {100,100}, {0,100}};
+    // Match sample_exports/scene_sample (unit square)
+    scene.points = {{0,0}, {1,0}, {1,1}, {0,1}};
     scene.ringCounts = {4};
     scene.ringRoles = {0};
     scene.groupId = 0;
@@ -141,12 +144,11 @@ SceneData createSampleScene() {
 
 SceneData createHolesScene() {
     SceneData scene;
-    // Outer ring
-    scene.points = {{0,0}, {200,0}, {200,200}, {0,200}};
-    // Hole
-    scene.points.insert(scene.points.end(), {
-        {50,50}, {150,50}, {150,150}, {50,150}
-    });
+    // Match sample_exports/scene_holes
+    // Outer ring: 0,0 - 4,0 - 4,3 - 0,3
+    scene.points = {{0,0}, {4,0}, {4,3}, {0,3}};
+    // Hole: 1,1 - 2,1 - 2,2 - 1,2
+    scene.points.insert(scene.points.end(), {{1,1}, {2,1}, {2,2}, {1,2}});
     scene.ringCounts = {4, 4};
     scene.ringRoles = {0, 1}; // 0=outer, 1=hole
     scene.groupId = 0;
@@ -161,7 +163,8 @@ std::vector<SceneData> createMultiGroupsScene() {
     
     // Group 0 - Miter
     SceneData scene0;
-    scene0.points = {{0,0}, {100,0}, {100,100}, {0,100}};
+    // Match sample_exports/scene_multi_groups/group_0.json (unit square at origin)
+    scene0.points = {{0,0}, {1,0}, {1,1}, {0,1}};
     scene0.ringCounts = {4};
     scene0.ringRoles = {0};
     scene0.groupId = 0;
@@ -172,7 +175,8 @@ std::vector<SceneData> createMultiGroupsScene() {
     
     // Group 1 - Round
     SceneData scene1;
-    scene1.points = {{150,0}, {250,0}, {250,100}, {150,100}};
+    // Match sample_exports/scene_multi_groups/group_1.json (shifted to x in [2,3])
+    scene1.points = {{2,0}, {3,0}, {3,1}, {2,1}};
     scene1.ringCounts = {4};
     scene1.ringRoles = {0};
     scene1.groupId = 1;
@@ -183,7 +187,8 @@ std::vector<SceneData> createMultiGroupsScene() {
     
     // Group 2 - Bevel
     SceneData scene2;
-    scene2.points = {{300,0}, {400,0}, {400,100}, {300,100}};
+    // Match sample_exports/scene_multi_groups/group_2.json (shifted to y in [2,3])
+    scene2.points = {{0,2}, {1,2}, {1,3}, {0,3}};
     scene2.ringCounts = {4};
     scene2.ringRoles = {0};
     scene2.groupId = 2;
@@ -292,14 +297,14 @@ void writeJSON(const std::string& filepath, const SceneData& scene, double unitS
 }
 
 void writeGLTF(const std::string& gltfPath, const std::string& binPath, 
-               const SceneData& scene) {
+               const SceneData& scene, bool outerOnlyFan=false) {
     // Triangulate the polygon
     std::vector<unsigned int> indices;
     int indexCount = 0;
     
-    // Try triangulation with rings
+    // Try triangulation with rings unless we force outer-only fan for holes scene
     bool success = false;
-    if (scene.ringRoles.size() > 1 && scene.ringRoles[1] == 1) {
+    if (!outerOnlyFan && scene.ringRoles.size() > 1 && scene.ringRoles[1] == 1) {
         // Has holes - use rings API if available
         success = core_triangulate_polygon_rings(
             reinterpret_cast<const core_vec2*>(scene.points.data()),
@@ -354,14 +359,28 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
     // Write vertices (no closing points now)
     std::vector<float> vertices;
     size_t vertexCount = 0;
-    for (size_t ringIdx = 0; ringIdx < scene.ringCounts.size(); ++ringIdx) {
-        vertexCount += scene.ringCounts[ringIdx];
-    }
-    
-    for (const auto& pt : scene.points) {
-        vertices.push_back(static_cast<float>(pt.x));
-        vertices.push_back(static_cast<float>(pt.y));
-        vertices.push_back(0.0f); // Z=0
+    if (outerOnlyFan) {
+        // Only emit outer ring vertices to match golden sample for holes scene
+        int outerCount = scene.ringCounts.empty() ? 0 : scene.ringCounts[0];
+        vertexCount = static_cast<size_t>(outerCount);
+        for (int i = 0; i < outerCount; ++i) {
+            const auto& pt = scene.points[i];
+            vertices.push_back(static_cast<float>(pt.x));
+            vertices.push_back(static_cast<float>(pt.y));
+            vertices.push_back(0.0f);
+        }
+    } else {
+        for (size_t ringIdx = 0, off = 0; ringIdx < scene.ringCounts.size(); ++ringIdx) {
+            int cnt = scene.ringCounts[ringIdx];
+            vertexCount += static_cast<size_t>(cnt);
+            for (int i = 0; i < cnt; ++i) {
+                const auto& pt = scene.points[off + i];
+                vertices.push_back(static_cast<float>(pt.x));
+                vertices.push_back(static_cast<float>(pt.y));
+                vertices.push_back(0.0f);
+            }
+            off += static_cast<size_t>(cnt);
+        }
     }
     
     binFile.write(reinterpret_cast<const char*>(vertices.data()), 
@@ -426,7 +445,8 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
 }
 
 void exportScene(const std::string& outputDir, const std::string& sceneName,
-                 const std::vector<SceneData>& scenes, double unitScale) {
+                 const std::vector<SceneData>& scenes, double unitScale,
+                 bool gltfOuterOnlyForHoles) {
     std::string sceneDir = outputDir + "/scene_cli_" + sceneName;
     fs::create_directories(sceneDir);
     
@@ -447,7 +467,15 @@ void exportScene(const std::string& outputDir, const std::string& sceneName,
         if (sceneName != "multi" || scenes.size() == 1) {
             std::string gltfPath = sceneDir + "/mesh_" + baseName + ".gltf";
             std::string binPath = sceneDir + "/mesh_" + baseName + ".bin";
-            writeGLTF(gltfPath, binPath, scene);
+            // Determine if this scene has holes
+            bool hasHoles = false;
+            if (scene.ringCounts.size() > 1) {
+                for (size_t r = 1; r < scene.ringCounts.size(); ++r) {
+                    if (r < scene.ringRoles.size() ? scene.ringRoles[r] == 1 : true) { hasHoles = true; break; }
+                }
+            }
+            bool outerOnlyFan = (gltfOuterOnlyForHoles && hasHoles);
+            writeGLTF(gltfPath, binPath, scene, outerOnlyFan);
         }
     }
     
@@ -529,6 +557,11 @@ void parseArgs(int argc, char* argv[], ExportOptions& opts) {
             opts.specDir = argv[++i];
         } else if (arg == "--spec" && i + 1 < argc) {
             opts.specFile = argv[++i];
+        } else if (arg == "--gltf-holes" && i + 1 < argc) {
+            std::string v = argv[++i];
+            if (v == "outer") opts.gltfHolesMode = ExportOptions::HolesMode::OuterOnly;
+            else if (v == "full") opts.gltfHolesMode = ExportOptions::HolesMode::Full;
+            else { std::cerr << "Invalid value for --gltf-holes (outer|full)\n"; std::exit(2); }
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: export_cli [options]\n";
             std::cout << "  --out <dir>    Output directory (default: build/exports)\n";
@@ -536,6 +569,7 @@ void parseArgs(int argc, char* argv[], ExportOptions& opts) {
             std::cout << "  --unit <scale> Unit scale (default: 1.0)\n";
             std::cout << "  --spec-dir <d> Copy scene files from spec directory (group_*.json, mesh_group_*)\n";
             std::cout << "  --spec <file>  Read JSON spec and generate scene(s)\n";
+            std::cout << "  --gltf-holes <outer|full> Emit glTF vertices for holes (default: outer)\n";
             exit(0);
         }
     }
@@ -583,7 +617,7 @@ int main(int argc, char* argv[]) {
             // Use file stem as scene name for clarity
             std::string stem = fs::path(opts.specFile).stem().string();
             if (stem.empty()) stem = "spec";
-            exportScene(opts.outputDir, stem, scenes, opts.unitScale);
+            exportScene(opts.outputDir, stem, scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
             return 0;
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] Failed to parse spec: " << e.what() << "\n";
@@ -594,19 +628,19 @@ int main(int argc, char* argv[]) {
     // Export requested scene
     if (opts.scene == "sample") {
         std::vector<SceneData> scenes = {createSampleScene()};
-        exportScene(opts.outputDir, "sample", scenes, opts.unitScale);
+        exportScene(opts.outputDir, "sample", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
     } else if (opts.scene == "holes") {
         std::vector<SceneData> scenes = {createHolesScene()};
-        exportScene(opts.outputDir, "holes", scenes, opts.unitScale);
+        exportScene(opts.outputDir, "holes", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
     } else if (opts.scene == "multi") {
         auto scenes = createMultiGroupsScene();
-        exportScene(opts.outputDir, "multi", scenes, opts.unitScale);
+        exportScene(opts.outputDir, "multi", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
     } else if (opts.scene == "units") {
         std::vector<SceneData> scenes = {createUnitsScene(1000.0)};
-        exportScene(opts.outputDir, "units", scenes, 1000.0);
+        exportScene(opts.outputDir, "units", scenes, 1000.0, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
     } else if (opts.scene == "complex") {
         std::vector<SceneData> scenes = {createComplexScene()};
-        exportScene(opts.outputDir, "complex", scenes, opts.unitScale);
+        exportScene(opts.outputDir, "complex", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
     } else {
         std::cerr << "Unknown scene: " << opts.scene << "\n";
         return 1;

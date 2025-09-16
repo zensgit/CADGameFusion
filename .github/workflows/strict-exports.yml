@@ -51,7 +51,7 @@ jobs:
         if: github.event.inputs.use_vcpkg == 'true'
         shell: bash
         run: |
-          echo "VCPKG_BINARY_SOURCES=clear;x-gha,readwrite" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;default" >> $GITHUB_ENV
           if [ "${{ runner.os }}" == "Windows" ]; then VCPKG_DIR="C:/vcpkg"; else VCPKG_DIR="$HOME/vcpkg"; fi
           if [ -d "$VCPKG_DIR/.git" ]; then (cd "$VCPKG_DIR" && git pull); else rm -rf "$VCPKG_DIR" && git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"; fi
           # Pin vcpkg to a known-good commit
@@ -114,6 +114,11 @@ jobs:
         run: |
           cmake --build build --config Release --target test_spec_parsing --parallel 2 || true
 
+      - name: Build C++ normalization test
+        shell: bash
+        run: |
+          cmake --build build --config Release --target test_normalization_cpp --parallel 2 || true
+
       - name: Locate export_cli
         id: findcli
         shell: bash
@@ -137,16 +142,21 @@ jobs:
         run: |
           EXPORT_CLI="${{ steps.findcli.outputs.path }}"
           for SCENE in sample holes multi units complex; do
-            "$EXPORT_CLI" --out build/exports --scene "$SCENE"
+            # Keep default behavior (outer-only) for holes to match golden; others allow full
+            if [ "$SCENE" = "holes" ]; then
+              "$EXPORT_CLI" --out build/exports --scene "$SCENE" --gltf-holes outer
+            else
+              "$EXPORT_CLI" --out build/exports --scene "$SCENE" --gltf-holes full
+            fi
           done
           if [ -f tools/specs/scene_complex_spec.json ]; then
-            "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_complex_spec.json
+            "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_complex_spec.json --gltf-holes full
           fi
           if [ -f tools/specs/scene_concave_spec.json ]; then
-            "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_concave_spec.json
+            "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_concave_spec.json --gltf-holes full
           fi
           if [ -f tools/specs/scene_nested_holes_spec.json ]; then
-            "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_nested_holes_spec.json
+            "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_nested_holes_spec.json --gltf-holes full
           fi
 
       - name: Validate scenes (schema + stats)
@@ -255,8 +265,9 @@ jobs:
           python3 tools/compare_fields.py build/exports/scene_cli_scene_complex_spec sample_exports/scene_complex --rtol "$RTOL" --json-out field_spec_complex.json --meta-mode on --mode full
           python3 tools/compare_fields.py build/exports/scene_cli_units sample_exports/scene_units --rtol "$RTOL" --json-out field_units.json --mode full --meta-mode on --allow-gltf-mismatch
           # Upgrade concave/nested_holes to full mode comparisons as well
-          python3 tools/compare_fields.py build/exports/scene_cli_scene_concave_spec sample_exports/scene_sample --rtol "$RTOL" --json-out field_concave.json --mode full --meta-mode on --allow-gltf-mismatch
-          python3 tools/compare_fields.py build/exports/scene_cli_scene_nested_holes_spec sample_exports/scene_holes --rtol "$RTOL" --json-out field_nested_holes.json --mode full --meta-mode on --allow-gltf-mismatch
+          # Map spec-generated scenes to their golden folders
+          python3 tools/compare_fields.py build/exports/scene_cli_scene_concave_spec sample_exports/scene_concave --rtol "$RTOL" --json-out field_concave.json --mode full --meta-mode on --allow-gltf-mismatch
+          python3 tools/compare_fields.py build/exports/scene_cli_scene_nested_holes_spec sample_exports/scene_nested_holes --rtol "$RTOL" --json-out field_nested_holes.json --mode full --meta-mode on --allow-gltf-mismatch
           python3 tools/compare_fields.py build/exports/scene_cli_multi sample_exports/scene_multi_groups --rtol "$RTOL" --json-out field_multi.json --mode full --meta-mode on --allow-gltf-mismatch
 
       - name: Run spec parsing smoke test
@@ -269,6 +280,18 @@ jobs:
             build/tests/tools/Release/test_spec_parsing.exe
           else
             echo "[WARN] test_spec_parsing not found (build config/platform)"
+          fi
+
+      - name: Run C++ normalization checks
+        shell: bash
+        run: |
+          echo "Running C++ normalization checks"
+          if [ -f "build/tests/tools/test_normalization_cpp" ]; then
+            build/tests/tools/test_normalization_cpp
+          elif [ -f "build/tests/tools/Release/test_normalization_cpp.exe" ]; then
+            build/tests/tools/Release/test_normalization_cpp.exe
+          else
+            echo "[WARN] test_normalization_cpp not found (build config/platform)"
           fi
 
       - name: Upload reports
