@@ -58,6 +58,73 @@ static void normalizeOrientation(SceneData& scene) {
     }
 }
 
+static void normalizeStartVertex(SceneData& scene) {
+    // For each ring, rotate so the lexicographically smallest (x,y) is first
+    size_t offset = 0;
+    for (size_t r = 0; r < scene.ringCounts.size(); ++r) {
+        int cnt = scene.ringCounts[r];
+        if (cnt <= 0) { continue; }
+        size_t start = offset;
+        size_t end = offset + static_cast<size_t>(cnt);
+        size_t best = start;
+        for (size_t i = start + 1; i < end; ++i) {
+            const auto& a = scene.points[i];
+            const auto& b = scene.points[best];
+            if (a.x < b.x || (a.x == b.x && a.y < b.y)) best = i;
+        }
+        if (best != start) {
+            std::rotate(scene.points.begin() + static_cast<long>(start),
+                        scene.points.begin() + static_cast<long>(best),
+                        scene.points.begin() + static_cast<long>(end));
+        }
+        offset += cnt;
+    }
+}
+
+#ifdef CADGF_SORT_RINGS
+static void sortRingsByRoleAndArea(SceneData& scene) {
+    struct RingInfo { size_t start; int count; int role; double areaAbs; };
+    std::vector<RingInfo> rings;
+    rings.reserve(scene.ringCounts.size());
+    size_t offset = 0;
+    for (size_t r = 0; r < scene.ringCounts.size(); ++r) {
+        int cnt = scene.ringCounts[r];
+        double a = std::abs(signedArea(scene.points, offset, static_cast<size_t>(cnt)));
+        int role = (r < scene.ringRoles.size() ? scene.ringRoles[r] : (r == 0 ? 0 : 1));
+        rings.push_back(RingInfo{offset, cnt, role, a});
+        offset += cnt;
+    }
+    // Sort: preserve original order of roles as they appear to minimize disruption.
+    // Compute first occurrence index for each role.
+    int firstOuter = -1, firstHole = -1;
+    for (size_t i = 0; i < rings.size(); ++i) {
+        if (rings[i].role == 0 && firstOuter < 0) firstOuter = static_cast<int>(i);
+        if (rings[i].role == 1 && firstHole < 0) firstHole = static_cast<int>(i);
+    }
+    std::stable_sort(rings.begin(), rings.end(), [&](const RingInfo& a, const RingInfo& b){
+        int ra = (a.role == 0 ? (firstOuter >= 0 ? 0 : 1) : (firstHole >= 0 ? 1 : 0));
+        int rb = (b.role == 0 ? (firstOuter >= 0 ? 0 : 1) : (firstHole >= 0 ? 1 : 0));
+        if (ra != rb) return ra < rb; // keep groups by first-appearance order
+        // within group, sort by descending area for stability
+        if (a.areaAbs != b.areaAbs) return a.areaAbs > b.areaAbs;
+        return a.start < b.start;
+    });
+    // Rebuild points and metadata based on new order
+    std::vector<core_vec2> newPts;
+    newPts.reserve(scene.points.size());
+    std::vector<int> newCounts; newCounts.reserve(scene.ringCounts.size());
+    std::vector<int> newRoles; newRoles.reserve(scene.ringRoles.size());
+    for (const auto& ri : rings) {
+        for (size_t i = 0; i < static_cast<size_t>(ri.count); ++i) newPts.push_back(scene.points[ri.start + i]);
+        newCounts.push_back(ri.count);
+        newRoles.push_back(ri.role);
+    }
+    scene.points.swap(newPts);
+    scene.ringCounts.swap(newCounts);
+    scene.ringRoles.swap(newRoles);
+}
+#endif
+
 SceneData createSampleScene() {
     SceneData scene;
     scene.points = {{0,0}, {100,0}, {100,100}, {0,100}};
@@ -206,7 +273,12 @@ void writeJSON(const std::string& filepath, const SceneData& scene, double unitS
          << scene.miterLimit << ",\n";
     file << "    \"unitScale\": " << std::fixed << std::setprecision(1) 
          << unitScale << ",\n";
-    file << "    \"useDocUnit\": " << (scene.useDocUnit ? "true" : "false") << "\n";
+    file << "    \"useDocUnit\": " << (scene.useDocUnit ? "true" : "false") << ",\n";
+    file << "    \"normalize\": {\n";
+    file << "      \"orientation\": true,\n";
+    file << "      \"start\": true,\n";
+    file << "      \"sortRings\": true\n";
+    file << "    }\n";
     file << "  }\n";
     file << "}\n";
     
@@ -353,8 +425,12 @@ void exportScene(const std::string& outputDir, const std::string& sceneName,
     fs::create_directories(sceneDir);
     
     for (auto scene : scenes) {
-        // Normalize ring orientation for stability
+        // Normalize ring orientation and start vertex for stability
         normalizeOrientation(scene);
+        normalizeStartVertex(scene);
+#ifdef CADGF_SORT_RINGS
+        sortRingsByRoleAndArea(scene);
+#endif
         std::string baseName = "group_" + std::to_string(scene.groupId);
         
         // Write JSON

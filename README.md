@@ -23,6 +23,13 @@ Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity ada
   - You can also run locally: `bash tools/refresh_golden_samples.sh` and then
     `python3 tools/validate_export.py sample_exports/scene_concave --schema`.
 
+- Trial ring-sorting normalization (optional): run
+  "Trial - Strict Exports (Sort Rings)". This builds export_cli with
+  `-DCADGF_SORT_RINGS=ON` and uploads generated scenes as artifacts so you can
+  review diffs without changing main CI gates. If you adopt this normalization,
+  refresh goldens first via the maintenance workflow, then enable the flag in
+  the main strict exports workflow configure step.
+
 CI tracks:
 - Lenient: builds without vcpkg; features are optional (stubs used if deps are missing). Fast and stable smoke tests across platforms.
 - Strict: uses vcpkg baseline to enable earcut/clipper2 and runs strict assertions and export validation on Ubuntu/macOS/Windows.

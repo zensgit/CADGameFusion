@@ -1,0 +1,68 @@
+name: Trial - Strict Exports (Sort Rings)
+
+on:
+  workflow_dispatch:
+    inputs:
+      rtol:
+        description: 'Field comparison rtol (e.g., 1e-6)'
+        required: false
+        default: '1e-6'
+
+jobs:
+  exports-validate-compare:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: trial-strict-exports-sort-rings-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build python3-pip
+          python3 -m pip install --user --upgrade pip jsonschema
+
+      - name: Configure with sort-rings
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_EDITOR_QT=OFF -G Ninja \
+            -DCADGF_USE_NLOHMANN_JSON=ON -DCADGF_SORT_RINGS=ON
+
+      - name: Build export_cli and tests
+        run: |
+          cmake --build build --config Release --target export_cli --parallel 2
+          cmake --build build --config Release --target test_spec_parsing --parallel 2 || true
+
+      - name: Generate scenes via export_cli
+        run: |
+          EXPORT_CLI="build/tools/export_cli"
+          for SCENE in sample holes multi units complex; do
+            "$EXPORT_CLI" --out build/exports --scene "$SCENE"
+          done
+          for SPEC in tools/specs/scene_complex_spec.json \
+                      tools/specs/scene_concave_spec.json \
+                      tools/specs/scene_nested_holes_spec.json; do
+            test -f "$SPEC" && "$EXPORT_CLI" --out build/exports --spec "$SPEC"
+          done
+
+      - name: Validate scenes (schema + stats)
+        run: |
+          STATS_FILE=consistency_stats.txt
+          : > "$STATS_FILE"
+          for d in build/exports/scene_cli_*; do
+            [ -d "$d" ] || continue
+            python3 tools/validate_export.py "$d" --schema --stats-out "$STATS_FILE"
+          done
+          echo '--- Consistency Stats ---'
+          cat "$STATS_FILE" || true
+
+      - name: Upload trial artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trial-sort-rings-${{ github.run_id }}
+          path: |
+            build/exports/scene_cli_*/*
+            consistency_stats.txt
+

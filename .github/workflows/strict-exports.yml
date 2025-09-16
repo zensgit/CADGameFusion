@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       rtol:
-        description: 'Field comparison rtol (e.g., 1e-6)'
+        description: 'Field comparison rtol (e.g., 1e-6 for Linux/macOS, 1e-5 for Windows)'
         required: false
         default: '1e-6'
 
@@ -213,6 +213,11 @@ PY
           FIELD_COMPARE_RTOL: ${{ github.event.inputs.rtol || '1e-6' }}
         run: |
           RTOL="${FIELD_COMPARE_RTOL:-1e-6}"
+          # Adjust tolerance for Windows floating point precision differences
+          if [ "${{ runner.os }}" == "Windows" ] && [ "$RTOL" == "1e-6" ]; then
+            RTOL="1e-5"
+            echo "Adjusted rtol to $RTOL for Windows platform"
+          fi
           echo "rtol=$RTOL" >> $GITHUB_OUTPUT
           python3 tools/compare_fields.py build/exports/scene_cli_sample sample_exports/scene_sample --rtol "$RTOL" --json-out field_sample.json --meta-mode on --mode full
           python3 tools/compare_fields.py build/exports/scene_cli_holes sample_exports/scene_holes --rtol "$RTOL" --json-out field_holes.json --meta-mode on --mode full

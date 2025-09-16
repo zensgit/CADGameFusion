@@ -19,6 +19,11 @@ if(CADGF_USE_NLOHMANN_JSON)
     add_compile_definitions(CADGF_USE_NLOHMANN_JSON)
 endif()
 
+option(CADGF_SORT_RINGS "Enable ring sorting by role and area" OFF)
+if(CADGF_SORT_RINGS)
+    add_compile_definitions(CADGF_SORT_RINGS)
+endif()
+
 add_subdirectory(tests/core)
 add_subdirectory(tools)
 add_subdirectory(tests/tools)
