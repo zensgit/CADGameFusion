@@ -152,25 +152,25 @@ jobs:
           if ls tools/specs/*_spec.json >/dev/null 2>&1; then
             echo "Validating spec JSON files against docs/schemas/cli_spec.schema.json"
             python3 - << 'PY'
-import json, glob, sys
-from pathlib import Path
-try:
-    import jsonschema
-except ImportError:
-    print('jsonschema not installed; skipping spec schema validation')
-    sys.exit(0)
-schema = json.load(open('docs/schemas/cli_spec.schema.json','r'))
-failed = False
-for p in glob.glob('tools/specs/*_spec.json'):
-    data = json.load(open(p,'r'))
-    try:
-        jsonschema.validate(instance=data, schema=schema)
-        print('[OK]', p)
-    except Exception as e:
-        print('[FAIL]', p, e)
-        failed = True
-sys.exit(1 if failed else 0)
-PY
+            import json, glob, sys
+            from pathlib import Path
+            try:
+                import jsonschema
+            except ImportError:
+                print('jsonschema not installed; skipping spec schema validation')
+                sys.exit(0)
+            schema = json.load(open('docs/schemas/cli_spec.schema.json','r'))
+            failed = False
+            for p in glob.glob('tools/specs/*_spec.json'):
+                data = json.load(open(p,'r'))
+                try:
+                    jsonschema.validate(instance=data, schema=schema)
+                    print('[OK]', p)
+                except Exception as e:
+                    print('[FAIL]', p, e)
+                    failed = True
+            sys.exit(1 if failed else 0)
+            PY
           else
             echo "No spec JSON files found under tools/specs"
           fi
