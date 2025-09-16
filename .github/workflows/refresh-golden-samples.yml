@@ -26,7 +26,7 @@ jobs:
 
       - name: Configure (no vcpkg)
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -G Ninja
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DCADGF_SORT_RINGS=ON -G Ninja
 
       - name: Build export_cli
         run: cmake --build build --config Release --target export_cli --parallel 2
