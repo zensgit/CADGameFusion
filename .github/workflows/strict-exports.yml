@@ -44,7 +44,7 @@ jobs:
         if: github.event.inputs.use_vcpkg == 'true'
         shell: bash
         run: |
-          echo "VCPKG_BINARY_SOURCES=clear;gha,readwrite" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;x-gha,readwrite" >> $GITHUB_ENV
           if [ "${{ runner.os }}" == "Windows" ]; then VCPKG_DIR="C:/vcpkg"; else VCPKG_DIR="$HOME/vcpkg"; fi
           if [ -d "$VCPKG_DIR/.git" ]; then (cd "$VCPKG_DIR" && git pull); else rm -rf "$VCPKG_DIR" && git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"; fi
           if [ "${{ runner.os }}" == "Windows" ]; then (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.bat -disableMetrics); else (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.sh -disableMetrics); fi
