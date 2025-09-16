@@ -15,6 +15,11 @@
     "joinType": 0,
     "miterLimit": 2.0,
     "unitScale": 1.0,
-    "useDocUnit": true
+    "useDocUnit": true,
+    "normalize": {
+      "orientation": true,
+      "start": true,
+      "sortRings": true
+    }
   }
 }
