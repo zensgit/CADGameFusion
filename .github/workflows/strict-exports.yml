@@ -26,6 +26,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          cache: 'pip'
+          cache-dependency-path: requirements-ci.txt
+
       - name: Cache vcpkg
         if: github.event.inputs.use_vcpkg == 'true'
         uses: actions/cache@v3
@@ -44,8 +51,11 @@ jobs:
         if: github.event.inputs.use_vcpkg == 'true'
         shell: bash
         run: |
+          echo "VCPKG_BINARY_SOURCES=clear;x-gha,readwrite" >> $GITHUB_ENV
           if [ "${{ runner.os }}" == "Windows" ]; then VCPKG_DIR="C:/vcpkg"; else VCPKG_DIR="$HOME/vcpkg"; fi
           if [ -d "$VCPKG_DIR/.git" ]; then (cd "$VCPKG_DIR" && git pull); else rm -rf "$VCPKG_DIR" && git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"; fi
+          # Pin vcpkg to a known-good commit
+          (cd "$VCPKG_DIR" && git checkout c9fa965c2a1b1334469b4539063f3ce95383653c)
           if [ "${{ runner.os }}" == "Windows" ]; then (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.bat -disableMetrics); else (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.sh -disableMetrics); fi
           echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
           echo "$VCPKG_DIR" >> $GITHUB_PATH
@@ -54,12 +64,14 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build build-essential python3-pip
-          python3 -m pip install --user --upgrade pip jsonschema
+          sudo apt-get install -y cmake ninja-build build-essential
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-ci.txt
 
       - name: Configure
         shell: bash
         run: |
+          echo "use_vcpkg=${{ github.event.inputs.use_vcpkg }}"
           if [ "${{ github.event.inputs.use_vcpkg }}" == "true" ]; then
             TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
             cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DCADGF_SORT_RINGS=ON
