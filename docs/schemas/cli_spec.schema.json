@@ -30,6 +30,13 @@
     },
     "Scene": {
       "type": "object",
+      "oneOf": [
+        { "$ref": "#/definitions/SceneFlatPts" },
+        { "$ref": "#/definitions/SceneRings" }
+      ]
+    },
+    "SceneFlatPts": {
+      "type": "object",
       "properties": {
         "group_id": { "type": "integer" },
         "groupId": { "type": "integer" },
@@ -47,9 +54,40 @@
           "type": "array",
           "items": { "type": "integer" }
         },
-        "meta": { "$ref": "#/definitions/Meta" }
+        "meta": { "$ref": "#/definitions/Meta" },
+        "joinType": { "type": "integer" },
+        "miterLimit": { "type": "number" },
+        "unitScale": { "type": "number" },
+        "useDocUnit": { "type": "boolean" }
       },
       "required": ["flat_pts", "ring_counts"],
+      "additionalProperties": true
+    },
+    "SceneRings": {
+      "type": "object",
+      "properties": {
+        "group_id": { "type": "integer" },
+        "groupId": { "type": "integer" },
+        "rings": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/definitions/Vec2" },
+            "minItems": 3
+          },
+          "minItems": 1
+        },
+        "ring_roles": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "meta": { "$ref": "#/definitions/Meta" },
+        "joinType": { "type": "integer" },
+        "miterLimit": { "type": "number" },
+        "unitScale": { "type": "number" },
+        "useDocUnit": { "type": "boolean" }
+      },
+      "required": ["rings"],
       "additionalProperties": true
     },
     "SceneWrapper": {
