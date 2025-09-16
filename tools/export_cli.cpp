@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <iomanip>
 #include <sstream>
+#include <algorithm>
+#include <cmath>
 #include "core/core_c_api.h"
 
 namespace fs = std::filesystem;
