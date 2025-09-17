@@ -1,0 +1,26 @@
+# 代码所有者配置
+# 所有文件修改都需要代码所有者审批
+
+# 全局保护 - 所有文件都需要审批
+* @zensgit
+
+# 核心代码严格保护
+/core/** @zensgit
+/tools/** @zensgit
+/.github/** @zensgit
+/CMakeLists.txt @zensgit
+
+# 构建和CI配置
+/vcpkg.json @zensgit
+/.github/workflows/** @zensgit
+
+# 重要文档
+/README.md @zensgit
+/CONTRIBUTING.md @zensgit
+/LICENSE @zensgit
+
+# 黄金样本数据（关键测试数据）
+/sample_exports/** @zensgit
+
+# 配置文件
+/docs/schemas/** @zensgit
