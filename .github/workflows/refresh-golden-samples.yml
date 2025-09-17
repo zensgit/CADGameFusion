@@ -31,7 +31,7 @@ jobs:
       - name: Build export_cli
         run: cmake --build build --config Release --target export_cli --parallel 2
 
-      - name: Refresh golden samples from specs
+      - name: Refresh golden samples (CLI + specs)
         run: |
           chmod +x tools/refresh_golden_samples.sh
           ./tools/refresh_golden_samples.sh
@@ -40,10 +40,10 @@ jobs:
         env:
           RTOL: ${{ github.event.inputs.rtol || '1e-6' }}
         run: |
-          echo "Validating sample_exports/scene_concave"
-          python3 tools/validate_export.py sample_exports/scene_concave --schema --stats-out stats.txt
-          echo "Validating sample_exports/scene_nested_holes"
-          python3 tools/validate_export.py sample_exports/scene_nested_holes --schema --stats-out stats.txt
+          for d in sample_exports/scene_sample sample_exports/scene_holes sample_exports/scene_complex sample_exports/scene_concave sample_exports/scene_nested_holes; do
+            echo "Validating $d"
+            python3 tools/validate_export.py "$d" --schema --stats-out stats.txt
+          done
           echo '--- Consistency Stats ---'
           cat stats.txt || true
 
@@ -52,7 +52,9 @@ jobs:
         with:
           name: golden-samples-${{ github.run_id }}
           path: |
+            sample_exports/scene_sample
+            sample_exports/scene_holes
+            sample_exports/scene_complex
             sample_exports/scene_concave
             sample_exports/scene_nested_holes
             stats.txt
-

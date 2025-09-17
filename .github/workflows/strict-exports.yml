@@ -142,22 +142,12 @@ jobs:
         run: |
           EXPORT_CLI="${{ steps.findcli.outputs.path }}"
           for SCENE in sample holes multi units complex; do
-            # Keep default behavior (outer-only) for holes to match golden; others allow full
-            if [ "$SCENE" = "holes" ]; then
-              "$EXPORT_CLI" --out build/exports --scene "$SCENE" --gltf-holes outer
-            else
-              "$EXPORT_CLI" --out build/exports --scene "$SCENE" --gltf-holes full
-            fi
+            # Unified full topology for glTF (outer + holes)
+            "$EXPORT_CLI" --out build/exports --scene "$SCENE" --gltf-holes full
           done
-          if [ -f tools/specs/scene_complex_spec.json ]; then
-            "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_complex_spec.json --gltf-holes full
-          fi
-          if [ -f tools/specs/scene_concave_spec.json ]; then
-            "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_concave_spec.json --gltf-holes full
-          fi
-          if [ -f tools/specs/scene_nested_holes_spec.json ]; then
-            "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_nested_holes_spec.json --gltf-holes full
-          fi
+          [[ -f tools/specs/scene_complex_spec.json ]] && "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_complex_spec.json --gltf-holes full
+          [[ -f tools/specs/scene_concave_spec.json ]] && "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_concave_spec.json --gltf-holes full
+          [[ -f tools/specs/scene_nested_holes_spec.json ]] && "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_nested_holes_spec.json --gltf-holes full
 
       - name: Validate scenes (schema + stats)
         shell: bash
@@ -295,6 +285,7 @@ jobs:
           fi
 
       - name: Upload reports
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: strict-exports-reports-${{ runner.os }}
@@ -302,3 +293,17 @@ jobs:
             test_report.md
             consistency_stats.txt
             field_*.json
+
+      - name: Failure guidance
+        if: failure()
+        shell: bash
+        run: |
+          echo "::group::Guidance for fixing CI failures"
+          echo "1) Run local CI to reproduce:" 
+          echo "   bash tools/local_ci.sh --build-type Release --rtol 1e-6 --gltf-holes full"
+          echo "2) Check README Contributing / PR Checklist and docs/Troubleshooting.md"
+          echo "   - Ensure normalization (orientation/start) and schema checks pass"
+          echo "   - Refresh golden samples if outputs changed: tools/refresh_golden_samples.sh"
+          echo "   - For JSON spec: use official nlohmann/json header and -DCADGF_USE_NLOHMANN_JSON=ON"
+          echo "3) Inspect uploaded artifacts (field_*.json, consistency_stats.txt)"
+          echo "::endgroup::"

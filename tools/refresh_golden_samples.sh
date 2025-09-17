@@ -26,18 +26,29 @@ update_scene_from_spec() {
   local GOLDEN_DIR="$1"; shift
   local STEM=$(basename "$SPEC" .json)
   local OUT_DIR="$ROOT/sample_exports/scene_cli_${STEM}"
-  "${CLI}" --out "$ROOT/sample_exports" --spec "$SPEC"
+  "${CLI}" --out "$ROOT/sample_exports" --spec "$SPEC" --gltf-holes full
   mkdir -p "$GOLDEN_DIR"
-  cp -f "$OUT_DIR/group_0.json" "$GOLDEN_DIR/group_0.json"
-  if [ -f "$OUT_DIR/mesh_group_0.gltf" ] && [ -f "$OUT_DIR/mesh_group_0.bin" ]; then
-    cp -f "$OUT_DIR/mesh_group_0.gltf" "$GOLDEN_DIR/mesh_group_0.gltf"
-    cp -f "$OUT_DIR/mesh_group_0.bin" "$GOLDEN_DIR/mesh_group_0.bin"
-  fi
+  for jf in "$OUT_DIR"/group_*.json; do [ -f "$jf" ] && cp -f "$jf" "$GOLDEN_DIR/"; done
+  for mf in "$OUT_DIR"/mesh_group_*.gltf "$OUT_DIR"/mesh_group_*.bin; do [ -f "$mf" ] && cp -f "$mf" "$GOLDEN_DIR/"; done
   echo "Refreshed golden: $GOLDEN_DIR"
 }
+
+update_scene_from_cli() {
+  local SCENE="$1"; shift
+  local GOLDEN_DIR="$1"; shift
+  local OUT_DIR="$ROOT/build/exports/scene_cli_${SCENE}"
+  "${CLI}" --out "$ROOT/build/exports" --scene "$SCENE" --gltf-holes full
+  mkdir -p "$GOLDEN_DIR"
+  for jf in "$OUT_DIR"/group_*.json; do [ -f "$jf" ] && cp -f "$jf" "$GOLDEN_DIR/"; done
+  for mf in "$OUT_DIR"/mesh_group_*.gltf "$OUT_DIR"/mesh_group_*.bin; do [ -f "$mf" ] && cp -f "$mf" "$GOLDEN_DIR/"; done
+  echo "Refreshed golden: $GOLDEN_DIR"
+}
+
+update_scene_from_cli sample "$ROOT/sample_exports/scene_sample"
+update_scene_from_cli holes "$ROOT/sample_exports/scene_holes"
+update_scene_from_cli complex "$ROOT/sample_exports/scene_complex"
 
 update_scene_from_spec "$ROOT/tools/specs/scene_concave_spec.json" "$ROOT/sample_exports/scene_concave"
 update_scene_from_spec "$ROOT/tools/specs/scene_nested_holes_spec.json" "$ROOT/sample_exports/scene_nested_holes"
 
-echo "Done. You can run: python3 $ROOT/tools/validate_export.py $ROOT/sample_exports/scene_concave --schema"
-
+echo "Done. Validate with:\n  python3 $ROOT/tools/validate_export.py $ROOT/sample_exports/scene_sample --schema\n  python3 $ROOT/tools/validate_export.py $ROOT/sample_exports/scene_holes --schema\n  python3 $ROOT/tools/validate_export.py $ROOT/sample_exports/scene_complex --schema\n  python3 $ROOT/tools/validate_export.py $ROOT/sample_exports/scene_concave --schema\n  python3 $ROOT/tools/validate_export.py $ROOT/sample_exports/scene_nested_holes --schema"

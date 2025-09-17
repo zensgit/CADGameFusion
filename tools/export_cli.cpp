@@ -19,7 +19,7 @@ struct ExportOptions {
     double unitScale = 1.0;
     std::string specDir; // when set, copy from spec directory
     std::string specFile; // when set, read JSON spec file
-    enum class HolesMode { OuterOnly, Full } gltfHolesMode = HolesMode::OuterOnly; // glTF holes emission strategy
+    enum class HolesMode { OuterOnly, Full } gltfHolesMode = HolesMode::Full; // glTF holes emission strategy (default: Full)
 };
 
 // Scene definitions
