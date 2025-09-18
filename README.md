@@ -39,6 +39,43 @@ CI tracks:
 - Lenient: builds without vcpkg; features are optional (stubs used if deps are missing). Fast and stable smoke tests across platforms.
 - Strict: uses vcpkg baseline to enable earcut/clipper2 and runs strict assertions and export validation on Ubuntu/macOS/Windows.
 
+## Strict CI Quick Guide
+Purpose: reproduce the same gates as the "Core Strict - Exports, Validation, Comparison" workflow locally before opening / updating a PR.
+
+Run locally (full topology holes):
+```bash
+bash tools/local_ci.sh --build-type Release --rtol 1e-6 --gltf-holes full
+```
+Key outputs:
+- Exported scenes: `build/exports/scene_cli_*`
+- Field reports: `build/field_*.json` (each should contain `"status": "passed"`)
+- Consistency stats: `build/consistency_stats.txt` (counts must match sample_exports baseline)
+- Normalization tests: Python + C++ (both must pass)
+
+Pass criteria (all must be true):
+- 8 scenes generated (sample, holes, multi, units, complex, complex_spec, concave_spec, nested_holes_spec)
+- No schema errors (`validate_export.py --schema` internally)
+- No structure mismatches
+- All `field_*.json` show numeric comparisons within rtol=1e-6
+- Normalization (orientation + start vertex + optional sort) OK
+
+Common quick checks:
+```bash
+grep -H "\"status\"" build/field_*.json | grep -v passed || echo OK
+grep -E "scene_cli_.*" build/consistency_stats.txt
+```
+
+If a failure occurs:
+- Re-run a single scene: `build/tools/export_cli --out build/exports --scene complex --gltf-holes full`
+- Validate schema: `python3 tools/validate_export.py build/exports/scene_cli_complex --schema`
+- Field diff example: `python3 tools/compare_fields.py build/exports/scene_cli_complex sample_exports/scene_complex --rtol 1e-6`
+
+Refresh golden samples only when intentional exporter output changes are introduced:
+```bash
+bash tools/refresh_golden_samples.sh
+```
+Then re-run strict CI locally and via GitHub Actions; tag a new baseline (`ci-baseline-YYYY-MM-DD`).
+
 ## Quick Start (with scripts)
 - Prerequisites: Git, CMake, C++17 compiler. For Qt editor, install Qt 6.
 - Bootstrap vcpkg and build:
@@ -100,9 +137,13 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
 - Build From Source: `docs/Build-From-Source.md`
 - Troubleshooting: `docs/Troubleshooting.md`
 - Contributing: `docs/Contributing.md`
- - CI Validation Reports (examples):
-   - `CI_FINAL_TEST_REPORT.md`
-   - `EXPORT_VALIDATION_TEST_REPORT.md`
+- CI Validation Reports (examples):
+  - `CI_FINAL_TEST_REPORT.md`
+  - `EXPORT_VALIDATION_TEST_REPORT.md`
+
+### Verification Reports
+- Post‑merge verification (ZH): `verification_report.md`
+- Post‑merge verification (EN): `verification_report_en.md`
 
 ## Sample Exports and Validation
 - Sample scenes are provided under `sample_exports/`:
