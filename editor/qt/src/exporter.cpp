@@ -38,7 +38,7 @@ static double signedArea(const QVector<QPointF>& ring) {
 }
 
 ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, int kinds, double unitScale,
-                        const QJsonObject& meta, bool writeRingRoles) {
+                        const QJsonObject& meta, bool writeRingRoles, bool includeHolesGLTF) {
     ExportResult res;
     QDir dir(baseDir);
     const QString sceneDir = makeSceneDir(dir);
@@ -90,9 +90,25 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, 
         // 1) Build flat points and ring counts for triangulation
         QVector<core_vec2> flat;
         QVector<int> rc; flat.reserve(128);
-        for (const auto& ring : it.rings) {
-            rc.push_back(ring.size());
-            for (const auto& p : ring) flat.push_back(core_vec2{p.x()*unitScale, p.y()*unitScale});
+        if (includeHolesGLTF) {
+            for (const auto& ring : it.rings) {
+                rc.push_back(ring.size());
+                for (const auto& p : ring) flat.push_back(core_vec2{p.x()*unitScale, p.y()*unitScale});
+            }
+        } else {
+            // Heuristic: pick the largest CCW ring as outer
+            int pick = -1; double best = 0.0;
+            for (int rIndex = 0; rIndex < it.rings.size(); ++rIndex) {
+                double a = signedArea(it.rings[rIndex]);
+                double ab = std::abs(a);
+                if (a > 0.0 && ab > best) { best = ab; pick = rIndex; }
+            }
+            if (pick < 0 && !it.rings.isEmpty()) pick = 0; // fallback
+            if (pick >= 0) {
+                const auto& ring = it.rings[pick];
+                rc.push_back(ring.size());
+                for (const auto& p : ring) flat.push_back(core_vec2{p.x()*unitScale, p.y()*unitScale});
+            }
         }
         // 2) Triangulate via C API (rings)
         int idxCount = 0;
