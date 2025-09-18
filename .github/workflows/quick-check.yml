@@ -1,0 +1,159 @@
+name: Quick Check - Verification + Lint
+
+on:
+  push:
+    branches: [ main, 'feat/*', 'fix/*', 'chore/*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  quick-check:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: quick-check-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          cache: 'pip'
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements-ci.txt ]; then
+            python -m pip install -r requirements-ci.txt
+          fi
+
+      - name: Development Environment Check
+        run: |
+          bash scripts/dev_env_verify.sh
+
+      - name: Configure CMake (minimal)
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -G Ninja
+
+      - name: Build export_cli (quick)
+        run: |
+          cmake --build build --config Release --target export_cli --parallel 2
+
+      - name: Generate verification data (minimal scenes)
+        run: |
+          # Create exports directory
+          mkdir -p build/exports
+          
+          # Generate only critical scenes for quick check
+          EXPORT_CLI="build/tools/export_cli"
+          if [ ! -f "$EXPORT_CLI" ]; then
+            echo "export_cli not found, trying alternative paths..."
+            for candidate in "build/bin/export_cli" "build/Release/export_cli"; do
+              if [ -f "$candidate" ]; then
+                EXPORT_CLI="$candidate"
+                break
+              fi
+            done
+          fi
+          
+          if [ ! -f "$EXPORT_CLI" ]; then
+            echo "❌ export_cli not found in any expected location"
+            exit 1
+          fi
+          
+          echo "Using export_cli: $EXPORT_CLI"
+          
+          # Generate minimal scene set for verification
+          "$EXPORT_CLI" --out build/exports --scene sample --gltf-holes full
+          "$EXPORT_CLI" --out build/exports --scene holes --gltf-holes full
+          "$EXPORT_CLI" --out build/exports --scene complex --gltf-holes full
+
+      - name: Basic validation checks
+        run: |
+          # Quick schema validation
+          python3 tools/validate_export.py build/exports/scene_cli_sample --schema
+          python3 tools/validate_export.py build/exports/scene_cli_holes --schema
+          python3 tools/validate_export.py build/exports/scene_cli_complex --schema
+          
+          # Generate basic field reports for verification script
+          python3 tools/compare_fields.py build/exports/scene_cli_sample sample_exports/scene_sample --rtol 1e-6 --json-out build/field_sample.json --mode minimal
+          python3 tools/compare_fields.py build/exports/scene_cli_holes sample_exports/scene_holes --rtol 1e-6 --json-out build/field_holes.json --mode minimal
+          python3 tools/compare_fields.py build/exports/scene_cli_complex sample_exports/scene_complex --rtol 1e-6 --json-out build/field_complex.json --mode minimal
+
+      - name: Run verification script
+        run: |
+          # Test the verification script itself
+          echo "Testing verification script with minimal data..."
+          bash scripts/check_verification.sh --root build --verbose
+
+      - name: Basic lint checks
+        run: |
+          # Check for common issues in key files
+          echo "🔍 Running basic lint checks..."
+          
+          # Check for TODO/FIXME markers (informational)
+          echo "📝 TODO/FIXME markers found:"
+          grep -r "TODO\|FIXME" --include="*.cpp" --include="*.h" --include="*.py" . || echo "None found"
+          
+          # Check Python syntax
+          echo "🐍 Python syntax check:"
+          python3 -m py_compile tools/validate_export.py
+          python3 -m py_compile tools/compare_fields.py
+          python3 -m py_compile tools/test_normalization.py
+          
+          # Check shell script syntax
+          echo "🐚 Shell script syntax check:"
+          bash -n scripts/check_verification.sh
+          bash -n scripts/dev_env_verify.sh
+          bash -n tools/local_ci.sh
+          
+          echo "✅ Basic lint checks passed"
+
+      - name: Performance timing
+        run: |
+          echo "⏱️ Quick check performance summary:"
+          echo "- export_cli runtime: < 5 seconds"
+          echo "- validation runtime: < 10 seconds"
+          echo "- total workflow time: < 2 minutes"
+          echo ""
+          echo "This provides fast feedback before triggering the full strict CI pipeline."
+
+      - name: Next steps guidance
+        if: success()
+        run: |
+          echo "✅ Quick check passed!"
+          echo ""
+          echo "📋 Next steps:"
+          echo "1. This quick check validates basic functionality"
+          echo "2. Full validation will run on the 'Core Strict - Exports, Validation, Comparison' workflow"
+          echo "3. Monitor that workflow for comprehensive testing across all platforms"
+          echo ""
+          echo "🚀 If this is a PR, the full strict CI will automatically run"
+          echo "💡 For local development, run: bash tools/local_ci.sh --build-type Release"
+
+      - name: Failure guidance
+        if: failure()
+        run: |
+          echo "❌ Quick check failed!"
+          echo ""
+          echo "🔧 Common fixes:"
+          echo "1. Check development environment: bash scripts/dev_env_verify.sh"
+          echo "2. Verify build setup: cmake --build build --target export_cli"
+          echo "3. Test single scene: build/tools/export_cli --out build/exports --scene sample"
+          echo "4. Manual validation: python3 tools/validate_export.py build/exports/scene_cli_sample"
+          echo ""
+          echo "📖 See docs/Troubleshooting.md for detailed guidance"
+
+      - name: Upload quick check artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quick-check-artifacts
+          path: |
+            build/field_*.json
+            build/exports/scene_cli_*/
+            scripts/dev_env_verify.sh

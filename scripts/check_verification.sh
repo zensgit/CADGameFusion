@@ -96,7 +96,7 @@ if [ ! -f "$STATS_FILE" ]; then
   fail "Missing stats file: $STATS_FILE" 1
 fi
 
-EXPECTED_SCENES=(sample holes multi units complex complex_spec concave_spec nested_holes_spec)
+EXPECTED_SCENES=(sample holes multi units complex scene_complex_spec scene_concave_spec scene_nested_holes_spec)
 MISSING=()
 for s in "${EXPECTED_SCENES[@]}"; do
   if ! grep -q "scene_cli_${s}" "$STATS_FILE"; then
@@ -107,9 +107,11 @@ if [ ${#MISSING[@]} -gt 0 ]; then
   fail "Missing scenes in stats: ${MISSING[*]} (expected 8 total)" 3
 fi
 
-# Check for scenes with ok=NO
-OK_COUNT=$(grep -c "ok=YES" "$STATS_FILE" || echo "0")
-NO_COUNT=$(grep -c "ok=NO" "$STATS_FILE" || echo "0")
+# Check for scenes with ok=NO  
+OK_COUNT=$(grep -c "ok=YES" "$STATS_FILE" 2>/dev/null || true)
+if [ -z "$OK_COUNT" ]; then OK_COUNT=0; fi
+NO_COUNT=$(grep -c "ok=NO" "$STATS_FILE" 2>/dev/null || true)
+if [ -z "$NO_COUNT" ]; then NO_COUNT=0; fi
 if [ "$NO_COUNT" -gt 0 ]; then
   echo "[warn] Found $NO_COUNT scenes with ok=NO in consistency stats" >&2
   if [ "$VERBOSE" = true ]; then

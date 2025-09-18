@@ -101,6 +101,14 @@ grep -H "\"status\"" build/field_*.json | grep -v passed || echo OK
 grep -E "scene_cli_.*" build/consistency_stats.txt
 ```
 
+### Failure Triage Matrix
+| **Failure Type** | **Symptoms** | **Script/Command** |
+|------------------|--------------|-------------------|
+| **Field failures** | `field_*.json` shows `"status": "failed"` | `python3 tools/compare_fields.py build/exports/scene_cli_X sample_exports/scene_X --rtol 1e-6` |
+| **Structure failures** | Shape/topology mismatch | `python3 tools/compare_export_to_sample.py build/exports/scene_cli_X sample_exports/scene_X` |
+| **Normalization failures** | Orientation/start vertex errors | `python3 tools/test_normalization.py build/exports` or `build/tests/tools/test_normalization_cpp` |
+| **Schema failures** | JSON validation errors | `python3 tools/validate_export.py build/exports/scene_cli_X --schema` |
+
 If a failure occurs:
 - Re-run a single scene: `build/tools/export_cli --out build/exports --scene complex --gltf-holes full`
 - Validate schema: `python3 tools/validate_export.py build/exports/scene_cli_complex --schema`
