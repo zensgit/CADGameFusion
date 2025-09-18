@@ -42,10 +42,46 @@ CI tracks:
 ## Strict CI Quick Guide
 Purpose: reproduce the same gates as the "Core Strict - Exports, Validation, Comparison" workflow locally before opening / updating a PR.
 
+### Export Validation Flow
+```
+Local Development → Local CI → Quick Check → Push → Remote CI
+      ↓              ↓            ↓          ↓         ↓
+   Code Changes → Full Export → Verify → Git Push → GitHub Actions
+                 + Validation   Results
+```
+
 Run locally (full topology holes):
 ```bash
 bash tools/local_ci.sh --build-type Release --rtol 1e-6 --gltf-holes full
 ```
+
+Optional post-check (fast gate after local_ci run):
+```bash
+bash scripts/check_verification.sh --root build
+```
+
+### Verification Script Features
+The `scripts/check_verification.sh` script provides:
+- ✅ **Field Status Check**: Ensures all `field_*.json` files show `"status": "passed"`
+- ✅ **Scene Coverage**: Verifies all 8 expected scenes are present in consistency stats
+- ✅ **Structural Validation**: Basic JSON integrity check (NaN detection)
+- ✅ **Clear Exit Codes**: Different codes for different failure types (1=missing files, 2=field failures, 3=stats anomalies, 4=structure issues)
+
+```bash
+# Basic check
+bash scripts/check_verification.sh --root build
+
+# Verbose output with details
+bash scripts/check_verification.sh --root build --verbose
+```
+
+### Pre-Push Hook Setup
+Automatically run verification before each push:
+```bash
+cp scripts/hooks/pre-push.sample .git/hooks/pre-push
+chmod +x .git/hooks/pre-push
+```
+
 Key outputs:
 - Exported scenes: `build/exports/scene_cli_*`
 - Field reports: `build/field_*.json` (each should contain `"status": "passed"`)
