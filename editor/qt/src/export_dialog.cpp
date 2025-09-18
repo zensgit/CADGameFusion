@@ -239,8 +239,11 @@ void ExportDialog::updateUIState() {
     bool isMiter = (m_joinTypeCombo->currentData().toInt() == static_cast<int>(Miter));
     m_miterLimitSpin->setEnabled(isMiter);
     
-    // Update other UI elements as needed
-    onFormatChanged(m_formatCombo->currentText());
+    // Keep UI in sync with current check states without re-entering onFormatChanged
+    bool isJson = (m_formatCombo->currentText() == "json");
+    m_ringRolesCheck->setVisible(isJson);
+    bool needs3D = (m_formatCombo->currentText() == "gltf" || m_formatCombo->currentText() == "unity");
+    m_holesCheck->setEnabled(needs3D);
     // Unit scale spin enabled only when not using document unit
     m_unitScaleSpin->setEnabled(!m_useDocUnitCheck->isChecked());
     // Update document unit label
@@ -260,6 +263,8 @@ void ExportDialog::saveSettings() {
     m_settings->setValue("joinType", m_joinTypeCombo->currentIndex());
     m_settings->setValue("miterLimit", m_miterLimitSpin->value());
     m_settings->setValue("lastExportPath", m_lastExportPath);
+    m_settings->setValue("useDocUnit", m_useDocUnitCheck->isChecked());
+    m_settings->setValue("unitScale", m_unitScaleSpin->value());
 }
 
 void ExportDialog::loadSettings() {
@@ -269,6 +274,8 @@ void ExportDialog::loadSettings() {
     m_joinTypeCombo->setCurrentIndex(m_settings->value("joinType", 0).toInt());
     m_miterLimitSpin->setValue(m_settings->value("miterLimit", 2.0).toDouble());
     m_lastExportPath = m_settings->value("lastExportPath").toString();
+    m_useDocUnitCheck->setChecked(m_settings->value("useDocUnit", true).toBool());
+    m_unitScaleSpin->setValue(m_settings->value("unitScale", 1.0).toDouble());
     
     m_openDirButton->setEnabled(!m_lastExportPath.isEmpty());
 }
@@ -282,6 +289,8 @@ bool ExportDialog::getExportOptions(QWidget* parent,
     
     if (dialog.exec() == QDialog::Accepted) {
         options = dialog.getOptions();
+        // Persist last path now if available
+        dialog.saveSettings();
         return true;
     }
     return false;

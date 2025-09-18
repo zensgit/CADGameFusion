@@ -106,8 +106,8 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
 
 ## Sample Exports and Validation
 - Sample scenes are provided under `sample_exports/`:
-  - `scene_sample`: minimal rectangle (JSON + glTF)
-  - `scene_holes`: outer + hole (JSON carries hole semantics)
+- `scene_sample`: minimal rectangle (JSON + glTF)
+- `scene_holes`: outer + hole (JSON carries hole semantics; glTF now uses full topology by default)
   - `scene_multi_groups`: multiple groups (group_0..2)
   - `scene_units`: large unit scale example (unitScale=1000.0)
 - Validate a scene locally:
@@ -193,7 +193,8 @@ python3 tools/validate_export.py build/exports/scene_cli_spec
 - `--scene <name>` : Scene type: sample|holes|multi|units|complex
 - `--unit <scale>` : Unit scale factor (default: 1.0)
 - `--spec-dir <dir>` : Copy scenes from specified directory
- - `--spec <file>` : Read JSON spec and generate scene(s)
+- `--spec <file>` : Read JSON spec and generate scene(s)
+- `--gltf-holes <outer|full>` : Control glTF vertices for holes; default is `full`
 
 #### Generating from a JSON Spec
 ```bash
@@ -216,3 +217,14 @@ You can run the "Core Strict - Exports, Validation, Comparison" workflow with a 
   - Full mode (coordinates + meta): sample, holes, complex, spec-complex, concave, nested_holes
   - Counts-only + meta: units, multi (glTF presence mismatches allowed)
 - Tolerance: default rtol=1e-6; can be adjusted via workflow_dispatch input when needed.
+
+## Contributing / PR Checklist
+- Run local CI before opening a PR:
+  - `bash tools/local_ci.sh --build-type Release --rtol 1e-6 --gltf-holes full`
+- Ensure normalization checks (Python + C++) pass; schema validation (docs/schemas) passes.
+- Verify structure and field-level comparisons for critical scenes (sample/holes/complex/spec/concave/nested_holes).
+- Refresh golden samples if outputs changed:
+  - `bash tools/refresh_golden_samples.sh` then commit `sample_exports/`.
+- Use `--gltf-holes full` by default; justify deviations.
+- For `--spec`, ensure vendored `tools/third_party/json.hpp` is the official nlohmann/json and build with `-DCADGF_USE_NLOHMANN_JSON=ON`.
+- See `.github/pull_request_template.md` for the full checklist and links.
