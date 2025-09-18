@@ -1,0 +1,44 @@
+#!/bin/bash
+
+# CADGameFusion Pre-Push Hook
+# 
+# Automatically runs verification checks before pushing to remote.
+# Prevents pushing code that hasn't passed local strict validation.
+#
+# Installation:
+#   cp scripts/hooks/pre-push.sample .git/hooks/pre-push
+#   chmod +x .git/hooks/pre-push
+#
+# Or use the setup command in scripts/DEV_SHORTCUTS.md
+
+set -e
+
+echo "🔍 Running pre-push verification checks..."
+
+# Check if build directory exists
+if [ ! -d "build" ]; then
+    echo "❌ No build directory found. Run local CI first:"
+    echo "   bash tools/local_ci.sh --build-type Release --rtol 1e-6 --gltf-holes full"
+    exit 1
+fi
+
+# Run quick verification check
+if ! bash scripts/check_verification.sh --root build; then
+    echo ""
+    echo "❌ Pre-push verification failed!"
+    echo ""
+    echo "🔧 To fix this, run:"
+    echo "   bash tools/local_ci.sh --build-type Release --rtol 1e-6 --gltf-holes full"
+    echo ""
+    echo "📝 Or check individual issues:"
+    echo "   bash scripts/check_verification.sh --root build --verbose"
+    echo ""
+    echo "🚫 Push cancelled to prevent CI failures."
+    exit 1
+fi
+
+echo "✅ Pre-push verification passed!"
+echo "🚀 Proceeding with push..."
+
+# If we get here, all checks passed
+exit 0
