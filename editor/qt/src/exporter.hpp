@@ -23,7 +23,8 @@ enum ExportKind { ExportJSON = 1, ExportGLTF = 2 };
 
 // Simple exporter: writes per-group JSON (rings) and/or a minimal glTF
 ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, int kinds, double unitScale,
-                        const QJsonObject& meta = QJsonObject(), bool writeRingRoles = true);
+                        const QJsonObject& meta = QJsonObject(), bool writeRingRoles = true,
+                        bool includeHolesGLTF = true);
 
 // Validate exported scene directory (basic structural checks); returns human-readable report
 QString validateExportedScene(const QString& sceneDir, int kinds);

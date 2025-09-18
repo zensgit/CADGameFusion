@@ -209,10 +209,17 @@ void MainWindow::exportSceneActionImpl(int kinds) {
     for (auto it = groups.begin(); it != groups.end(); ++it) {
         ExportItem e; e.groupId = it.key(); e.rings = it.value(); items.push_back(e);
     }
-    // Unit scale (TODO: read from Document settings; use 1.0 for now)
-    double unitScale = 1.0;
-    ExportResult r = exportScene(items, QDir(base), kinds, unitScale);
+    // Use document unit scale by default for quick export
+    double unitScale = m_document.settings().unit_scale;
+    ExportResult r = exportScene(items, QDir(base), kinds, unitScale, QJsonObject(), true, /*includeHolesGLTF=*/true);
     if (r.ok) {
+        // Persist last export path for ExportDialog convenience
+        {
+            QSettings s("CADGameFusion", "ExportDialog");
+            // Prefer validation report file path if present, otherwise scene dir
+            QString lastPath = !r.written.isEmpty() ? r.written.back() : r.sceneDir;
+            s.setValue("lastExportPath", lastPath);
+        }
         QMessageBox box(this);
         box.setWindowTitle("Export");
         box.setText(QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")));
@@ -256,9 +263,15 @@ void MainWindow::exportWithOptions() {
     // Determine unit scale (use document settings or custom value)
     double unitScale = opts.useDocUnit ? m_document.settings().unit_scale : opts.unitScale;
     if (!opts.useDocUnit) unitScale = opts.unitScale;
-    QJsonObject meta; meta["joinType"] = static_cast<int>(opts.joinType); meta["miterLimit"] = opts.miterLimit; meta["unitScale"] = unitScale; meta["useDocUnit"] = opts.useDocUnit;
-    ExportResult r = exportScene(items, QDir(base), kinds, unitScale, meta, opts.exportRingRoles);
+    QJsonObject meta; meta["joinType"] = static_cast<int>(opts.joinType); meta["miterLimit"] = opts.miterLimit; meta["unitScale"] = unitScale; meta["useDocUnit"] = opts.useDocUnit; meta["includeHoles"] = opts.includeHoles;
+    ExportResult r = exportScene(items, QDir(base), kinds, unitScale, meta, opts.exportRingRoles, /*includeHolesGLTF=*/opts.includeHoles);
     if (r.ok) {
+        // Persist last export path for ExportDialog convenience
+        {
+            QSettings s("CADGameFusion", "ExportDialog");
+            QString lastPath = !r.written.isEmpty() ? r.written.back() : r.sceneDir;
+            s.setValue("lastExportPath", lastPath);
+        }
         QMessageBox box(this);
         box.setWindowTitle("Export");
         box.setText(QString("Exported to %1\n%2\nFiles:\n%3").arg(r.sceneDir, r.validationReport, r.written.join("\n")));
