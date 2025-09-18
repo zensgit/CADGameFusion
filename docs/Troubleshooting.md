@@ -55,6 +55,8 @@ Common build/run issues and fixes.
   - If minor float discrepancies are expected, rerun workflow with a higher tolerance (e.g., `rtol=1e-5` via workflow_dispatch input).
   - Ensure sample_exports are up-to-date and not modified locally.
   - Verify export_cli uses the same unit scale and meta configuration.
+  - Since glTF holes now default to `full`, ensure goldens are refreshed with `--gltf-holes full` (run `tools/refresh_golden_samples.sh`).
+  - Locally, use `tools/local_ci.sh --gltf-holes full` to reproduce strict workflow behavior.
 
 ## Unity cannot load core_c
 - Symptom: DllNotFoundException / plugin not found
