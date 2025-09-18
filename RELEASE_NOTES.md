@@ -34,6 +34,8 @@ Migration Notes
 - Result: PASSED end-to-end (schema, structure, field-level; normalization via Python + C++).
 - Scenes validated: sample, holes, multi, units, complex, and spec-driven scenes (concave, nested_holes).
 - Conclusion: Local CI is fully equivalent to the latest GitHub Actions strict exports run (SUCCESS), establishing a safe baseline for follow-up changes.
+ - Detailed verification report (ZH): `verification_report.md` (includes compatibility & rollback guidance)
+ - Verification report (EN): `verification_report_en.md`
 
 ## 2025-09-14 — CI Baseline Improvements
 - Split strict workflows, added schema validation, field-level comparisons.

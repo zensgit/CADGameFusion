@@ -1,5 +1,74 @@
 # CADGameFusion 贡献指南
 
+## 🔎 快速检查清单（提交 / 更新 PR 前必读）
+> 若任一项未满足，请先补齐后再提交或更新 Pull Request。
+
+必需通过（硬门槛）
+- [ ] 已在 Issue 中获得修改许可（含范围确认）
+- [ ] 本地严格校验通过：`bash tools/local_ci.sh --build-type Release --rtol 1e-6 --gltf-holes full`
+- [ ] （如导出逻辑/金样变化）执行并验证：`bash tools/refresh_golden_samples.sh` + 严格校验再次通过
+- [ ] GitHub Actions 严格工作流绿色（Core Strict - Exports, Validation, Comparison）
+- [ ] 没有未解释的 `field_*.json` 非 passed 状态
+- [ ] `consistency_stats.txt` 与基线无差异
+- [ ] 无意外新增 JSON 字段（仅允许预期 meta.* 扩展）
+
+代码质量
+- [ ] 仅最小必要改动（无无关重构）
+- [ ] 新增/修改逻辑有基本单元或集成测试（如适用）
+- [ ] 无编译警告（本地 Release 构建）
+- [ ] 不引入未使用依赖
+
+文档与流程
+- [ ] 若对输出格式或行为有改变：更新 README / RELEASE_NOTES / 验证报告
+- [ ] 若添加 CI 需求：更新 PR 模板或 CONTRIBUTING 指南
+
+提交策略
+- [ ] 拆分为 “feat/fix” 与 “docs/ci” 独立提交（如可能）
+- [ ] 未提交临时目录 / 大型二进制（除金样正式刷新）
+- [ ] 提交信息精确描述改动与动机
+
+可选增值
+- [ ] 添加回滚指导（若为高风险变更）
+- [ ] 新增验证脚本或 README Quick Guide 补充
+
+完成后即可创建 / 更新 PR，并等待 Code Owner 审核。
+
+---
+
+## 🧭 Quick Contribution Checklist (English)
+> All boxes should be checked before opening or updating a Pull Request.
+
+Mandatory (Hard Gates)
+- [ ] Issue approved (scope agreed) before coding
+- [ ] Local strict validation passed: `bash tools/local_ci.sh --build-type Release --rtol 1e-6 --gltf-holes full`
+- [ ] (If exporter or goldens changed) `bash tools/refresh_golden_samples.sh` + strict validation re‑passed
+- [ ] GitHub Actions strict workflow green (Core Strict - Exports, Validation, Comparison)
+- [ ] No failing `field_*.json` (all show `"status": "passed"`)
+- [ ] `consistency_stats.txt` matches baseline (no count drift)
+- [ ] No unexpected JSON keys (only intentional `meta.*` additions)
+
+Code Quality
+- [ ] Minimal necessary changes (no unrelated refactors)
+- [ ] Tests added/updated (if logic or format changed)
+- [ ] No compile warnings (Release build)
+- [ ] No unused dependencies introduced
+
+Docs & Process
+- [ ] README / RELEASE_NOTES / verification report updated if behavior or output format changed
+- [ ] PR template / CONTRIBUTING adjusted if CI policy changed
+
+Commit Strategy
+- [ ] Separate functional vs docs/ci commits when feasible
+- [ ] No temporary folders / large binaries committed (except intentional golden refresh)
+- [ ] Commit messages concise and informative (what + why)
+
+Optional Enhancements
+- [ ] Added rollback guidance for risky changes
+- [ ] Added or improved quick validation scripts / guides
+
+Once all boxes are checked, open/update the PR and request Code Owner review.
+
+
 ## 🔒 项目政策
 
 **重要声明**: 本项目虽然开源，但**严格控制代码修改**。我们欢迎社区参与，但所有代码变更都需要经过严格的审批流程。
@@ -187,4 +256,3 @@ git push origin feature/your-feature-name
 - 社区支持
 
 ---
-
