@@ -15,13 +15,13 @@ on:
 jobs:
   build:
     # Toggle Windows non-blocking behavior here: set to 'false' to enforce blocking once mirrors stabilize
-    env:
-      WINDOWS_CONTINUE_ON_ERROR: 'true'
     concurrency:
       group: core-strict-build-tests-${{ github.ref }}-${{ matrix.os }}
       cancel-in-progress: true
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os == 'windows-latest' && env.WINDOWS_CONTINUE_ON_ERROR == 'true' }}
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    env:
+      WINDOWS_CONTINUE_ON_ERROR: 'true'
     strategy:
       fail-fast: false
       matrix:
