@@ -1,0 +1,13 @@
+{
+  "header": { "format": "CADGF-PROJ", "version": 1 },
+  "project": { "id": "proj-err", "units": "mm" },
+  "scene": {
+    "entities": [
+      { "id": "p1", "type": "point", "params": {"x": 0} }  
+    ],
+    "constraints": []
+  },
+  "featureTree": { "nodes": [], "edges": [] },
+  "resources": { "sketches": [], "meshes": [], "materials": [] }
+}
+

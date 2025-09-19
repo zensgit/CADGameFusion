@@ -5,6 +5,110 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["header", "project", "scene", "featureTree", "resources"],
+  "$defs": {
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "params"],
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "point"},
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y"],
+          "properties": {"x": {"type": "number"}, "y": {"type": "number"}}
+        }
+      }
+    },
+    "line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "params"],
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "line"},
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["p0", "p1"],
+          "properties": {"p0": {"type": "string"}, "p1": {"type": "string"}}
+        }
+      }
+    },
+    "circle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "params"],
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "circle"},
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["center", "radius"],
+          "properties": {"center": {"type": "string"}, "radius": {"type": "number", "exclusiveMinimum": 0}}
+        }
+      }
+    },
+    "arc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "params"],
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "arc"},
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["center", "radius", "startAngle", "endAngle"],
+          "properties": {
+            "center": {"type": "string"},
+            "radius": {"type": "number", "exclusiveMinimum": 0},
+            "startAngle": {"type": "number"},
+            "endAngle": {"type": "number"}
+          }
+        }
+      }
+    },
+    "rect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "params"],
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"const": "rect"},
+        "params": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["p0", "p1"],
+          "properties": {"p0": {"type": "string"}, "p1": {"type": "string"}}
+        }
+      }
+    },
+    "constraintBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "refs"],
+      "properties": {
+        "id": {"type": "string"},
+        "type": {"type": "string"},
+        "refs": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "c_no_value": {
+      "allOf": [
+        {"$ref": "#/$defs/constraintBase"},
+        {"properties": {"value": {"type": "null"}}}
+      ]
+    },
+    "c_value_num": {
+      "allOf": [
+        {"$ref": "#/$defs/constraintBase"},
+        {"properties": {"value": {"type": "number"}}, "required": ["value"]}
+      ]
+    }
+  },
   "properties": {
     "header": {
       "type": "object",
@@ -34,31 +138,28 @@
         "entities": {
           "type": "array",
           "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["id", "type"],
-            "properties": {
-              "id": {"type": "string"},
-              "type": {"type": "string", "enum": ["point", "line", "arc", "circle", "rect"]},
-              "params": {"type": "object"}
-            }
+            "oneOf": [
+              {"$ref": "#/$defs/point"},
+              {"$ref": "#/$defs/line"},
+              {"$ref": "#/$defs/circle"},
+              {"$ref": "#/$defs/arc"},
+              {"$ref": "#/$defs/rect"}
+            ]
           }
         },
         "constraints": {
           "type": "array",
           "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["id", "type"],
-            "properties": {
-              "id": {"type": "string"},
-              "type": {"type": "string", "enum": [
-                "horizontal", "vertical", "parallel", "perpendicular",
-                "equal", "concentric", "coincident", "distance", "angle"
+            "oneOf": [
+              {"allOf": [
+                {"$ref": "#/$defs/c_no_value"},
+                {"properties": {"type": {"enum": ["horizontal", "vertical", "parallel", "perpendicular", "equal", "concentric", "coincident"]}}}
               ]},
-              "refs": {"type": "array", "items": {"type": "string"}},
-              "value": {"type": ["number", "null"]}
-            }
+              {"allOf": [
+                {"$ref": "#/$defs/c_value_num"},
+                {"properties": {"type": {"enum": ["distance", "angle"]}}}
+              ]}
+            ]
           }
         },
         "parameters": {"type": "object"}
@@ -84,4 +185,3 @@
     "meta": {"type": "object"}
   }
 }
-
