@@ -7,7 +7,7 @@ add_executable(export_cli export_cli.cpp)
 target_link_libraries(export_cli PRIVATE core_c)
 
 # Include directories
-target_include_directories(export_cli PRIVATE 
+target_include_directories(export_cli PRIVATE
     ${CMAKE_SOURCE_DIR}/core/include
     ${CMAKE_SOURCE_DIR}/tools
 )
@@ -23,14 +23,25 @@ install(TARGETS export_cli
     RUNTIME DESTINATION bin
 )
 
-# Solver demo (PoC): parse minimal project JSON and run solver
+# Solver demos (PoC)
 add_executable(solve_demo solve_demo.cpp)
 target_link_libraries(solve_demo PRIVATE core)
-target_include_directories(solve_demo PRIVATE 
+target_include_directories(solve_demo PRIVATE
     ${CMAKE_SOURCE_DIR}/core/include
     ${CMAKE_SOURCE_DIR}/tools
 )
 set_target_properties(solve_demo PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_executable(solve_from_project solve_from_project.cpp)
+target_link_libraries(solve_from_project PRIVATE core)
+target_include_directories(solve_from_project PRIVATE
+    ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/tools
+)
+set_target_properties(solve_from_project PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
