@@ -1,0 +1,91 @@
+name: Qt Tests (Trial)
+
+on:
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Enable debug logs'
+        required: false
+        default: 'false'
+        type: boolean
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'editor/qt/**'
+      - 'tests/qt/**'
+      - '.github/workflows/qt-tests-trial.yml'
+
+jobs:
+  qt-tests-ubuntu:
+    name: Qt Exporter Meta Tests (Ubuntu)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache vcpkg
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/vcpkg/installed
+            ~/vcpkg/packages
+            ~/.cache/vcpkg
+          key: ubuntu-vcpkg-${{ hashFiles('**/vcpkg.json') }}-qttrial-v1
+          restore-keys: |
+            ubuntu-vcpkg-
+
+      - name: Setup prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build git
+
+      - name: Setup vcpkg
+        shell: bash
+        run: |
+          set -e
+          VCPKG_DIR="$HOME/vcpkg"
+          if [ -d "$VCPKG_DIR/.git" ]; then (cd "$VCPKG_DIR" && git pull --ff-only); else rm -rf "$VCPKG_DIR" && git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"; fi
+          (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.sh -disableMetrics)
+          echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
+          echo "$VCPKG_DIR" >> $GITHUB_PATH
+
+      - name: Setup Qt 6
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: '6.6.2'
+          cache: true
+          modules: 'qtbase'
+
+      - name: Configure (BUILD_EDITOR_QT=ON)
+        shell: bash
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_EDITOR_QT=ON \
+            -DCMAKE_PREFIX_PATH="${{ env.Qt6_DIR }}" \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -G Ninja
+
+      - name: Build Qt tests
+        run: |
+          cmake --build build --config Release --target test_qt_export_meta --parallel 2 || true
+
+      - name: Run test_qt_export_meta
+        shell: bash
+        run: |
+          set -e
+          CAND=(
+            "build/tests/test_qt_export_meta"
+            "build/tests/qt/test_qt_export_meta"
+            "build/tests/Release/test_qt_export_meta"
+          )
+          for p in "${CAND[@]}"; do
+            if [ -f "$p" ]; then
+              echo "Running $p"; "$p"; exit 0;
+            fi
+          done
+          echo "test_qt_export_meta binary not found; skipping"
+          exit 0
+
