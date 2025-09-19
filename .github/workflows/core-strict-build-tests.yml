@@ -49,7 +49,7 @@ jobs:
       - name: Setup vcpkg
         shell: bash
         run: |
-          echo "VCPKG_BINARY_SOURCES=clear;x-gha,readwrite" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;default" >> $GITHUB_ENV
           if [ "${{ runner.os }}" == "Windows" ]; then VCPKG_DIR="C:/vcpkg"; else VCPKG_DIR="$HOME/vcpkg"; fi
           if [ -d "$VCPKG_DIR/.git" ]; then (cd "$VCPKG_DIR" && git pull); else rm -rf "$VCPKG_DIR" && git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"; fi
           (cd "$VCPKG_DIR" && git checkout c9fa965c2a1b1334469b4539063f3ce95383653c)

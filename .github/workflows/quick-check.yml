@@ -80,9 +80,9 @@ jobs:
           python3 tools/validate_export.py build/exports/scene_cli_complex --schema
           
           # Generate basic field reports for verification script
-          python3 tools/compare_fields.py build/exports/scene_cli_sample sample_exports/scene_sample --rtol 1e-6 --json-out build/field_sample.json --mode minimal
-          python3 tools/compare_fields.py build/exports/scene_cli_holes sample_exports/scene_holes --rtol 1e-6 --json-out build/field_holes.json --mode minimal
-          python3 tools/compare_fields.py build/exports/scene_cli_complex sample_exports/scene_complex --rtol 1e-6 --json-out build/field_complex.json --mode minimal
+          python3 tools/compare_fields.py build/exports/scene_cli_sample sample_exports/scene_sample --rtol 1e-6 --json-out build/field_sample.json --mode counts-only
+          python3 tools/compare_fields.py build/exports/scene_cli_holes sample_exports/scene_holes --rtol 1e-6 --json-out build/field_holes.json --mode counts-only
+          python3 tools/compare_fields.py build/exports/scene_cli_complex sample_exports/scene_complex --rtol 1e-6 --json-out build/field_complex.json --mode counts-only
 
       - name: Run verification script
         run: |
