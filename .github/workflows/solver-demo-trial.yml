@@ -1,0 +1,57 @@
+name: Solver Demo (Trial)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'tools/solve_demo.cpp'
+      - 'tools/CMakeLists.txt'
+      - 'core/include/core/solver.hpp'
+      - 'core/src/solver.cpp'
+
+jobs:
+  solver-demo:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -G Ninja || \
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF
+
+      - name: Build solver demo and tests
+        run: |
+          cmake --build build --config Release --target solve_demo --parallel 2 || true
+          cmake --build build --config Release --target core_tests_solver_poc --parallel 2 || true
+          cmake --build build --config Release --target core_tests_solver_constraints --parallel 2 || true
+
+      - name: Run solver demo
+        run: |
+          if [ -f build/tools/solve_demo ]; then DEMO=build/tools/solve_demo; else DEMO=build/solve_demo; fi
+          echo "Running: $DEMO samples/project_minimal.json"
+          "$DEMO" samples/project_minimal.json
+
+      - name: Run solver tests (if built)
+        run: |
+          set -e
+          for t in \
+            build/tests/core/core_tests_solver_poc \
+            build/tests/core/core_tests_solver_constraints \
+            build/tests/core/Release/core_tests_solver_poc \
+            build/tests/core/Release/core_tests_solver_constraints; do
+            if [ -f "$t" ]; then echo "Running $t"; "$t"; fi
+          done
+
+      - name: Upload artifacts (logs)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: solver-demo-trial-logs
+          path: |
+            build/CMakeFiles/CMakeConfigureLog.yaml
+            build/**/CMakeError.log
+            build/**/CMakeOutput.log
