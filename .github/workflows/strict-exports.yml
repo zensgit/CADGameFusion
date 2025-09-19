@@ -119,6 +119,11 @@ jobs:
         run: |
           cmake --build build --config Release --target test_normalization_cpp --parallel 2 || true
 
+      - name: Build meta.normalize test
+        shell: bash
+        run: |
+          cmake --build build --config Release --target test_meta_normalize --parallel 2 || true
+
       - name: Locate export_cli
         id: findcli
         shell: bash
@@ -282,6 +287,18 @@ jobs:
             build/tests/tools/Release/test_normalization_cpp.exe
           else
             echo "[WARN] test_normalization_cpp not found (build config/platform)"
+          fi
+
+      - name: Run meta.normalize emission test
+        shell: bash
+        run: |
+          echo "Running meta.normalize emission test"
+          if [ -f "build/tests/tools/test_meta_normalize" ]; then
+            build/tests/tools/test_meta_normalize
+          elif [ -f "build/tests/tools/Release/test_meta_normalize.exe" ]; then
+            build/tests/tools/Release/test_meta_normalize.exe
+          else
+            echo "[WARN] test_meta_normalize not found (build config/platform)"
           fi
 
       - name: Upload reports
