@@ -36,6 +36,8 @@ Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity ada
   - Workflow: "Windows Nightly - Strict Build Monitor"
   - Runs daily on windows-latest to monitor vcpkg/mirror health, builds strict targets, runs meta.normalize test, and uploads logs.
   - Purpose: decouple transient Windows mirror issues from PR gates while maintaining visibility and fast recovery path.
+  - **Current strategy**: Keep `WINDOWS_CONTINUE_ON_ERROR='true'` until ≥3 consecutive nightly successes. Use built-in retry (3 attempts, exponential backoff) for vcpkg operations.
+  - Recovery guide: see `WINDOWS_MIRROR_RECOVERY_NOTES.md`, `WINDOWS_STRATEGY_RECOMMENDATION.md`, and `docs/Troubleshooting.md` (Windows CI flaky section). Use `scripts/check_windows_nightly_health.sh` to assess readiness to flip the gate.
 
 ### Strict Exports workflow modes (vcpkg toggle)
 - Default mode (use_vcpkg=false): Ninja + system toolchain, skips vcpkg cache/setup for faster runs.
