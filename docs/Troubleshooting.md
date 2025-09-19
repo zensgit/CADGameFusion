@@ -90,6 +90,13 @@ Common build/run issues and fixes.
 - Mitigations in repo:
   - Retry logic (3 attempts, exponential backoff) for vcpkg bootstrap/checkout on Windows.
   - Nightly monitor workflow: "Windows Nightly - Strict Build Monitor" runs daily and uploads logs.
-  - Toggleable gate in `.github/workflows/core-strict-build-tests.yml`:
-    - Set `WINDOWS_CONTINUE_ON_ERROR: 'false'` to enforce blocking once mirrors are stable for several days.
+- Toggleable gate in `.github/workflows/core-strict-build-tests.yml`:
+  - Set `WINDOWS_CONTINUE_ON_ERROR: 'false'` to enforce blocking once mirrors are stable for several days.
 - Recommendation: Flip the toggle after ≥3 consecutive green nightly runs and no mirror warnings.
+
+### Helper script to assess readiness
+Run the checker to decide if it's time to enforce blocking again:
+```bash
+./scripts/check_windows_nightly_health.sh --threshold 3
+```
+It prints the number of consecutive successful nightly runs and suggests whether to flip `WINDOWS_CONTINUE_ON_ERROR` to `'false'`.
