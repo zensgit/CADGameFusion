@@ -1,0 +1,65 @@
+name: Auto Label Qt Changes
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  auto-label-qt:
+    name: Auto Label Qt-related Changes
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check for Qt-related changes
+        id: check-qt-changes
+        run: |
+          # Get the list of changed files in this PR
+          git fetch origin ${{ github.base_ref }}
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD)
+          
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          
+          # Check if any Qt-related files were changed
+          QT_CHANGES=$(echo "$CHANGED_FILES" | grep -E '^(editor/qt/|tests/qt/)' || true)
+          
+          if [ -n "$QT_CHANGES" ]; then
+            echo "Qt-related changes detected:"
+            echo "$QT_CHANGES"
+            echo "needs_qt_label=true" >> $GITHUB_OUTPUT
+          else
+            echo "No Qt-related changes detected"
+            echo "needs_qt_label=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Add qt-tests label
+        if: steps.check-qt-changes.outputs.needs_qt_label == 'true'
+        run: |
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "qt-tests"
+          echo "✅ Added 'qt-tests' label to PR #${{ github.event.pull_request.number }}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on PR
+        if: steps.check-qt-changes.outputs.needs_qt_label == 'true'
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "🔧 **Qt Changes Detected**
+
+          This PR contains changes to Qt-related files. The \`qt-tests\` label has been automatically added to trigger Qt-specific testing.
+          
+          **Changed Qt files:**
+          $(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '^(editor/qt/|tests/qt/)' | sed 's/^/- /')
+          
+          The Qt Tests (Trial) workflow will run automatically to validate these changes."
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
