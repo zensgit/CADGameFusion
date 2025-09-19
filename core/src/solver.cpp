@@ -136,13 +136,18 @@ public:
                 alpha *= 0.5;
             }
             x.swap(newx);
+            // Stagnation check
+            if (best_norm >= prev - 1e-12) {
+                prev = best_norm; // no sufficient decrease
+                break;
+            }
             prev = best_norm;
             if (prev <= tol_) break;
         }
 
         write_x();
         SolveResult out; out.ok = (prev <= tol_); out.iterations = it; out.finalError = prev;
-        out.message = (out.ok ? "Converged (gradient descent)" : "Stopped (max iters or no sufficient decrease)");
+        out.message = (out.ok ? "Converged (gradient descent)" : "Stopped (max iters or stagnation)");
         return out;
     }
 };

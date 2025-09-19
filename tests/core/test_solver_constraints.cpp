@@ -83,8 +83,13 @@ int main(){
     std::vector<ConstraintSpec> cs5{kc};
     auto r5 = s->solveWithBindings(cs5, get2, set);
     assert(r5.ok);
-    // nearest to perpendicular: dot ~ 0 → we expect slope to adjust; ensure non-zero y-delta
-    assert(std::abs((x1-x0)) < 1e-2 || std::abs((y1-y0)) > 1e-3);
+    // nearest to perpendicular: dot ~ 0 → check angle close to 90 deg
+    double v1x = x1-x0, v1y = y1-y0; double v2x = q1x-q0x, v2y = q1y-q0y;
+    double dot = v1x*v2x + v1y*v2y; double n1 = norm2(v1x,v1y), n2 = norm2(v2x,v2y);
+    if (n1>1e-9 && n2>1e-9) {
+        double cosang = dot/(n1*n2);
+        assert(std::abs(cosang) < 5e-2);
+    }
 
     // 6) Equal: enforce y0 == y1
     y0=0.3; y1=0.0;
@@ -97,4 +102,3 @@ int main(){
     std::cout << "Solver constraints tests passed\n";
     delete s; return 0;
 }
-
