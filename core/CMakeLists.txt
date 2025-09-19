@@ -7,6 +7,7 @@ add_library(core STATIC
     src/commands.cpp
     src/ops2d.cpp
     src/core_c_api.cpp
+    src/solver.cpp
 )
 
 target_include_directories(core PUBLIC include)
