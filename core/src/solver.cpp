@@ -50,11 +50,22 @@ public:
                 double x0 = get(c.vars[0], ok0);
                 double x1 = get(c.vars[1], ok1);
                 if (ok0 && ok1) { double r = (x1 - x0); err2 += r*r; }
-            } else if (c.type == "distance" && c.vars.size() >= 2 && c.value.has_value()) {
-                // Interpret refs as p0.x,p0.y,p1.x,p1.y when available; fall back to two values.
-                // Here we only support two refs with already-computed distance as a placeholder.
-                // In practice, mapping provides the right (x,y) sequences.
-                // Skip detailed calc in stub unless pairs are present.
+            } else if (c.type == "distance" && c.value.has_value()) {
+                // Expect either 4 component refs (x0,y0,x1,y1) or skip
+                if (c.vars.size() >= 4) {
+                    bool ok0=true, ok1=true, ok2=true, ok3=true;
+                    double x0 = get(c.vars[0], ok0);
+                    double y0 = get(c.vars[1], ok1);
+                    double x1 = get(c.vars[2], ok2);
+                    double y1 = get(c.vars[3], ok3);
+                    if (ok0 && ok1 && ok2 && ok3) {
+                        double dx = x1 - x0;
+                        double dy = y1 - y0;
+                        double dist = std::sqrt(dx*dx + dy*dy);
+                        double r = dist - c.value.value();
+                        err2 += r*r;
+                    }
+                }
             }
         }
         SolveResult r; r.iterations = 0; r.finalError = std::sqrt(err2); r.ok = (r.finalError <= tol_);
