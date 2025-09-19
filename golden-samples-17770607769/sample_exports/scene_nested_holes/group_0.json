@@ -1,0 +1,31 @@
+{
+  "group_id": 0,
+  "groupId": 0,
+  "flat_pts": [
+    { "x": 0.0, "y": 0.0},
+    { "x": 5.0, "y": 0.0},
+    { "x": 5.0, "y": 5.0},
+    { "x": 0.0, "y": 5.0},
+    { "x": 2.0, "y": 2.0},
+    { "x": 3.0, "y": 2.0},
+    { "x": 3.0, "y": 3.0},
+    { "x": 2.0, "y": 3.0},
+    { "x": 1.0, "y": 1.0},
+    { "x": 1.0, "y": 4.0},
+    { "x": 4.0, "y": 4.0},
+    { "x": 4.0, "y": 1.0}
+  ],
+  "ring_counts": [4, 4, 4],
+  "ring_roles": [0, 0, 1],
+  "meta": {
+    "joinType": 0,
+    "miterLimit": 2.0,
+    "unitScale": 1.0,
+    "useDocUnit": true,
+    "normalize": {
+      "orientation": true,
+      "start": true,
+      "sortRings": true
+    }
+  }
+}

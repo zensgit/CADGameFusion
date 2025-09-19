@@ -1,0 +1,71 @@
+name: "🧹 Task / Maintenance"
+description: Track documentation, CI, tooling, cleanup or non-behavioral refactors
+labels: [chore]
+body:
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the task.
+    validations:
+      required: true
+  - type: checkboxes
+    id: kind
+    attributes:
+      label: Task Type
+      options:
+        - label: Docs / Guides
+        - label: CI / Workflows
+        - label: Tooling / Scripts
+        - label: Cleanup / Formatting
+        - label: Refactor (no behavior change)
+        - label: Release admin (notes/tags)
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps
+      description: List actionable steps to complete the task.
+      placeholder: |
+        - [ ] Update README Quick Guide
+        - [ ] Add workflow badge
+        - [ ] Bump RELEASE_NOTES.md
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: Define done conditions (what proves completion?).
+      placeholder: |
+        - CI green on Linux/macOS
+        - README includes new badge
+        - No functional changes in binaries
+  - type: textarea
+    id: scope
+    attributes:
+      label: Affected Areas
+      description: Files/workflows likely touched.
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk Level
+      options:
+        - None
+        - Low
+        - Medium
+        - High
+    validations:
+      required: true
+  - type: checkboxes
+    id: validation
+    attributes:
+      label: Validation Plan
+      options:
+        - label: N/A (docs only)
+        - label: Manual verification
+        - label: CI green
+        - label: Quick Check passed
+  - type: input
+    id: links
+    attributes:
+      label: Links / Context
+      description: Related issues, PRs, or reports.
+

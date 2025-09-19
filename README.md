@@ -202,6 +202,7 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
 - Editor Usage & Shortcuts: `docs/Editor-Usage.md`
 - API Reference: `docs/API.md`
 - Roadmap: `docs/Roadmap.md`
+  - Exporter v0.3.0 Roadmap: `docs/exporter/roadmap_v0_3_0.md`
 - Unity Integration Guide: `docs/Unity-Guide.md`
 - Build From Source: `docs/Build-From-Source.md`
 - Troubleshooting: `docs/Troubleshooting.md`
