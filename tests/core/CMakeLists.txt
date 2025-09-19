@@ -31,6 +31,11 @@ if(TARGET core)
     else()
         message(STATUS "GTest not found, test_complex_strict will use basic assertions")
     endif()
+
+    # Minimal solver PoC smoke test
+    add_executable(core_tests_solver_poc test_solver_poc.cpp)
+    target_include_directories(core_tests_solver_poc PRIVATE ../../core/include)
+    target_link_libraries(core_tests_solver_poc PRIVATE core)
 else()
     message(WARNING "Core library not found, skipping complex tests")
 endif()
