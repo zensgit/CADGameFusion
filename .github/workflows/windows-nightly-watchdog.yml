@@ -1,0 +1,44 @@
+name: Windows Nightly Watchdog
+
+on:
+  workflow_run:
+    workflows: ["Windows Nightly - Strict Build Monitor"]
+    types: [completed]
+
+permissions:
+  issues: write
+
+jobs:
+  open-issue-on-failure:
+    if: ${{ github.event.workflow_run.conclusion != 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create issue for failed Windows nightly run
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const run = context.payload.workflow_run;
+            const title = `Windows nightly failed: ${run.name} (#${run.run_number}) – ${run.conclusion}`;
+            const body = [
+              `Workflow: ${run.name}`,
+              `Run URL: ${run.html_url}`,
+              `Event: ${run.event}`,
+              `Head branch: ${run.head_branch}`,
+              `Status: ${run.status}`,
+              `Conclusion: ${run.conclusion}`,
+              `Started: ${run.created_at}`,
+              `Updated: ${run.updated_at}`,
+              '',
+              'Next steps:',
+              '- Check vcpkg setup/retry logs',
+              '- Review build/test steps for transient failures',
+              '- Re-run workflow via workflow_dispatch after fix',
+            ].join('\n');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['ci', 'windows', 'triage']
+            });
