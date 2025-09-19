@@ -23,17 +23,19 @@ install(TARGETS export_cli
     RUNTIME DESTINATION bin
 )
 
-# Solver demos (PoC)
-add_executable(solve_demo solve_demo.cpp)
-target_link_libraries(solve_demo PRIVATE core)
-target_include_directories(solve_demo PRIVATE 
-    ${CMAKE_SOURCE_DIR}/core/include
-    ${CMAKE_SOURCE_DIR}/tools
-)
-set_target_properties(solve_demo PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
+# Solver demos (PoC) — only add if source exists
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/solve_demo.cpp")
+  add_executable(solve_demo solve_demo.cpp)
+  target_link_libraries(solve_demo PRIVATE core)
+  target_include_directories(solve_demo PRIVATE 
+      ${CMAKE_SOURCE_DIR}/core/include
+      ${CMAKE_SOURCE_DIR}/tools
+  )
+  set_target_properties(solve_demo PROPERTIES
+      CXX_STANDARD 17
+      CXX_STANDARD_REQUIRED ON
+  )
+endif()
 
 add_executable(solve_from_project solve_from_project.cpp)
 target_link_libraries(solve_from_project PRIVATE core)

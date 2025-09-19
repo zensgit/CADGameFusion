@@ -76,4 +76,3 @@ int main(int argc, char** argv){
     for (auto& kv : store.vars) std::cout << kv.first << " = " << kv.second << "\n";
     delete solver; return res.ok ? 0 : 1;
 }
-
