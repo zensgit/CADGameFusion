@@ -23,9 +23,10 @@ jobs:
     name: Qt Exporter Meta Tests (Ubuntu)
     runs-on: ubuntu-latest
     continue-on-error: true
-    # Run only when manually dispatched, or when PR has label `qt-tests`.
+    # Run when manually dispatched, scheduled, or when PR has label `qt-tests`.
     if: |
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
       (github.event_name == 'pull_request' && contains(toJson(github.event.pull_request.labels), 'qt-tests'))
 
     steps:
