@@ -92,6 +92,18 @@ jobs:
             if [ -f "$TEST_DIR/$T$TEST_SUFFIX" ]; then echo "Running $T"; "$TEST_DIR/$T$TEST_SUFFIX"; fi
           done
 
+      - name: Run tools tests (meta.normalize)
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" == "Windows" ]; then TOOL_DIR="build/tests/tools/Release"; SUFFIX=".exe"; else TOOL_DIR="build/tests/tools"; SUFFIX=""; fi
+          TGT="$TOOL_DIR/test_meta_normalize$SUFFIX"
+          if [ -f "$TGT" ]; then
+            echo "Running test_meta_normalize"
+            "$TGT"
+          else
+            echo "test_meta_normalize not found (skipping)"
+          fi
+
       - name: Build export_cli tool
         shell: bash
         run: |
