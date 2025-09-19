@@ -1,0 +1,57 @@
+name: Windows Nightly - Strict Build Monitor
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # daily at 02:00 UTC
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          cache: 'pip'
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Setup vcpkg (with retry)
+        shell: bash
+        run: |
+          set -e
+          echo "VCPKG_BINARY_SOURCES=clear;default" >> $GITHUB_ENV
+          VCPKG_DIR="C:/vcpkg"
+          retry() { local n=0; local max=3; local delay=5; until "$@"; do n=$((n+1)); if [ $n -ge $max ]; then echo "[retry] failed: $*" >&2; return 1; fi; echo "[retry] attempt $n failed; sleep ${delay}s"; sleep $delay; delay=$((delay*2)); done; }
+          if [ -d "$VCPKG_DIR/.git" ]; then (cd "$VCPKG_DIR" && retry git pull --ff-only); else rm -rf "$VCPKG_DIR" && retry git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"; fi
+          (cd "$VCPKG_DIR" && retry git checkout c9fa965c2a1b1334469b4539063f3ce95383653c)
+          (cd "$VCPKG_DIR" && retry ./bootstrap-vcpkg.bat -disableMetrics)
+          echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
+          echo "$VCPKG_DIR" >> $GITHUB_PATH
+
+      - name: Configure (strict)
+        shell: bash
+        run: |
+          TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 2
+
+      - name: Run tools tests (meta.normalize)
+        shell: bash
+        run: |
+          TGT="build/tests/tools/Release/test_meta_normalize.exe"
+          if [ -f "$TGT" ]; then "$TGT"; else echo "test_meta_normalize not found (skipping)"; fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-nightly-logs
+          path: |
+            build/CMakeFiles/CMakeConfigureLog.yaml
+            build/**/CMakeError.log
+            build/**/CMakeOutput.log

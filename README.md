@@ -10,6 +10,8 @@ Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity ada
   - ![Core Strict - Build and Tests](https://github.com/zensgit/CADGameFusion/actions/workflows/core-strict-build-tests.yml/badge.svg)
 - Core Strict - Exports, Validation, Comparison:
   - ![Core Strict - Exports, Validation, Comparison](https://github.com/zensgit/CADGameFusion/actions/workflows/strict-exports.yml/badge.svg)
+- Windows Nightly - Strict Build Monitor (non-blocking):
+  - ![Windows Nightly - Strict Build Monitor](https://github.com/zensgit/CADGameFusion/actions/workflows/windows-nightly.yml/badge.svg)
 
 ## Maintenance
 - Refresh golden samples (concave, nested_holes): run the workflow
@@ -29,6 +31,11 @@ Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity ada
   review diffs without changing main CI gates. If you adopt this normalization,
   refresh goldens first via the maintenance workflow, then enable the flag in
   the main strict exports workflow configure step.
+
+- Windows nightly strict build monitor (non-blocking):
+  - Workflow: "Windows Nightly - Strict Build Monitor"
+  - Runs daily on windows-latest to monitor vcpkg/mirror health, builds strict targets, runs meta.normalize test, and uploads logs.
+  - Purpose: decouple transient Windows mirror issues from PR gates while maintaining visibility and fast recovery path.
 
 ### Strict Exports workflow modes (vcpkg toggle)
 - Default mode (use_vcpkg=false): Ninja + system toolchain, skips vcpkg cache/setup for faster runs.
@@ -58,6 +65,24 @@ bash tools/local_ci.sh --build-type Release --rtol 1e-6 --gltf-holes full
 Optional post-check (fast gate after local_ci run):
 ```bash
 bash scripts/check_verification.sh --root build
+```
+
+Dev environment sanity check:
+```bash
+bash scripts/dev_env_verify.sh
+```
+
+Run meta.normalize unit test locally:
+```bash
+# Configure & build tests (Release)
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -G Ninja
+cmake --build build --target test_meta_normalize -j
+
+# Execute (platform-specific path)
+# Linux/macOS:
+build/tests/tools/test_meta_normalize
+# Windows:
+build/tests/tools/Release/test_meta_normalize.exe
 ```
 
 ### Verification Script Features
