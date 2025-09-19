@@ -22,3 +22,15 @@ set_target_properties(export_cli PROPERTIES
 install(TARGETS export_cli
     RUNTIME DESTINATION bin
 )
+
+# Solver demo (PoC): parse minimal project JSON and run solver
+add_executable(solve_demo solve_demo.cpp)
+target_link_libraries(solve_demo PRIVATE core)
+target_include_directories(solve_demo PRIVATE 
+    ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/tools
+)
+set_target_properties(solve_demo PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
