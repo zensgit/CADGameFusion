@@ -9,6 +9,7 @@ on:
         default: 'false'
         type: boolean
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     branches: [ main ]
     paths:
       - 'editor/qt/**'
@@ -20,6 +21,10 @@ jobs:
     name: Qt Exporter Meta Tests (Ubuntu)
     runs-on: ubuntu-latest
     continue-on-error: true
+    # Run only when manually dispatched, or when PR has label `qt-tests`.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && contains(toJson(github.event.pull_request.labels), 'qt-tests'))
 
     steps:
       - name: Checkout
@@ -88,4 +93,3 @@ jobs:
           done
           echo "test_qt_export_meta binary not found; skipping"
           exit 0
-
