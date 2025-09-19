@@ -1,0 +1,48 @@
+name: Solver From Project (Trial)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'tools/solve_from_project.cpp'
+      - 'tools/CMakeLists.txt'
+      - 'schemas/project.schema.json'
+      - 'samples/**'
+
+jobs:
+  solver-project:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+          cache: 'pip'
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install jsonschema
+      - name: Validate sample project against schema
+        run: |
+          python tools/validate_project.py samples/project_minimal.json --schema schemas/project.schema.json
+      - name: Configure & Build demo
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -G Ninja || \
+            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF
+          cmake --build build --config Release --target solve_from_project --parallel 2
+      - name: Run solver from project
+        run: |
+          if [ -f build/tools/solve_from_project ]; then DEMO=build/tools/solve_from_project; else DEMO=build/solve_from_project; fi
+          "$DEMO" samples/project_minimal.json
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: solver-project-trial-logs
+          path: |
+            build/CMakeFiles/CMakeConfigureLog.yaml
+            build/**/CMakeError.log
+            build/**/CMakeOutput.log
