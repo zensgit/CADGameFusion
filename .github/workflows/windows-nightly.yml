@@ -23,24 +23,95 @@ jobs:
           cache: 'pip'
           cache-dependency-path: requirements-ci.txt
 
-      - name: Setup vcpkg (with retry)
+      - name: Cache vcpkg (Enhanced)
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\vcpkg\installed
+            C:\vcpkg\packages
+            C:\vcpkg\downloads
+            C:\vcpkg\buildtrees
+            ${{ github.workspace }}/vcpkg-cache
+          key: windows-vcpkg-enhanced-${{ hashFiles('**/vcpkg.json', '.vcpkg-configuration.json') }}-v5
+          restore-keys: |
+            windows-vcpkg-enhanced-
+            windows-vcpkg-
+
+      - name: Setup vcpkg (Enhanced Mirror Strategy)
         shell: bash
         run: |
           set -e
-          echo "VCPKG_BINARY_SOURCES=clear;default" >> $GITHUB_ENV
+          echo "🔧 开始增强镜像策略..."
+          
+          # Enhanced binary sources with multiple fallbacks
+          echo "VCPKG_BINARY_SOURCES=clear;files,$GITHUB_WORKSPACE/vcpkg-cache,readwrite;default" >> $GITHUB_ENV
+          
           VCPKG_DIR="C:/vcpkg"
-          retry() { local n=0; local max=5; local delay=5; until "$@"; do n=$((n+1)); if [ $n -ge $max ]; then echo "[retry] failed after $n attempts: $*" >&2; return 1; fi; echo "[retry] attempt $n failed; sleeping ${delay}s"; sleep $delay; delay=$((delay*2)); done; }
-          if [ -d "$VCPKG_DIR/.git" ]; then (cd "$VCPKG_DIR" && retry git pull --ff-only); else rm -rf "$VCPKG_DIR" && retry git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"; fi
-          (cd "$VCPKG_DIR" && retry git checkout c9fa965c2a1b1334469b4539063f3ce95383653c)
+          
+          # Enhanced retry with better logging
+          retry() { 
+            local n=0; local max=5; local delay=5
+            until "$@"; do 
+              n=$((n+1))
+              if [ $n -ge $max ]; then 
+                echo "[retry] ❌ failed after $n attempts: $*" >&2
+                return 1
+              fi
+              echo "[retry] ⚠️ attempt $n failed; retrying in ${delay}s..."
+              sleep $delay
+              delay=$((delay*2))
+            done
+            echo "[retry] ✅ success after $n attempts"
+          }
+          
+          # Use stable vcpkg version
+          if [ -d "$VCPKG_DIR/.git" ]; then 
+            (cd "$VCPKG_DIR" && retry git fetch origin)
+            (cd "$VCPKG_DIR" && retry git checkout 2024.08.23)
+          else 
+            rm -rf "$VCPKG_DIR" 
+            retry git clone --depth 1 --branch 2024.08.23 https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"
+          fi
+          
+          # Bootstrap with enhanced settings
           (cd "$VCPKG_DIR" && retry ./bootstrap-vcpkg.bat -disableMetrics)
+          
           echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
           echo "$VCPKG_DIR" >> $GITHUB_PATH
+          
+          # Set additional optimization environment variables
+          echo "VCPKG_MAX_CONCURRENCY=1" >> $GITHUB_ENV
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$GITHUB_WORKSPACE/vcpkg-cache" >> $GITHUB_ENV
 
-      - name: Configure (strict)
+      - name: Configure (strict, with mirror optimization)
         shell: bash
+        timeout-minutes: 20
         run: |
+          echo "🏗️ 开始配置构建（镜像优化）..."
+          
+          # Create directories if needed
+          mkdir -p "$GITHUB_WORKSPACE/vcpkg-cache"
+          
+          # Set vcpkg environment for optimal mirror usage
+          export VCPKG_BINARY_SOURCES="clear;files,$GITHUB_WORKSPACE/vcpkg-cache,readwrite;default"
+          export VCPKG_MAX_CONCURRENCY=1
+          export VCPKG_DEFAULT_BINARY_CACHE="$GITHUB_WORKSPACE/vcpkg-cache"
+          
           TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON
+          
+          echo "📦 Using vcpkg toolchain: $TOOLCHAIN"
+          echo "🗄️ Binary cache: $VCPKG_DEFAULT_BINARY_CACHE"
+          echo "🔗 Binary sources: $VCPKG_BINARY_SOURCES"
+          
+          cmake -S . -B build \
+            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_EDITOR_QT=OFF \
+            -DCADGF_USE_NLOHMANN_JSON=ON \
+            -DVCPKG_MANIFEST_MODE=ON \
+            -DVCPKG_INSTALL_OPTIONS="--debug" \
+            -G "Visual Studio 17 2022" \
+            -A x64
 
       - name: Build
         run: cmake --build build --config Release --parallel 2
