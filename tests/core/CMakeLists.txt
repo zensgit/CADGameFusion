@@ -36,6 +36,11 @@ if(TARGET core)
     add_executable(core_tests_solver_poc test_solver_poc.cpp)
     target_include_directories(core_tests_solver_poc PRIVATE ../../core/include)
     target_link_libraries(core_tests_solver_poc PRIVATE core)
+
+    # Solver constraints tests
+    add_executable(core_tests_solver_constraints test_solver_constraints.cpp)
+    target_include_directories(core_tests_solver_constraints PRIVATE ../../core/include)
+    target_link_libraries(core_tests_solver_constraints PRIVATE core)
 else()
     message(WARNING "Core library not found, skipping complex tests")
 endif()
