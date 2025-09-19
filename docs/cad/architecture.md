@@ -28,3 +28,40 @@
 - Solver stability → constrain MVP constraints + fallback strategies
 - Cross-platform deps → vcpkg + CI cache + retry
 
+## Constraint Solver (PoC)
+
+- Interfaces
+  - `core/include/core/solver.hpp`
+    - `struct VarRef { id, key }` — identifies a model variable (e.g., point id + component key `x|y`).
+    - `struct ConstraintSpec { type, vars[], value? }` — declarative constraint spec.
+    - `class ISolver` — API surface:
+      - `setMaxIterations(int)`, `setTolerance(double)`
+      - `solve(std::vector<ConstraintSpec>&)` — legacy no-binding entry（兼容用途）
+      - `solveWithBindings(constraints, GetVar, SetVar)` — 基于回调的绑定式求解：
+        - `GetVar(const VarRef&, bool& ok) -> double`
+        - `SetVar(const VarRef&, double)`
+        - 默认行为：若派生类未覆盖，将桥接回 `solve(...)`，确保向后兼容。
+
+- Residual design (current PoC)
+  - Supported: `horizontal`, `vertical`, `distance`, `parallel`, `perpendicular`, `equal`
+  - Residuals map to zero targets:
+    - horizontal: `y1 - y0 → 0`
+    - vertical: `x1 - x0 → 0`
+    - distance: `|p1 - p0| - d → 0`
+    - parallel: `sin(angle(v1, v2)) → 0` (uses cross/norms)
+    - perpendicular: `cos(angle(v1, v2)) → 0` (uses dot/norms)
+    - equal: `a - b → 0`
+
+- Update strategy (initial)
+  - Finite-difference gradient `g ≈ J^T r` with backoff line search (accept only if error decreases).
+  - Tunables: `maxIters`, `tol`. Goal is robust first pass; future: Gauss–Newton/Levenberg–Marquardt.
+
+- Tests
+  - `tests/core/test_solver_poc.cpp` — API smoke.
+  - `tests/core/test_solver_constraints.cpp` — constraint residuals + simple convergence checks.
+  - 失败路径（规划）：不一致系统/冲突场景在 trial 工作流中进行验证，避免影响主门禁。
+
+- Next steps
+  - Add proper Jacobian assembly and damped Gauss–Newton; expose iteration stats.
+  - Introduce typed model accessors (points/lines) to avoid stringly-typed `VarRef` at call sites.
+  - Extend schema to encode constraint refs typing; generate `ConstraintSpec` from project JSON.
