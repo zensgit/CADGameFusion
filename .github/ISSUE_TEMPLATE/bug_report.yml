@@ -1,0 +1,56 @@
+name: "🐛 Bug Report"
+description: Report a reproducible problem in build, export, validation, or tooling
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve CADGameFusion! Please complete all required fields.
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem Description
+      description: What happened? What did you expect to happen?
+      placeholder: Clear and concise description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction Steps
+      description: Provide exact steps/commands to reproduce (local or CI).
+      placeholder: |
+        1. Commands run (cmake, export_cli, scripts)
+        2. Inputs/scenes
+        3. Observed outputs/logs
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs / Artifacts
+      description: Paste key error lines or attach artifact snippets.
+      render: shell
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: OS / Compiler / Generator (e.g., Ubuntu 22.04, clang-16, Ninja)
+      placeholder: e.g., Ubuntu-latest, GCC 12, Ninja
+  - type: checkboxes
+    id: local-checks
+    attributes:
+      label: Local Checks
+      options:
+        - label: Ran strict local CI (tools/local_ci.sh) and reproduced
+        - label: Ran quick check (scripts/check_verification.sh --quick) and reproduced
+        - label: Validated a single scene with tools/validate_export.py
+  - type: checkboxes
+    id: ci-checks
+    attributes:
+      label: CI Checks
+      options:
+        - label: Attached failing run URL (Actions)
+        - label: Attached field_*.json snippet showing status=failed
+        - label: Attached consistency_stats.txt excerpt
+

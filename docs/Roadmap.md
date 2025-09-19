@@ -1,6 +1,6 @@
 # CADGameFusion — Roadmap
 
-Version: 0.1 (living document)
+ Version: 0.2 (living document)
 
 Guiding principles
 - Ship tangible, reusable pieces each milestone (Core lib + Editor + Adapter).
@@ -9,6 +9,8 @@ Guiding principles
 
 Milestones overview
 - M0 — Skeleton & CI [done]
+- v0.2.0 — Strict CI baseline & exporter options [done]
+- v0.3.0 — Exporter evolution (materials/normals/UVs, segmentation) [planning]
 - M1 — 2D MVP (ops + editor + exporter) [~3 weeks]
 - M2 — UX & Engine Interop (Unity tooling) [~4 weeks]
 - M3 — 3D Primer (sketch → features) [~6 weeks]
@@ -86,6 +88,7 @@ Acceptance
 - Testing: golden geometry sets; CI fuzz seeds for booleans/offset
 - Performance: incremental rebuilds, dirty-prop, spatial indices
 - Docs: API reference, usage, examples, troubleshooting guide
+ - Exporter roadmap: see `docs/exporter/roadmap_v0_3_0.md` and `docs/exporter/design_decisions.md`
 
 ## Risk register
 - Boolean robustness on tricky inputs → normalize inputs, use tolerances, add fuzz
@@ -104,4 +107,3 @@ Acceptance
 - Editor: Owner TBD (@editor-dev)
 - Adapters: Owner TBD (@adapter-dev)
 - Tooling/CI: Owner TBD (@devops)
-

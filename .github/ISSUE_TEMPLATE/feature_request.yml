@@ -1,0 +1,44 @@
+name: "✨ Feature Request"
+description: Propose an enhancement to exporter, validation, tests, or workflows
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please ensure this aligns with project goals. Start with an Issue to discuss scope.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the enhancement.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details & Rationale
+      description: What problem does this solve? What alternatives exist?
+  - type: textarea
+    id: design
+    attributes:
+      label: Proposed Design / Acceptance Criteria
+      description: Outline the approach, affected files, and done conditions.
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Impact Areas
+      options:
+        - label: Exporter JSON/glTF shape
+        - label: Validation/Comparison logic
+        - label: Tests (C++/Python)
+        - label: CI/Workflows
+        - label: Docs/Guides
+  - type: checkboxes
+    id: validation
+    attributes:
+      label: Validation Plan
+      options:
+        - label: Local strict CI passes
+        - label: Field-level comparisons updated/extended if shape changes
+        - label: Golden refresh (only if necessary)
+

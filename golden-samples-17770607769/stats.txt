@@ -1,0 +1,2 @@
+scene=scene_concave, json_groups=1, json_points=6, json_rings=1, gltf_vertices=6, gltf_indices=12, triangles=4, ok=YES
+scene=scene_nested_holes, json_groups=1, json_points=12, json_rings=3, gltf_vertices=4, gltf_indices=6, triangles=2, ok=YES
