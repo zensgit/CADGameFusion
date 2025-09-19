@@ -61,7 +61,6 @@ jobs:
         with:
           version: '6.6.2'
           cache: true
-          modules: 'qtbase'
 
       - name: Configure (BUILD_EDITOR_QT=ON)
         shell: bash
