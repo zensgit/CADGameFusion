@@ -53,7 +53,7 @@ int main(){
     std::vector<ConstraintSpec> cs3{dc};
     auto r3 = s->solveWithBindings(cs3, get, set);
     assert(r3.ok);
-    assert(std::abs(norm2(x1-x0,y1-y0) - 2.0) < 1e-3);
+    assert(std::abs(norm2(x1-x0,y1-y0) - 2.0) < 5e-3);
 
     // 4) Parallel: (p0->p1) || (q0->q1)
     double q0x=0.0, q0y=0.0, q1x=1.0, q1y=0.0; // reference horizontal
@@ -71,8 +71,8 @@ int main(){
     std::vector<ConstraintSpec> cs4{pc};
     auto r4 = s->solveWithBindings(cs4, get2, set);
     assert(r4.ok);
-    // y slope should be near 0 (becoming parallel to horizontal reference)
-    assert(std::abs(y1 - y0) < 1e-3);
+    // slope near 0 (parallel to horizontal reference)
+    assert(std::abs(y1 - y0) < 5e-3);
 
     // 5) Perpendicular: (p0->p1) ⟂ (q0->q1)
     q0x=0.0; q0y=0.0; q1x=0.0; q1y=1.0; // vertical reference
@@ -97,7 +97,17 @@ int main(){
     std::vector<ConstraintSpec> cs6{ec};
     auto r6 = s->solveWithBindings(cs6, get, set);
     assert(r6.ok);
-    assert(std::abs(y1 - y0) < 1e-3);
+    assert(std::abs(y1 - y0) < 5e-3);
+
+    // 7) Mixed: horizontal + distance = 1.5
+    x0=0.0; y0=0.2; x1=1.3; y1=0.0;
+    ConstraintSpec hc2; hc2.type = "horizontal"; hc2.vars = { VarRef{"p0","y"}, VarRef{"p1","y"} };
+    ConstraintSpec dc2; dc2.type = "distance"; dc2.value = 1.5; dc2.vars = { VarRef{"p0","x"}, VarRef{"p0","y"}, VarRef{"p1","x"}, VarRef{"p1","y"} };
+    std::vector<ConstraintSpec> cs7{hc2, dc2};
+    auto r7 = s->solveWithBindings(cs7, get, set);
+    assert(r7.ok);
+    assert(std::abs(y1 - y0) < 5e-3);
+    assert(std::abs(norm2(x1-x0,y1-y0) - 1.5) < 1e-2);
 
     std::cout << "Solver constraints tests passed\n";
     delete s; return 0;

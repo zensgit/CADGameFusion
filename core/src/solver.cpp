@@ -106,42 +106,67 @@ public:
         write_x();
         double prev = eval_norm();
         int it = 0;
+        // Damped Gauss-Newton (Levenberg-like) with finite-diff Jacobian
+        auto solveLinear = [](std::vector<std::vector<double>>& A, std::vector<double>& b)->bool{
+            const size_t n = A.size();
+            for (size_t i=0;i<n;i++) {
+                // partial pivot
+                size_t piv = i; double best = std::abs(A[i][i]);
+                for (size_t k=i+1;k<n;k++){ double v=std::abs(A[k][i]); if (v>best){best=v;piv=k;} }
+                if (best < 1e-12) return false;
+                if (piv!=i){ std::swap(A[piv], A[i]); std::swap(b[piv], b[i]); }
+                double diag = A[i][i];
+                for (size_t j=i;j<n;j++) A[i][j] /= diag; b[i] /= diag;
+                for (size_t k=0;k<n;k++) if (k!=i){ double f=A[k][i]; if (std::abs(f)>0){ for (size_t j=i;j<n;j++) A[k][j]-=f*A[i][j]; b[k]-=f*b[i]; } }
+            }
+            return true;
+        };
+
+        double lambda = 1e-3; // damping
         for (; it < maxIters_; ++it) {
-            // Compute residuals at x
+            // Residuals at x
             std::vector<double> rvec; rvec.reserve(constraints.size());
             for (const auto& c : constraints){ bool okc=false; rvec.push_back(residual(c, okc)); }
 
-            // Finite-diff gradient g = J^T r
-            std::vector<double> grad(vars.size(), 0.0);
+            // Finite-diff Jacobian J (m x n): J_ij = dr_i/dx_j
             const double eps = 1e-6;
-            for (size_t j=0;j<vars.size();++j){
+            const size_t m = rvec.size();
+            const size_t n = vars.size();
+            std::vector<std::vector<double>> J(m, std::vector<double>(n, 0.0));
+            for (size_t j=0;j<n;j++){
                 double xj = x[j];
                 set(vars[j], xj + eps);
-                std::vector<double> r2; r2.reserve(constraints.size());
-                for (const auto& c : constraints){ bool okc=false; r2.push_back(residual(c, okc)); }
-                set(vars[j], xj); // restore
-                double gj = 0.0; for (size_t i=0;i<rvec.size();++i){ gj += ((r2[i]-rvec[i])/eps) * rvec[i]; }
-                grad[j] = gj;
+                for (size_t i=0;i<m;i++){ bool okc=false; double r2 = residual(constraints[i], okc); J[i][j] = (r2 - rvec[i]) / eps; }
+                set(vars[j], xj);
             }
-
-            // Gradient descent with backoff
-            double alpha = 1.0;
-            double best_norm = prev;
-            std::vector<double> newx = x;
-            for (int ls=0; ls<10; ++ls){
-                for (size_t j=0;j<vars.size();++j) newx[j] = x[j] - alpha * grad[j];
-                for (size_t j=0;j<vars.size();++j) set(vars[j], newx[j]);
-                double nn = eval_norm();
-                if (nn <= best_norm - 1e-9) { best_norm = nn; break; }
-                alpha *= 0.5;
+            // Build normal equations: A = J^T J + lambda I, b = -J^T r
+            std::vector<std::vector<double>> A(n, std::vector<double>(n, 0.0));
+            std::vector<double> b(n, 0.0);
+            for (size_t j=0;j<n;j++){
+                for (size_t k=0;k<n;k++){
+                    double s=0.0; for (size_t i=0;i<m;i++) s += J[i][j]*J[i][k];
+                    A[j][k] = s + (j==k ? lambda : 0.0);
+                }
+                double sj=0.0; for (size_t i=0;i<m;i++) sj += J[i][j]*rvec[i];
+                b[j] = -sj;
             }
-            x.swap(newx);
-            // Stagnation check
-            if (best_norm >= prev - 1e-12) {
-                prev = best_norm; // no sufficient decrease
-                break;
+            // Solve for delta
+            std::vector<std::vector<double>> A2 = A;
+            std::vector<double> b2 = b;
+            bool ok = solveLinear(A2, b2);
+            if (!ok) { lambda *= 10.0; continue; }
+            // Trial step
+            std::vector<double> newx = x; for (size_t j=0;j<n;j++) newx[j] = x[j] + b2[j];
+            for (size_t j=0;j<n;j++) set(vars[j], newx[j]);
+            double nn = eval_norm();
+            if (nn < prev - 1e-9) {
+                // accept, reduce damping
+                x.swap(newx); prev = nn; lambda = std::max(1e-12, lambda*0.5);
+            } else {
+                // reject, increase damping
+                for (size_t j=0;j<n;j++) set(vars[j], x[j]);
+                lambda *= 4.0; // more conservative increase
             }
-            prev = best_norm;
             if (prev <= tol_) break;
         }
 
