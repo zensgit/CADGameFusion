@@ -86,10 +86,11 @@ Common build/run issues and fixes.
 ## Windows CI flaky due to vcpkg/msys2 mirrors
 - Symptom: Windows strict build fails with 404 (e.g., `pkgconf` tarball) or transient download errors.
 - Cause: Upstream mirror outages or CDN issues.
-- Current policy: Non‑blocking Windows for strict build/tests until stability is observed.
+- Current policy: Non‑blocking Windows for strict build/tests until stability is observed. After ≥3 consecutive green nightly runs, consider flipping strict CI to blocking for Windows.
 - Mitigations in repo:
-  - Retry logic (3 attempts, exponential backoff) for vcpkg bootstrap/checkout on Windows.
+  - Retry logic (5 attempts, exponential backoff) for vcpkg bootstrap/checkout on Windows.
   - Nightly monitor workflow: "Windows Nightly - Strict Build Monitor" runs daily and uploads logs.
+  - Watchdog workflow raises Issues automatically when nightly fails.
   - Toggleable gate in `.github/workflows/core-strict-build-tests.yml`:
     - Set `WINDOWS_CONTINUE_ON_ERROR: 'false'` to enforce blocking once mirrors are stable for several days.
 - Recommendation: Flip the toggle after ≥3 consecutive green nightly runs and no mirror warnings.

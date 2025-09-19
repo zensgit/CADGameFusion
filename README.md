@@ -12,6 +12,8 @@ Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity ada
   - ![Core Strict - Exports, Validation, Comparison](https://github.com/zensgit/CADGameFusion/actions/workflows/strict-exports.yml/badge.svg)
 - Windows Nightly - Strict Build Monitor (non-blocking):
   - ![Windows Nightly - Strict Build Monitor](https://github.com/zensgit/CADGameFusion/actions/workflows/windows-nightly.yml/badge.svg)
+  - Policy: keep non-blocking until ≥3 consecutive green runs, then consider enabling blocking on strict CI.
+  - Watchdog: failures auto-open Issues (labels: ci, windows, triage).
 
 ## Maintenance
 - Refresh golden samples (concave, nested_holes): run the workflow
