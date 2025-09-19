@@ -15,6 +15,11 @@ Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity ada
   - Policy: keep non-blocking until ≥3 consecutive green runs, then consider enabling blocking on strict CI.
   - Watchdog: failures auto-open Issues (labels: ci, windows, triage).
 
+## Project Management
+- **Project Board**: [CADGF – CI & Design Sprint Board](https://github.com/users/zensgit/projects/3)
+  - Visual tracking of CI improvements, design sprints, and operational tasks
+  - Issue #49: Windows Nightly monitoring (In Progress) – tracking 3× green threshold
+
 ## Maintenance
 - Refresh golden samples (concave, nested_holes): run the workflow
   "Maintenance - Refresh Golden Samples" from the Actions tab.
@@ -48,6 +53,14 @@ CI tracks:
 - Lenient: builds without vcpkg; features are optional (stubs used if deps are missing). Fast and stable smoke tests across platforms.
 - Strict: uses vcpkg baseline to enable earcut/clipper2 and runs strict assertions and export validation on Ubuntu/macOS/Windows.
 
+### Monitor CI runs (Windows stability, PR gates)
+- Quickly watch recent runs for a workflow (needs gh + jq):
+  - `make monitor-ci WORKFLOW="Windows Nightly - Strict Build Monitor" COUNT=3`
+  - `make monitor-ci WORKFLOW="Core Strict - Build and Tests" COUNT=2`
+- Or monitor explicit run IDs with descriptions:
+  - `make monitor-ci RUNS="17859682365:Nightly#3,17859472955:Nightly#2,17854642609:Nightly#1"`
+- The monitor prints per-run status and Windows job results, refreshing every 60s by default (tunable via `INTERVAL`/`MAXI`).
+
 ## Strict CI Quick Guide
 Purpose: reproduce the same gates as the "Core Strict - Exports, Validation, Comparison" workflow locally before opening / updating a PR.
 
@@ -72,6 +85,11 @@ bash scripts/check_verification.sh --root build
 Dev environment sanity check:
 ```bash
 bash scripts/dev_env_verify.sh
+```
+
+Validate a project JSON against the schema:
+```bash
+make validate-project FILE=samples/project_minimal.json
 ```
 
 Run meta.normalize unit test locally:
