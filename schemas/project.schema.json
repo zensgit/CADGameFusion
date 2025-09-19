@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cadgamefusion.io/schemas/project.schema.json",
+  "title": "CADGameFusion Project v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["header", "project", "scene", "featureTree", "resources"],
+  "properties": {
+    "header": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "version"],
+      "properties": {
+        "format": {"type": "string", "const": "CADGF-PROJ"},
+        "version": {"type": "integer", "minimum": 1}
+      }
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "units"],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "created": {"type": "string"},
+        "modified": {"type": "string"},
+        "units": {"type": "string", "enum": ["mm", "cm", "m", "inch", "ft"]}
+      }
+    },
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "type"],
+            "properties": {
+              "id": {"type": "string"},
+              "type": {"type": "string", "enum": ["point", "line", "arc", "circle", "rect"]},
+              "params": {"type": "object"}
+            }
+          }
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "type"],
+            "properties": {
+              "id": {"type": "string"},
+              "type": {"type": "string", "enum": [
+                "horizontal", "vertical", "parallel", "perpendicular",
+                "equal", "concentric", "coincident", "distance", "angle"
+              ]},
+              "refs": {"type": "array", "items": {"type": "string"}},
+              "value": {"type": ["number", "null"]}
+            }
+          }
+        },
+        "parameters": {"type": "object"}
+      }
+    },
+    "featureTree": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {"type": "array", "items": {"type": "object"}},
+        "edges": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sketches": {"type": "array", "items": {"type": "object"}},
+        "meshes": {"type": "array", "items": {"type": "object"}},
+        "materials": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "meta": {"type": "object"}
+  }
+}
+
