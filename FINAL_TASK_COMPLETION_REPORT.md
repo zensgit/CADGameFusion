@@ -77,7 +77,7 @@
 ```
 包含文件:
 ✅ CI_VALIDATION_SUCCESS_REPORT_v0.2.0.md - CI验证报告
-✅ RELEASE_v0.2.0_ANNOUNCEMENT.md - v0.2.0发布公告
+✅ RELEASE_ANNOUNCEMENT_v0.2.0_2025_09_18.md - v0.2.0发布公告
 ✅ docs/exporter/roadmap_v0_3_0.md - 更新的v0.3.0规划
 ✅ .github/ISSUE_TEMPLATE/ - GitHub Issue模板
 ✅ 各种技术文档和设计决策文档

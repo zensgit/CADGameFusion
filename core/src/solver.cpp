@@ -28,9 +28,41 @@ public:
         r.message = r.ok ? "Converged (no-op stub)" : "No model bound; cannot solve";
         return r;
     }
+
+    SolveResult solveWithBindings(std::vector<ConstraintSpec>& constraints,
+                                  const std::function<double(const VarRef&, bool&)>& get,
+                                  const std::function<void(const VarRef&, double)>& set) override
+    {
+        // For the stub, just evaluate a simple residual norm using provided getters.
+        (void)set;
+        double err2 = 0.0;
+        for (const auto& c : constraints) {
+            if (c.type == "horizontal" && c.vars.size() >= 2) {
+                bool ok0=true, ok1=true;
+                double y0 = get(c.vars[0], ok0);
+                double y1 = get(c.vars[1], ok1);
+                if (ok0 && ok1) {
+                    double r = (y1 - y0);
+                    err2 += r*r;
+                }
+            } else if (c.type == "vertical" && c.vars.size() >= 2) {
+                bool ok0=true, ok1=true;
+                double x0 = get(c.vars[0], ok0);
+                double x1 = get(c.vars[1], ok1);
+                if (ok0 && ok1) { double r = (x1 - x0); err2 += r*r; }
+            } else if (c.type == "distance" && c.vars.size() >= 2 && c.value.has_value()) {
+                // Interpret refs as p0.x,p0.y,p1.x,p1.y when available; fall back to two values.
+                // Here we only support two refs with already-computed distance as a placeholder.
+                // In practice, mapping provides the right (x,y) sequences.
+                // Skip detailed calc in stub unless pairs are present.
+            }
+        }
+        SolveResult r; r.iterations = 0; r.finalError = std::sqrt(err2); r.ok = (r.finalError <= tol_);
+        r.message = r.ok ? "Converged (bindings stub)" : "Residual above tol (bindings stub)";
+        return r;
+    }
 };
 
 ISolver* createMinimalSolver() { return new MinimalSolver(); }
 
 } // namespace core
-

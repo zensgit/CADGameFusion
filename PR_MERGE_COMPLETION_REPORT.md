@@ -29,7 +29,7 @@
 
 #### 变更内容
 - CI_VALIDATION_SUCCESS_REPORT_v0.2.0.md - 完整CI验证报告
-- RELEASE_v0.2.0_ANNOUNCEMENT.md - v0.2.0发布公告
+- RELEASE_ANNOUNCEMENT_v0.2.0_2025_09_18.md - v0.2.0发布公告
 - docs/exporter/roadmap_v0_3_0.md - v0.3.0详细规划
 - GitHub Issue模板和相关文档
 
