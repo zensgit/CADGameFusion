@@ -1,0 +1,18 @@
+{
+  "name": "cadgamefusion",
+  "version": "0.1.0",
+  "description": "Minimal Windows dependencies for CADGameFusion",
+  "dependencies": [
+    {
+      "name": "earcut-hpp",
+      "version>=": "2.2.3"
+    }
+  ],
+  "builtin-baseline": "c9fa965c2a1b1334469b4539063f3ce95383653c",
+  "overrides": [
+    {
+      "name": "earcut-hpp",
+      "version": "2.2.4"
+    }
+  ]
+}
