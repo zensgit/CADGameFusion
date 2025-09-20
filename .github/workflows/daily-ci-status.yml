@@ -64,7 +64,14 @@ jobs:
             gh issue create --title "$ISSUE_TITLE" --body "Automated CI daily status thread." || true
             ISSUE_NUMBER=$(gh issue list --search "$ISSUE_TITLE in:title" --state open --json number | jq -r '.[0].number')
           fi
-          gh issue comment "$ISSUE_NUMBER" --body-file CI_DAILY_STATUS.md || true
+          {
+            echo "**Latest Session Links**";
+            echo "- Checkpoint: session/SESSION_CHECKPOINT_LATEST.md";
+            echo "- Snapshot: session/SNAPSHOT_LATEST.md";
+            echo "";
+            cat CI_DAILY_STATUS.md;
+          } > CI_DAILY_STATUS_WITH_LINKS.md
+          gh issue comment "$ISSUE_NUMBER" --body-file CI_DAILY_STATUS_WITH_LINKS.md || true
       - name: Upload status artifact
         uses: actions/upload-artifact@v4
         with:
