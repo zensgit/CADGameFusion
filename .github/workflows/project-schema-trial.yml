@@ -27,8 +27,16 @@ jobs:
       - name: Validate minimal project sample
         run: |
           python tools/validate_project.py samples/project_minimal.json --schema schemas/project.schema.json
+      - name: Validate horizontal (ok)
+        run: |
+          python tools/validate_project.py samples/project_horizontal_ok.json --schema schemas/project.schema.json
       - name: Negative sample should fail
         run: |
           set +e
           python tools/validate_project.py samples/bad_missing_field.json --schema schemas/project.schema.json --quiet
+          if [ $? -eq 0 ]; then echo "Expected failure but validation passed" && exit 1; else echo "Negative sample failed as expected"; fi
+      - name: Negative distance (missing number value) should fail
+        run: |
+          set +e
+          python tools/validate_project.py samples/project_distance_bad.json --schema schemas/project.schema.json --quiet
           if [ $? -eq 0 ]; then echo "Expected failure but validation passed" && exit 1; else echo "Negative sample failed as expected"; fi

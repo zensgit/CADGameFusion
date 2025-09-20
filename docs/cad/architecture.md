@@ -65,3 +65,25 @@
   - Add proper Jacobian assembly and damped Gauss–Newton; expose iteration stats.
   - Introduce typed model accessors (points/lines) to avoid stringly-typed `VarRef` at call sites.
   - Extend schema to encode constraint refs typing; generate `ConstraintSpec` from project JSON.
+
+## Project Schema — Constraints (v1)
+
+- Location: `schemas/project.schema.json`
+- Constraint object fields (recommended):
+  - `id: string`
+  - `type: string` — one of `horizontal`, `vertical`, `distance`, `parallel`, `perpendicular`, `equal`, ...
+  - `refs: string[]` — referenced entity ids or explicit components (e.g., `p1`, `p2` or `p1.x`)
+  - `value: null | number` — null for no‑value constraints, numeric for valued constraints (e.g., `distance`)
+
+Examples
+```
+// Horizontal: accept a line id (expanded to its endpoints' y) or two point ids
+{"id":"c1","type":"horizontal","refs":["l1"],"value":null}
+
+// Distance: accept two point ids; expanded to (x0,y0,x1,y1)
+{"id":"c2","type":"distance","refs":["p1","p2"],"value":10.0}
+```
+
+Notes
+- The schema accepts `refs` as the binding array (alias to internal `vars`), with `value` either `null` (no‑value constraints) or `number` (valued constraints).
+- `tools/solve_from_project.cpp` expands ids to components for bindings and calls `ISolver::solveWithBindings(...)`.
