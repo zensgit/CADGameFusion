@@ -5,6 +5,10 @@ on:
     - cron: '0 2 * * *'  # 10:00 UTC+8
   workflow_dispatch:
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   daily-status:
     runs-on: ubuntu-latest
