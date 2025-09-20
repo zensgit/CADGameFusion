@@ -1,6 +1,8 @@
 #include <cassert>
 #include <iostream>
 #include <cmath>
+#include <map>
+#include <string>
 #include "../../core/include/core/solver.hpp"
 
 // Test cases for conflicting or inconsistent constraints
