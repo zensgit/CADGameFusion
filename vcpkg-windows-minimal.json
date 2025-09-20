@@ -1,0 +1,25 @@
+{
+  "name": "cadgamefusion",
+  "version": "0.1.0",
+  "description": "Minimal Windows dependencies for CADGameFusion",
+  "dependencies": [
+    {
+      "name": "earcut-hpp",
+      "version>=": "2.2.3"
+    }
+  ],
+  "builtin-baseline": "2024.08.23",
+  "vcpkg-configuration": {
+    "default-registry": {
+      "kind": "git",
+      "baseline": "2024.08.23",
+      "repository": "https://github.com/Microsoft/vcpkg.git"
+    }
+  },
+  "overrides": [
+    {
+      "name": "earcut-hpp",
+      "version": "2.2.4"
+    }
+  ]
+}

@@ -23,7 +23,7 @@ jobs:
     env:
       WINDOWS_CONTINUE_ON_ERROR: 'false'
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
@@ -47,7 +47,7 @@ jobs:
             ~/vcpkg/packages
             ~/.cache/vcpkg
             ~/AppData/Local/vcpkg/archives
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}-v3
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json', '**/vcpkg-windows-minimal.json') }}-v4
           restore-keys: ${{ runner.os }}-vcpkg-
 
       - name: Setup vcpkg (Windows, with retry)
@@ -109,6 +109,15 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements-ci.txt ]; then
             python -m pip install -r requirements-ci.txt
+          fi
+
+      - name: Use minimal vcpkg config for Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          if [ -f vcpkg-windows-minimal.json ]; then
+            echo "Using minimal vcpkg configuration for Windows to avoid MSYS2 issues"
+            cp vcpkg-windows-minimal.json vcpkg.json
           fi
 
       - name: Configure
