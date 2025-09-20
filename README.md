@@ -220,6 +220,7 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
 ### Quick Links
 - Project Schema — Constraints (v1): `docs/cad/architecture.md`
 - Contributing — Explicit STL Include Principle: `CONTRIBUTING.md`
+- Windows CI Strategy (minimal vcpkg + rollback): see README CI Status + `core-strict-build-tests.yml`
 
 ## Sample Exports and Validation
 - Sample scenes are provided under `sample_exports/`:

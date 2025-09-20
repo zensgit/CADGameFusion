@@ -80,6 +80,13 @@ jobs:
           echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
           echo "$VCPKG_DIR" >> $GITHUB_PATH
 
+      - name: Print vcpkg state (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo "== vcpkg version =="; vcpkg version || true
+          echo "== vcpkg.json (head) =="; head -n 40 vcpkg.json || echo "(vcpkg.json not found)"
+
       - name: Enable long paths (Windows)
         if: runner.os == 'Windows'
         shell: bash
