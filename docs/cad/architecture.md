@@ -30,6 +30,8 @@
 
 ## Constraint Solver (PoC)
 
+**当前状态**: 概念验证 (Proof of Concept) 实现，提供基础约束求解能力。后续将引入完整的 Gauss-Newton/Levenberg-Marquardt 算法与终止条件优化。
+
 - Interfaces
   - `core/include/core/solver.hpp`
     - `struct VarRef { id, key }` — identifies a model variable (e.g., point id + component key `x|y`).
@@ -52,14 +54,24 @@
     - perpendicular: `cos(angle(v1, v2)) → 0` (uses dot/norms)
     - equal: `a - b → 0`
 
-- Update strategy (initial)
-  - Finite-difference gradient `g ≈ J^T r` with backoff line search (accept only if error decreases).
-  - Tunables: `maxIters`, `tol`. Goal is robust first pass; future: Gauss–Newton/Levenberg–Marquardt.
+- Update strategy (current PoC)
+  - **当前实现**: MinimalSolver 提供占位实现，仅计算残差但不修改变量值
+  - **计划升级**: 完整的 Gauss-Newton 算法实现，包括：
+    - 有限差分雅可比矩阵计算 `J`
+    - Levenberg-Marquardt 阻尼策略避免发散
+    - 自适应步长与线搜索
+    - 收敛判断与终止条件（残差范数、梯度范数、步长）
+  - Tunables: `maxIters`, `tol`
+  - **时间线**: v0.2 版本将包含完整数值优化实现
 
 - Tests
   - `tests/core/test_solver_poc.cpp` — API smoke.
   - `tests/core/test_solver_constraints.cpp` — constraint residuals + simple convergence checks.
-  - 失败路径（规划）：不一致系统/冲突场景在 trial 工作流中进行验证，避免影响主门禁。
+  - `tests/core/test_solver_conflicts.cpp` — 冲突/不一致约束测试（Trial工作流，非阻塞）：
+    - 冲突的水平约束（同一点不能同时在不同y坐标）
+    - 违反三角不等式的距离约束
+    - 过定系统（约束数超过自由度）
+  - 失败路径验证：不一致系统在 trial 工作流中进行验证，避免影响主门禁。
 
 - Next steps
   - Add proper Jacobian assembly and damped Gauss–Newton; expose iteration stats.
