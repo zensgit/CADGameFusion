@@ -88,7 +88,6 @@
     },
     "constraintBase": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["id", "type", "refs"],
       "properties": {
         "id": {"type": "string"},
@@ -99,13 +98,30 @@
     "c_no_value": {
       "allOf": [
         {"$ref": "#/$defs/constraintBase"},
-        {"properties": {"value": {"type": "null"}}}
+        { "type": "object",
+          "properties": {
+            "id": {"type": "string"},
+            "type": {"type": "string"},
+            "refs": {"type": "array", "items": {"type": "string"}},
+            "value": {"type": "null"}
+          },
+          "additionalProperties": false
+        }
       ]
     },
     "c_value_num": {
       "allOf": [
         {"$ref": "#/$defs/constraintBase"},
-        {"properties": {"value": {"type": "number"}}, "required": ["value"]}
+        { "type": "object",
+          "properties": {
+            "id": {"type": "string"},
+            "type": {"type": "string"},
+            "refs": {"type": "array", "items": {"type": "string"}},
+            "value": {"type": "number"}
+          },
+          "required": ["value"],
+          "additionalProperties": false
+        }
       ]
     }
   },

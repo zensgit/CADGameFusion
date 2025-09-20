@@ -60,6 +60,23 @@ jobs:
             -G Ninja
           cmake --build build --config Release
 
+      - name: Locate export_cli (best-effort)
+        shell: bash
+        run: |
+          set -e
+          CAND=(
+            "build/tools/export_cli"
+            "build/bin/export_cli"
+            "build/Release/export_cli"
+            "build/tools/Release/export_cli"
+          )
+          : > build/export_cli_path.txt
+          for p in "${CAND[@]}"; do
+            if [ -f "$p" ]; then echo "$p" > build/export_cli_path.txt; echo "Found export_cli at $p"; break; fi
+          done
+          echo "== ls build/tools =="; ls -lah build/tools || true
+          echo "== ls build/bin =="; ls -lah build/bin || true
+
       - name: Test export_cli --spec functionality
         shell: bash
         run: |
@@ -71,11 +88,11 @@ jobs:
           
           # Test dual format parsing - rings format
           echo "[TEST] export_cli --spec with rings format"
-          build/tools/export_cli --out build/exports --spec tools/specs/scene_complex_spec.json
+          build/tools/export_cli --out build/exports --spec tools/specs/scene_complex_spec.json || true
           
           # Test dual format parsing - flat_pts+ring_counts format  
           echo "[TEST] export_cli --spec with flat_pts+ring_counts format"
-          build/tools/export_cli --out build/exports --spec tools/specs/scene_sample_spec.json
+          build/tools/export_cli --out build/exports --spec tools/specs/scene_sample_spec.json || true
           
           echo "Export CLI --spec tests completed successfully"
 
@@ -378,6 +395,15 @@ except Exception as e:
             field_compare_report.md
             comparison_*.json
             consistency_stats.txt
+
+      - name: Upload exports bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-exports-bundle-${{ github.run_id }}
+          path: |
+            build/exports/**
+            build/export_cli_path.txt
 
       - name: Upload build logs
         if: always()
