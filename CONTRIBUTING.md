@@ -180,6 +180,20 @@ git push origin feature/your-feature-name
 ✅ 标准化检查通过
 ```
 
+### 显式包含原则（STL 头文件）
+- 直接使用的 STL 类型，必须显式包含对应头文件，避免依赖传递包含：
+  - `std::vector` → `<vector>`
+  - `std::map` → `<map>`
+  - `std::unordered_map` → `<unordered_map>`
+  - `std::string` → `<string>`
+  - `std::cout`/`std::cin`/`std::cerr` → `<iostream>`
+  - `std::ifstream`/`std::ofstream` → `<fstream>`
+  - `std::function` → `<functional>`
+  - `std::unique_ptr`/`std::shared_ptr` → `<memory>`
+  - `std::optional` → `<optional>`
+  - `std::sqrt`/`std::pow`/`std::abs` → `<cmath>`
+- 理由：提高可移植性与可维护性，避免不同编译器/标准库传递包含差异导致的构建失败。
+
 ### 文档要求
 - ✅ 代码注释清晰
 - ✅ API变更有文档说明  

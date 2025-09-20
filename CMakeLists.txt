@@ -5,6 +5,11 @@ project(CADGameFusion)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if (MSVC)
+  add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
+  add_compile_options(/EHsc /Zc:__cplusplus /permissive-)
+endif()
+
 # Add subdirectories
 add_subdirectory(core)
 

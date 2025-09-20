@@ -28,9 +28,55 @@ public:
         r.message = r.ok ? "Converged (no-op stub)" : "No model bound; cannot solve";
         return r;
     }
+
+    SolveResult solveWithBindings(std::vector<ConstraintSpec>& constraints,
+                                  const std::function<double(const VarRef&, bool&)>& get,
+                                  const std::function<void(const VarRef&, double)>& set) override
+    {
+        // For the stub, just evaluate a simple residual norm using provided getters.
+        (void)set;
+        double err2 = 0.0;
+        for (const auto& c : constraints) {
+            if (c.type == "horizontal" && c.vars.size() >= 2) {
+                bool ok0=true, ok1=true;
+                double y0 = get(c.vars[0], ok0);
+                double y1 = get(c.vars[1], ok1);
+                if (ok0 && ok1) {
+                    double r = (y1 - y0);
+                    err2 += r*r;
+                }
+            } else if (c.type == "vertical" && c.vars.size() >= 2) {
+                bool ok0=true, ok1=true;
+                double x0 = get(c.vars[0], ok0);
+                double x1 = get(c.vars[1], ok1);
+                if (ok0 && ok1) { double r = (x1 - x0); err2 += r*r; }
+            } else if (c.type == "distance" && c.value.has_value()) {
+                // Support both 4-component refs (x0,y0,x1,y1) and 2-ref placeholder
+                if (c.vars.size() >= 4) {
+                    bool ok0=true, ok1=true, ok2=true, ok3=true;
+                    double x0 = get(c.vars[0], ok0);
+                    double y0 = get(c.vars[1], ok1);
+                    double x1 = get(c.vars[2], ok2);
+                    double y1 = get(c.vars[3], ok3);
+                    if (ok0 && ok1 && ok2 && ok3) {
+                        double dx = x1 - x0;
+                        double dy = y1 - y0;
+                        double dist = std::sqrt(dx*dx + dy*dy);
+                        double r = dist - c.value.value();
+                        err2 += r*r;
+                    }
+                } else if (c.vars.size() >= 2) {
+                    // Fallback: interpret as simplified 2-ref distance placeholder
+                    // In practice, mapping provides the right (x,y) sequences
+                }
+            }
+        }
+        SolveResult r; r.iterations = 0; r.finalError = std::sqrt(err2); r.ok = (r.finalError <= tol_);
+        r.message = r.ok ? "Converged (bindings stub)" : "Residual above tol (bindings stub)";
+        return r;
+    }
 };
 
 ISolver* createMinimalSolver() { return new MinimalSolver(); }
 
 } // namespace core
-

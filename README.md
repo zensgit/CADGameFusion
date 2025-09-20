@@ -217,6 +217,10 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
 - Post‑merge verification (ZH): `verification_report.md`
 - Post‑merge verification (EN): `verification_report_en.md`
 
+### Quick Links
+- Project Schema — Constraints (v1): `docs/cad/architecture.md`
+- Contributing — Explicit STL Include Principle: `CONTRIBUTING.md`
+
 ## Sample Exports and Validation
 - Sample scenes are provided under `sample_exports/`:
 - `scene_sample`: minimal rectangle (JSON + glTF)

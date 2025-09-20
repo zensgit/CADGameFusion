@@ -58,7 +58,7 @@ jobs:
           echo "VCPKG_BINARY_SOURCES=clear;default" >> $GITHUB_ENV
           VCPKG_DIR="C:/vcpkg"
           retry() {
-            local n=0; local max=3; local delay=5
+            local n=0; local max=5; local delay=5
             until "$@"; do
               n=$((n+1))
               if [ $n -ge $max ]; then
@@ -79,6 +79,13 @@ jobs:
           (cd "$VCPKG_DIR" && retry ./bootstrap-vcpkg.bat -disableMetrics)
           echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
           echo "$VCPKG_DIR" >> $GITHUB_PATH
+
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          git config --system core.longpaths true || true
+          echo "Enabled git core.longpaths=true"
 
       - name: Setup vcpkg (Unix)
         if: runner.os != 'Windows'
@@ -108,6 +115,7 @@ jobs:
         shell: bash
         run: |
           TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -G Ninja || \
           cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON
 
       - name: Build
@@ -171,3 +179,13 @@ jobs:
             export_cli_path.txt
             build/tools/**/export_cli*
             build/bin/export_cli*
+
+      - name: Upload CMake logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cmake-logs-${{ runner.os }}
+          path: |
+            build/CMakeFiles/CMakeConfigureLog.yaml
+            build/**/CMakeError.log
+            build/**/CMakeOutput.log
