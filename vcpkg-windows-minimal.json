@@ -8,14 +8,7 @@
       "version>=": "2.2.3"
     }
   ],
-  "builtin-baseline": "2024.08.23",
-  "vcpkg-configuration": {
-    "default-registry": {
-      "kind": "git",
-      "baseline": "2024.08.23",
-      "repository": "https://github.com/Microsoft/vcpkg.git"
-    }
-  },
+  "builtin-baseline": "c9fa965c2a1b1334469b4539063f3ce95383653c",
   "overrides": [
     {
       "name": "earcut-hpp",
