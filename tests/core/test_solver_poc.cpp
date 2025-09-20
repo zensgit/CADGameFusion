@@ -1,5 +1,6 @@
 #include <cassert>
 #include <iostream>
+#include <vector>
 #include "../../core/include/core/solver.hpp"
 
 int main() {
