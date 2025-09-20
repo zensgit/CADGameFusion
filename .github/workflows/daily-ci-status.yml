@@ -1,0 +1,38 @@
+name: Daily CI Status Report
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # 10:00 UTC+8
+  workflow_dispatch:
+
+jobs:
+  daily-status:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup gh and jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          gh --version || true
+      - name: Generate status report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash scripts/monitor_ci_runs.sh --workflow "Windows Nightly - Strict Build Monitor" --count 3 --interval 10 --max-iterations 1 > CI_DAILY_STATUS.md || true
+          echo "\n\n(Automated daily snapshot at $(date -u '+%Y-%m-%d %H:%M:%S UTC'))" >> CI_DAILY_STATUS.md
+      - name: Create or update issue comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_TITLE="Daily CI Status"
+          ISSUE_NUMBER=$(gh issue list --search "$ISSUE_TITLE in:title" --state open --json number,title | jq -r '.[0].number // empty')
+          if [ -z "$ISSUE_NUMBER" ]; then
+            gh issue create --title "$ISSUE_TITLE" --body "Automated CI daily status thread." || true
+            ISSUE_NUMBER=$(gh issue list --search "$ISSUE_TITLE in:title" --state open --json number | jq -r '.[0].number')
+          fi
+          gh issue comment "$ISSUE_NUMBER" --body-file CI_DAILY_STATUS.md || true
+      - name: Upload status artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-daily-status-${{ github.run_id }}
+          path: CI_DAILY_STATUS.md
