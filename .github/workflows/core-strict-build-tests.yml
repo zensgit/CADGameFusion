@@ -19,9 +19,9 @@ jobs:
       group: core-strict-build-tests-${{ github.ref }}-${{ matrix.os }}
       cancel-in-progress: true
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    continue-on-error: false
     env:
-      WINDOWS_CONTINUE_ON_ERROR: 'true'
+      WINDOWS_CONTINUE_ON_ERROR: 'false'
     strategy:
       fail-fast: false
       matrix:
