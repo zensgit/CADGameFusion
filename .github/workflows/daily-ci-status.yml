@@ -22,8 +22,38 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          bash scripts/monitor_ci_runs.sh --workflow "Windows Nightly - Strict Build Monitor" --count 3 --interval 10 --max-iterations 1 > CI_DAILY_STATUS.md || true
-          echo "\n\n(Automated daily snapshot at $(date -u '+%Y-%m-%d %H:%M:%S UTC'))" >> CI_DAILY_STATUS.md
+          set -e
+          : > CI_DAILY_STATUS.md
+          echo "# Daily CI Status Snapshot" >> CI_DAILY_STATUS.md
+          echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> CI_DAILY_STATUS.md
+          echo "" >> CI_DAILY_STATUS.md
+          
+          echo "## Windows Nightly - Strict Build Monitor (last 3)" >> CI_DAILY_STATUS.md
+          bash scripts/monitor_ci_runs.sh --workflow "Windows Nightly - Strict Build Monitor" --count 3 --interval 10 --max-iterations 1 >> CI_DAILY_STATUS.md || true
+          echo "" >> CI_DAILY_STATUS.md
+          
+          echo "## Core Strict - Build and Tests (last 3)" >> CI_DAILY_STATUS.md
+          bash scripts/monitor_ci_runs.sh --workflow "Core Strict - Build and Tests" --count 3 --interval 10 --max-iterations 1 >> CI_DAILY_STATUS.md || true
+          echo "" >> CI_DAILY_STATUS.md
+          
+          echo "## Core Strict - Exports, Validation, Comparison (last 3)" >> CI_DAILY_STATUS.md
+          bash scripts/monitor_ci_runs.sh --workflow "Core Strict - Exports, Validation, Comparison" --count 3 --interval 10 --max-iterations 1 >> CI_DAILY_STATUS.md || true
+          echo "" >> CI_DAILY_STATUS.md
+          
+          echo "## Quick Check - Verification + Lint (last 3)" >> CI_DAILY_STATUS.md
+          bash scripts/monitor_ci_runs.sh --workflow "Quick Check - Verification + Lint" --count 3 --interval 10 --max-iterations 1 >> CI_DAILY_STATUS.md || true
+          echo "" >> CI_DAILY_STATUS.md
+          
+          echo "## Solver From Project (Trial) (last 3)" >> CI_DAILY_STATUS.md
+          bash scripts/monitor_ci_runs.sh --workflow "Solver From Project (Trial)" --count 3 --interval 10 --max-iterations 1 >> CI_DAILY_STATUS.md || true
+          echo "" >> CI_DAILY_STATUS.md
+          
+          # Windows streak summary
+          if [ -f scripts/ci_windows_streak.sh ]; then
+            echo "## Windows Nightly Streak" >> CI_DAILY_STATUS.md
+            bash scripts/ci_windows_streak.sh >> CI_DAILY_STATUS.md || true
+            echo "" >> CI_DAILY_STATUS.md
+          fi
       - name: Create or update issue comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
