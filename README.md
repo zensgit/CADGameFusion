@@ -230,6 +230,8 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
 - Post‑merge verification (EN): `verification_report_en.md`
 
 ### Quick Links
+- [CHANGELOG](CHANGELOG.md) - Version history and release notes
+- [Latest Release](https://github.com/zensgit/CADGameFusion/releases/latest) - Current stable version
 - Project Schema — Constraints (v1): `docs/cad/architecture.md`
 - Contributing — Explicit STL Include Principle: `CONTRIBUTING.md`
 - Windows CI Strategy (minimal vcpkg + rollback): see README CI Status + `core-strict-build-tests.yml`
