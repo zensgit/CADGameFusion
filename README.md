@@ -74,6 +74,18 @@ Dev environment sanity check:
 bash scripts/dev_env_verify.sh
 ```
 
+Offline/air-gapped usage:
+```bash
+# Best-effort offline run (skip pip + schema validation)
+bash tools/local_ci.sh --offline
+
+# Skip pip only (keep schema validation if deps already installed)
+bash tools/local_ci.sh --no-pip
+
+# Quick check without structural heuristic (NaN check)
+bash scripts/check_verification.sh --root build --no-struct --verbose
+```
+
 Run meta.normalize unit test locally:
 ```bash
 # Configure & build tests (Release)
@@ -221,6 +233,9 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
 - Project Schema — Constraints (v1): `docs/cad/architecture.md`
 - Contributing — Explicit STL Include Principle: `CONTRIBUTING.md`
 - Windows CI Strategy (minimal vcpkg + rollback): see README CI Status + `core-strict-build-tests.yml`
+- Session Checkpoint (latest): `session/SESSION_CHECKPOINT_LATEST.md`
+- Session Snapshot (latest): `session/SNAPSHOT_LATEST.md`
+- Offline/air‑gapped usage: see "Strict CI Quick Guide" → Offline/air‑gapped usage
 
 ## Sample Exports and Validation
 - Sample scenes are provided under `sample_exports/`:
