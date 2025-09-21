@@ -3,20 +3,48 @@ set -euo pipefail
 
 # Local CI runner replicating strict-exports workflow without GitHub Actions.
 # Usage:
-#   tools/local_ci.sh [--build-type Release|Debug] [--rtol 1e-6] [--gltf-holes outer|full]
+#   tools/local_ci.sh [--build-type Release|Debug] [--rtol 1e-6] [--gltf-holes outer|full] [--offline] [--no-pip]
+#   tools/local_ci.sh -h|--help
 #
 # Defaults: Release, rtol=1e-6, holes outer (others full)
+# New flags:
+#   --offline : skip pip installs and schema validation (best-effort offline run)
+#   --no-pip  : skip pip installs only
+
+usage() {
+  cat <<USAGE
+Local CI runner (strict-exports parity)
+
+Options:
+  --build-type <Release|Debug>   Build type (default: Release)
+  --rtol <value>                 Field comparison tolerance (default: 1e-6)
+  --gltf-holes <outer|full>      Holes emission mode (default: full)
+  --offline                      Skip pip and schema validation (best-effort offline)
+  --no-pip                       Skip pip installs only
+  -h, --help                     Show this help and exit
+
+Examples:
+  bash tools/local_ci.sh --build-type Release --rtol 1e-6 --gltf-holes full
+  bash tools/local_ci.sh --offline
+  bash tools/local_ci.sh --no-pip
+USAGE
+}
 
 BUILD_TYPE="Release"
 RTOL="1e-6"
 # Default to full to reflect real topology locally; CI can still pin per-scene
 GLTF_HOLES_DEFAULT="full"
+OFFLINE=false
+NO_PIP=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --build-type) BUILD_TYPE="$2"; shift 2;;
     --rtol) RTOL="$2"; shift 2;;
     --gltf-holes) GLTF_HOLES_DEFAULT="$2"; shift 2;;
+    --offline) OFFLINE=true; NO_PIP=true; shift;;
+    --no-pip) NO_PIP=true; shift;;
+    -h|--help) usage; exit 0;;
     *) echo "Unknown arg: $1"; exit 2;;
   esac
 done
@@ -55,13 +83,22 @@ done
 [[ -f tools/specs/scene_nested_holes_spec.json ]] && "$EXPORT_CLI" --out build/exports --spec tools/specs/scene_nested_holes_spec.json --gltf-holes "$GLTF_HOLES_DEFAULT" || true
 
 echo "[LOCAL-CI] Validate scenes (schema + stats)"
-python3 -m pip install --user --upgrade pip >/dev/null 2>&1 || true
-python3 -m pip install --user jsonschema >/dev/null 2>&1 || true
+if [[ "$NO_PIP" != true ]]; then
+  python3 -m pip install --user --upgrade pip >/dev/null 2>&1 || true
+  python3 -m pip install --user jsonschema >/dev/null 2>&1 || true
+else
+  echo "[LOCAL-CI] Skipping pip installs (--no-pip)"
+fi
 STATS_FILE=build/consistency_stats.txt
 : > "$STATS_FILE"
 for d in build/exports/scene_cli_*; do
   [[ -d "$d" ]] || continue
-  python3 tools/validate_export.py "$d" --schema --stats-out "$STATS_FILE"
+  if [[ "$OFFLINE" == true ]]; then
+    # Offline mode: only compute stats, skip schema validation
+    python3 tools/validate_export.py "$d" --stats-out "$STATS_FILE" || true
+  else
+    python3 tools/validate_export.py "$d" --schema --stats-out "$STATS_FILE"
+  fi
 done
 
 echo "[LOCAL-CI] Normalization checks (Python)"
