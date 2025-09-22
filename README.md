@@ -225,6 +225,15 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
   - `CI_FINAL_TEST_REPORT.md`
   - `EXPORT_VALIDATION_TEST_REPORT.md`
 
+### Reports (vcpkg cache optimization)
+- `VCPKG_CACHE_FINALIZATION_SUMMARY_2025_09_22.md` — Final summary
+- `VCPKG_CACHE_TEST_SUMMARY_2025_09_22.md` — Test summary
+- `VCPKG_CACHE_FIX_REPORT_PR78_2025_09_22.md` — PR #78 fix details
+- `VCPKG_CACHE_FIX_FINAL_REPORT_2025_09_22.md` — Final test report
+- `VCPKG_CACHE_ANALYSIS_AND_SOLUTIONS_2025_09_22.md` — Analysis and solutions
+- `VCPKG_CACHE_METRICS_COMPLETE_2025_09_22.md` — Complete metrics
+- `VCPKG_CACHE_METRICS_TEST_FINAL_2025_09_22.md` — Test metrics
+
 ### Verification Reports
 - Post‑merge verification (ZH): `verification_report.md`
 - Post‑merge verification (EN): `verification_report_en.md`

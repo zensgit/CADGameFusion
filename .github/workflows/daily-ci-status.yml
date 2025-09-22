@@ -133,6 +133,15 @@ jobs:
             echo "- Checkpoint: session/SESSION_CHECKPOINT_LATEST.md";
             echo "- Snapshot: session/SNAPSHOT_LATEST.md";
             echo "";
+            echo "**Reports Index (vcpkg cache optimization)**";
+            echo "- VCPKG_CACHE_FINALIZATION_SUMMARY_2025_09_22.md";
+            echo "- VCPKG_CACHE_TEST_SUMMARY_2025_09_22.md";
+            echo "- VCPKG_CACHE_FIX_REPORT_PR78_2025_09_22.md";
+            echo "- VCPKG_CACHE_FIX_FINAL_REPORT_2025_09_22.md";
+            echo "- VCPKG_CACHE_ANALYSIS_AND_SOLUTIONS_2025_09_22.md";
+            echo "- VCPKG_CACHE_METRICS_COMPLETE_2025_09_22.md";
+            echo "- VCPKG_CACHE_METRICS_TEST_FINAL_2025_09_22.md";
+            echo "";
             echo "_Note: if generated in an offline environment, some metrics may appear as placeholders (0). Re-run with network to populate actual values._";
             echo "";
             cat CI_DAILY_STATUS.md;
