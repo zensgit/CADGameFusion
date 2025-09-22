@@ -102,7 +102,12 @@ jobs:
                 INST=$(jq -r '.installing // "N/A"' "$STATS_FILE")
                 REST=$(jq -r '.restored // "N/A"' "$STATS_FILE")
                 TOTAL=$(jq -r '.total_signals // "N/A"' "$STATS_FILE")
-                echo "- Cache Hit Rate: ${HIT}% (restored=${REST}, installing=${INST}, total=${TOTAL})" >> CI_DAILY_STATUS.md
+                CACHEABLE=$(jq -r '.cacheable // true' "$STATS_FILE")
+                if [ "$CACHEABLE" = "false" ]; then
+                  echo "- vcpkg: No cacheable ports detected (likely header-only); hit rate = N/A" >> CI_DAILY_STATUS.md
+                else
+                  echo "- Cache Hit Rate: ${HIT}% (restored=${REST}, installing=${INST}, total=${TOTAL})" >> CI_DAILY_STATUS.md
+                fi
               else
                 echo "- Cache metrics JSON invalid (parsing error)" >> CI_DAILY_STATUS.md
                 echo "Debug: Invalid JSON content:" >&2
@@ -112,7 +117,9 @@ jobs:
               echo "- Cache metrics not found in strict-exports artifacts; trying build-tests artifacts as fallback" >> CI_DAILY_STATUS.md
               rm -rf _tmp_art && mkdir -p _tmp_art
               gh run download "$RUN_ID" -n "build-tests-reports-Ubuntu" -D _tmp_art >/dev/null 2>&1 || \
-              gh run download "$RUN_ID" -n "build-tests-reports-Linux" -D _tmp_art >/dev/null 2>&1 || true
+              gh run download "$RUN_ID" -n "build-tests-reports-Linux" -D _tmp_art >/dev/null 2>&1 || \
+              gh run download "$RUN_ID" -n "build-tests-reports-macOS" -D _tmp_art >/dev/null 2>&1 || \
+              gh run download "$RUN_ID" -n "build-tests-reports-Windows" -D _tmp_art >/dev/null 2>&1 || true
 
               if [ -f "_tmp_art/build/vcpkg_cache_stats.json" ]; then
                 STATS_FILE="_tmp_art/build/vcpkg_cache_stats.json"
@@ -125,7 +132,12 @@ jobs:
                 INST=$(jq -r '.installing // "N/A"' "$STATS_FILE")
                 REST=$(jq -r '.restored // "N/A"' "$STATS_FILE")
                 TOTAL=$(jq -r '.total_signals // "N/A"' "$STATS_FILE")
-                echo "- Cache Hit Rate (from build-tests): ${HIT}% (restored=${REST}, installing=${INST}, total=${TOTAL})" >> CI_DAILY_STATUS.md
+                CACHEABLE=$(jq -r '.cacheable // true' "$STATS_FILE")
+                if [ "$CACHEABLE" = "false" ]; then
+                  echo "- vcpkg: No cacheable ports detected (likely header-only); hit rate = N/A (from build-tests)" >> CI_DAILY_STATUS.md
+                else
+                  echo "- Cache Hit Rate (from build-tests): ${HIT}% (restored=${REST}, installing=${INST}, total=${TOTAL})" >> CI_DAILY_STATUS.md
+                fi
               else
                 echo "- Cache metrics not available (run may not have used vcpkg or artifact names differ)" >> CI_DAILY_STATUS.md
                 echo "Debug: Listing available artifacts for run $RUN_ID" >&2

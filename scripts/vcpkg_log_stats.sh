@@ -41,6 +41,7 @@ count_restored=$(lc "Restored|Using cached|package already installed|binary cach
 
 total=$((count_install + count_restored))
 hit_rate=0
+cacheable=true
 if [[ $total -gt 0 ]]; then
   hit_rate=$(python3 - <<PY $count_restored $total
 import sys
@@ -48,6 +49,8 @@ r=float(sys.argv[1]); t=float(sys.argv[2])
 print(f"{(r/t)*100:.1f}")
 PY
 )
+else
+  cacheable=false
 fi
 
 json_out=$(cat <<JSON
@@ -55,7 +58,8 @@ json_out=$(cat <<JSON
   "installing": $count_install,
   "restored": $count_restored,
   "total_signals": $total,
-  "hit_rate": $hit_rate
+  "hit_rate": $hit_rate,
+  "cacheable": $cacheable
 }
 JSON
 )
@@ -77,4 +81,3 @@ if [[ -n "$OUT_MD" ]]; then
 fi
 
 echo "$json_out"
-

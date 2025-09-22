@@ -11,6 +11,10 @@ on:
         description: 'Enable verbose logs'
         required: false
         default: 'false'
+      cache_probe:
+        description: 'Install a small cacheable port (zlib) to validate vcpkg binary cache'
+        required: false
+        default: 'false'
 
 jobs:
   build:
@@ -180,6 +184,21 @@ jobs:
             --out-json build/vcpkg_cache_stats.json \
             --out-md build/vcpkg_cache_stats.md || true
           cp -f build/vcpkg_cache_stats.json vcpkg_cache_stats.json || true
+
+      - name: Cache probe (optional)
+        if: inputs.cache_probe == 'true'
+        shell: bash
+        run: |
+          echo "Running cache probe: installing zlib via vcpkg to validate binary caching"
+          "$VCPKG_ROOT"/vcpkg install zlib --triplet "$VCPKG_DEFAULT_TRIPLET" || true
+          # List archives after probe
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ls -la "$USERPROFILE/AppData/Local/vcpkg/archives" || true
+            find "$USERPROFILE/AppData/Local/vcpkg/archives" -type f | head -20 || true
+          else
+            ls -la "$HOME/.cache/vcpkg/archives" || true
+            find "$HOME/.cache/vcpkg/archives" -type f | head -20 || true
+          fi
 
       - name: Upload build-tests reports (vcpkg stats)
         if: always()

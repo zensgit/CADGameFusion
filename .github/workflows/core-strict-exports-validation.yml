@@ -12,6 +12,11 @@ on:
         required: false
         default: 'false'
         type: boolean
+      cache_probe:
+        description: 'Install a small cacheable port (zlib) to validate vcpkg binary cache'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   exports-validation-comparison:
@@ -84,6 +89,19 @@ jobs:
             -DBUILD_EDITOR_QT=OFF \
             -G Ninja 2>&1 | tee build/_cmake_configure.log
           cmake --build build --config Release 2>&1 | tee build/_cmake_build.log
+
+      - name: Cache probe (optional)
+        if: inputs.cache_probe == 'true'
+        shell: bash
+        run: |
+          echo "Running cache probe: installing zlib via vcpkg to validate binary caching"
+          "$VCPKG_ROOT"/vcpkg install zlib --triplet "$VCPKG_DEFAULT_TRIPLET" || true
+          # Capture a quick stats refresh
+          bash scripts/vcpkg_log_stats.sh \
+            --logs build/_cmake_configure.log build/_cmake_build.log \
+            --out-json build/vcpkg_cache_stats.json \
+            --out-md build/vcpkg_cache_stats.md || true
+          cp -f build/vcpkg_cache_stats.json vcpkg_cache_stats.json || true
 
       - name: Generate vcpkg cache stats
         if: always()
