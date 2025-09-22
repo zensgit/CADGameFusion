@@ -1,0 +1,21 @@
+{
+  "left": "build/exports/scene_cli_multi",
+  "right": "sample_exports/scene_multi_groups",
+  "rtol": 1e-06,
+  "mode": "full",
+  "meta_mode": "on",
+  "status": "passed",
+  "errors": [],
+  "left_groups": [
+    0,
+    1,
+    2
+  ],
+  "right_groups": [
+    0,
+    1,
+    2
+  ],
+  "left_gltf_groups": [],
+  "right_gltf_groups": []
+}
