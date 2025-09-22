@@ -225,6 +225,13 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
   - `CI_FINAL_TEST_REPORT.md`
   - `EXPORT_VALIDATION_TEST_REPORT.md`
 
+### CI Quick Ops
+- Trigger workflows locally via GitHub CLI (gh):
+  - `bash scripts/ci_quick_ops.sh run-exports --repeat 2`
+  - `bash scripts/ci_quick_ops.sh run-build-tests --repeat 2`
+  - `bash scripts/ci_quick_ops.sh run-all --repeat 2` (exports → build-tests → daily)
+  - Optional: `--debug` for verbose logs; `--cache-probe` to validate vcpkg binary cache path once (zlib); `--no-wait` to fire-and-forget.
+
 ### Verification Reports
 - Post‑merge verification (ZH): `verification_report.md`
 - Post‑merge verification (EN): `verification_report_en.md`
