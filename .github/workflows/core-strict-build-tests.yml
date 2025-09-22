@@ -59,6 +59,8 @@ jobs:
           CACHE_DIR="$USERPROFILE/AppData/Local/vcpkg/archives"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$CACHE_DIR" >> $GITHUB_ENV
           echo "VCPKG_BINARY_SOURCES=clear;files,$CACHE_DIR,readwrite;default" >> $GITHUB_ENV
+          echo "VCPKG_FEATURE_FLAGS=manifests,binarycaching,compilertracking" >> $GITHUB_ENV
+          echo "VCPKG_KEEP_ENV_VARS=VCPKG_DEFAULT_BINARY_CACHE,VCPKG_BINARY_SOURCES" >> $GITHUB_ENV
           mkdir -p "$CACHE_DIR" || true
           echo "VCPKG_DEFAULT_TRIPLET=x64-windows" >> $GITHUB_ENV
           VCPKG_DIR="C:/vcpkg"
@@ -106,6 +108,8 @@ jobs:
           # Configure explicit files-based binary cache for Unix
           echo "VCPKG_DEFAULT_BINARY_CACHE=$HOME/.cache/vcpkg/archives" >> $GITHUB_ENV
           echo "VCPKG_BINARY_SOURCES=clear;files,$HOME/.cache/vcpkg/archives,readwrite;default" >> $GITHUB_ENV
+          echo "VCPKG_FEATURE_FLAGS=manifests,binarycaching,compilertracking" >> $GITHUB_ENV
+          echo "VCPKG_KEEP_ENV_VARS=VCPKG_DEFAULT_BINARY_CACHE,VCPKG_BINARY_SOURCES" >> $GITHUB_ENV
           mkdir -p "$HOME/.cache/vcpkg/archives"
           # Set OS-specific default triplet
           if [ "${{ runner.os }}" = "macOS" ]; then
@@ -155,11 +159,51 @@ jobs:
             mkdir -p "$HOME/.cache/vcpkg/archives"
           fi
           TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DVCPKG_TARGET_TRIPLET="$VCPKG_DEFAULT_TRIPLET" -G Ninja || \
-          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DVCPKG_TARGET_TRIPLET="$VCPKG_DEFAULT_TRIPLET"
+          set -o pipefail
+          { \
+            cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DVCPKG_MANIFEST_MODE=ON -DVCPKG_TARGET_TRIPLET="$VCPKG_DEFAULT_TRIPLET" -G Ninja || \
+            cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DVCPKG_MANIFEST_MODE=ON -DVCPKG_TARGET_TRIPLET="$VCPKG_DEFAULT_TRIPLET"; \
+          } 2>&1 | tee build/_cmake_configure.log
 
       - name: Build
-        run: cmake --build build --config Release --parallel 2
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build --config Release --parallel 2 2>&1 | tee build/_cmake_build.log
+
+      - name: Generate vcpkg cache stats
+        if: always()
+        shell: bash
+        run: |
+          bash scripts/vcpkg_log_stats.sh \
+            --logs build/_cmake_configure.log build/_cmake_build.log \
+            --out-json build/vcpkg_cache_stats.json \
+            --out-md build/vcpkg_cache_stats.md || true
+          cp -f build/vcpkg_cache_stats.json vcpkg_cache_stats.json || true
+
+      - name: Upload build-tests reports (vcpkg stats)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-tests-reports-${{ runner.os }}
+          path: |
+            build/_cmake_configure.log
+            build/_cmake_build.log
+            build/vcpkg_cache_stats.json
+            vcpkg_cache_stats.json
+
+      - name: Debug cache directory listing (post-build)
+        if: always()
+        shell: bash
+        run: |
+          echo "=== Cache directory contents ==="
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ls -la "$USERPROFILE/AppData/Local/vcpkg/archives" || true
+            find "$USERPROFILE/AppData/Local/vcpkg/archives" -type f | head -20 || true
+          else
+            ls -la "$HOME/.cache/vcpkg/archives" || true
+            find "$HOME/.cache/vcpkg/archives" -type f | head -20 || true
+          fi
 
       - name: Run core tests
         shell: bash
