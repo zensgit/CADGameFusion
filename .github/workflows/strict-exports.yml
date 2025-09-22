@@ -36,29 +36,66 @@ jobs:
       - name: Cache vcpkg
         if: github.event.inputs.use_vcpkg == 'true'
         uses: actions/cache@v3
+        id: vcpkg-cache
         with:
           path: |
             C:\vcpkg\installed
             C:\vcpkg\packages
+            C:\Users\runneradmin\AppData\Local\vcpkg\archives
             ~/vcpkg/installed
             ~/vcpkg/packages
-            ~/.cache/vcpkg
-            ~/AppData/Local/vcpkg/archives
-          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/vcpkg.json') }}-v3
-          restore-keys: ${{ runner.os }}-vcpkg-
+            ~/.cache/vcpkg/archives
+            ~/vcpkg/buildtrees
+            ~/vcpkg/downloads
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('**/CMakeLists.txt') }}-${{ hashFiles('.github/workflows/strict-exports.yml') }}-v4
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-${{ hashFiles('**/CMakeLists.txt') }}-
+            ${{ runner.os }}-vcpkg-
 
       - name: Setup vcpkg
         if: github.event.inputs.use_vcpkg == 'true'
         shell: bash
         run: |
-          echo "VCPKG_BINARY_SOURCES=clear;default" >> $GITHUB_ENV
-          if [ "${{ runner.os }}" == "Windows" ]; then VCPKG_DIR="C:/vcpkg"; else VCPKG_DIR="$HOME/vcpkg"; fi
-          if [ -d "$VCPKG_DIR/.git" ]; then (cd "$VCPKG_DIR" && git pull); else rm -rf "$VCPKG_DIR" && git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"; fi
+          # Setup vcpkg binary caching
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            VCPKG_DIR="C:/vcpkg"
+            CACHE_DIR="C:/Users/runneradmin/AppData/Local/vcpkg/archives"
+          else
+            VCPKG_DIR="$HOME/vcpkg"
+            CACHE_DIR="$HOME/.cache/vcpkg/archives"
+          fi
+
+          # Ensure cache directory exists
+          mkdir -p "$CACHE_DIR"
+
+          # Configure binary sources to use file cache
+          echo "VCPKG_BINARY_SOURCES=clear;files,$CACHE_DIR,readwrite" >> $GITHUB_ENV
+
+          # Setup vcpkg installation
+          if [ -d "$VCPKG_DIR/.git" ]; then
+            (cd "$VCPKG_DIR" && git pull)
+          else
+            rm -rf "$VCPKG_DIR"
+            git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"
+          fi
+
           # Pin vcpkg to a known-good commit
           (cd "$VCPKG_DIR" && git checkout c9fa965c2a1b1334469b4539063f3ce95383653c)
-          if [ "${{ runner.os }}" == "Windows" ]; then (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.bat -disableMetrics); else (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.sh -disableMetrics); fi
+
+          # Bootstrap vcpkg
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.bat -disableMetrics)
+          else
+            (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.sh -disableMetrics)
+          fi
+
           echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
           echo "$VCPKG_DIR" >> $GITHUB_PATH
+
+          # Debug: Show cache status
+          echo "Cache hit: ${{ steps.vcpkg-cache.outputs.cache-hit }}"
+          echo "Binary cache directory: $CACHE_DIR"
+          ls -la "$CACHE_DIR" 2>/dev/null || echo "Cache directory empty or not found"
 
       - name: OS deps
         if: runner.os == 'Linux'
@@ -76,8 +113,24 @@ jobs:
             TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
             # Ensure build directory exists before capturing output
             mkdir -p build
-            # Capture vcpkg installation output
-            cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DCADGF_SORT_RINGS=ON 2>&1 | tee build/vcpkg_configure.log
+
+            # Enable vcpkg binary caching debug output
+            export VCPKG_BINARY_CACHING_DEBUG=1
+
+            # Show vcpkg version and configuration
+            echo "vcpkg version:"
+            vcpkg version
+            echo "Binary sources: $VCPKG_BINARY_SOURCES"
+
+            # Capture vcpkg installation output with verbose logging
+            cmake -S . -B build \
+              -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DBUILD_EDITOR_QT=OFF \
+              -DCADGF_USE_NLOHMANN_JSON=ON \
+              -DCADGF_SORT_RINGS=ON \
+              -DVCPKG_INSTALL_OPTIONS="--debug-binary-caching" \
+              2>&1 | tee build/vcpkg_configure.log
           else
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DCADGF_SORT_RINGS=ON -G Ninja
           fi
@@ -319,40 +372,68 @@ jobs:
           # Initialize counters
           RESTORED=0
           INSTALLING=0
+          CACHE_HIT=0
+          CACHE_MISS=0
 
           # Check multiple log files for vcpkg activity
           for LOG_FILE in "build/vcpkg_configure.log" "build/vcpkg_build.log"; do
             if [ -f "$LOG_FILE" ]; then
               echo "Analyzing $LOG_FILE for vcpkg cache metrics..."
 
-              # Count restored packages (various patterns)
-              R1=$(grep -cE "Restored .* from" "$LOG_FILE" 2>/dev/null || echo "0")
-              R2=$(grep -cE "already installed" "$LOG_FILE" 2>/dev/null || echo "0")
-              R3=$(grep -cE "Using cached" "$LOG_FILE" 2>/dev/null || echo "0")
-              RESTORED=$((RESTORED + R1 + R2 + R3))
+              # Count cache hits (packages restored from binary cache)
+              H1=$(grep -cE "Restored .* package" "$LOG_FILE" 2>/dev/null || echo "0")
+              H2=$(grep -cE "Cache hit for" "$LOG_FILE" 2>/dev/null || echo "0")
+              H3=$(grep -cE "already installed" "$LOG_FILE" 2>/dev/null || echo "0")
+              H4=$(grep -cE "Using cached" "$LOG_FILE" 2>/dev/null || echo "0")
+              CACHE_HIT=$((CACHE_HIT + H1 + H2 + H3 + H4))
 
-              # Count installing packages (various patterns)
-              I1=$(grep -cE "Building .* for" "$LOG_FILE" 2>/dev/null || echo "0")
-              I2=$(grep -cE "Extracting .* to" "$LOG_FILE" 2>/dev/null || echo "0")
-              I3=$(grep -cE "Installing .* done" "$LOG_FILE" 2>/dev/null || echo "0")
-              INSTALLING=$((INSTALLING + I1 + I2 + I3))
+              # Count cache misses (packages that need building)
+              M1=$(grep -cE "Building .* for" "$LOG_FILE" 2>/dev/null || echo "0")
+              M2=$(grep -cE "Cache miss for" "$LOG_FILE" 2>/dev/null || echo "0")
+              M3=$(grep -cE "Installing \d+/\d+" "$LOG_FILE" 2>/dev/null || echo "0")
+              CACHE_MISS=$((CACHE_MISS + M1 + M2 + M3))
+
+              # Look for the summary line from vcpkg
+              SUMMARY=$(grep -E "Restored [0-9]+ package" "$LOG_FILE" 2>/dev/null || true)
+              if [ -n "$SUMMARY" ]; then
+                # Extract the number directly
+                RESTORED_COUNT=$(echo "$SUMMARY" | grep -oE "Restored [0-9]+" | grep -oE "[0-9]+")
+                if [ -n "$RESTORED_COUNT" ]; then
+                  RESTORED=$RESTORED_COUNT
+                fi
+              fi
+
+              # Count installing packages
+              INSTALL_COUNT=$(grep -cE "^Installing [0-9]+/[0-9]+" "$LOG_FILE" 2>/dev/null || echo "0")
+              if [ "$INSTALL_COUNT" -gt "0" ]; then
+                # Get the total from "Installing X/Y" pattern
+                LAST_INSTALL=$(grep -E "^Installing [0-9]+/[0-9]+" "$LOG_FILE" | tail -1)
+                TOTAL_PACKAGES=$(echo "$LAST_INSTALL" | grep -oE "[0-9]+/[0-9]+" | cut -d'/' -f2)
+                if [ -n "$TOTAL_PACKAGES" ]; then
+                  INSTALLING=$((TOTAL_PACKAGES - RESTORED))
+                fi
+              fi
             fi
           done
 
-          # If still no data, check CMake output for package detection
+          # If we couldn't parse the exact numbers, use cache hit/miss counts
           if [ "$RESTORED" -eq "0" ] && [ "$INSTALLING" -eq "0" ]; then
-            # Count number of -- Found messages (rough estimate)
-            if [ -f "build/vcpkg_configure.log" ]; then
-              FOUND=$(grep -c "-- Found" build/vcpkg_configure.log 2>/dev/null || echo "0")
-              if [ "$FOUND" -gt "0" ]; then
-                # Assume packages were found (likely from cache)
-                RESTORED=$FOUND
+            if [ "$CACHE_HIT" -gt "0" ] || [ "$CACHE_MISS" -gt "0" ]; then
+              RESTORED=$CACHE_HIT
+              INSTALLING=$CACHE_MISS
+            else
+              # Final fallback: count packages mentioned in log
+              if [ -f "build/vcpkg_configure.log" ]; then
+                # Count unique package names being processed
+                PACKAGES=$(grep -oE "(clipper2|earcut-hpp|vcpkg-cmake):" build/vcpkg_configure.log 2>/dev/null | sort -u | wc -l)
+                if [ "$PACKAGES" -gt "0" ]; then
+                  INSTALLING=$PACKAGES
+                else
+                  # Ultimate fallback
+                  echo "Warning: Could not detect vcpkg packages from logs, using defaults"
+                  INSTALLING=3  # Known packages: vcpkg-cmake, clipper2, earcut-hpp
+                fi
               fi
-            fi
-            # Fallback: if we're using vcpkg, assume at least some packages
-            if [ "$RESTORED" -eq "0" ] && [ "$INSTALLING" -eq "0" ]; then
-              echo "Warning: Could not detect vcpkg packages from logs, using defaults"
-              INSTALLING=8  # Default number based on observed builds
             fi
           fi
 
@@ -364,15 +445,17 @@ jobs:
             HIT_RATE=0
           fi
 
-          # Generate JSON statistics file (fixed syntax)
-          echo "{" > build/vcpkg_cache_stats.json
-          echo "  \"hit_rate\": $HIT_RATE," >> build/vcpkg_cache_stats.json
-          echo "  \"restored\": $RESTORED," >> build/vcpkg_cache_stats.json
-          echo "  \"installing\": $INSTALLING," >> build/vcpkg_cache_stats.json
-          echo "  \"total\": $TOTAL," >> build/vcpkg_cache_stats.json
-          echo "  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," >> build/vcpkg_cache_stats.json
-          echo "  \"use_vcpkg\": true" >> build/vcpkg_cache_stats.json
-          echo "}" >> build/vcpkg_cache_stats.json
+          # Generate JSON statistics file
+          echo "{
+            \"hit_rate\": $HIT_RATE,
+            \"restored\": $RESTORED,
+            \"installing\": $INSTALLING,
+            \"total\": $TOTAL,
+            \"cache_hits\": $CACHE_HIT,
+            \"cache_misses\": $CACHE_MISS,
+            \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+            \"use_vcpkg\": true
+          }" > build/vcpkg_cache_stats.json
 
           echo "Cache statistics generated:"
           cat build/vcpkg_cache_stats.json
@@ -382,6 +465,15 @@ jobs:
             echo "Validating JSON..."
             jq . build/vcpkg_cache_stats.json || exit 1
           fi
+
+          # Debug: Show cache directory contents
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            CACHE_DIR="C:/Users/runneradmin/AppData/Local/vcpkg/archives"
+          else
+            CACHE_DIR="$HOME/.cache/vcpkg/archives"
+          fi
+          echo "Binary cache directory contents:"
+          ls -la "$CACHE_DIR" 2>/dev/null | head -20 || echo "Cache directory empty or not found"
 
       - name: Upload reports
         if: always()

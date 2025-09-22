@@ -1,0 +1,399 @@
+{
+    "name": "ci-baseline-2025-09-22",
+    "date": "2025-09-22T06:56:23Z",
+    "commit": "5cb600c4406e9216f4b415f08965ee03736a4279",
+    "stats": {
+        "total_runs": 48,
+        "successful_runs": 41,
+        "success_rate": 85,
+        "avg_runtime_min": 1.6341463414634145,
+        "min_runtime_min": 0,
+        "max_runtime_min": 8
+    },
+    "workflows": [
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:45:52Z",
+    "name": "Daily CI Status Report",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:46:26Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:40:17Z",
+    "name": "Core Strict - Exports, Validation, Comparison",
+    "run_time": 4,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:44:43Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:40:04Z",
+    "name": "Core Strict - Build and Tests",
+    "run_time": 8,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:48:20Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:40:04Z",
+    "name": "Test Actions",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:40:11Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:40:04Z",
+    "name": "Core Strict - Validation Simple",
+    "run_time": 4,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:44:16Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:40:04Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:40:39Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:40:04Z",
+    "name": "Test Simple",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:41:20Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:40:04Z",
+    "name": "Core CI",
+    "run_time": 3,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:43:10Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-22T06:40:03Z",
+    "name": ".github/workflows/core-strict-exports-validation.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:40:03Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:34:07Z",
+    "name": "Core Strict - Exports, Validation, Comparison",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:35:15Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:34:07Z",
+    "name": "Auto Label Qt Changes",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:34:13Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:34:07Z",
+    "name": "Core Strict - Validation Simple",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:35:40Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:34:07Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:34:38Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:34:07Z",
+    "name": "Core CI",
+    "run_time": 5,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:39:37Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:34:07Z",
+    "name": "Core Strict - Build and Tests",
+    "run_time": 5,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:39:38Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:34:07Z",
+    "name": "Auto Label Qt Tests",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:34:12Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:33:53Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:34:32Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-22T06:33:53Z",
+    "name": ".github/workflows/core-strict-exports-validation.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:33:53Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-22T06:27:44Z",
+    "name": "Core Strict - Exports, Validation, Comparison",
+    "run_time": 5,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:32:45Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:23:43Z",
+    "name": "Test Simple",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:25:07Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:23:43Z",
+    "name": "Core Strict - Validation Simple",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:26:24Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:23:43Z",
+    "name": "Test Actions",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:23:50Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:23:43Z",
+    "name": "Core CI",
+    "run_time": 3,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:27:38Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:23:43Z",
+    "name": "Core Strict - Build and Tests",
+    "run_time": 6,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:30:12Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:23:43Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:24:13Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:23:43Z",
+    "name": "Core Strict - Exports, Validation, Comparison",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:26:03Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-22T06:23:43Z",
+    "name": ".github/workflows/core-strict-exports-validation.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:23:43Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:20:30Z",
+    "name": "Core Strict - Exports, Validation, Comparison",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:23:19Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:20:30Z",
+    "name": "Core Strict - Validation Simple",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:21:53Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:20:30Z",
+    "name": "Auto Label Qt Changes",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:20:37Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:20:29Z",
+    "name": "Core Strict - Build and Tests",
+    "run_time": 3,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:23:41Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:20:29Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:21:02Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:20:29Z",
+    "name": "Auto Label Qt Tests",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:20:34Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:20:29Z",
+    "name": "Core CI",
+    "run_time": 3,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:23:30Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:20:29Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:21:05Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-22T06:20:28Z",
+    "name": ".github/workflows/core-strict-exports-validation.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:20:28Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:18:54Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:19:24Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:18:54Z",
+    "name": "Core CI",
+    "run_time": 3,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:22:38Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:18:54Z",
+    "name": "Auto Label Qt Changes",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:19:03Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:18:54Z",
+    "name": "Core Strict - Validation Simple",
+    "run_time": 4,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:23:14Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:18:53Z",
+    "name": "Auto Label Qt Tests",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:19:00Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:18:52Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:19:13Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-22T06:18:51Z",
+    "name": ".github/workflows/strict-exports.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:18:51Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-22T06:18:51Z",
+    "name": ".github/workflows/core-strict-exports-validation.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:18:51Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:13:48Z",
+    "name": "Auto Label Qt Changes",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:13:57Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:13:48Z",
+    "name": "Core Strict - Validation Simple",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:16:08Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:13:48Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:14:21Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T06:13:48Z",
+    "name": "Core CI",
+    "run_time": 3,
+    "status": "completed",
+    "updated_at": "2025-09-22T06:17:34Z"
+  }
+]
+}
