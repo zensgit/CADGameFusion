@@ -87,17 +87,27 @@ jobs:
             gh run download "$RUN_ID" -n "strict-exports-reports-Ubuntu" -D _tmp_art >/dev/null 2>&1 || \
             gh run download "$RUN_ID" -n "strict-exports-reports-ubuntu-latest" -D _tmp_art >/dev/null 2>&1 || true
 
-            # Check for the stats file
+            # Check for the stats file and validate JSON
+            STATS_FILE=""
             if [ -f "_tmp_art/build/vcpkg_cache_stats.json" ]; then
-              HIT=$(jq -r '.hit_rate' _tmp_art/build/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
-              INST=$(jq -r '.installing' _tmp_art/build/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
-              REST=$(jq -r '.restored' _tmp_art/build/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
-              echo "- Cache Hit Rate: ${HIT}% (restored=${REST}, installing=${INST})" >> CI_DAILY_STATUS.md
+              STATS_FILE="_tmp_art/build/vcpkg_cache_stats.json"
             elif [ -f "_tmp_art/vcpkg_cache_stats.json" ]; then
-              HIT=$(jq -r '.hit_rate' _tmp_art/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
-              INST=$(jq -r '.installing' _tmp_art/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
-              REST=$(jq -r '.restored' _tmp_art/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
-              echo "- Cache Hit Rate: ${HIT}% (restored=${REST}, installing=${INST})" >> CI_DAILY_STATUS.md
+              STATS_FILE="_tmp_art/vcpkg_cache_stats.json"
+            fi
+
+            if [ -n "$STATS_FILE" ]; then
+              # Validate JSON first
+              if jq -e . "$STATS_FILE" >/dev/null 2>&1; then
+                HIT=$(jq -r '.hit_rate // "N/A"' "$STATS_FILE")
+                INST=$(jq -r '.installing // "N/A"' "$STATS_FILE")
+                REST=$(jq -r '.restored // "N/A"' "$STATS_FILE")
+                TOTAL=$(jq -r '.total // "N/A"' "$STATS_FILE")
+                echo "- Cache Hit Rate: ${HIT}% (restored=${REST}, installing=${INST}, total=${TOTAL})" >> CI_DAILY_STATUS.md
+              else
+                echo "- Cache metrics JSON invalid (parsing error)" >> CI_DAILY_STATUS.md
+                echo "Debug: Invalid JSON content:" >&2
+                cat "$STATS_FILE" >&2 || true
+              fi
             else
               echo "- Cache metrics not available (run may not have used vcpkg=true)" >> CI_DAILY_STATUS.md
               ls -la _tmp_art/ >&2 || true
