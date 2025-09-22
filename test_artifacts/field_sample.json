@@ -1,0 +1,21 @@
+{
+  "left": "build/exports/scene_cli_sample",
+  "right": "sample_exports/scene_sample",
+  "rtol": 1e-06,
+  "mode": "full",
+  "meta_mode": "on",
+  "status": "passed",
+  "errors": [],
+  "left_groups": [
+    0
+  ],
+  "right_groups": [
+    0
+  ],
+  "left_gltf_groups": [
+    0
+  ],
+  "right_gltf_groups": [
+    0
+  ]
+}

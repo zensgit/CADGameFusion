@@ -1,0 +1,17 @@
+{
+  "branch": "main",
+  "updated_at": "2025-09-22T01:25:00+08:00",
+  "strict": false,
+  "contexts": [
+    "exports-validate-compare",
+    "CI Summary",
+    "build (ubuntu-latest)",
+    "build (macos-latest)",
+    "build (windows-latest)",
+    "Simple Validation Test",
+    "Build Core (ubuntu-latest)",
+    "Build Core (macos-latest)",
+    "Build Core (windows-latest)",
+    "quick-check"
+  ]
+}
