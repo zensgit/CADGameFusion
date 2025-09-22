@@ -56,9 +56,10 @@ jobs:
         run: |
           set -e
           # Configure explicit files-based binary cache for Windows
-          echo "VCPKG_DEFAULT_BINARY_CACHE=$HOME/AppData/Local/vcpkg/archives" >> $GITHUB_ENV
-          echo "VCPKG_BINARY_SOURCES=clear;files,$HOME/AppData/Local/vcpkg/archives,readwrite;default" >> $GITHUB_ENV
-          mkdir -p "$HOME/AppData/Local/vcpkg/archives" || true
+          CACHE_DIR="$USERPROFILE/AppData/Local/vcpkg/archives"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$CACHE_DIR" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;files,$CACHE_DIR,readwrite;default" >> $GITHUB_ENV
+          mkdir -p "$CACHE_DIR" || true
           echo "VCPKG_DEFAULT_TRIPLET=x64-windows" >> $GITHUB_ENV
           VCPKG_DIR="C:/vcpkg"
           retry() {
