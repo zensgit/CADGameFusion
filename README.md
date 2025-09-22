@@ -363,3 +363,4 @@ You can run the "Core Strict - Exports, Validation, Comparison" workflow with a 
 - Use `--gltf-holes full` by default; justify deviations.
 - For `--spec`, ensure vendored `tools/third_party/json.hpp` is the official nlohmann/json and build with `-DCADGF_USE_NLOHMANN_JSON=ON`.
 - See `.github/pull_request_template.md` for the full checklist and links.
+# vcpkg cache test
