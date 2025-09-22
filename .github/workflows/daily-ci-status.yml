@@ -27,6 +27,8 @@ jobs:
           echo "# Daily CI Status Snapshot" >> CI_DAILY_STATUS.md
           echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> CI_DAILY_STATUS.md
           echo "" >> CI_DAILY_STATUS.md
+          echo "Baseline: ci-baseline-2025-09-21 (for comparison in case of regressions)" >> CI_DAILY_STATUS.md
+          echo "" >> CI_DAILY_STATUS.md
           
           echo "## Windows Nightly - Strict Build Monitor (last 3)" >> CI_DAILY_STATUS.md
           bash scripts/monitor_ci_runs.sh --workflow "Windows Nightly - Strict Build Monitor" --count 3 --interval 10 --max-iterations 1 >> CI_DAILY_STATUS.md || true
@@ -54,6 +56,58 @@ jobs:
             bash scripts/ci_windows_streak.sh >> CI_DAILY_STATUS.md || true
             echo "" >> CI_DAILY_STATUS.md
           fi
+
+          # Performance Metrics Summary (lightweight)
+          echo "## Performance Metrics (Last 24h)" >> CI_DAILY_STATUS.md
+          echo "" >> CI_DAILY_STATUS.md
+
+          # Fetch recent workflow run times
+          echo "### Workflow Durations (Last ${RUN_LIMIT:-10} runs)" >> CI_DAILY_STATUS.md
+          echo "| Workflow | Runs | Success | p50 | p95 | Avg |" >> CI_DAILY_STATUS.md
+          echo "|----------|------|---------|-----|-----|-----|" >> CI_DAILY_STATUS.md
+          for workflow in "Core Strict - Build and Tests" "Core Strict - Exports, Validation, Comparison" "Quick Check - Verification + Lint"; do
+            bash scripts/ci_metrics_summary.sh --workflow "$workflow" --limit "${RUN_LIMIT:-10}" --markdown-row >> CI_DAILY_STATUS.md || true
+          done
+
+          echo "" >> CI_DAILY_STATUS.md
+          echo "### 7-Day Trend (placeholder for future enhancement)" >> CI_DAILY_STATUS.md
+          for workflow in "Core Strict - Build and Tests" "Core Strict - Exports, Validation, Comparison"; do
+            bash scripts/ci_trend_summary.sh --workflow "$workflow" --days 7 --markdown >> CI_DAILY_STATUS.md || true
+            echo "" >> CI_DAILY_STATUS.md
+          done
+
+          # vcpkg cache hit rate (latest strict exports)
+          echo "### vcpkg Cache Metrics (latest strict exports)" >> CI_DAILY_STATUS.md
+          RUN_ID=$(gh run list --workflow "Core Strict - Exports, Validation, Comparison" --limit 1 --json databaseId 2>/dev/null | jq -r '.[0].databaseId // empty')
+          if [ -n "$RUN_ID" ]; then
+            echo "Attempting to download artifacts from run $RUN_ID..." >&2
+            mkdir -p _tmp_art
+            # Try to download with the correct artifact name
+            gh run download "$RUN_ID" -n "strict-exports-reports-Linux" -D _tmp_art >/dev/null 2>&1 || \
+            gh run download "$RUN_ID" -n "strict-exports-reports-Ubuntu" -D _tmp_art >/dev/null 2>&1 || \
+            gh run download "$RUN_ID" -n "strict-exports-reports-ubuntu-latest" -D _tmp_art >/dev/null 2>&1 || true
+
+            # Check for the stats file
+            if [ -f "_tmp_art/build/vcpkg_cache_stats.json" ]; then
+              HIT=$(jq -r '.hit_rate' _tmp_art/build/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
+              INST=$(jq -r '.installing' _tmp_art/build/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
+              REST=$(jq -r '.restored' _tmp_art/build/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
+              echo "- Cache Hit Rate: ${HIT}% (restored=${REST}, installing=${INST})" >> CI_DAILY_STATUS.md
+            elif [ -f "_tmp_art/vcpkg_cache_stats.json" ]; then
+              HIT=$(jq -r '.hit_rate' _tmp_art/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
+              INST=$(jq -r '.installing' _tmp_art/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
+              REST=$(jq -r '.restored' _tmp_art/vcpkg_cache_stats.json 2>/dev/null || echo "N/A")
+              echo "- Cache Hit Rate: ${HIT}% (restored=${REST}, installing=${INST})" >> CI_DAILY_STATUS.md
+            else
+              echo "- Cache metrics not available (run may not have used vcpkg=true)" >> CI_DAILY_STATUS.md
+              ls -la _tmp_art/ >&2 || true
+            fi
+            rm -rf _tmp_art
+          else
+            echo "- No recent strict exports run found" >> CI_DAILY_STATUS.md
+          fi
+          echo "" >> CI_DAILY_STATUS.md
+          echo "" >> CI_DAILY_STATUS.md
       - name: Create or update issue comment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -68,6 +122,8 @@ jobs:
             echo "**Latest Session Links**";
             echo "- Checkpoint: session/SESSION_CHECKPOINT_LATEST.md";
             echo "- Snapshot: session/SNAPSHOT_LATEST.md";
+            echo "";
+            echo "_Note: if generated in an offline environment, some metrics may appear as placeholders (0). Re-run with network to populate actual values._";
             echo "";
             cat CI_DAILY_STATUS.md;
           } > CI_DAILY_STATUS_WITH_LINKS.md

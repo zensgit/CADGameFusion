@@ -102,12 +102,17 @@ jobs:
         run: |
           # Try to download prebuilt export_cli from build workflow
           echo "Attempting to download built tools artifact..."
-          gh --version >/dev/null 2>&1 || echo "GitHub CLI not available; skipping" 
+          gh --version >/dev/null 2>&1 || echo "GitHub CLI not available; skipping"
           if command -v gh >/dev/null 2>&1; then
             echo "(Optional) Download via gh is not configured in CI token; skipping"
           fi
           # Fallback to local build
-          cmake --build build --config Release --target export_cli --parallel 2 || cmake --build build --config Release --parallel 2
+          # Capture vcpkg output if using vcpkg
+          if [ "${{ github.event.inputs.use_vcpkg }}" == "true" ]; then
+            cmake --build build --config Release --target export_cli --parallel 2 2>&1 | tee build/vcpkg_build.log || cmake --build build --config Release --parallel 2 2>&1 | tee build/vcpkg_build.log
+          else
+            cmake --build build --config Release --target export_cli --parallel 2 || cmake --build build --config Release --parallel 2
+          fi
 
       - name: Build spec parsing test
         shell: bash
@@ -301,6 +306,58 @@ jobs:
             echo "[WARN] test_meta_normalize not found (build config/platform)"
           fi
 
+      - name: Generate vcpkg cache statistics
+        if: github.event.inputs.use_vcpkg == 'true'
+        shell: bash
+        run: |
+          echo "Generating vcpkg cache statistics..."
+          mkdir -p build
+
+          # Initialize counters
+          RESTORED=0
+          INSTALLING=0
+
+          # Check if vcpkg build log exists
+          if [ -f "build/vcpkg_build.log" ]; then
+            # Count restored packages (packages fetched from cache)
+            RESTORED=$(grep -c "Restored" build/vcpkg_build.log 2>/dev/null || echo "0")
+            # Count installing packages (packages built from source)
+            INSTALLING=$(grep -c "Building" build/vcpkg_build.log 2>/dev/null || echo "0")
+          fi
+
+          # If no specific patterns found, check for vcpkg general activity
+          if [ "$RESTORED" -eq "0" ] && [ "$INSTALLING" -eq "0" ]; then
+            # Try alternative patterns
+            if [ -f "build/vcpkg_build.log" ]; then
+              RESTORED=$(grep -cE "(from cache|cached)" build/vcpkg_build.log 2>/dev/null || echo "0")
+              INSTALLING=$(grep -cE "(Extracting|Building|Installing)" build/vcpkg_build.log 2>/dev/null || echo "0")
+            fi
+          fi
+
+          # Calculate hit rate
+          TOTAL=$((RESTORED + INSTALLING))
+          if [ "$TOTAL" -gt 0 ]; then
+            HIT_RATE=$((RESTORED * 100 / TOTAL))
+          else
+            # Default to 0 if no packages detected
+            HIT_RATE=0
+          fi
+
+          # Generate JSON statistics file
+          cat > build/vcpkg_cache_stats.json << EOF
+          {
+            "hit_rate": $HIT_RATE,
+            "restored": $RESTORED,
+            "installing": $INSTALLING,
+            "total": $TOTAL,
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "use_vcpkg": true
+          }
+          EOF
+
+          echo "Cache statistics generated:"
+          cat build/vcpkg_cache_stats.json
+
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -310,6 +367,8 @@ jobs:
             test_report.md
             consistency_stats.txt
             field_*.json
+            build/vcpkg_cache_stats.json
+            build/vcpkg_build.log
 
       - name: Failure guidance
         if: failure()
