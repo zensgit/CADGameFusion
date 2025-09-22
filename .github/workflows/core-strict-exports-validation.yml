@@ -37,10 +37,17 @@ jobs:
       - name: Setup vcpkg
         shell: bash
         run: |
-          if [ ! -d "vcpkg" ]; then
+          # Ensure binary cache directory exists and configure explicit cache vars
+          export VCPKG_DEFAULT_BINARY_CACHE="$HOME/.cache/vcpkg/archives"
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$VCPKG_DEFAULT_BINARY_CACHE" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite;default" >> $GITHUB_ENV
+          echo "VCPKG_DEFAULT_TRIPLET=x64-linux" >> $GITHUB_ENV
+          # Clone/pin vcpkg and bootstrap
+          if [ ! -d "vcpkg/.git" ]; then
             git clone https://github.com/microsoft/vcpkg.git vcpkg
-            ./vcpkg/bootstrap-vcpkg.sh
           fi
+          (cd vcpkg && git fetch --tags --force && git checkout c9fa965c2a1b1334469b4539063f3ce95383653c && ./bootstrap-vcpkg.sh)
           echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
 
       - name: Install dependencies
@@ -59,13 +66,34 @@ jobs:
       - name: Configure and Build
         shell: bash
         run: |
+          # Optional: enable vcpkg feature flags when debug enabled via workflow_dispatch
+          if [ "${{ inputs.debug || 'false' }}" = "true" ]; then
+            echo "VCPKG_FEATURE_FLAGS=manifests,binarycaching,compilertracking" >> $GITHUB_ENV
+            echo "VCPKG_KEEP_ENV_VARS=VCPKG_DEFAULT_BINARY_CACHE,VCPKG_BINARY_SOURCES" >> $GITHUB_ENV
+          fi
+          # Re-export in case shell step boundaries dropped the value
+          export VCPKG_DEFAULT_BINARY_CACHE="${VCPKG_DEFAULT_BINARY_CACHE:-$HOME/.cache/vcpkg/archives}"
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          # Capture logs for cache analysis
+          set -o pipefail
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
             -DVCPKG_MANIFEST_MODE=ON \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
             -DBUILD_EDITOR_QT=OFF \
-            -G Ninja
-          cmake --build build --config Release
+            -G Ninja 2>&1 | tee build/_cmake_configure.log
+          cmake --build build --config Release 2>&1 | tee build/_cmake_build.log
+
+      - name: Generate vcpkg cache stats
+        if: always()
+        shell: bash
+        run: |
+          bash scripts/vcpkg_log_stats.sh \
+            --logs build/_cmake_configure.log build/_cmake_build.log \
+            --out-json build/vcpkg_cache_stats.json \
+            --out-md build/vcpkg_cache_stats.md || true
+          cp -f build/vcpkg_cache_stats.json vcpkg_cache_stats.json || true
 
       - name: Locate export_cli (best-effort)
         shell: bash
@@ -402,6 +430,17 @@ except Exception as e:
             field_compare_report.md
             comparison_*.json
             consistency_stats.txt
+
+      - name: Upload strict exports reports (for Daily CI)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: strict-exports-reports-ubuntu-latest
+          path: |
+            build/_cmake_configure.log
+            build/_cmake_build.log
+            build/vcpkg_cache_stats.json
+            vcpkg_cache_stats.json
 
       - name: Upload exports bundle
         if: always()
