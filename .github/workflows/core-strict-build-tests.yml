@@ -55,7 +55,11 @@ jobs:
         shell: bash
         run: |
           set -e
-          echo "VCPKG_BINARY_SOURCES=clear;default" >> $GITHUB_ENV
+          # Configure explicit files-based binary cache for Windows
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$HOME/AppData/Local/vcpkg/archives" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;files,$HOME/AppData/Local/vcpkg/archives,readwrite;default" >> $GITHUB_ENV
+          mkdir -p "$HOME/AppData/Local/vcpkg/archives" || true
+          echo "VCPKG_DEFAULT_TRIPLET=x64-windows" >> $GITHUB_ENV
           VCPKG_DIR="C:/vcpkg"
           retry() {
             local n=0; local max=5; local delay=5
@@ -98,7 +102,16 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          echo "VCPKG_BINARY_SOURCES=clear;default" >> $GITHUB_ENV
+          # Configure explicit files-based binary cache for Unix
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$HOME/.cache/vcpkg/archives" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;files,$HOME/.cache/vcpkg/archives,readwrite;default" >> $GITHUB_ENV
+          mkdir -p "$HOME/.cache/vcpkg/archives"
+          # Set OS-specific default triplet
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            echo "VCPKG_DEFAULT_TRIPLET=x64-osx" >> $GITHUB_ENV
+          else
+            echo "VCPKG_DEFAULT_TRIPLET=x64-linux" >> $GITHUB_ENV
+          fi
           VCPKG_DIR="$HOME/vcpkg"
           if [ -d "$VCPKG_DIR/.git" ]; then (cd "$VCPKG_DIR" && git pull --ff-only); else rm -rf "$VCPKG_DIR" && git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"; fi
           (cd "$VCPKG_DIR" && git checkout c9fa965c2a1b1334469b4539063f3ce95383653c)
@@ -130,9 +143,19 @@ jobs:
       - name: Configure
         shell: bash
         run: |
+          # Ensure cache directories exist and optionally enable debug for cache misses
+          if [ "${{ inputs.debug || 'false' }}" = "true" ]; then
+            echo "VCPKG_FEATURE_FLAGS=manifests,binarycaching,compilertracking" >> $GITHUB_ENV
+            echo "VCPKG_KEEP_ENV_VARS=VCPKG_DEFAULT_BINARY_CACHE,VCPKG_BINARY_SOURCES" >> $GITHUB_ENV
+          fi
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            mkdir -p "$HOME/AppData/Local/vcpkg/archives" || true
+          else
+            mkdir -p "$HOME/.cache/vcpkg/archives"
+          fi
           TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -G Ninja || \
-          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DVCPKG_TARGET_TRIPLET="$VCPKG_DEFAULT_TRIPLET" -G Ninja || \
+          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DVCPKG_TARGET_TRIPLET="$VCPKG_DEFAULT_TRIPLET"
 
       - name: Build
         run: cmake --build build --config Release --parallel 2
