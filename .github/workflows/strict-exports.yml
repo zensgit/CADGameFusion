@@ -363,16 +363,14 @@ jobs:
           fi
 
           # Generate JSON statistics file (fixed syntax)
-          cat > build/vcpkg_cache_stats.json << EOF
-{
-  "hit_rate": $HIT_RATE,
-  "restored": $RESTORED,
-  "installing": $INSTALLING,
-  "total": $TOTAL,
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "use_vcpkg": true
-}
-EOF
+          echo "{" > build/vcpkg_cache_stats.json
+          echo "  \"hit_rate\": $HIT_RATE," >> build/vcpkg_cache_stats.json
+          echo "  \"restored\": $RESTORED," >> build/vcpkg_cache_stats.json
+          echo "  \"installing\": $INSTALLING," >> build/vcpkg_cache_stats.json
+          echo "  \"total\": $TOTAL," >> build/vcpkg_cache_stats.json
+          echo "  \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"," >> build/vcpkg_cache_stats.json
+          echo "  \"use_vcpkg\": true" >> build/vcpkg_cache_stats.json
+          echo "}" >> build/vcpkg_cache_stats.json
 
           echo "Cache statistics generated:"
           cat build/vcpkg_cache_stats.json
