@@ -129,7 +129,7 @@ jobs:
               -DBUILD_EDITOR_QT=OFF \
               -DCADGF_USE_NLOHMANN_JSON=ON \
               -DCADGF_SORT_RINGS=ON \
-              -DVCPKG_INSTALL_OPTIONS="--debug-binary-caching" \
+              -G Ninja \
               2>&1 | tee build/vcpkg_configure.log
           else
             cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DCADGF_SORT_RINGS=ON -G Ninja
