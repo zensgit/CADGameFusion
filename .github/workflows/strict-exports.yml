@@ -74,6 +74,8 @@ jobs:
           echo "use_vcpkg=${{ github.event.inputs.use_vcpkg }}"
           if [ "${{ github.event.inputs.use_vcpkg }}" == "true" ]; then
             TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+            # Ensure build directory exists before capturing output
+            mkdir -p build
             # Capture vcpkg installation output
             cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DCADGF_SORT_RINGS=ON 2>&1 | tee build/vcpkg_configure.log
           else
