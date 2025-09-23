@@ -4,6 +4,23 @@ on:
   schedule:
     - cron: '0 2 * * *'  # 10:00 UTC+8
   workflow_dispatch:
+    inputs:
+      sr_th:
+        description: 'Success rate threshold (%)'
+        required: false
+        default: '85'
+      p95_th:
+        description: 'p95 duration threshold (minutes)'
+        required: false
+        default: '6'
+      assignees:
+        description: 'Comma-separated GitHub usernames to assign CI alerts'
+        required: false
+        default: ''
+      team_mention:
+        description: 'Team or user mention to include in alert body (e.g. @org/team)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -23,33 +40,56 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
+          # Optional repo config for defaults and thresholds
+          if [ -f .github/ci/config.json ]; then
+            CFG_ASSIGNEES=$(jq -r '.alerts.assignees // empty' .github/ci/config.json || echo '')
+            CFG_TEAM=$(jq -r '.alerts.team_mention // empty' .github/ci/config.json || echo '')
+            if [ -n "$CFG_ASSIGNEES" ] && [ -z "${ALERT_ASSIGNEES:-}" ]; then export ALERT_ASSIGNEES="$CFG_ASSIGNEES"; fi
+            if [ -n "$CFG_TEAM" ] && [ -z "${ALERT_TEAM_MENTION:-}" ]; then export ALERT_TEAM_MENTION="$CFG_TEAM"; fi
+            CFG_SR_DEF=$(jq -r '.thresholds.default.sr_th // empty' .github/ci/config.json || echo '')
+            CFG_P95_DEF=$(jq -r '.thresholds.default.p95_th // empty' .github/ci/config.json || echo '')
+            if [ -n "$CFG_SR_DEF" ] && [ -z "${SR_TH:-}" ]; then export SR_TH="$CFG_SR_DEF"; fi
+            if [ -n "$CFG_P95_DEF" ] && [ -z "${P95_TH:-}" ]; then export P95_TH="$CFG_P95_DEF"; fi
+            RECOVERY_DAYS=$(jq -r '.alerts.recovery_days // 3' .github/ci/config.json || echo '3')
+          else
+            RECOVERY_DAYS=3
+          fi
+          # Optional threshold overrides from workflow_dispatch inputs
+          SR_TH_IN='${{ github.event_name == "workflow_dispatch" && github.event.inputs.sr_th || '' }}'
+          P95_TH_IN='${{ github.event_name == "workflow_dispatch" && github.event.inputs.p95_th || '' }}'
+          ASSIGNEES_IN='${{ github.event_name == "workflow_dispatch" && github.event.inputs.assignees || '' }}'
+          TEAM_MENTION_IN='${{ github.event_name == "workflow_dispatch" && github.event.inputs.team_mention || '' }}'
+          if [ -n "$SR_TH_IN" ]; then export SR_TH="$SR_TH_IN"; fi
+          if [ -n "$P95_TH_IN" ]; then export P95_TH="$P95_TH_IN"; fi
+          if [ -n "$ASSIGNEES_IN" ]; then export ALERT_ASSIGNEES="$ASSIGNEES_IN"; fi
+          if [ -n "$TEAM_MENTION_IN" ]; then export ALERT_TEAM_MENTION="$TEAM_MENTION_IN"; fi
           : > CI_DAILY_STATUS.md
           echo "# Daily CI Status Snapshot" >> CI_DAILY_STATUS.md
           echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> CI_DAILY_STATUS.md
           echo "" >> CI_DAILY_STATUS.md
           echo "Baseline: ci-baseline-2025-09-21 (for comparison in case of regressions)" >> CI_DAILY_STATUS.md
           echo "" >> CI_DAILY_STATUS.md
-          
+
           echo "## Windows Nightly - Strict Build Monitor (last 3)" >> CI_DAILY_STATUS.md
           bash scripts/monitor_ci_runs.sh --workflow "Windows Nightly - Strict Build Monitor" --count 3 --interval 10 --max-iterations 1 >> CI_DAILY_STATUS.md || true
           echo "" >> CI_DAILY_STATUS.md
-          
+
           echo "## Core Strict - Build and Tests (last 3)" >> CI_DAILY_STATUS.md
           bash scripts/monitor_ci_runs.sh --workflow "Core Strict - Build and Tests" --count 3 --interval 10 --max-iterations 1 >> CI_DAILY_STATUS.md || true
           echo "" >> CI_DAILY_STATUS.md
-          
+
           echo "## Core Strict - Exports, Validation, Comparison (last 3)" >> CI_DAILY_STATUS.md
           bash scripts/monitor_ci_runs.sh --workflow "Core Strict - Exports, Validation, Comparison" --count 3 --interval 10 --max-iterations 1 >> CI_DAILY_STATUS.md || true
           echo "" >> CI_DAILY_STATUS.md
-          
+
           echo "## Quick Check - Verification + Lint (last 3)" >> CI_DAILY_STATUS.md
           bash scripts/monitor_ci_runs.sh --workflow "Quick Check - Verification + Lint" --count 3 --interval 10 --max-iterations 1 >> CI_DAILY_STATUS.md || true
           echo "" >> CI_DAILY_STATUS.md
-          
+
           echo "## Solver From Project (Trial) (last 3)" >> CI_DAILY_STATUS.md
           bash scripts/monitor_ci_runs.sh --workflow "Solver From Project (Trial)" --count 3 --interval 10 --max-iterations 1 >> CI_DAILY_STATUS.md || true
           echo "" >> CI_DAILY_STATUS.md
-          
+
           # Windows streak summary
           if [ -f scripts/ci_windows_streak.sh ]; then
             echo "## Windows Nightly Streak" >> CI_DAILY_STATUS.md
@@ -100,11 +140,16 @@ jobs:
             if [ -n "$STATS_FILE" ]; then
               # Validate JSON first
               if jq -e . "$STATS_FILE" >/dev/null 2>&1; then
+                CACHEABLE=$(jq -r '.cacheable // true' "$STATS_FILE")
                 HIT=$(jq -r '.hit_rate // "N/A"' "$STATS_FILE")
                 INST=$(jq -r '.installing // "N/A"' "$STATS_FILE")
                 REST=$(jq -r '.restored // "N/A"' "$STATS_FILE")
-                TOTAL=$(jq -r '.total // "N/A"' "$STATS_FILE")
-                echo "- Cache Hit Rate: ${HIT}% (restored=${REST}, installing=${INST}, total=${TOTAL})" >> CI_DAILY_STATUS.md
+                TOTAL=$(jq -r '.total // .total_signals // "N/A"' "$STATS_FILE")
+                if [ "$CACHEABLE" = "false" ] || [ "$TOTAL" = "0" ]; then
+                  echo "- Cache Hit Rate: N/A (header-only or no compiled ports)" >> CI_DAILY_STATUS.md
+                else
+                  echo "- Cache Hit Rate: ${HIT}% (restored=${REST}, installing=${INST}, total=${TOTAL})" >> CI_DAILY_STATUS.md
+                fi
               else
                 echo "- Cache metrics JSON invalid (parsing error)" >> CI_DAILY_STATUS.md
                 echo "Debug: Invalid JSON content:" >&2
@@ -121,6 +166,127 @@ jobs:
             echo "- No recent strict exports run found" >> CI_DAILY_STATUS.md
           fi
           echo "" >> CI_DAILY_STATUS.md
+          echo "" >> CI_DAILY_STATUS.md
+          # Alerts based on 7-day trend thresholds
+          echo "### Alerts (last 7 days)" >> CI_DAILY_STATUS.md
+          SR_TH=${SR_TH:-85}
+          P95_TH=${P95_TH:-6}
+          ALERTS=()
+          for WF in "Core Strict - Build and Tests" "Core Strict - Exports, Validation, Comparison" "Quick Check - Verification + Lint"; do
+            # Per-workflow thresholds
+            SR_EFF="$SR_TH"; P95_EFF="$P95_TH"
+            if [ -f .github/ci/config.json ] && [ -z "${SR_TH_IN:-}" ] && [ -z "${P95_TH_IN:-}" ]; then
+              SR_CFG=$(jq -r --arg wf "$WF" '.thresholds.per_workflow[$wf].sr_th // empty' .github/ci/config.json || echo '')
+              P95_CFG=$(jq -r --arg wf "$WF" '.thresholds.per_workflow[$wf].p95_th // empty' .github/ci/config.json || echo '')
+              if [ -n "$SR_CFG" ]; then SR_EFF="$SR_CFG"; fi
+              if [ -n "$P95_CFG" ]; then P95_EFF="$P95_CFG"; fi
+            fi
+            TREND_JSON=$(bash scripts/ci_trend_summary.sh --workflow "$WF" --days 7 --json || echo '{}')
+            SR=$(echo "$TREND_JSON" | jq -r '.success_rate // empty' | sed 's/%//')
+            P95=$(echo "$TREND_JSON" | jq -r '.duration_p95_min // empty' | sed 's/[^0-9]//g')
+            if [ -n "$SR" ] && [ -n "$P95" ]; then
+              SR_OK=$(awk -v a="$SR" -v b="$SR_EFF" 'BEGIN{print (a+0)>=b?"1":"0"}')
+              P95_OK=$(awk -v a="$P95" -v b="$P95_EFF" 'BEGIN{print (a+0)<=b?"1":"0"}')
+              if [ "$SR_OK" = "0" ] || [ "$P95_OK" = "0" ]; then
+                ALERTS+=("- [!] $WF — success=${SR}% p95=${P95}m (thresholds: success>=${SR_EFF}%, p95<=${P95_EFF}m)")
+              fi
+            fi
+          done
+          if [ ${#ALERTS[@]} -gt 0 ]; then
+            for a in "${ALERTS[@]}"; do echo "$a" >> CI_DAILY_STATUS.md; done
+            # Optional: auto-open or update alert issues (de-duplicated by title/date)
+            TODAY=$(date -u '+%Y-%m-%d')
+            for WF in "Core Strict - Build and Tests" "Core Strict - Exports, Validation, Comparison" "Quick Check - Verification + Lint"; do
+              # Determine effective thresholds
+              SR_EFF="$SR_TH"; P95_EFF="$P95_TH"
+              if [ -f .github/ci/config.json ] && [ -z "${SR_TH_IN:-}" ] && [ -z "${P95_TH_IN:-}" ]; then
+                SR_CFG=$(jq -r --arg wf "$WF" '.thresholds.per_workflow[$wf].sr_th // empty' .github/ci/config.json || echo '')
+                P95_CFG=$(jq -r --arg wf "$WF" '.thresholds.per_workflow[$wf].p95_th // empty' .github/ci/config.json || echo '')
+                if [ -n "$SR_CFG" ]; then SR_EFF="$SR_CFG"; fi
+                if [ -n "$P95_CFG" ]; then P95_EFF="$P95_CFG"; fi
+              fi
+              TREND_JSON=$(bash scripts/ci_trend_summary.sh --workflow "$WF" --days 7 --json || echo '{}')
+              SR=$(echo "$TREND_JSON" | jq -r '.success_rate // empty' | sed 's/%//')
+              P95=$(echo "$TREND_JSON" | jq -r '.duration_p95_min // empty' | sed 's/[^0-9]//g')
+              if [ -z "$SR" ] || [ -z "$P95" ]; then continue; fi
+              SR_OK=$(awk -v a="$SR" -v b="$SR_EFF" 'BEGIN{print (a+0)>=b?"1":"0"}')
+              P95_OK=$(awk -v a="$P95" -v b="$P95_EFF" 'BEGIN{print (a+0)<=b?"1":"0"}')
+              if [ "$SR_OK" = "0" ] || [ "$P95_OK" = "0" ]; then
+                TITLE="CI Alert — ${WF} (7d) SR<${SR_EFF}% or p95>${P95_EFF}m — ${TODAY}"
+                NUM=$(gh issue list --search "$TITLE in:title" --state open --json number,title | jq -r '.[0].number // empty')
+                BODY=$(cat <<EOB
+The last 7 days trend for "${WF}" crossed thresholds.
+
+- Success rate: ${SR}% (threshold: >= ${SR_EFF}%)
+- p95 duration: ${P95}m (threshold: <= ${P95_EFF}m)
+
+Please review recent failures and consider targeted fixes.
+
+Context: Generated by Daily CI Status on ${TODAY}.
+EOB
+)
+                if [ -z "$NUM" ]; then
+                  if [ -n "${ALERT_TEAM_MENTION:-}" ]; then BODY="$BODY
+
+cc: ${ALERT_TEAM_MENTION}"; fi
+                  # Resolve labels/milestone defaults
+                  LABELS=$(jq -r '.labels | join(",")' .github/ci/config.json 2>/dev/null || echo 'ci,alert')
+                  MILE=$(jq -r '.milestone // empty' .github/ci/config.json 2>/dev/null || echo '')
+                  # Per-workflow assignees override
+                  WF_ASSIGN=$(jq -r --arg wf "$WF" '.per_workflow.assignees[$wf] // empty' .github/ci/config.json 2>/dev/null || echo '')
+                  EFF_ASSIGN="${WF_ASSIGN:-${ALERT_ASSIGNEES:-}}"
+                  if [ -n "$EFF_ASSIGN" ]; then
+                    if [ -n "$MILE" ]; then
+                      gh issue create --title "$TITLE" --body "$BODY" --label "$LABELS" --milestone "$MILE" --assignee "$EFF_ASSIGN" || true
+                    else
+                      gh issue create --title "$TITLE" --body "$BODY" --label "$LABELS" --assignee "$EFF_ASSIGN" || true
+                    fi
+                  else
+                    if [ -n "$MILE" ]; then
+                      gh issue create --title "$TITLE" --body "$BODY" --label "$LABELS" --milestone "$MILE" || true
+                    else
+                      gh issue create --title "$TITLE" --body "$BODY" --label "$LABELS" || true
+                    fi
+                  fi
+                  NUM=$(gh issue list --search "$TITLE in:title" --state open --json number | jq -r '.[0].number // empty')
+                else
+                  gh issue comment "$NUM" --body "$BODY" || true
+                fi
+                # Append recent failure digest (last 3) for the workflow
+                DIGEST=$(bash scripts/ci_failure_digest.sh --workflow "$WF" --limit 20 --last 3 --markdown || echo '')
+                if [ -n "$NUM" ] && [ -n "$DIGEST" ]; then
+                  printf "%s\n" "$DIGEST" | gh issue comment "$NUM" --body-file - || true
+                fi
+              fi
+            done
+          else
+            echo "- None" >> CI_DAILY_STATUS.md
+          fi
+          # Auto-recovery: if within thresholds for RECOVERY_DAYS, close alert issue
+          for WF in "Core Strict - Build and Tests" "Core Strict - Exports, Validation, Comparison" "Quick Check - Verification + Lint"; do
+            SR_EFF="$SR_TH"; P95_EFF="$P95_TH"
+            if [ -f .github/ci/config.json ] && [ -z "${SR_TH_IN:-}" ] && [ -z "${P95_TH_IN:-}" ]; then
+              SR_CFG=$(jq -r --arg wf "$WF" '.thresholds.per_workflow[$wf].sr_th // empty' .github/ci/config.json || echo '')
+              P95_CFG=$(jq -r --arg wf "$WF" '.thresholds.per_workflow[$wf].p95_th // empty' .github/ci/config.json || echo '')
+              if [ -n "$SR_CFG" ]; then SR_EFF="$SR_CFG"; fi
+              if [ -n "$P95_CFG" ]; then P95_EFF="$P95_CFG"; fi
+            fi
+            TREND_REC=$(bash scripts/ci_trend_summary.sh --workflow "$WF" --days "${RECOVERY_DAYS}" --json || echo '{}')
+            SR_R=$(echo "$TREND_REC" | jq -r '.success_rate // empty' | sed 's/%//')
+            P95_R=$(echo "$TREND_REC" | jq -r '.duration_p95_min // empty' | sed 's/[^0-9]//g')
+            if [ -n "$SR_R" ] && [ -n "$P95_R" ]; then
+              SR_OK=$(awk -v a="$SR_R" -v b="$SR_EFF" 'BEGIN{print (a+0)>=b?"1":"0"}')
+              P95_OK=$(awk -v a="$P95_R" -v b="$P95_EFF" 'BEGIN{print (a+0)<=b?"1":"0"}')
+              if [ "$SR_OK" = "1" ] && [ "$P95_OK" = "1" ]; then
+                NUM=$(gh issue list --search "CI Alert — ${WF} (7d) in:title" --state open --json number,title | jq -r '.[0].number // empty')
+                if [ -n "$NUM" ]; then
+                  BODY="Recovery: ${WF} met thresholds for the last ${RECOVERY_DAYS} day(s).\n\nClosing this alert."
+                  gh issue comment "$NUM" --body "$BODY" || true
+                  gh issue close "$NUM" || true
+                fi
+              fi
+            fi
+          done
           echo "" >> CI_DAILY_STATUS.md
       - name: Create or update issue comment
         env:

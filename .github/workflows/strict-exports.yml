@@ -1,5 +1,14 @@
 name: Core Strict - Exports, Validation, Comparison
 
+# -----------------------------------------------------------------------------
+# DEPRECATION NOTICE
+# This workflow is legacy and retained temporarily for compatibility.
+# Source of truth for strict exports/validation/comparison:
+#   .github/workflows/core-strict-exports-validation.yml
+# Please migrate badges/links and manual triggers to the new workflow.
+# Target removal date: 2025-10-07 (after observation period)
+# -----------------------------------------------------------------------------
+
 on:
   push:
     branches: [ main ]
@@ -24,6 +33,9 @@ jobs:
       cancel-in-progress: true
 
     steps:
+      - name: Deprecation notice
+        run: |
+          echo "[DEPRECATED] This workflow is legacy. Use 'Core Strict - Exports, Validation, Comparison' in core-strict-exports-validation.yml"
       - uses: actions/checkout@v4
 
       - name: Setup Python
