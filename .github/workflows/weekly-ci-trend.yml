@@ -1,4 +1,5 @@
 name: Weekly CI Trend Digest
+# dispatch-refresh: no-op comment to refresh workflow_dispatch registration
 
 on:
   schedule:
