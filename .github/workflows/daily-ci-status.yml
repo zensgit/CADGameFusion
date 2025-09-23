@@ -1,4 +1,5 @@
 name: Daily CI Status Report
+# dispatch-refresh: no-op comment to refresh workflow_dispatch registration
 
 on:
   schedule:
