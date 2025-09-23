@@ -1,90 +1,117 @@
-#!/usr/bin/env bash
+#!/bin/bash
+# CI 7-Day Trend Summary Script
+# Generates trend statistics for workflows over the past 7 days
+
 set -euo pipefail
 
-# CI Trend Summary (7-day rolling trends)
-#
-# Usage:
-#   bash scripts/ci_trend_summary.sh --workflow "Core Strict - Build and Tests" \
-#       [--days 7] [--markdown]
-#
-# Requires: gh, jq, python3
-
+# Parse arguments
 WORKFLOW=""
 DAYS=7
-MARKDOWN=false
+OUTPUT_FORMAT="text"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --workflow) WORKFLOW="$2"; shift 2;;
-    --days) DAYS="$2"; shift 2;;
-    --markdown) MARKDOWN=true; shift;;
-    -h|--help)
-      sed -n '1,80p' "$0" | sed 's/^# //;t;d'; exit 0;;
-    *) echo "Unknown arg: $1" >&2; exit 2;;
+    --workflow)
+      WORKFLOW="$2"
+      shift 2
+      ;;
+    --days)
+      DAYS="$2"
+      shift 2
+      ;;
+    --markdown)
+      OUTPUT_FORMAT="markdown"
+      shift
+      ;;
+    --json)
+      OUTPUT_FORMAT="json"
+      shift
+      ;;
+    *)
+      echo "Usage: $0 --workflow <name> [--days N] [--markdown|--json]"
+      exit 1
+      ;;
   esac
 done
 
-need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1" >&2; exit 2; }; }
-need gh
-need jq
-need python3
-
-if [[ -z "$WORKFLOW" ]]; then
-  echo "--workflow is required" >&2
-  exit 2
+if [ -z "$WORKFLOW" ]; then
+  echo "Error: --workflow is required"
+  exit 1
 fi
 
-# Fetch runs in the last N days
-since=$(date -u -v-"${DAYS}"d '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || python3 - <<PY
-import datetime
-print((datetime.datetime.utcnow()-datetime.timedelta(days=int("$DAYS"))).strftime('%Y-%m-%dT%H:%M:%SZ'))
-PY
-)
+# Fetch workflow runs for the past N days
+SINCE=$(date -u -v-${DAYS}d '+%Y-%m-%dT%H:%M:%S' 2>/dev/null || date -u -d "${DAYS} days ago" '+%Y-%m-%dT%H:%M:%S')
 
-runs=$(gh run list --workflow "$WORKFLOW" --limit 100 --json conclusion,createdAt,updatedAt 2>/dev/null | \
-  jq --arg since "$since" '[.[] | select(.createdAt >= $since)]')
+# Get runs data
+RUNS_JSON=$(gh run list --workflow "$WORKFLOW" --limit 100 --json databaseId,conclusion,status,createdAt,startedAt,updatedAt 2>/dev/null || echo "[]")
 
-python3 - <<PY "$WORKFLOW" "$DAYS" "$MARKDOWN" <<<"$runs"
-import sys, json, datetime, statistics
-wf = sys.argv[1]
-days = int(sys.argv[2])
-md = sys.argv[3].lower()=='true'
-runs = json.load(sys.stdin)
+# Filter runs from the past N days
+FILTERED_RUNS=$(echo "$RUNS_JSON" | jq --arg since "$SINCE" '[.[] | select(.createdAt >= $since)]')
 
-# group by day (UTC)
-by_day = {}
-for r in runs:
-    if r.get('conclusion') != 'success':
-        continue
-    c = r['createdAt']
-    u = r['updatedAt']
-    dtc = datetime.datetime.fromisoformat(c.replace('Z','+00:00'))
-    dtu = datetime.datetime.fromisoformat(u.replace('Z','+00:00'))
-    dkey = dtc.date().isoformat()
-    dur = (dtu - dtc).total_seconds()/60.0
-    by_day.setdefault(dkey, []).append(dur)
+# Calculate statistics
+TOTAL=$(echo "$FILTERED_RUNS" | jq 'length')
+SUCCESS=$(echo "$FILTERED_RUNS" | jq '[.[] | select(.conclusion == "success")] | length')
+FAILURE=$(echo "$FILTERED_RUNS" | jq '[.[] | select(.conclusion == "failure")] | length')
+CANCELLED=$(echo "$FILTERED_RUNS" | jq '[.[] | select(.conclusion == "cancelled")] | length')
 
-days_sorted = sorted(by_day.keys())[-days:]
+# Calculate success rate
+if [ "$TOTAL" -gt 0 ]; then
+  SUCCESS_RATE=$(echo "scale=1; $SUCCESS * 100 / $TOTAL" | bc)
+else
+  SUCCESS_RATE="N/A"
+fi
 
-def pctl(a,p):
-    if not a:
-        return 0.0
-    a=sorted(a)
-    k=max(1, int(round(p*len(a))))-1
-    return a[k]
+# Calculate duration statistics (in minutes)
+DURATIONS=$(echo "$FILTERED_RUNS" | jq -r '.[] | select(.conclusion == "success" and .startedAt != null and .updatedAt != null) |
+  (((.updatedAt | fromdateiso8601) - (.startedAt | fromdateiso8601)) / 60 | floor)')
 
-rows=[]
-for d in days_sorted:
-    arr = by_day[d]
-    rows.append((d, len(arr), statistics.mean(arr) if arr else 0.0, pctl(arr,0.5), pctl(arr,0.95)))
+if [ -n "$DURATIONS" ] && [ "$(echo "$DURATIONS" | wc -l | tr -d ' ')" -gt 0 ]; then
+  # Sort durations for percentile calculation
+  SORTED_DURATIONS=$(echo "$DURATIONS" | sort -n)
+  COUNT=$(echo "$SORTED_DURATIONS" | wc -l | tr -d ' ')
 
-if md:
-    print(f"### 7-Day Trend — {wf}")
-    print("| Date (UTC) | Count | p50 (m) | p95 (m) | Avg (m) |")
-    print("|------------|-------|---------|---------|---------|")
-    for d,c,avg,p50,p95 in rows:
-        print(f"| {d} | {c} | {p50:.1f} | {p95:.1f} | {avg:.1f} |")
-else:
-    print({"workflow": wf, "days": rows})
-PY
+  # Calculate p50 (median)
+  P50_INDEX=$(echo "($COUNT + 1) / 2" | bc)
+  P50=$(echo "$SORTED_DURATIONS" | sed -n "${P50_INDEX}p")
 
+  # Calculate p95
+  P95_INDEX=$(echo "($COUNT * 95 + 50) / 100" | bc)
+  P95=$(echo "$SORTED_DURATIONS" | sed -n "${P95_INDEX}p")
+
+  # Calculate average
+  AVG=$(echo "$DURATIONS" | awk '{sum+=$1} END {printf "%.0f", sum/NR}')
+else
+  P50="N/A"
+  P95="N/A"
+  AVG="N/A"
+fi
+
+# Output based on format
+case "$OUTPUT_FORMAT" in
+  json)
+    cat <<JSON
+{
+  "workflow": "$WORKFLOW",
+  "period_days": $DAYS,
+  "total_runs": $TOTAL,
+  "success": $SUCCESS,
+  "failure": $FAILURE,
+  "cancelled": $CANCELLED,
+  "success_rate": "$SUCCESS_RATE%",
+  "duration_p50_min": "$P50",
+  "duration_p95_min": "$P95",
+  "duration_avg_min": "$AVG"
+}
+JSON
+    ;;
+  markdown)
+    echo "| $WORKFLOW | $TOTAL | ${SUCCESS_RATE}% | ${P50}m | ${P95}m | ${AVG}m |"
+    ;;
+  text|*)
+    echo "=== 7-Day Trend: $WORKFLOW ==="
+    echo "Total runs: $TOTAL"
+    echo "Success: $SUCCESS, Failure: $FAILURE, Cancelled: $CANCELLED"
+    echo "Success rate: ${SUCCESS_RATE}%"
+    echo "Duration (minutes) - p50: $P50, p95: $P95, avg: $AVG"
+    ;;
+esac

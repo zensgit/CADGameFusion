@@ -70,11 +70,13 @@ jobs:
           done
 
           echo "" >> CI_DAILY_STATUS.md
-          echo "### 7-Day Trend (placeholder for future enhancement)" >> CI_DAILY_STATUS.md
-          for workflow in "Core Strict - Build and Tests" "Core Strict - Exports, Validation, Comparison"; do
-            bash scripts/ci_trend_summary.sh --workflow "$workflow" --days 7 --markdown >> CI_DAILY_STATUS.md || true
-            echo "" >> CI_DAILY_STATUS.md
+          echo "### 7-Day Trend" >> CI_DAILY_STATUS.md
+          echo "| Workflow | Runs | Success% | p50 | p95 | Avg |" >> CI_DAILY_STATUS.md
+          echo "|----------|------|----------|-----|-----|-----|" >> CI_DAILY_STATUS.md
+          for workflow in "Core Strict - Build and Tests" "Core Strict - Exports, Validation, Comparison" "Quick Check - Verification + Lint"; do
+            bash scripts/ci_trend_summary.sh --workflow "$workflow" --days 7 --markdown >> CI_DAILY_STATUS.md || echo "| $workflow | N/A | N/A | N/A | N/A | N/A |" >> CI_DAILY_STATUS.md
           done
+          echo "" >> CI_DAILY_STATUS.md
 
           # vcpkg cache hit rate (latest strict exports)
           echo "### vcpkg Cache Metrics (latest strict exports)" >> CI_DAILY_STATUS.md
@@ -110,7 +112,9 @@ jobs:
               fi
             else
               echo "- Cache metrics not available (run may not have used vcpkg=true)" >> CI_DAILY_STATUS.md
-              ls -la _tmp_art/ >&2 || true
+              echo "Debug: Available artifacts:" >&2
+              gh run view "$RUN_ID" --json artifacts --jq '.artifacts[].name' >&2 2>/dev/null || echo "Could not list artifacts" >&2
+              ls -la _tmp_art/ >&2 2>/dev/null || true
             fi
             rm -rf _tmp_art
           else
