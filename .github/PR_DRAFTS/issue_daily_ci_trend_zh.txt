@@ -1,0 +1,21 @@
+议题 — Daily CI：增加 7 日趋势与 artifact 名称防回退
+
+范围
+- 基于现有汇总输出 7 天趋势行（成功/失败、p50/p95）。
+- 保持严格导出/构建测试各平台（Ubuntu/macOS/Windows）的 artifact 回退名称与工作流文件一致。
+
+任务
+- 使用 `scripts/ci_trend_summary.sh` 生成 7 日趋势段落，写入 `CI_DAILY_STATUS.md`。
+- 保留 artifact 列表/调试输出，并定期核对名称与工作流文件是否一致。
+
+验收标准
+- Daily CI 每日成功生成，并包含 7 日趋势；若缺少 artifact，评论中清晰列出。
+
+参考
+- `.github/workflows/daily-ci-status.yml`
+- `scripts/ci_trend_summary.sh`
+
+标签 / 里程碑
+- labels: ci, observability, enhancement
+- milestone: v0.3.1
+

@@ -372,3 +372,10 @@ You can run the "Core Strict - Exports, Validation, Comparison" workflow with a 
 - Use `--gltf-holes full` by default; justify deviations.
 - For `--spec`, ensure vendored `tools/third_party/json.hpp` is the official nlohmann/json and build with `-DCADGF_USE_NLOHMANN_JSON=ON`.
 - See `.github/pull_request_template.md` for the full checklist and links.
+
+## Ops Drafts (PR/Issues templates)
+- PR closing comment (PR #96): `.github/PR_DRAFTS/pr96_closing_comment_en.txt`
+- Follow-up issue (EN): `.github/PR_DRAFTS/issue_cache_probe_enable_en.txt`
+- 跟进议题（ZH）：`.github/PR_DRAFTS/issue_cache_probe_enable_zh.txt`
+- Follow-up issue (EN): `.github/PR_DRAFTS/issue_daily_ci_trend_en.txt`
+- 跟进议题（ZH）：`.github/PR_DRAFTS/issue_daily_ci_trend_zh.txt`
