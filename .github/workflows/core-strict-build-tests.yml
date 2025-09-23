@@ -255,7 +255,6 @@ jobs:
         with:
           name: vcpkg-evidence-${{ runner.os }}
           path: vcpkg_archives_listing.txt
-
       - name: Run example smoke tests (Linux only)
         if: runner.os == 'Linux'
         shell: bash
