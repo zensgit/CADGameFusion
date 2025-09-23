@@ -9,7 +9,7 @@ Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity ada
 - Core Strict - Build and Tests:
   - ![Core Strict - Build and Tests](https://github.com/zensgit/CADGameFusion/actions/workflows/core-strict-build-tests.yml/badge.svg)
 - Core Strict - Exports, Validation, Comparison:
-  - ![Core Strict - Exports, Validation, Comparison](https://github.com/zensgit/CADGameFusion/actions/workflows/strict-exports.yml/badge.svg)
+  - ![Core Strict - Exports, Validation, Comparison](https://github.com/zensgit/CADGameFusion/actions/workflows/core-strict-exports-validation.yml/badge.svg)
 - Windows Nightly - Strict Build Monitor (non-blocking):
   - ![Windows Nightly - Strict Build Monitor](https://github.com/zensgit/CADGameFusion/actions/workflows/windows-nightly.yml/badge.svg) — Non‑blocking; threshold: 3× green
   - Policy: keep non-blocking until ≥3 consecutive green runs, then consider enabling blocking on strict CI.
