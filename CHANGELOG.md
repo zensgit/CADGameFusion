@@ -12,4 +12,13 @@ Validation
 
 Compatibility
 - Default behavior unchanged; CI unaffected; flags are opt‑in
+## v0.3.0 (2025-09-23)
+
+CI: vcpkg cache optimization (final)
+- Build time ~60–90s (beats <120s target)
+- vcpkg hit rate: N/A for header‑only deps (by design); optional cache_probe to validate pipeline
+- Workflows: fixed triplets (Linux/macOS/Windows), pinned vcpkg, explicit files cache, tee CMake logs, publish vcpkg_cache_stats.json
+- Daily CI: prefer validation workflow; robust artifact fallbacks; show N/A when cacheable=false
+- Scripts: add scripts/ci_quick_ops.sh (trigger/wait); scripts/vcpkg_log_stats.sh outputs cacheable
+- Docs: README adds Binary Cache Notes + Reports index; PR templates + summary reports
 
