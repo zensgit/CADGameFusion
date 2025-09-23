@@ -78,7 +78,11 @@ jobs:
 
           # vcpkg cache hit rate (latest strict exports, with fallbacks)
           echo "### vcpkg Cache Metrics (latest strict exports)" >> CI_DAILY_STATUS.md
-          RUN_ID=$(gh run list --workflow "Core Strict - Exports, Validation, Comparison" --limit 1 --json databaseId 2>/dev/null | jq -r '.[0].databaseId // empty')
+          # Prefer the validation workflow file (has guaranteed artifacts); fallback to legacy strict-exports.yml
+          RUN_ID=$(gh run list --workflow "core-strict-exports-validation.yml" --limit 1 --json databaseId 2>/dev/null | jq -r '.[0].databaseId // empty')
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh run list --workflow "strict-exports.yml" --limit 1 --json databaseId 2>/dev/null | jq -r '.[0].databaseId // empty')
+          fi
           if [ -n "$RUN_ID" ]; then
             echo "Attempting to download artifacts from run $RUN_ID..." >&2
             mkdir -p _tmp_art
