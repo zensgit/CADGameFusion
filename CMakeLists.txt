@@ -32,3 +32,24 @@ endif()
 add_subdirectory(tests/core)
 add_subdirectory(tools)
 add_subdirectory(tests/tools)
+
+# Examples (C API minimal)
+add_executable(c_api_minimal examples/c_api_minimal.c)
+target_include_directories(c_api_minimal PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(c_api_minimal PRIVATE core_c)
+
+add_executable(doc_export_example examples/doc_export_example.c)
+target_include_directories(doc_export_example PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(doc_export_example PRIVATE core_c)
+
+# Tests (smoke) for examples
+enable_testing()
+add_test(NAME c_api_minimal_run COMMAND c_api_minimal)
+
+# Use a CMake script to validate file creation and non-zero size
+set(DOC_EXPORT_OUT "${CMAKE_BINARY_DIR}/out_offset.json")
+add_test(NAME doc_export_example_run
+  COMMAND ${CMAKE_COMMAND}
+    -Dexe="$<TARGET_FILE:doc_export_example>"
+    -Dout="${DOC_EXPORT_OUT}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunDocExportExample.cmake")

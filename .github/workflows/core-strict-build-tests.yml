@@ -229,3 +229,23 @@ jobs:
             build/CMakeFiles/CMakeConfigureLog.yaml
             build/**/CMakeError.log
             build/**/CMakeOutput.log
+
+      - name: Run example smoke tests (Linux only)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -e
+          # Run c_api_minimal test
+          ctest --test-dir build -R "c_api_minimal_run" --output-on-failure || true
+
+          # Run doc_export_example directly (non-blocking)
+          if [ -f build/doc_export_example ]; then
+            echo "Running doc_export_example (non-blocking)"
+            ./build/doc_export_example build/out_offset.json || echo "doc_export_example failed (expected without CLIPPER2)"
+          fi
+
+          # Optional JSON validation (non-blocking)
+          if [ -f tools/validate_doc_export.py ] && [ -f build/out_offset.json ]; then
+            echo "Running optional JSON validation for doc_export_example output"
+            python3 tools/validate_doc_export.py build/out_offset.json || echo "(warning) JSON validation failed"
+          fi

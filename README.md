@@ -200,6 +200,14 @@ cmake --build build --config Release
 
 Note: The project will build without vcpkg, using stub implementations for advanced features.
 
+## Examples (C API)
+- Minimal triangulation (two-call pattern):
+  - Build: `cmake --build build --target c_api_minimal`
+  - Run: `./build/c_api_minimal`
+- Offset + export JSON example:
+  - Build: `cmake --build build --target doc_export_example`
+  - Run: `./build/doc_export_example build/out_offset.json`
+
 ## Unity Integration (Runtime P/Invoke)
 - Copy `build/bin/<platform>/core_c` shared library into `YourUnityProject/Assets/Plugins/<Platform>`.
 - Copy `CADGameFusion/adapters/unity/CoreBindings.cs` into your Unity project.
@@ -210,6 +218,10 @@ var pts = new CADGameFusion.UnityAdapter.CoreBindings.Vec2[]{ new(){x=0,y=0}, ne
 CADGameFusion.UnityAdapter.CoreBindings.core_document_add_polyline(docPtr, pts, pts.Length);
 CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
 ```
+
+Quick Tip (Unity Editor)
+- Attach `adapters/unity-sample/Assets/Scripts/OffsetToMesh.cs` to a GameObject and click its `Regenerate()` (Inspector) to rebuild the mesh after you change `polygon` or `delta`.
+- Ensure `core_c` native library is placed under `Assets/Plugins/<Platform>/` (DLL/.dylib/.so) so P/Invoke can resolve bindings.
 
 ## Documentation
 - Purpose & Plan: `docs/Purpose-and-Plan.md`
@@ -372,3 +384,10 @@ You can run the "Core Strict - Exports, Validation, Comparison" workflow with a 
 - Use `--gltf-holes full` by default; justify deviations.
 - For `--spec`, ensure vendored `tools/third_party/json.hpp` is the official nlohmann/json and build with `-DCADGF_USE_NLOHMANN_JSON=ON`.
 - See `.github/pull_request_template.md` for the full checklist and links.
+
+## Ops Drafts (PR/Issues templates)
+- PR closing comment (PR #96): `.github/PR_DRAFTS/pr96_closing_comment_en.txt`
+- Follow-up issue (EN): `.github/PR_DRAFTS/issue_cache_probe_enable_en.txt`
+- 跟进议题（ZH）：`.github/PR_DRAFTS/issue_cache_probe_enable_zh.txt`
+- Follow-up issue (EN): `.github/PR_DRAFTS/issue_daily_ci_trend_en.txt`
+- 跟进议题（ZH）：`.github/PR_DRAFTS/issue_daily_ci_trend_zh.txt`
