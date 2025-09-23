@@ -15,6 +15,8 @@ Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity ada
   - Policy: keep non-blocking until ≥3 consecutive green runs, then consider enabling blocking on strict CI.
   - Watchdog: failures auto-open Issues (labels: ci, windows, triage).
 
+Note (vcpkg cache): Typical builds complete in ~60–90s. Because core deps are header‑only, vcpkg binary cache hit rate is not applicable and is reported as N/A in Daily CI. To validate the cache pipeline once, dispatch strict exports or build tests with `cache_probe=true`, then rerun to observe a non‑zero hit.
+
 ## Maintenance
 - Refresh golden samples (concave, nested_holes): run the workflow
   "Maintenance - Refresh Golden Samples" from the Actions tab.
