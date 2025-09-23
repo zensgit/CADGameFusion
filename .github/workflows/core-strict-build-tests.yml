@@ -230,6 +230,32 @@ jobs:
             build/**/CMakeError.log
             build/**/CMakeOutput.log
 
+      - name: List vcpkg archives (evidence)
+        if: always()
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then CACHE_DIR="$USERPROFILE/AppData/Local/vcpkg/archives"; else CACHE_DIR="$HOME/.cache/vcpkg/archives"; fi
+          mkdir -p "$CACHE_DIR"
+          {
+            echo "# vcpkg archives listing";
+            echo "OS: ${{ runner.os }}";
+            echo "Dir: $CACHE_DIR";
+            echo;
+            echo "== Summary ==";
+            du -sh "$CACHE_DIR" 2>/dev/null || true;
+            echo "files:" $(find "$CACHE_DIR" -type f | wc -l | tr -d ' ');
+            echo;
+            echo "== Top level ==";
+            ls -lah "$CACHE_DIR" || true;
+          } > vcpkg_archives_listing.txt
+
+      - name: Upload vcpkg evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vcpkg-evidence-${{ runner.os }}
+          path: vcpkg_archives_listing.txt
+
       - name: Run example smoke tests (Linux only)
         if: runner.os == 'Linux'
         shell: bash

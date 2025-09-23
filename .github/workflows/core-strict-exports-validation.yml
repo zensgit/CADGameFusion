@@ -95,6 +95,24 @@ jobs:
             --out-md build/vcpkg_cache_stats.md || true
           cp -f build/vcpkg_cache_stats.json vcpkg_cache_stats.json || true
 
+      - name: List vcpkg archives (evidence)
+        if: always()
+        shell: bash
+        run: |
+          export VCPKG_DEFAULT_BINARY_CACHE="${VCPKG_DEFAULT_BINARY_CACHE:-$HOME/.cache/vcpkg/archives}"
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          {
+            echo "# vcpkg archives listing";
+            echo "Dir: $VCPKG_DEFAULT_BINARY_CACHE";
+            echo;
+            echo "== Summary ==";
+            du -sh "$VCPKG_DEFAULT_BINARY_CACHE" 2>/dev/null || true;
+            echo "files:" $(find "$VCPKG_DEFAULT_BINARY_CACHE" -type f | wc -l | tr -d ' ');
+            echo;
+            echo "== Top level ==";
+            ls -lah "$VCPKG_DEFAULT_BINARY_CACHE" || true;
+          } > vcpkg_archives_listing.txt
+
       - name: Locate export_cli (best-effort)
         shell: bash
         run: |
@@ -441,6 +459,7 @@ except Exception as e:
             build/_cmake_build.log
             build/vcpkg_cache_stats.json
             vcpkg_cache_stats.json
+            vcpkg_archives_listing.txt
 
       - name: Upload exports bundle
         if: always()

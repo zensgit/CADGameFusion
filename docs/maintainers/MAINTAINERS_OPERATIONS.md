@@ -1,55 +1,70 @@
-# Maintainer Operations Guide
+# Maintainers Operations (CI Alerts, Thresholds, Weekly Archive)
 
-Purpose: quick, copy‑paste friendly steps for common maintainer tasks.
+This guide summarizes how CI observability is configured and how to operate daily/weekly reporting, alerts, and recovery.
 
-## Branch Protection
-- Required status checks (exact names):
-  - Core Strict - Build and Tests
-  - Core Strict - Exports, Validation, Comparison
-  - Simple Validation Test
-  - (Optional) Core CI
-  - (Optional) Quick Check - Verification + Lint
-- Strict mode: start with strict=false; consider enabling later when stable.
-- Backup current config: store JSON snapshot under `docs/branch_protection/`.
+## Daily CI Status Report
+- Workflow: `.github/workflows/daily-ci-status.yml` (name: "Daily CI Status Report")
+- Triggers: schedule (daily) and manual (workflow_dispatch)
+- Inputs (manual):
+  - `sr_th` (success rate threshold, default 85)
+  - `p95_th` (p95 duration threshold in minutes, default 6)
+  - `assignees` (comma-separated usernames for alert Issues)
+  - `team_mention` (e.g. `@org/ci-team` included in alert body)
 
-## CI Baseline Management
-- Current anchor: `ci-baseline-2025-09-21`
-- Create a new baseline:
-  ```bash
-  git tag -a ci-baseline-YYYY-MM-DD -m "CI baseline"
-  git push origin ci-baseline-YYYY-MM-DD
-  ```
-- Reference baseline in Daily CI report for quick context.
+### Per‑workflow thresholds
+- Defaults and per‑workflow overrides live in `.github/ci/config.json`:
+```json
+{
+  "alerts": { "assignees": "zensgit", "team_mention": "", "recovery_days": 3 },
+  "thresholds": {
+    "default": { "sr_th": 85, "p95_th": 6 },
+    "per_workflow": {
+      "Core Strict - Build and Tests": { "sr_th": 85, "p95_th": 6 },
+      "Core Strict - Exports, Validation, Comparison": { "sr_th": 85, "p95_th": 6 },
+      "Quick Check - Verification + Lint": { "sr_th": 90, "p95_th": 2 }
+    }
+  }
+}
+```
+- Manual inputs override config for that run; otherwise per‑workflow > default > built-in.
 
-## Workflows to Trigger Manually
-- Core Strict - Exports, Validation, Comparison
-  - Run twice with inputs: use_vcpkg=false / true (rtol default)
-- Daily CI Status Report
-  - Verifies streaks and recent runs; posts to Issue "Daily CI Status"
+### Alerts creation and auto‑recovery
+- If a workflow’s 7‑day trend breaches thresholds, an Issue is created/updated with labels `ci, alert`, milestone `v0.3.1`, optional assignees/mention.
+- Recovery: when a workflow meets thresholds for the last `alerts.recovery_days` (default 3) days, the runner comments on and closes the open alert Issue.
 
-## Release Process (minor)
-1) Ensure all strict gates are green on main
-2) Update CHANGELOG and create `RELEASE_NOTES_vX.Y.Z_YYYY_MM_DD.md`
-3) Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`
-4) Create GitHub Release and paste release notes
-5) Announce in Issue #64 (Daily CI Status) comment
+### vcpkg cache metrics and N/A semantics
+- Daily reads `vcpkg_cache_stats.json` from the latest strict exports run. If only header‑only ports exist (`cacheable=false` or `total==0`), the report shows `Cache Hit Rate: N/A`.
+- Evidence: strict workflows upload `vcpkg_archives_listing.txt` alongside the stats.
 
-## Triage Cheatsheet
-- Fast local check: `bash tools/local_ci.sh --offline`
-- Full local gate: `bash tools/local_ci.sh`
-- Quick verification summary: `bash scripts/check_verification.sh --root build --verbose`
-- Single scene regenerate:
-  ```bash
-  build/tools/export_cli --out build/exports --scene complex --gltf-holes full
-  python3 tools/validate_export.py build/exports/scene_cli_complex --schema
-  ```
+### Quick commands (requires gh+jq)
+```bash
+# Trigger Daily CI with defaults from config
+gh workflow run "Daily CI Status Report"
 
-## Windows CI Strategy
-- Keep vcpkg minimal; enable retries and longpaths
-- Monitor with Windows Nightly workflow and streak script
-- If mirrors/regressions spike: temporarily loosen gates (continue‑on‑error), then restore
+# Trigger with overrides
+gh workflow run "Daily CI Status Report" -f sr_th=85 -f p95_th=6 -f assignees=zensgit -f team_mention=@org/ci
+```
 
-## Naming Stability
-- If a workflow/job name changes, update Branch Protection required checks accordingly
-- Keep names in `.github/workflows/*.yml` stable to avoid merge blocks
+## Weekly CI Trend Digest
+- Workflow: `.github/workflows/weekly-ci-trend.yml` (name: "Weekly CI Trend Digest")
+- Inputs (manual): `days` (default 7), `sr_th`, `p95_th`, `archive_pr` (default false)
+- Schedule: runs weekly and auto‑archives the digest into `docs/ci/weekly/YYYY-WW.md` via a PR
+- Manual: set `archive_pr=true` to create an archival PR for ad‑hoc runs
+
+Quick command:
+```bash
+gh workflow run "Weekly CI Trend Digest" -f days=7 -f archive_pr=true
+```
+
+## Where to find artifacts
+- Daily status artifact: `ci-daily-status-<run_id>` contains `CI_DAILY_STATUS.md`
+- Exports validation evidence: `strict-exports-reports-ubuntu-latest` includes
+  - `build/vcpkg_cache_stats.json`, `vcpkg_cache_stats.json`
+  - `vcpkg_archives_listing.txt`
+- Build tests evidence: `vcpkg-evidence-<OS>` includes `vcpkg_archives_listing.txt`
+
+## Troubleshooting
+- Missing metrics (offline/GH API errors): rerun manually from Actions; ensure `GITHUB_TOKEN` is present and `gh/jq` installed (workflows do this).
+- Artifact name drift: Daily has fallbacks; adjust if exporters rename artifacts.
+- Thresholds too strict/noisy: tune `.github/ci/config.json` per‑workflow values.
 

@@ -9,11 +9,12 @@ Mono-repo skeleton for a shared Core (C++), a Qt desktop editor, and a Unity ada
 - Core Strict - Build and Tests:
   - ![Core Strict - Build and Tests](https://github.com/zensgit/CADGameFusion/actions/workflows/core-strict-build-tests.yml/badge.svg)
 - Core Strict - Exports, Validation, Comparison:
-  - ![Core Strict - Exports, Validation, Comparison](https://github.com/zensgit/CADGameFusion/actions/workflows/strict-exports.yml/badge.svg)
+  - ![Core Strict - Exports, Validation, Comparison](https://github.com/zensgit/CADGameFusion/actions/workflows/core-strict-exports-validation.yml/badge.svg)
 - Windows Nightly - Strict Build Monitor (non-blocking):
   - ![Windows Nightly - Strict Build Monitor](https://github.com/zensgit/CADGameFusion/actions/workflows/windows-nightly.yml/badge.svg) — Non‑blocking; threshold: 3× green
   - Policy: keep non-blocking until ≥3 consecutive green runs, then consider enabling blocking on strict CI.
   - Watchdog: failures auto-open Issues (labels: ci, windows, triage).
+  - Snapshot: uploads `env_snapshot.md` with vcpkg/cmake/ninja/compiler info for debugging.
 
 ## Maintenance
 - Refresh golden samples (concave, nested_holes): run the workflow
@@ -233,6 +234,7 @@ Quick Tip (Unity Editor)
 - Build From Source: `docs/Build-From-Source.md`
 - Troubleshooting: `docs/Troubleshooting.md`
 - Contributing: `docs/Contributing.md`
+- Maintainers Ops: `docs/maintainers/MAINTAINERS_OPERATIONS.md`
 - CI Validation Reports (examples):
   - `CI_FINAL_TEST_REPORT.md`
   - `EXPORT_VALIDATION_TEST_REPORT.md`
@@ -258,6 +260,39 @@ Quick Tip (Unity Editor)
 - Windows CI Strategy (minimal vcpkg + rollback): see README CI Status + `core-strict-build-tests.yml`
 - Session Checkpoint (latest): `session/SESSION_CHECKPOINT_LATEST.md`
 - Session Snapshot (latest): `session/SNAPSHOT_LATEST.md`
+
+## CI Quick Ops
+- Daily CI Status Report（手动触发输入）
+  - `sr_th` / `p95_th`: 全局阈值（可被配置文件 per‑workflow 覆盖）
+  - `assignees` / `team_mention`: 告警 Issue 的默认分配与@提及（也可在 `.github/ci/config.json` 配置）
+  - N/A 语义：当仅使用 header‑only 端口时，vcpkg 命中率显示为 N/A（由 `scripts/vcpkg_log_stats.sh` 判定）
+- Weekly CI Trend Digest
+  - `archive_pr=true` 手动触发时归档；定时任务默认归档到 `docs/ci/weekly/YYYY-WW.md`
+- Per‑workflow 阈值与恢复关闭
+  - `.github/ci/config.json` 中可配置默认与每工作流阈值；当连续 N 天（`alerts.recovery_days`）达标会自动关闭对应告警 Issue
+ 
+Quick commands (gh CLI)
+```bash
+# 登录校验
+gh auth status
+
+# 触发日报（使用配置默认）
+bash scripts/ci_quick_ops.sh run-daily
+
+# 触发周报并归档 PR
+bash scripts/ci_quick_ops.sh run-weekly --days 7 --archive
+```
+
+## CI Observability Notes (vcpkg N/A semantics, alerts, weekly archive)
+- vcpkg Binary Cache metrics in Daily CI:
+  - When only header‑only ports are used (no compiled artifacts), hit rate shows as `N/A`.
+  - Logic is driven by `scripts/vcpkg_log_stats.sh` (`cacheable=false` when total signals == 0).
+- Daily Alerts assignees and mentions:
+  - You can pass `assignees` and `team_mention` via workflow_dispatch inputs when triggering Daily CI manually.
+  - Defaults can be set in `.github/ci/config.json` under `alerts.assignees` and `alerts.team_mention`.
+- Weekly Digest archival PR:
+  - The weekly workflow supports optional archival to `docs/ci/weekly/YYYY-WW.md`.
+  - On schedule it auto-archives; on manual runs set input `archive_pr=true`.
 - Offline/air‑gapped usage: see "Strict CI Quick Guide" → Offline/air‑gapped usage
 
 ## Sample Exports and Validation
