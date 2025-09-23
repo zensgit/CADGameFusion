@@ -225,12 +225,26 @@ CADGameFusion.UnityAdapter.CoreBindings.core_document_destroy(docPtr);
   - `CI_FINAL_TEST_REPORT.md`
   - `EXPORT_VALIDATION_TEST_REPORT.md`
 
+### Reports (vcpkg cache optimization)
+- `VCPKG_CACHE_FINALIZATION_SUMMARY_2025_09_22.md` — Final summary
+- `VCPKG_CACHE_TEST_SUMMARY_2025_09_22.md` — Test summary
+- `VCPKG_CACHE_FIX_REPORT_PR78_2025_09_22.md` — PR #78 fix details
+- `VCPKG_CACHE_FIX_FINAL_REPORT_2025_09_22.md` — Final test report
+- `VCPKG_CACHE_ANALYSIS_AND_SOLUTIONS_2025_09_22.md` — Analysis and solutions
+- `VCPKG_CACHE_METRICS_COMPLETE_2025_09_22.md` — Complete metrics
+- `VCPKG_CACHE_METRICS_TEST_FINAL_2025_09_22.md` — Test metrics
+
 ### CI Quick Ops
 - Trigger workflows locally via GitHub CLI (gh):
   - `bash scripts/ci_quick_ops.sh run-exports --repeat 2`
   - `bash scripts/ci_quick_ops.sh run-build-tests --repeat 2`
   - `bash scripts/ci_quick_ops.sh run-all --repeat 2` (exports → build-tests → daily)
   - Optional: `--debug` for verbose logs; `--cache-probe` to validate vcpkg binary cache path once (zlib); `--no-wait` to fire-and-forget.
+
+### vcpkg Binary Cache Notes
+- Header‑only dependencies (e.g., earcut‑hpp; clipper2 in our usage) do not produce binary archives; binary cache hit rate is not applicable. Daily CI shows N/A by design.
+- What still accelerates builds: GitHub Actions caches for vcpkg installed tree, CMake build directories, and Python deps. These already deliver <2 minutes builds.
+- Optional pipeline validation: When needed, dispatch the strict exports or build tests workflow with `cache_probe=true` to install a small cacheable port (zlib). Re-run once and expect a non‑zero hit rate. Keep `cache_probe` off for normal runs.
 
 ### Verification Reports
 - Post‑merge verification (ZH): `verification_report.md`
@@ -370,4 +384,3 @@ You can run the "Core Strict - Exports, Validation, Comparison" workflow with a 
 - Use `--gltf-holes full` by default; justify deviations.
 - For `--spec`, ensure vendored `tools/third_party/json.hpp` is the official nlohmann/json and build with `-DCADGF_USE_NLOHMANN_JSON=ON`.
 - See `.github/pull_request_template.md` for the full checklist and links.
-# vcpkg cache test
