@@ -449,6 +449,39 @@ except Exception as e:
             comparison_*.json
             consistency_stats.txt
 
+      - name: Generate vcpkg cache statistics
+        if: always()
+        shell: bash
+        run: |
+          echo "Generating vcpkg cache statistics..."
+          # Generate stats from cmake logs
+          if [ -f "build/_cmake_configure.log" ] || [ -f "build/_cmake_build.log" ]; then
+            bash scripts/vcpkg_log_stats.sh \
+              --logs build/_cmake_configure.log build/_cmake_build.log \
+              --out-json build/vcpkg_cache_stats.json \
+              --out-md build/vcpkg_cache_stats.md || echo '{"error": "Failed to generate stats"}' > build/vcpkg_cache_stats.json
+          else
+            echo '{"cacheable": false, "hit_rate": 0, "total": 0}' > build/vcpkg_cache_stats.json
+          fi
+
+          # Also generate vcpkg archives listing
+          if [ -d "$HOME/.cache/vcpkg/archives" ]; then
+            {
+              echo "# vcpkg archives listing";
+              echo "OS: Linux";
+              echo "Dir: $HOME/.cache/vcpkg/archives";
+              echo;
+              echo "== Summary ==";
+              du -sh "$HOME/.cache/vcpkg/archives" 2>/dev/null || echo "N/A";
+              echo "files:" $(find "$HOME/.cache/vcpkg/archives" -type f | wc -l | tr -d ' ');
+              echo;
+              echo "== Top level ==";
+              ls -lah "$HOME/.cache/vcpkg/archives" || echo "Directory not accessible";
+            } > build/vcpkg_archives_listing.txt
+          else
+            echo "vcpkg archives directory not found" > build/vcpkg_archives_listing.txt
+          fi
+
       - name: Upload strict exports reports (for Daily CI)
         if: always()
         uses: actions/upload-artifact@v4
@@ -458,8 +491,11 @@ except Exception as e:
             build/_cmake_configure.log
             build/_cmake_build.log
             build/vcpkg_cache_stats.json
-            vcpkg_cache_stats.json
-            vcpkg_archives_listing.txt
+            build/vcpkg_cache_stats.md
+            build/vcpkg_archives_listing.txt
+            test_report.md
+            field_*.json
+            consistency_stats.txt
 
       - name: Upload exports bundle
         if: always()
