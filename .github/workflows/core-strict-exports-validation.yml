@@ -29,9 +29,14 @@ jobs:
           path: |
             ~/vcpkg/installed
             ~/vcpkg/packages
-            ~/.cache/vcpkg
-          key: ubuntu-vcpkg-${{ hashFiles('**/vcpkg.json') }}-v2
+            ~/.cache/vcpkg/archives
+            vcpkg/buildtrees
+            vcpkg/downloads
+            vcpkg/installed
+            vcpkg/packages
+          key: ubuntu-vcpkg-${{ hashFiles('**/vcpkg.json', '**/CMakeLists.txt') }}-${{ github.run_number }}
           restore-keys: |
+            ubuntu-vcpkg-${{ hashFiles('**/vcpkg.json', '**/CMakeLists.txt') }}-
             ubuntu-vcpkg-
 
       - name: Setup vcpkg
@@ -41,14 +46,28 @@ jobs:
           export VCPKG_DEFAULT_BINARY_CACHE="$HOME/.cache/vcpkg/archives"
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$VCPKG_DEFAULT_BINARY_CACHE" >> $GITHUB_ENV
-          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite;default" >> $GITHUB_ENV
+
+          # Enhanced binary caching configuration
+          # Use both file cache and default (GitHub) cache
+          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite;x-gha,readwrite" >> $GITHUB_ENV
           echo "VCPKG_DEFAULT_TRIPLET=x64-linux" >> $GITHUB_ENV
+
+          # Enable feature flags for better caching
+          echo "VCPKG_FEATURE_FLAGS=manifests,binarycaching" >> $GITHUB_ENV
+          echo "VCPKG_KEEP_ENV_VARS=VCPKG_DEFAULT_BINARY_CACHE,VCPKG_BINARY_SOURCES" >> $GITHUB_ENV
+
           # Clone/pin vcpkg and bootstrap
           if [ ! -d "vcpkg/.git" ]; then
             git clone https://github.com/microsoft/vcpkg.git vcpkg
           fi
           (cd vcpkg && git fetch --tags --force && git checkout c9fa965c2a1b1334469b4539063f3ce95383653c && ./bootstrap-vcpkg.sh)
           echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
+
+          # Pre-warm cache by checking what packages are needed
+          echo "Packages in manifest:"
+          if [ -f vcpkg.json ]; then
+            cat vcpkg.json | jq -r '.dependencies | if type == "array" then .[] else keys[] end' 2>/dev/null || cat vcpkg.json
+          fi
 
       - name: Install dependencies
         run: |
@@ -66,14 +85,17 @@ jobs:
       - name: Configure and Build
         shell: bash
         run: |
-          # Optional: enable vcpkg feature flags when debug enabled via workflow_dispatch
-          if [ "${{ inputs.debug || 'false' }}" = "true" ]; then
-            echo "VCPKG_FEATURE_FLAGS=manifests,binarycaching,compilertracking" >> $GITHUB_ENV
-            echo "VCPKG_KEEP_ENV_VARS=VCPKG_DEFAULT_BINARY_CACHE,VCPKG_BINARY_SOURCES" >> $GITHUB_ENV
-          fi
           # Re-export in case shell step boundaries dropped the value
           export VCPKG_DEFAULT_BINARY_CACHE="${VCPKG_DEFAULT_BINARY_CACHE:-$HOME/.cache/vcpkg/archives}"
+          export VCPKG_BINARY_SOURCES="${VCPKG_BINARY_SOURCES:-clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite;x-gha,readwrite}"
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+
+          # Show cache status before build
+          echo "=== vcpkg binary cache status ==="
+          echo "Cache directory: $VCPKG_DEFAULT_BINARY_CACHE"
+          echo "Cache contents: $(ls -la $VCPKG_DEFAULT_BINARY_CACHE 2>/dev/null | wc -l) items"
+          echo "Cache size: $(du -sh $VCPKG_DEFAULT_BINARY_CACHE 2>/dev/null | cut -f1 || echo '0')"
+
           # Capture logs for cache analysis
           set -o pipefail
           cmake -S . -B build \
@@ -81,18 +103,36 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
             -DVCPKG_MANIFEST_MODE=ON \
             -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR=vcpkg/installed \
             -DBUILD_EDITOR_QT=OFF \
             -G Ninja 2>&1 | tee build/_cmake_configure.log
+
           cmake --build build --config Release 2>&1 | tee build/_cmake_build.log
+
+          # Show cache status after build
+          echo "=== vcpkg binary cache after build ==="
+          echo "Cache contents: $(ls -la $VCPKG_DEFAULT_BINARY_CACHE 2>/dev/null | wc -l) items"
+          echo "Cache size: $(du -sh $VCPKG_DEFAULT_BINARY_CACHE 2>/dev/null | cut -f1 || echo '0')"
 
       - name: Generate vcpkg cache stats
         if: always()
         shell: bash
         run: |
+          # Generate cache statistics
           bash scripts/vcpkg_log_stats.sh \
             --logs build/_cmake_configure.log build/_cmake_build.log \
             --out-json build/vcpkg_cache_stats.json \
             --out-md build/vcpkg_cache_stats.md || true
+
+          # Enhance stats with actual cache info
+          if [ -f build/vcpkg_cache_stats.json ]; then
+            CACHE_FILES=$(find $HOME/.cache/vcpkg/archives -type f 2>/dev/null | wc -l || echo 0)
+            CACHE_SIZE=$(du -sh $HOME/.cache/vcpkg/archives 2>/dev/null | cut -f1 || echo "0")
+
+            # Add cache metrics to JSON
+            jq ". + {cache_files: $CACHE_FILES, cache_size: \"$CACHE_SIZE\"}" build/vcpkg_cache_stats.json > temp.json && mv temp.json build/vcpkg_cache_stats.json
+          fi
+
           cp -f build/vcpkg_cache_stats.json vcpkg_cache_stats.json || true
 
       - name: List vcpkg archives (evidence)
