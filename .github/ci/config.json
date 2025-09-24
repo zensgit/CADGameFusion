@@ -2,7 +2,7 @@
   "alerts": {
     "assignees": "zensgit",
     "team_mention": "",
-    "recovery_days": 3
+    "recovery_days": 2
   },
   "labels": ["ci", "alert"],
   "milestone": "v0.3.1",
