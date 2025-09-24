@@ -1,0 +1,102 @@
+name: Auto Daily After Exports
+
+on:
+  workflow_run:
+    workflows: ["Core Strict - Exports, Validation, Comparison"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+jobs:
+  trigger-daily-report:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          gh --version || echo "gh CLI not available"
+
+      - name: Check if should run Daily CI
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if Daily CI was already run recently (within 6 hours)
+          LAST_RUN=$(gh run list --workflow "Daily CI Status Report" --limit 1 --json createdAt --jq '.[0].createdAt // empty' || echo '')
+
+          if [ -n "$LAST_RUN" ]; then
+            LAST_TIMESTAMP=$(date -d "$LAST_RUN" +%s 2>/dev/null || date -r "$LAST_RUN" +%s 2>/dev/null || echo 0)
+            NOW_TIMESTAMP=$(date +%s)
+            HOURS_AGO=$(( (NOW_TIMESTAMP - LAST_TIMESTAMP) / 3600 ))
+
+            if [ "$HOURS_AGO" -lt 6 ]; then
+              echo "Daily CI was run $HOURS_AGO hours ago, skipping auto-trigger"
+              echo "should_run=false" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+          fi
+
+          echo "should_run=true" >> $GITHUB_OUTPUT
+          echo "Will trigger Daily CI Status Report"
+
+      - name: Trigger Daily CI Status Report
+        if: steps.check.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Load config for thresholds
+          SR_TH=85
+          P95_TH=6
+          ASSIGNEES=""
+
+          if [ -f .github/ci/config.json ]; then
+            SR_TH=$(jq -r '.thresholds.default.sr_th // 85' .github/ci/config.json)
+            P95_TH=$(jq -r '.thresholds.default.p95_th // 6' .github/ci/config.json)
+            ASSIGNEES=$(jq -r '.alerts.assignees // empty' .github/ci/config.json)
+          fi
+
+          echo "Triggering Daily CI with thresholds: SR=$SR_TH%, p95=${P95_TH}m"
+
+          # Trigger the Daily CI workflow
+          gh workflow run "Daily CI Status Report" \
+            -f sr_threshold="$SR_TH" \
+            -f p95_threshold="$P95_TH" \
+            -f alert_assignees="$ASSIGNEES" \
+            -f alert_mode="auto" \
+            -f create_alerts="true" || {
+              echo "::warning::Failed to trigger Daily CI Status Report workflow"
+              exit 0
+            }
+
+          echo "✅ Daily CI Status Report workflow triggered successfully"
+
+      - name: Post summary
+        if: always()
+        run: |
+          if [ "${{ steps.check.outputs.should_run }}" == "true" ]; then
+            echo "### Auto-triggered Daily CI Report" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Trigger**: Core Strict - Exports workflow completed successfully" >> $GITHUB_STEP_SUMMARY
+            echo "- **Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+            echo "- **Action**: Daily CI Status Report workflow triggered" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "The Daily CI Status Report will:" >> $GITHUB_STEP_SUMMARY
+            echo "- Generate 7-day trend analysis" >> $GITHUB_STEP_SUMMARY
+            echo "- Check vcpkg cache metrics from this exports run" >> $GITHUB_STEP_SUMMARY
+            echo "- Create alerts if thresholds are crossed" >> $GITHUB_STEP_SUMMARY
+            echo "- Update issue #94 with latest status" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Daily CI Auto-trigger Skipped" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Daily CI was already run recently (within 6 hours)" >> $GITHUB_STEP_SUMMARY
+          fi
