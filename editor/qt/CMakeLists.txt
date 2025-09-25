@@ -18,9 +18,20 @@ add_executable(editor_qt
     src/exporter.hpp
     src/export_dialog.cpp
     src/export_dialog.hpp
+    # Command system
+    include/command/command.hpp
+    include/command/command_manager.hpp
+    src/command/command_manager.cpp
+    # Property panel
+    include/panels/property_panel.hpp
+    # Project management
+    include/project/project.hpp
 )
 
-target_include_directories(editor_qt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+target_include_directories(editor_qt PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../..
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
 
 target_link_libraries(editor_qt PRIVATE Qt6::Widgets core_c core)
 

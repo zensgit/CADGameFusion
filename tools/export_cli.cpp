@@ -275,6 +275,23 @@ void writeJSON(const std::string& filepath, const SceneData& scene, double unitS
     file << "],\n";
     
     file << "  \"meta\": {\n";
+    // v0.3 additive meta fields
+    // pipelineVersion, source, exportTime (UTC ISO8601)
+    file << "    \"pipelineVersion\": \"0.3.0\",\n";
+    file << "    \"source\": \"cli\",\n";
+    {
+        // Format export time as ISO8601 UTC
+        std::time_t t = std::time(nullptr);
+        std::tm tm{};
+    #if defined(_WIN32)
+        gmtime_s(&tm, &t);
+    #else
+        gmtime_r(&t, &tm);
+    #endif
+        std::ostringstream oss;
+        oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+        file << "    \"exportTime\": \"" << oss.str() << "\",\n";
+    }
     file << "    \"joinType\": " << scene.joinType << ",\n";
     file << "    \"miterLimit\": " << std::fixed << std::setprecision(1) 
          << scene.miterLimit << ",\n";

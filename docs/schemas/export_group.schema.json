@@ -47,6 +47,9 @@
     "meta": {
       "type": "object",
       "properties": {
+        "pipelineVersion": { "type": "string" },
+        "source": { "type": "string", "enum": ["cli", "qt", "unity"] },
+        "exportTime": { "type": "string" },
         "joinType": { "type": "integer" },
         "miterLimit": { "type": "number" },
         "unitScale": { "type": "number" },
