@@ -5,12 +5,20 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  schedule:
+    # Run twice daily to keep cache warm and monitor performance
+    - cron: '0 0,12 * * *'  # 00:00 and 12:00 UTC (8:00 and 20:00 UTC+8)
   workflow_dispatch:
     inputs:
       debug:
         description: 'Enable debug mode'
         required: false
         default: 'false'
+        type: boolean
+      use_cache:
+        description: 'Use vcpkg cache (test cache effectiveness)'
+        required: false
+        default: 'true'
         type: boolean
 
 jobs:
