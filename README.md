@@ -1,5 +1,9 @@
 # CADGameFusion
 
+[![Core CI](https://github.com/zensgit/CADGameFusion/actions/workflows/cadgamefusion-core.yml/badge.svg?branch=main)](https://github.com/zensgit/CADGameFusion/actions/workflows/cadgamefusion-core.yml)
+[![Core Strict](https://github.com/zensgit/CADGameFusion/actions/workflows/core-strict-build-tests.yml/badge.svg?branch=main)](https://github.com/zensgit/CADGameFusion/actions/workflows/core-strict-build-tests.yml)
+[![Quick Check](https://github.com/zensgit/CADGameFusion/actions/workflows/quick-check.yml/badge.svg?branch=main)](https://github.com/zensgit/CADGameFusion/actions/workflows/quick-check.yml)
+
 High‑performance 2D CAD/geometry core with an optional Qt editor and export tooling.
 
 ## Quick Links
@@ -16,3 +20,20 @@ ctest --test-dir build -V
 
 ## Editor (Qt)
 Enable with `-DBUILD_EDITOR_QT=ON` and build target `editor_qt`.
+
+## Project Structure
+- `core/` — C++17 geometric core and C API
+- `editor/qt/` — Optional Qt-based editor
+- `tools/` — Export CLI and helpers
+- `tests/` — Core/tools tests (CMake + CTest)
+- `docs/` — Design notes and reports
+
+## Docs
+- Repository Guidelines: `AGENTS.md`
+- Qt UI Shell design: `docs/editor/Qt-UI-Shell-Design.md`
+- Exporter experimental flags: `docs/exporter/EXPERIMENTAL_FLAGS.md`
+
+## Contributing
+- Start with `AGENTS.md` and `docs/Contributing.md` for style, PR, and test guidance.
+- Use Conventional Commits (e.g., `feat:`, `fix:`, `docs:`, `ci:`). Keep PRs focused and link issues.
+- Ensure CMake builds and CTest pass locally; attach screenshots/GIFs for editor/UI changes in PRs.
