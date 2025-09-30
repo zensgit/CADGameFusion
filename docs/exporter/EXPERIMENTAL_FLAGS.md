@@ -24,6 +24,15 @@ These feature flags extend the glTF export produced by `export_cli` without impa
 | Size / performance baseline | Yes/No | Compare buffer growth impact |
 | Production strict export | No | Keep legacy stable until adoption window |
 
+### Quick Matrix (What Gets Emitted)
+| --emit-normals | --emit-uvs | --emit-materials-stub | Accessors            | Materials |
+|----------------|------------|-----------------------|----------------------|-----------|
+| off            | off        | off                   | POSITION, INDICES    | none      |
+| on             | off        | off                   | POSITION, NORMAL, INDICES | none |
+| off            | on         | off                   | POSITION, TEXCOORD_0, INDICES | none |
+| on             | on         | off                   | POSITION, NORMAL, TEXCOORD_0, INDICES | none |
+| on             | on         | on                    | POSITION, NORMAL, TEXCOORD_0, INDICES | default(1) |
+
 ### glTF Layout Impact
 Without flags:  
 ```
@@ -64,7 +73,15 @@ primitive.attributes: {POSITION, NORMAL, TEXCOORD_0}, material:0
 python3 tools/validate_export.py build/exports/scene_cli_sample
 ```
 
+Tip: Combine with a clean output directory when iterating locally:
+```bash
+rm -rf build/exports/scene_cli_sample && \
+./build/tools/export_cli --scene sample --out build/exports --emit-normals --emit-uvs --emit-materials-stub && \
+python3 tools/validate_export.py build/exports/scene_cli_sample
+```
+
+CI integration: The matrix variants are exercised in "Exporter Trial (Experimental Flags)" workflow. Artifacts are uploaded per combination for quick inspection.
+
 ### Next Steps
 - (Planned) GitHub Actions trial workflow matrix with toggled flags
 - Potential JSON meta annotation (e.g. `meta.pipelineFlags`) for traceability
-
