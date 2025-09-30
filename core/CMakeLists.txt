@@ -36,6 +36,16 @@ else()
     message(STATUS "Earcut not found - triangulation will use stub")
 endif()
 
+# Clipper2 (boolean/offset). Header-only usage; enable if headers are found.
+find_path(CLIPPER2_INCLUDE_DIR NAMES clipper2/clipper.h PATHS ${CMAKE_PREFIX_PATH}/include NO_DEFAULT_PATH)
+if(CLIPPER2_INCLUDE_DIR)
+    target_compile_definitions(core PUBLIC USE_CLIPPER2)
+    target_include_directories(core PRIVATE ${CLIPPER2_INCLUDE_DIR})
+    message(STATUS "Clipper2 found")
+else()
+    message(STATUS "Clipper2 not found - boolean/offset will be stubs")
+endif()
+
 # Core C API shared library
 add_library(core_c SHARED src/core_c_api.cpp)
 target_link_libraries(core_c PRIVATE core)

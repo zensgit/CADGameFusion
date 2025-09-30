@@ -76,9 +76,12 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, 
             root.insert("ring_roles", roles);
         }
 
-        if (!meta.isEmpty()) {
-            root.insert("meta", meta);
-        }
+        // Compose meta: provided meta + pipeline info
+        QJsonObject metaOut = meta;
+        metaOut.insert("pipelineVersion", QStringLiteral("0.3.0"));
+        metaOut.insert("source", QStringLiteral("qt"));
+        metaOut.insert("exportTime", QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+        root.insert("meta", metaOut);
         if (kinds & ExportJSON) {
             QJsonDocument doc(root);
             const QString fn = sdir.filePath(QString("group_%1.json").arg(it.groupId));
