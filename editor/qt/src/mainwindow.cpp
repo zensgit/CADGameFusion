@@ -25,6 +25,7 @@
 #include <QMenu>
 #include <QTimer>
 #include <QDebug>
+#include <QSet>
 
 #include "core/core_c_api.h"
 #include "canvas.hpp"
@@ -193,16 +194,31 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(prop, &PropertyPanel::propertyEditedBatch, [this, canvas](const QList<int>& ids, const QString& key, const QVariant& value){
         if (!canvas || key != "visible" || ids.isEmpty()) return;
         struct BatchSetVisible : Command {
-            CanvasWidget* canvas; QList<int> ids; QVector<bool> oldVals; bool newVal;
-            BatchSetVisible(CanvasWidget* c, QList<int> is, bool nv) : canvas(c), ids(std::move(is)), newVal(nv) {
-                oldVals.reserve(ids.size());
-                for (int idx : ids) { CanvasWidget::PolyVis pv; bool ok = canvas->polylineAt(idx, pv); oldVals.push_back(ok ? pv.visible : true); }
+            CanvasWidget* canvas; QList<int> validIds; QVector<bool> oldVals; bool newVal;
+            BatchSetVisible(CanvasWidget* c, QList<int> is, bool nv) : canvas(c), newVal(nv) {
+                QSet<int> seen;
+                validIds.reserve(is.size());
+                oldVals.reserve(is.size());
+                for (int idx : is) {
+                    if (seen.contains(idx)) continue; // de-duplicate
+                    seen.insert(idx);
+                    CanvasWidget::PolyVis pv;
+                    if (canvas && canvas->polylineAt(idx, pv)) {
+                        validIds.push_back(idx);
+                        oldVals.push_back(pv.visible);
+                    }
+                }
             }
-            void execute() override { for (int i=0;i<ids.size();++i) canvas->setPolylineVisible(ids[i], newVal); }
-            void undo() override { for (int i=0;i<ids.size();++i) canvas->setPolylineVisible(ids[i], oldVals[i]); }
+            void execute() override { for (int idx : validIds) canvas->setPolylineVisible(idx, newVal); }
+            void undo() override { for (int i=0;i<validIds.size();++i) canvas->setPolylineVisible(validIds[i], oldVals[i]); }
             QString name() const override { return "Set Visible (Batch)"; }
         };
-        m_cmdMgr->push(std::make_unique<BatchSetVisible>(canvas, ids, value.toBool()));
+        auto cmd = std::make_unique<BatchSetVisible>(canvas, ids, value.toBool());
+        if (cmd->validIds.isEmpty()) {
+            statusBar()->showMessage("No valid selection for visibility change", 1200);
+            return;
+        }
+        m_cmdMgr->push(std::move(cmd));
     });
 
     // (tracking moved earlier)
