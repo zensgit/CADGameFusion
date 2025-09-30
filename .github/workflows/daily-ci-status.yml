@@ -56,10 +56,10 @@ jobs:
             RECOVERY_DAYS=3
           fi
           # Optional threshold overrides from workflow_dispatch inputs
-          SR_TH_IN='${{ github.event_name == "workflow_dispatch" && github.event.inputs.sr_th || '' }}'
-          P95_TH_IN='${{ github.event_name == "workflow_dispatch" && github.event.inputs.p95_th || '' }}'
-          ASSIGNEES_IN='${{ github.event_name == "workflow_dispatch" && github.event.inputs.assignees || '' }}'
-          TEAM_MENTION_IN='${{ github.event_name == "workflow_dispatch" && github.event.inputs.team_mention || '' }}'
+          SR_TH_IN="${{ github.event.inputs.sr_th || '' }}"
+          P95_TH_IN="${{ github.event.inputs.p95_th || '' }}"
+          ASSIGNEES_IN="${{ github.event.inputs.assignees || '' }}"
+          TEAM_MENTION_IN="${{ github.event.inputs.team_mention || '' }}"
           if [ -n "$SR_TH_IN" ]; then export SR_TH="$SR_TH_IN"; fi
           if [ -n "$P95_TH_IN" ]; then export P95_TH="$P95_TH_IN"; fi
           if [ -n "$ASSIGNEES_IN" ]; then export ALERT_ASSIGNEES="$ASSIGNEES_IN"; fi
