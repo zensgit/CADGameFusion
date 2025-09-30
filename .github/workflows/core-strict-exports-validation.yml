@@ -105,6 +105,7 @@ jobs:
           echo "Cache size: $(du -sh $VCPKG_DEFAULT_BINARY_CACHE 2>/dev/null | cut -f1 || echo '0')"
 
           # Capture logs for cache analysis
+          mkdir -p build
           set -o pipefail
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
