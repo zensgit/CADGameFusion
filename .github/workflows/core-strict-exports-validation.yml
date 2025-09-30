@@ -56,8 +56,8 @@ jobs:
           echo "VCPKG_DEFAULT_BINARY_CACHE=$VCPKG_DEFAULT_BINARY_CACHE" >> $GITHUB_ENV
 
           # Enhanced binary caching configuration
-          # Use both file cache and default (GitHub) cache
-          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite;x-gha,readwrite" >> $GITHUB_ENV
+          # Use file cache only (x-gha requires additional setup)
+          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite" >> $GITHUB_ENV
           echo "VCPKG_DEFAULT_TRIPLET=x64-linux" >> $GITHUB_ENV
 
           # Enable feature flags for better caching
@@ -95,7 +95,7 @@ jobs:
         run: |
           # Re-export in case shell step boundaries dropped the value
           export VCPKG_DEFAULT_BINARY_CACHE="${VCPKG_DEFAULT_BINARY_CACHE:-$HOME/.cache/vcpkg/archives}"
-          export VCPKG_BINARY_SOURCES="${VCPKG_BINARY_SOURCES:-clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite;x-gha,readwrite}"
+          export VCPKG_BINARY_SOURCES="${VCPKG_BINARY_SOURCES:-clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite}"
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
 
           # Show cache status before build
