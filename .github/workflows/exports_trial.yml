@@ -1,0 +1,45 @@
+name: Exporter Trial (Experimental Flags)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/export_cli.cpp'
+      - 'tools/validate_export.py'
+      - 'docs/exporter/EXPERIMENTAL_FLAGS.md'
+
+jobs:
+  trial-export:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        normals: [false, true]
+        uvs: [false, true]
+        materials: [false, true]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build export_cli
+        run: |
+          cmake --build build --target export_cli -j 4
+      - name: Run export (sample)
+        run: |
+          FLAGS=""
+          [ "${{ matrix.normals }}" = "true" ] && FLAGS="$FLAGS --emit-normals"
+            
+          [ "${{ matrix.uvs }}" = "true" ] && FLAGS="$FLAGS --emit-uvs"
+          [ "${{ matrix.materials }}" = "true" ] && FLAGS="$FLAGS --emit-materials-stub"
+          ./build/tools/export_cli --scene sample --out build/exports $FLAGS
+      - name: Validate export
+        run: |
+          python3 tools/validate_export.py build/exports/scene_cli_sample || true
+      - name: Archive scene
+        uses: actions/upload-artifact@v4
+        with:
+          name: scene-sample-n${{ matrix.normals }}-u${{ matrix.uvs }}-m${{ matrix.materials }}
+          path: build/exports/scene_cli_sample
+          if-no-files-found: warn
+
