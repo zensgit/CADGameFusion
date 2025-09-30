@@ -247,6 +247,25 @@ class ExportValidator:
                             if idx >= pos_count:
                                 self.errors.append(f"{gltf_path.name}: index {idx} out of range (verts={pos_count})")
                                 break
+                        # Experimental extras (normals / uvs / material)
+                        if 'NORMAL' in prim.get('attributes', {}):
+                            n_idx = prim['attributes']['NORMAL']
+                            if isinstance(n_idx, int) and 0 <= n_idx < len(accessors):
+                                n_acc = accessors[n_idx]
+                                if n_acc.get('type') == 'VEC3' and n_acc.get('componentType') == 5126:
+                                    self.info.append(f"  [OK] NORMAL accessor (count={n_acc.get('count')})")
+                                else:
+                                    self.warnings.append(f"{gltf_path.name}: NORMAL accessor unexpected format")
+                        if 'TEXCOORD_0' in prim.get('attributes', {}):
+                            u_idx = prim['attributes']['TEXCOORD_0']
+                            if isinstance(u_idx, int) and 0 <= u_idx < len(accessors):
+                                u_acc = accessors[u_idx]
+                                if u_acc.get('type') == 'VEC2' and u_acc.get('componentType') == 5126:
+                                    self.info.append(f"  [OK] TEXCOORD_0 accessor (count={u_acc.get('count')})")
+                                else:
+                                    self.warnings.append(f"{gltf_path.name}: TEXCOORD_0 accessor unexpected format")
+                        if 'materials' in data and data['materials']:
+                            self.info.append(f"  [OK] materials stub present (count={len(data['materials'])})")
                     else:
                         self.errors.append(f"{gltf_path.name}: Missing POSITION/indices accessors")
                 except Exception as ex:

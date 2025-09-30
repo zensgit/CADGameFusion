@@ -14,24 +14,85 @@
 #include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QDialogButtonBox>
+#include <QPushButton>
 #include <QSettings>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QClipboard>
+#include <QApplication>
+#include <QCloseEvent>
+#include <QFileInfo>
+#include <QMenu>
+#include <QTimer>
+#include <QDebug>
 
 #include "core/core_c_api.h"
 #include "canvas.hpp"
 #include "exporter.hpp"
 #include "export_dialog.hpp"
+#include "command/command_manager.hpp"
+#include "panels/property_panel.hpp"
+#include "project/project.hpp"
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("CADGameFusion - Qt Editor");
 
+    // Initialize undo stack & command manager early so dirty tracking works
+    m_undoStack = new QUndoStack(this);
+    m_cmdMgr = new CommandManager(this);
+    m_cmdMgr->setUndoStack(m_undoStack);
+    // Connect to index changed for more reliable dirty tracking
+    connect(m_undoStack, &QUndoStack::indexChanged, this, [this](int index){
+        qDebug() << "indexChanged signal, index:" << index << "isClean:" << m_undoStack->isClean();
+        if (!m_undoStack->isClean()) markDirty();
+        else markClean();
+    });
+    connect(m_undoStack, &QUndoStack::cleanChanged, this, [this](bool clean){
+        qDebug() << "cleanChanged signal, clean:" << clean;
+        if (clean) markClean();
+        else markDirty();
+    });
+    // Also connect to commandExecuted to ensure dirty state
+    connect(m_cmdMgr, &CommandManager::commandExecuted, this, [this](const QString& cmd){
+        qDebug() << "Command executed:" << cmd;
+        if (!m_undoStack->isClean()) {
+            markDirty();
+        }
+    });
+
     auto* tb = addToolBar("Main");
     auto* actAdd = tb->addAction("Add Polyline");
-    connect(actAdd, &QAction::triggered, this, &MainWindow::addSamplePolyline);
+    connect(actAdd, &QAction::triggered, [this]{
+        auto* c = qobject_cast<CanvasWidget*>(centralWidget()); if (!c) return;
+        // sample square
+        QVector<QPointF> poly{ {0,0},{100,0},{100,100},{0,100},{0,0} };
+        const QColor col(220,220,230);
+        const int gid = c->newGroupId();
+        struct AddPolylineCommand : Command {
+            CanvasWidget* canvas; CanvasWidget::PolyVis pv; int insertIndex;
+            AddPolylineCommand(CanvasWidget* c, const CanvasWidget::PolyVis& v)
+                : canvas(c), pv(v), insertIndex(-1) {}
+            void execute() override {
+                if (!canvas) return;
+                insertIndex = canvas->polylineCount();
+                canvas->insertPolylineAt(insertIndex, pv);
+            }
+            void undo() override { if (canvas && insertIndex>=0) canvas->removePolylineAt(insertIndex); }
+            QString name() const override { return "Add Polyline"; }
+        };
+        CanvasWidget::PolyVis pv{poly, col, gid};
+        qDebug() << "Pushing AddPolylineCommand to undo stack";
+        m_cmdMgr->push(std::make_unique<AddPolylineCommand>(c, pv));
+        qDebug() << "UndoStack isClean:" << m_undoStack->isClean() << "count:" << m_undoStack->count();
+        // Force dirty state after command
+        if (!m_undoStack->isClean()) {
+            markDirty();
+        }
+    });
     auto* actTri = tb->addAction("Triangulate");
     connect(actTri, &QAction::triggered, this, &MainWindow::triangulateSample);
+    actTri->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
+    addAction(actTri); // ensure shortcut is active even without toolbar focus
     auto* actBool = tb->addAction("Boolean");
     connect(actBool, &QAction::triggered, this, &MainWindow::demoBoolean);
     auto* actOff = tb->addAction("Offset");
@@ -39,33 +100,133 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* actDel = tb->addAction("Delete Selected");
     connect(actDel, &QAction::triggered, [this]{ 
         auto* c = qobject_cast<CanvasWidget*>(centralWidget()); 
-        if(c) {
-            c->removeSelected();
-            statusBar()->showMessage("Deleted selected polyline", 2000);
-        }
+        if(!c) return;
+        const int idx = c->selectedIndex();
+        if (idx < 0) { statusBar()->showMessage("No selection", 1500); return; }
+        struct DeleteEntityCommand : Command {
+            CanvasWidget* canvas; int index; CanvasWidget::PolyVis backup; bool hasBackup{false};
+            DeleteEntityCommand(CanvasWidget* c, int i) : canvas(c), index(i) { if (canvas) { CanvasWidget::PolyVis pv; hasBackup = canvas->polylineAt(index, pv); if (hasBackup) backup = pv; } }
+            void execute() override { if (canvas) canvas->removePolylineAt(index); }
+            void undo() override { if (canvas && hasBackup) canvas->insertPolylineAt(index, backup); }
+            QString name() const override { return QString("Delete Polyline #%1").arg(index); }
+        };
+        m_cmdMgr->push(std::make_unique<DeleteEntityCommand>(c, idx));
+        statusBar()->showMessage("Deleted (undoable)", 1500);
     });
     auto* actDelSimilar = tb->addAction("Delete Similar");
     connect(actDelSimilar, &QAction::triggered, [this]{ 
         auto* c = qobject_cast<CanvasWidget*>(centralWidget()); 
-        if(c) {
-            int count = c->removeAllSimilar();
-            statusBar()->showMessage(QString("Deleted %1 similar polylines").arg(count), 2000);
-        }
+        if(!c) return;
+        struct DeleteSimilarCommand : Command {
+            CanvasWidget* canvas; QVector<CanvasWidget::PolyVis> backup;
+            explicit DeleteSimilarCommand(CanvasWidget* c) : canvas(c) {}
+            void execute() override { if (canvas) { backup = canvas->snapshotPolylines(); canvas->removeAllSimilar(); } }
+            void undo() override { if (canvas) canvas->restorePolylines(backup); }
+            QString name() const override { return "Delete Similar"; }
+        };
+        m_cmdMgr->push(std::make_unique<DeleteSimilarCommand>(c));
     });
     auto* actClear = tb->addAction("Clear All");
     connect(actClear, &QAction::triggered, [this]{ 
         auto* c = qobject_cast<CanvasWidget*>(centralWidget()); 
-        if(c) {
-            c->clear();
-            statusBar()->showMessage("Cleared all polylines", 2000);
-        }
+        if(!c) return;
+        struct ClearAllCommand : Command {
+            CanvasWidget* canvas; QVector<CanvasWidget::PolyVis> backup;
+            explicit ClearAllCommand(CanvasWidget* c) : canvas(c) {}
+            void execute() override { if (canvas) { backup = canvas->snapshotPolylines(); canvas->clear(); } }
+            void undo() override { if (canvas) canvas->restorePolylines(backup); }
+            QString name() const override { return "Clear All"; }
+        };
+        m_cmdMgr->push(std::make_unique<ClearAllCommand>(c));
+        statusBar()->showMessage("Cleared (undoable)", 1500);
     });
 
     auto* canvas = new CanvasWidget(this);
     setCentralWidget(canvas);
 
+    // Properties dock (initially shows empty selection)
+    auto* prop = new PropertyPanel(this);
+    addDockWidget(Qt::RightDockWidgetArea, prop);
+    prop->updateFromSelection({});
+    connect(canvas, &CanvasWidget::selectionChanged, this, [this, prop, canvas](const QList<int>& ids){
+        prop->updateFromSelection(ids);
+        // Compute visibility state for current selection
+        if (!ids.isEmpty()) {
+            bool anyTrue=false, anyFalse=false;
+            for (int idx : ids) {
+                CanvasWidget::PolyVis pv;
+                if (canvas->polylineAt(idx, pv)) {
+                    anyTrue  = anyTrue  || pv.visible;
+                    anyFalse = anyFalse || !pv.visible;
+                }
+            }
+            Qt::CheckState cs = Qt::PartiallyChecked;
+            if (ids.size() == 1) {
+                cs = anyTrue ? Qt::Checked : Qt::Unchecked;
+            } else {
+                if (anyTrue && !anyFalse) cs = Qt::Checked;
+                else if (!anyTrue && anyFalse) cs = Qt::Unchecked;
+            }
+            prop->setVisibleCheckState(cs, /*silent*/true);
+        }
+    });
+    connect(prop, &PropertyPanel::propertyEdited, [this, canvas](int entityId, const QString& key, const QVariant& value){
+        if (!canvas) return;
+        if (key == "visible") {
+            struct SetPropertyCommand : Command {
+                CanvasWidget* canvas; int idx; QString prop; QVariant newVal; QVariant oldVal; bool haveOld{false};
+                SetPropertyCommand(CanvasWidget* c, int i, QString p, QVariant nv)
+                    : canvas(c), idx(i), prop(std::move(p)), newVal(std::move(nv)) {
+                    if (canvas && prop == "visible") { CanvasWidget::PolyVis pv; haveOld = canvas->polylineAt(idx, pv); if (haveOld) oldVal = pv.visible; }
+                }
+                void apply(const QVariant& v) {
+                    if (!canvas) return;
+                    if (prop == "visible") canvas->setPolylineVisible(idx, v.toBool());
+                }
+                void execute() override { apply(newVal); }
+                void undo() override { if (haveOld) apply(oldVal); }
+                QString name() const override { return QString("Set %1").arg(prop); }
+            };
+            m_cmdMgr->push(std::make_unique<SetPropertyCommand>(canvas, entityId, "visible", value));
+        }
+    });
+    connect(prop, &PropertyPanel::propertyEditedBatch, [this, canvas](const QList<int>& ids, const QString& key, const QVariant& value){
+        if (!canvas || key != "visible" || ids.isEmpty()) return;
+        struct BatchSetVisible : Command {
+            CanvasWidget* canvas; QList<int> ids; QVector<bool> oldVals; bool newVal;
+            BatchSetVisible(CanvasWidget* c, QList<int> is, bool nv) : canvas(c), ids(std::move(is)), newVal(nv) {
+                oldVals.reserve(ids.size());
+                for (int idx : ids) { CanvasWidget::PolyVis pv; bool ok = canvas->polylineAt(idx, pv); oldVals.push_back(ok ? pv.visible : true); }
+            }
+            void execute() override { for (int i=0;i<ids.size();++i) canvas->setPolylineVisible(ids[i], newVal); }
+            void undo() override { for (int i=0;i<ids.size();++i) canvas->setPolylineVisible(ids[i], oldVals[i]); }
+            QString name() const override { return "Set Visible (Batch)"; }
+        };
+        m_cmdMgr->push(std::make_unique<BatchSetVisible>(canvas, ids, value.toBool()));
+    });
+
+    // (tracking moved earlier)
+
     // File menu (first)
     auto* fileMenu = menuBar()->addMenu("File");
+    m_recentMenu = fileMenu->addMenu("Open Recent");
+    connect(m_recentMenu, &QMenu::triggered, this, [this](QAction* act){
+        QString p = act->data().toString();
+        if (!p.isEmpty()) openProjectFile(p, true);
+    });
+    auto* actNew = fileMenu->addAction("New");
+    actNew->setShortcut(QKeySequence::New);
+    connect(actNew, &QAction::triggered, this, &MainWindow::newFile);
+    auto* actOpen = fileMenu->addAction("Open...");
+    actOpen->setShortcut(QKeySequence::Open);
+    connect(actOpen, &QAction::triggered, this, &MainWindow::openFile);
+    auto* actSave = fileMenu->addAction("Save");
+    actSave->setShortcut(QKeySequence::Save);
+    connect(actSave, &QAction::triggered, this, &MainWindow::saveFile);
+    auto* actSaveAs = fileMenu->addAction("Save As...");
+    actSaveAs->setShortcut(QKeySequence::SaveAs);
+    connect(actSaveAs, &QAction::triggered, this, &MainWindow::saveFileAs);
+    fileMenu->addSeparator();
     auto* actExport = fileMenu->addAction("Export Scene (JSON+glTF)...");
     connect(actExport, &QAction::triggered, this, &MainWindow::exportSceneAction);
     auto* actExportJson = fileMenu->addAction("Export Scene (JSON only)...");
@@ -76,12 +237,220 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* actExportOpt = fileMenu->addAction("Export with Options...");
     connect(actExportOpt, &QAction::triggered, this, &MainWindow::exportWithOptions);
 
+    // Edit menu (Undo/Redo)
+    auto* editMenu = menuBar()->addMenu("Edit");
+    QAction* actUndo = editMenu->addAction("Undo");
+    QAction* actRedo = editMenu->addAction("Redo");
+    actUndo->setShortcut(QKeySequence::Undo);
+    actRedo->setShortcut(QKeySequence::Redo);
+    connect(actUndo, &QAction::triggered, [this]() {
+        m_undoStack->undo();
+        // Check clean state after undo
+        if (m_undoStack->isClean()) {
+            markClean();
+        } else {
+            markDirty();
+        }
+    });
+    connect(actRedo, &QAction::triggered, [this]() {
+        m_undoStack->redo();
+        // Check clean state after redo
+        if (m_undoStack->isClean()) {
+            markClean();
+        } else {
+            markDirty();
+        }
+    });
+
+    // Test action: push a dummy command to exercise undo/redo
+    auto* actDummy = editMenu->addAction("Do Dummy Command");
+    connect(actDummy, &QAction::triggered, [this]{
+        struct DummyCmd : Command {
+            int* counter;
+            explicit DummyCmd(int* c) : counter(c) {}
+            void execute() override { if (counter) (*counter)++; }
+            void undo() override { if (counter) (*counter)--; }
+            QString name() const override { return "Dummy"; }
+        };
+        static int s_counter = 0;
+        m_cmdMgr->push(std::make_unique<DummyCmd>(&s_counter));
+        statusBar()->showMessage(QString("Dummy executed, counter=%1").arg(s_counter), 1500);
+        connect(m_cmdMgr, &CommandManager::commandExecuted, this, [this](const QString& n){ statusBar()->showMessage("Command: "+n, 800); });
+    });
+
     // Help menu
     auto* helpMenu = menuBar()->addMenu("Help");
     auto* actAbout = helpMenu->addAction("About Core...");
     connect(actAbout, &QAction::triggered, this, &MainWindow::showAboutCore);
 
     statusBar()->showMessage("Ready | Delete=删单条, Shift+Delete=删同批次/同类, Clear All=清空");
+    m_project = new Project();
+    setCurrentFile("untitled.cgf");
+    m_undoStack->setClean();
+    markClean();
+    loadRecentFiles();
+    updateRecentFilesMenu();
+    maybeAutoRestore();
+}
+
+// Persistence helpers
+void MainWindow::markDirty() {
+    qDebug() << "markDirty() called, m_isDirty was" << m_isDirty;
+    m_isDirty = true;
+    setWindowModified(true);
+    // Update title to show asterisk
+    QString shown = m_currentFile.isEmpty() ? "untitled.cgf" : QFileInfo(m_currentFile).fileName();
+    QString newTitle = QString("%1* - CADGameFusion Editor").arg(shown);
+    qDebug() << "Setting title to:" << newTitle;
+    setWindowTitle(newTitle);
+}
+
+void MainWindow::markClean() {
+    m_isDirty = false;
+    setWindowModified(false);
+    // Update title to remove asterisk
+    QString shown = m_currentFile.isEmpty() ? "untitled.cgf" : QFileInfo(m_currentFile).fileName();
+    setWindowTitle(QString("%1 - CADGameFusion Editor").arg(shown));
+}
+bool MainWindow::isDirtyState() const { return m_isDirty || (m_undoStack && !m_undoStack->isClean()); }
+
+bool MainWindow::maybeSave() {
+    if (!isDirtyState()) return true;
+    auto ret = QMessageBox::question(this, "Unsaved Changes", "Save changes to project?", QMessageBox::Save|QMessageBox::Discard|QMessageBox::Cancel, QMessageBox::Save);
+    if (ret == QMessageBox::Save) { saveFile(); return !m_isDirty; }
+    if (ret == QMessageBox::Cancel) return false;
+    return true;
+}
+
+void MainWindow::setCurrentFile(const QString& fileName) {
+    m_currentFile = fileName;
+    QString shown = fileName.isEmpty() ? "untitled.cgf" : QFileInfo(fileName).fileName();
+    setWindowTitle(QString("%1%2 - CADGameFusion Editor")
+                   .arg(shown)
+                   .arg(m_isDirty?"*":""));
+}
+
+void MainWindow::newFile() {
+    if (!maybeSave()) return;
+    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
+    if (canvas) {
+        canvas->clear();
+        m_undoStack->clear();  // Clear undo history
+    }
+    setCurrentFile("untitled.cgf");
+    m_undoStack->setClean();
+    markClean();
+}
+
+void MainWindow::openFile() {
+    if (!maybeSave()) return;
+    QString path = QFileDialog::getOpenFileName(this, "Open Project", QString(), "CADGameFusion Project (*.cgf)");
+    if (path.isEmpty()) return;
+    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
+    if (m_project && m_project->load(path, m_document, canvas)) {
+        m_undoStack->clear();
+        setCurrentFile(path);
+        m_undoStack->setClean();
+        markClean();
+        statusBar()->showMessage("Opened " + path, 2000);
+    } else {
+        QMessageBox::warning(this, "Open", "Failed to open project");
+    }
+}
+
+void MainWindow::saveFile() {
+    if (m_currentFile.isEmpty() || m_currentFile == "untitled.cgf") { saveFileAs(); return; }
+    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
+    if (m_project && canvas && m_project->save(m_currentFile, m_document, canvas)) {
+        m_undoStack->setClean();  // Mark this state as clean
+        markClean();
+        statusBar()->showMessage("Saved " + m_currentFile, 2000);
+        addToRecentFiles(m_currentFile);
+    } else {
+        QMessageBox::warning(this, "Save", "Failed to save project");
+    }
+}
+
+void MainWindow::saveFileAs() {
+    QString path = QFileDialog::getSaveFileName(this, "Save Project As", m_currentFile, "CADGameFusion Project (*.cgf)");
+    if (path.isEmpty()) return;
+    if (!path.endsWith(".cgf")) path += ".cgf";
+    m_currentFile = path;
+    saveFile();
+}
+
+void MainWindow::closeEvent(QCloseEvent* event) {
+    if (maybeSave()) event->accept(); else event->ignore();
+}
+
+bool MainWindow::openProjectFile(const QString& path, bool fromRecent) {
+    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
+    if (!m_project || !canvas) return false;
+    if (m_project->load(path, m_document, canvas)) {
+        m_undoStack->clear();
+        setCurrentFile(path);
+        m_undoStack->setClean();
+        markClean();
+        statusBar()->showMessage("Opened " + path + (fromRecent?" (recent)":""), 2000);
+        addToRecentFiles(path);
+        return true;
+    }
+    QMessageBox::warning(this, "Open", "Failed to open project");
+    return false;
+}
+
+void MainWindow::loadRecentFiles() {
+    QSettings s("CADGameFusion", "Editor");
+    m_recentFiles = s.value("recentFiles").toStringList();
+}
+
+void MainWindow::saveRecentFiles() {
+    QSettings s("CADGameFusion", "Editor");
+    s.setValue("recentFiles", m_recentFiles);
+    if (!m_currentFile.isEmpty() && m_currentFile != "untitled.cgf") s.setValue("lastFile", m_currentFile);
+}
+
+void MainWindow::updateRecentFilesMenu() {
+    if (!m_recentMenu) return;
+    m_recentMenu->clear();
+    if (m_recentFiles.isEmpty()) {
+        QAction* none = m_recentMenu->addAction("(None)");
+        none->setEnabled(false);
+        return;
+    }
+    for (const auto& f : m_recentFiles) {
+        QAction* a = m_recentMenu->addAction(QFileInfo(f).fileName());
+        a->setData(f);
+    }
+    m_recentMenu->addSeparator();
+    QAction* clearAct = m_recentMenu->addAction("Clear List");
+    connect(clearAct, &QAction::triggered, this, [this]{ m_recentFiles.clear(); updateRecentFilesMenu(); saveRecentFiles(); });
+}
+
+void MainWindow::addToRecentFiles(const QString& path) {
+    if (path.isEmpty()) return;
+    QString canon = QFileInfo(path).canonicalFilePath();
+    if (canon.isEmpty()) canon = path;
+    m_recentFiles.removeAll(canon);
+    m_recentFiles.prepend(canon);
+    while (m_recentFiles.size() > kMaxRecent) m_recentFiles.removeLast();
+    updateRecentFilesMenu();
+    saveRecentFiles();
+}
+
+void MainWindow::maybeAutoRestore() {
+    QSettings s("CADGameFusion", "Editor");
+    QString last = s.value("lastFile").toString();
+    if (last.isEmpty()) return;
+    if (!QFileInfo::exists(last)) return;
+    if (m_isDirty || (m_currentFile != "untitled.cgf")) return;
+    auto ret = QMessageBox::question(this, "Restore Last Session",
+                                     QString("Reopen last project?\n%1").arg(last),
+                                     QMessageBox::Yes | QMessageBox::No,
+                                     QMessageBox::Yes);
+    if (ret == QMessageBox::Yes) {
+        openProjectFile(last, true);
+    }
 }
 
 void MainWindow::addSamplePolyline() {
@@ -100,9 +469,41 @@ void MainWindow::addSamplePolyline() {
 }
 
 void MainWindow::triangulateSample() {
-    core_vec2 pts[5] = { {0,0},{120,0},{120,80},{0,80},{0,0} };  // 闭合多边形
+    struct TriangulateCommand : Command {
+        CanvasWidget* canvas;
+        QVector<QPointF> oldVerts; QVector<unsigned int> oldIdx;
+        QVector<QPointF> newVerts; QVector<unsigned int> newIdx;
+        bool captured{false};
+        TriangulateCommand(CanvasWidget* c, QVector<QPointF> nv, QVector<unsigned int> ni)
+            : canvas(c), newVerts(std::move(nv)), newIdx(std::move(ni)) {}
+        void execute() override {
+            if (!canvas) return;
+            if (!captured) {
+                oldVerts = canvas->triVerts();
+                oldIdx = canvas->triIndices();
+                captured = true;
+                qDebug() << "TriangulateCommand::execute() - captured old mesh, vertices:" << oldVerts.size() << "indices:" << oldIdx.size();
+            }
+            canvas->setTriMesh(newVerts, newIdx);
+            qDebug() << (captured && oldVerts.size()>0 ? "TriangulateCommand::redo() - reapply new mesh" : "TriangulateCommand::execute() - set new mesh")
+                     << "vertices:" << newVerts.size() << "indices:" << newIdx.size();
+        }
+        void undo() override {
+            if (!canvas) return;
+            qDebug() << "TriangulateCommand::undo() called - oldVerts:" << oldVerts.size() << "oldIdx:" << oldIdx.size();
+            if (oldVerts.isEmpty() && oldIdx.isEmpty()) {
+                qDebug() << "Clearing tri mesh (was empty before)";
+                canvas->clearTriMesh();
+            } else {
+                qDebug() << "Restoring old mesh";
+                canvas->setTriMesh(oldVerts, oldIdx);
+            }
+        }
+        QString name() const override { return "Triangulate"; }
+    };
+
+    core_vec2 pts[5] = { {0,0},{120,0},{120,80},{0,80},{0,0} }; // closed
     int idxCount = 0;
-    // 传入完整的5个点（C API内部会处理闭合点）
     if (!core_triangulate_polygon(pts, 5, nullptr, &idxCount) || idxCount <= 0) {
         statusBar()->showMessage("Triangulation failed", 2000);
         return;
@@ -112,25 +513,14 @@ void MainWindow::triangulateSample() {
         statusBar()->showMessage("Triangulation fill failed", 2000);
         return;
     }
-    // Render triangles as selectable polylines on canvas
-    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
-    if (!canvas) return;
-    
-    QVector<QPointF> verts;
-    // 使用去掉收尾重复点后的完整顶点集（前4个唯一点）
-    for (int i=0; i<4; ++i) verts.push_back(QPointF(pts[i].x, pts[i].y));
-    
-    // Add each triangle as a selectable polyline; group them for one-shot delete
-    int gid = canvas->newGroupId();
-    for (int i=0; i+2<idxCount; i+=3) {
-        QVector<QPointF> tri;
-        tri.push_back(verts[indices[i]]);
-        tri.push_back(verts[indices[i+1]]);
-        tri.push_back(verts[indices[i+2]]);
-        tri.push_back(verts[indices[i]]);  // Close the triangle
-        canvas->addPolylineColored(tri, QColor(120,200,120), gid);
-    }
-    statusBar()->showMessage(QString("Triangulated into %1 triangles").arg(idxCount/3), 2000);
+    QVector<QPointF> verts; verts.reserve(4);
+    for (int i=0;i<4;++i) verts.push_back(QPointF(pts[i].x, pts[i].y));
+    QVector<unsigned int> qidx(indices.begin(), indices.end());
+    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget()); if (!canvas) return;
+    m_cmdMgr->push(std::make_unique<TriangulateCommand>(canvas, verts, qidx));
+    // Ensure dirty marker for UI (wireframe is not serialized but we mark edit intent)
+    markDirty();
+    statusBar()->showMessage(QString("Triangulated %1 triangles (undoable)").arg(idxCount/3), 2000);
 }
 
 void MainWindow::demoBoolean() {
@@ -227,9 +617,9 @@ void MainWindow::exportSceneActionImpl(int kinds) {
         QPushButton* copyBtn = box.addButton(tr("Copy Path"), QMessageBox::ActionRole);
         box.addButton(QMessageBox::Ok);
         box.exec();
-        if (box.clickedButton() == openBtn) {
+        if (box.clickedButton() == static_cast<QAbstractButton*>(openBtn)) {
             QDesktopServices::openUrl(QUrl::fromLocalFile(r.sceneDir));
-        } else if (box.clickedButton() == copyBtn) {
+        } else if (box.clickedButton() == static_cast<QAbstractButton*>(copyBtn)) {
             QApplication::clipboard()->setText(r.sceneDir);
             statusBar()->showMessage("Export path copied", 2000);
         }
@@ -238,11 +628,13 @@ void MainWindow::exportSceneActionImpl(int kinds) {
     }
 }
 
+
 void MainWindow::exportWithOptions() {
     // Simple inline dialog (future: move to its own class/UI)
     // Use ExportDialog for options
     ExportDialog::ExportOptions opts;
-    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget()); if (!canvas) return;
+    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
+    if (!canvas) return;
     int selGid = canvas->selectedGroupId();
     if (!ExportDialog::getExportOptions(this, nullptr, selGid, opts)) return;
 
@@ -252,18 +644,30 @@ void MainWindow::exportWithOptions() {
     else /*unity*/ { kinds |= (ExportJSON|ExportGLTF); }
 
     // Collect and export
-    QString base = QFileDialog::getExistingDirectory(this, "Select export base directory"); if (base.isEmpty()) return;
+    QString base = QFileDialog::getExistingDirectory(this, "Select export base directory"); 
+    if (base.isEmpty()) return;
     QMap<int, QVector<QVector<QPointF>>> groups;
     const bool onlySelected = (opts.range == ExportDialog::SelectedGroupOnly && selGid!=-1);
     for (const auto& pv : canvas->polylinesData()) {
         if (onlySelected && pv.groupId != selGid) continue;
         groups[pv.groupId].push_back(pv.pts);
     }
-    QVector<ExportItem> items; for (auto it = groups.begin(); it != groups.end(); ++it) { ExportItem e; e.groupId = it.key(); e.rings = it.value(); items.push_back(e);} 
+    QVector<ExportItem> items; 
+    for (auto it = groups.begin(); it != groups.end(); ++it) { 
+        ExportItem e; 
+        e.groupId = it.key(); 
+        e.rings = it.value(); 
+        items.push_back(e);
+    } 
     // Determine unit scale (use document settings or custom value)
     double unitScale = opts.useDocUnit ? m_document.settings().unit_scale : opts.unitScale;
     if (!opts.useDocUnit) unitScale = opts.unitScale;
-    QJsonObject meta; meta["joinType"] = static_cast<int>(opts.joinType); meta["miterLimit"] = opts.miterLimit; meta["unitScale"] = unitScale; meta["useDocUnit"] = opts.useDocUnit; meta["includeHoles"] = opts.includeHoles;
+    QJsonObject meta; 
+    meta["joinType"] = static_cast<int>(opts.joinType); 
+    meta["miterLimit"] = opts.miterLimit; 
+    meta["unitScale"] = unitScale; 
+    meta["useDocUnit"] = opts.useDocUnit; 
+    meta["includeHoles"] = opts.includeHoles;
     ExportResult r = exportScene(items, QDir(base), kinds, unitScale, meta, opts.exportRingRoles, /*includeHolesGLTF=*/opts.includeHoles);
     if (r.ok) {
         // Persist last export path for ExportDialog convenience
@@ -279,9 +683,9 @@ void MainWindow::exportWithOptions() {
         QPushButton* copyBtn = box.addButton(tr("Copy Path"), QMessageBox::ActionRole);
         box.addButton(QMessageBox::Ok);
         box.exec();
-        if (box.clickedButton() == openBtn) {
+        if (box.clickedButton() == static_cast<QAbstractButton*>(openBtn)) {
             QDesktopServices::openUrl(QUrl::fromLocalFile(r.sceneDir));
-        } else if (box.clickedButton() == copyBtn) {
+        } else if (box.clickedButton() == static_cast<QAbstractButton*>(copyBtn)) {
             QApplication::clipboard()->setText(r.sceneDir);
             statusBar()->showMessage("Export path copied", 2000);
         }

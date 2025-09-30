@@ -24,8 +24,10 @@ add_executable(editor_qt
     src/command/command_manager.cpp
     # Property panel
     include/panels/property_panel.hpp
+    src/panels/property_panel.cpp
     # Project management
     include/project/project.hpp
+    src/project/project.cpp
 )
 
 target_include_directories(editor_qt PRIVATE

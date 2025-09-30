@@ -1,70 +1,30 @@
 #pragma once
 
-#include "command.hpp"
 #include <QObject>
+#include <QHash>
 #include <QUndoStack>
-#include <QMap>
-#include <QKeySequence>
-#include <functional>
+#include <QAction>
+#include <memory>
+#include "command.hpp"
 
-namespace CADGame {
-
-/**
- * Command Manager - handles command execution, undo/redo, and shortcuts
- */
 class CommandManager : public QObject {
     Q_OBJECT
-
 public:
     explicit CommandManager(QObject* parent = nullptr);
-    ~CommandManager();
+    void setUndoStack(QUndoStack* stack);
+    QUndoStack* stack() const { return m_stack; }
 
-    // Execute a command
-    bool executeCommand(CommandPtr command);
+    // Registers a QAction with a shortcut and keeps it in sync with undo stack state
+    void registerAction(const QString& id, QAction* action, const QKeySequence& shortcut = {});
 
-    // Register a command factory
-    void registerCommand(const QString& name, std::function<CommandPtr()> factory);
-
-    // Execute a registered command by name
-    bool executeByName(const QString& name);
-
-    // Shortcut management
-    void registerShortcut(const QKeySequence& shortcut, const QString& commandName);
-    void unregisterShortcut(const QKeySequence& shortcut);
-
-    // Undo/Redo operations
-    bool canUndo() const;
-    bool canRedo() const;
-    QString undoText() const;
-    QString redoText() const;
-
-    // Get the undo stack for UI integration
-    QUndoStack* undoStack() { return m_undoStack; }
-    const QUndoStack* undoStack() const { return m_undoStack; }
-
-    // Clear history
-    void clear();
-
-    // Set maximum undo levels
-    void setUndoLimit(int limit);
-
-public slots:
-    void undo();
-    void redo();
+    // Push a command: wraps into QUndoCommand via adapter
+    void push(std::unique_ptr<Command> cmd);
 
 signals:
-    void canUndoChanged(bool canUndo);
-    void canRedoChanged(bool canRedo);
-    void commandExecuted(const QString& commandName);
-    void undoTextChanged(const QString& text);
-    void redoTextChanged(const QString& text);
+    void commandExecuted(const QString& name);
 
 private:
-    class CommandAdapter;
-
-    QUndoStack* m_undoStack;
-    QMap<QString, std::function<CommandPtr()>> m_commandFactories;
-    QMap<QKeySequence, QString> m_shortcuts;
+    QUndoStack* m_stack{nullptr};
+    QHash<QString, QAction*> m_actions;
 };
 
-} // namespace CADGame

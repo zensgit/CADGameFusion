@@ -1,138 +1,44 @@
 #include "command/command_manager.hpp"
 #include <QUndoCommand>
+#include <QDebug>
 
-namespace CADGame {
-
-// Adapter to wrap our Command class for QUndoStack
-class CommandManager::CommandAdapter : public QUndoCommand {
+namespace {
+class QtCmdAdapter : public QUndoCommand {
 public:
-    explicit CommandAdapter(CommandPtr command, QUndoCommand* parent = nullptr)
-        : QUndoCommand(command->name(), parent)
-        , m_command(std::move(command)) {
-    }
-
-    void undo() override {
-        if (m_command) {
-            m_command->undo();
-        }
-    }
-
-    void redo() override {
-        if (m_command) {
-            m_command->redo();
-        }
-    }
-
-    int id() const override {
-        return m_command ? m_command->id() : -1;
-    }
-
-    bool mergeWith(const QUndoCommand* other) override {
-        auto* otherAdapter = dynamic_cast<const CommandAdapter*>(other);
-        if (!otherAdapter || !m_command) {
-            return false;
-        }
-        return m_command->mergeWith(otherAdapter->m_command.get());
-    }
-
+    explicit QtCmdAdapter(std::unique_ptr<Command> c)
+    : QUndoCommand(c ? c->name() : QString()), m_cmd(std::move(c)) {}
+    void undo() override { if (m_cmd) m_cmd->undo(); }
+    void redo() override { if (m_cmd) m_cmd->execute(); }
 private:
-    CommandPtr m_command;
+    std::unique_ptr<Command> m_cmd;
 };
-
-CommandManager::CommandManager(QObject* parent)
-    : QObject(parent)
-    , m_undoStack(new QUndoStack(this)) {
-
-    // Connect signals
-    connect(m_undoStack, &QUndoStack::canUndoChanged,
-            this, &CommandManager::canUndoChanged);
-    connect(m_undoStack, &QUndoStack::canRedoChanged,
-            this, &CommandManager::canRedoChanged);
-    connect(m_undoStack, &QUndoStack::undoTextChanged,
-            this, &CommandManager::undoTextChanged);
-    connect(m_undoStack, &QUndoStack::redoTextChanged,
-            this, &CommandManager::redoTextChanged);
 }
 
-CommandManager::~CommandManager() = default;
+CommandManager::CommandManager(QObject* parent) : QObject(parent) {}
 
-bool CommandManager::executeCommand(CommandPtr command) {
-    if (!command || !command->canExecute()) {
-        return false;
+void CommandManager::setUndoStack(QUndoStack* stack) {
+    m_stack = stack;
+    for (auto it = m_actions.begin(); it != m_actions.end(); ++it) {
+        it.value()->setEnabled(m_stack != nullptr);
     }
+}
 
-    QString commandName = command->name();
+void CommandManager::registerAction(const QString& id, QAction* action, const QKeySequence& shortcut) {
+    if (!action) return;
+    if (!shortcut.isEmpty()) action->setShortcut(shortcut);
+    action->setEnabled(m_stack != nullptr);
+    m_actions.insert(id, action);
+}
 
-    // Execute the command first
-    if (!command->execute()) {
-        return false;
+void CommandManager::push(std::unique_ptr<Command> cmd) {
+    if (!m_stack || !cmd) {
+        qDebug() << "CommandManager::push - m_stack:" << m_stack << "cmd:" << cmd.get();
+        return;
     }
-
-    // If execution succeeded and command supports undo, add to stack
-    if (command->canUndo()) {
-        m_undoStack->push(new CommandAdapter(std::move(command)));
-    }
-
-    emit commandExecuted(commandName);
-    return true;
+    auto* qc = new QtCmdAdapter(std::move(cmd));
+    qDebug() << "CommandManager::push - pushing command:" << qc->text();
+    qDebug() << "Stack count before push:" << m_stack->count() << "isClean:" << m_stack->isClean();
+    m_stack->push(qc);
+    qDebug() << "Stack count after push:" << m_stack->count() << "isClean:" << m_stack->isClean();
+    emit commandExecuted(qc->text());
 }
-
-void CommandManager::registerCommand(const QString& name, std::function<CommandPtr()> factory) {
-    m_commandFactories[name] = factory;
-}
-
-bool CommandManager::executeByName(const QString& name) {
-    auto it = m_commandFactories.find(name);
-    if (it == m_commandFactories.end()) {
-        return false;
-    }
-
-    CommandPtr command = it.value()();
-    if (!command) {
-        return false;
-    }
-
-    return executeCommand(std::move(command));
-}
-
-void CommandManager::registerShortcut(const QKeySequence& shortcut, const QString& commandName) {
-    m_shortcuts[shortcut] = commandName;
-}
-
-void CommandManager::unregisterShortcut(const QKeySequence& shortcut) {
-    m_shortcuts.remove(shortcut);
-}
-
-bool CommandManager::canUndo() const {
-    return m_undoStack->canUndo();
-}
-
-bool CommandManager::canRedo() const {
-    return m_undoStack->canRedo();
-}
-
-QString CommandManager::undoText() const {
-    return m_undoStack->undoText();
-}
-
-QString CommandManager::redoText() const {
-    return m_undoStack->redoText();
-}
-
-void CommandManager::undo() {
-    m_undoStack->undo();
-}
-
-void CommandManager::redo() {
-    m_undoStack->redo();
-}
-
-void CommandManager::clear() {
-    m_undoStack->clear();
-}
-
-void CommandManager::setUndoLimit(int limit) {
-    m_undoStack->setUndoLimit(limit);
-}
-
-} // namespace CADGame
