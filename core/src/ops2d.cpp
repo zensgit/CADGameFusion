@@ -203,7 +203,7 @@ std::vector<Polyline> offset_multi(const std::vector<std::vector<Vec2>>& rings,
     switch (join_type) {
         case 0: jt = JoinType::Miter; break;
         case 1: jt = JoinType::Round; break;
-        case 2: jt = JoinType::Bevel; break;
+        case 2: jt = JoinType::Square; break; // Clipper2 uses Square instead of Bevel
         default: jt = JoinType::Round; break;
     }
     co.MiterLimit(miter_limit);
