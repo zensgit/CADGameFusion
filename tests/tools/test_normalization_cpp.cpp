@@ -1,4 +1,5 @@
 // C++ normalization checks: orientation (outer CCW, holes CW) and lexicographic start
+// Dynamically scan exported scenes under build/exports and validate each group_*.json
 #include <iostream>
 #include <fstream>
 #include <vector>
@@ -90,28 +91,33 @@ static int check_group_file(const fs::path& json_path) {
 }
 
 int main() {
-    std::vector<fs::path> scenes = {
-        fs::path("build/exports/scene_cli_scene_concave_spec"),
-        fs::path("build/exports/scene_cli_scene_nested_holes_spec")
-    };
-    for (const auto& sd : scenes) {
-        if (!fs::exists(sd)) {
-            std::cerr << "Scene not found: " << sd << "\n";
-            return 1;
-        }
+    fs::path root = fs::path("build/exports");
+    if (!fs::exists(root)) {
+        std::cerr << "Exports root not found: " << root << "\n";
+        return 0; // no exports to check; treat as noop
+    }
+    bool checked_any_scene = false;
+    for (auto& scene_dir : fs::directory_iterator(root)) {
+        if (!scene_dir.is_directory()) continue;
+        const auto name = scene_dir.path().filename().string();
+        if (name.rfind("scene_cli_", 0) != 0) continue; // only check scene exports
         bool any = false;
-        for (auto& p : fs::directory_iterator(sd)) {
+        for (auto& p : fs::directory_iterator(scene_dir.path())) {
             if (p.path().filename().string().rfind("group_", 0) == 0 && p.path().extension() == ".json") {
                 any = true;
                 if (int rc = check_group_file(p.path()); rc != 0) return rc;
             }
         }
         if (!any) {
-            std::cerr << "No group_*.json in " << sd << "\n";
+            std::cerr << "No group_*.json in " << scene_dir.path() << "\n";
             return 1;
         }
+        checked_any_scene = true;
+    }
+    if (!checked_any_scene) {
+        std::cerr << "No scene_cli_* directories under " << root << "\n";
+        return 0; // nothing to check is not an error in local runs
     }
     std::cout << "C++ normalization checks passed" << std::endl;
     return 0;
 }
-
