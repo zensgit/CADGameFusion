@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Pre-push hook example: run a strict quick subset health check before pushing.
+#
+# Install by copying or symlinking to .git/hooks/pre-push, or use tools/setup_hooks.sh
+
+set -euo pipefail
+
+echo "[git-hook] pre-push: running strict quick check"
+bash tools/quick_check.sh --strict
+echo "[git-hook] pre-push: OK"
+

@@ -9,6 +9,8 @@ High‑performance 2D CAD/geometry core with an optional Qt editor and export to
 ## Quick Links
 - Repository Guidelines: [AGENTS.md](AGENTS.md)
 - Manual test guide: [MANUAL_TEST_GUIDE.md](MANUAL_TEST_GUIDE.md)
+- Offline / Subset Validation Guide: [OFFLINE_MODE.md](OFFLINE_MODE.md)
+- One‑Command Quick Check: `tools/quick_check.sh` or `make quick` / `make strict`
 - Release notes: [docs/Release-Notes-2025-09-30.md](docs/Release-Notes-2025-09-30.md)
 
 ## Build (Quick Start)
@@ -21,15 +23,31 @@ ctest --test-dir build -V
 ## Editor (Qt)
 Enable with `-DBUILD_EDITOR_QT=ON` and build target `editor_qt`.
 
+## One-Command Health Check
+```bash
+# Offline quick subset + health check (allow offline)
+bash tools/local_ci.sh --offline --quick --clean-exports --summary-json && \
+  bash tools/check_local_summary.sh --offline-allowed
+
+# Strict quick subset (non-offline) with summary check
+bash tools/local_ci.sh --quick --clean-exports --summary-json --strict-exit && \
+  bash tools/check_local_summary.sh
+
+# Make targets
+make quick   # offline quick subset
+make strict  # strict quick subset
+```
+
 ## Project Structure
 - `core/` — C++17 geometric core and C API
 - `editor/qt/` — Optional Qt-based editor
-- `tools/` — Export CLI and helpers
+- `tools/` — Export CLI and helpers (includes `local_ci.sh`, `quick_check.sh`)
 - `tests/` — Core/tools tests (CMake + CTest)
 - `docs/` — Design notes and reports
 
 ## Docs
 - Repository Guidelines: `AGENTS.md`
+- Offline guide: `OFFLINE_MODE.md`
 - Qt UI Shell design: `docs/editor/Qt-UI-Shell-Design.md`
 - Exporter experimental flags: `docs/exporter/EXPERIMENTAL_FLAGS.md`
 
