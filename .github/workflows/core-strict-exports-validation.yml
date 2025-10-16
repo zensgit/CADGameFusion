@@ -56,8 +56,8 @@ jobs:
           echo "VCPKG_DEFAULT_BINARY_CACHE=$VCPKG_DEFAULT_BINARY_CACHE" >> $GITHUB_ENV
 
           # Enhanced binary caching configuration
-          # Use both file cache and default (GitHub) cache
-          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite;x-gha,readwrite" >> $GITHUB_ENV
+          # Use file cache only (x-gha requires additional setup)
+          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite" >> $GITHUB_ENV
           echo "VCPKG_DEFAULT_TRIPLET=x64-linux" >> $GITHUB_ENV
 
           # Enable feature flags for better caching
@@ -95,7 +95,7 @@ jobs:
         run: |
           # Re-export in case shell step boundaries dropped the value
           export VCPKG_DEFAULT_BINARY_CACHE="${VCPKG_DEFAULT_BINARY_CACHE:-$HOME/.cache/vcpkg/archives}"
-          export VCPKG_BINARY_SOURCES="${VCPKG_BINARY_SOURCES:-clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite;x-gha,readwrite}"
+          export VCPKG_BINARY_SOURCES="${VCPKG_BINARY_SOURCES:-clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite}"
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
 
           # Show cache status before build
@@ -105,6 +105,7 @@ jobs:
           echo "Cache size: $(du -sh $VCPKG_DEFAULT_BINARY_CACHE 2>/dev/null | cut -f1 || echo '0')"
 
           # Capture logs for cache analysis
+          mkdir -p build
           set -o pipefail
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
@@ -390,35 +391,14 @@ jobs:
                   
                   echo "### $GROUP_NAME" >> schema_report_full.txt
                   
-                  if python3 -c "
-import json
-import jsonschema
-import sys
-
-try:
-    # Load schema
-    with open('docs/schemas/export_group.schema.json', 'r') as f:
-        schema = json.load(f)
-    
-    # Load and validate group file
-    with open('$GROUP_FILE', 'r') as f:
-        data = json.load(f)
-    
-    jsonschema.validate(data, schema)
-    print('✅ PASSED: $GROUP_NAME', file=sys.stderr)
-    print('- Schema validation: ✅ PASSED')
-    sys.exit(0)
-except jsonschema.exceptions.ValidationError as e:
-    print('❌ FAILED: $GROUP_NAME - ValidationError:', str(e), file=sys.stderr)  
-    print('- Schema validation: ❌ FAILED')
-    print('- Error:', str(e))
-    sys.exit(1)
-except Exception as e:
-    print('❌ ERROR: $GROUP_NAME - Exception:', str(e), file=sys.stderr)
-    print('- Schema validation: ❌ ERROR')
-    print('- Exception:', str(e))
-    sys.exit(1)
-" >> schema_report_full.txt 2>> schema_report.txt; then
+                  if python3 -c "import json, jsonschema, sys; group_file='$GROUP_FILE'; group_name='$GROUP_NAME'; \
+                  try: schema=json.load(open('docs/schemas/export_group.schema.json')); data=json.load(open(group_file)); \
+                  jsonschema.validate(data, schema); print(f'✅ PASSED: {group_name}', file=sys.stderr); \
+                  print('- Schema validation: ✅ PASSED'); sys.exit(0); \
+                  except jsonschema.exceptions.ValidationError as e: print(f'❌ FAILED: {group_name} - ValidationError: {e}', file=sys.stderr); \
+                  print('- Schema validation: ❌ FAILED'); print(f'- Error: {e}'); sys.exit(1); \
+                  except Exception as e: print(f'❌ ERROR: {group_name} - Exception: {e}', file=sys.stderr); \
+                  print('- Schema validation: ❌ ERROR'); print(f'- Exception: {e}'); sys.exit(1)" >> schema_report_full.txt 2>> schema_report.txt; then
                     SCHEMA_PASSED=$((SCHEMA_PASSED + 1))
                     SCENE_GROUP_PASSED=$((SCENE_GROUP_PASSED + 1))
                   fi

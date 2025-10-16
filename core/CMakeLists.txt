@@ -37,11 +37,28 @@ else()
 endif()
 
 # Clipper2 (boolean/offset). Header-only usage; enable if headers are found.
-find_path(CLIPPER2_INCLUDE_DIR NAMES clipper2/clipper.h PATHS ${CMAKE_PREFIX_PATH}/include NO_DEFAULT_PATH)
+find_path(CLIPPER2_INCLUDE_DIR NAMES clipper2/clipper.h
+    PATHS
+        ${CMAKE_PREFIX_PATH}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg/installed/${VCPKG_TARGET_TRIPLET}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg/installed/x64-linux/include
+    NO_DEFAULT_PATH)
 if(CLIPPER2_INCLUDE_DIR)
     target_compile_definitions(core PUBLIC USE_CLIPPER2)
     target_include_directories(core PRIVATE ${CLIPPER2_INCLUDE_DIR})
-    message(STATUS "Clipper2 found")
+    # Try pkg-config for linking
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(Clipper2 QUIET IMPORTED_TARGET Clipper2)
+        if(Clipper2_FOUND)
+            target_link_libraries(core PRIVATE PkgConfig::Clipper2)
+            message(STATUS "Clipper2 found (pkg-config) and linked")
+        else()
+            message(STATUS "Clipper2 headers found, pkg-config not available; assuming header-only")
+        endif()
+    else()
+        message(STATUS "Clipper2 headers found; pkg-config not found; assuming header-only")
+    endif()
 else()
     message(STATUS "Clipper2 not found - boolean/offset will be stubs")
 endif()
