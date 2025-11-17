@@ -66,6 +66,11 @@ jobs:
 
           # Clone/pin vcpkg and bootstrap
           if [ ! -d "vcpkg/.git" ]; then
+            # Remove directory if it exists but has no .git (e.g., from cache restore)
+            if [ -d "vcpkg" ]; then
+              echo "Removing existing vcpkg directory (no .git found)"
+              rm -rf vcpkg
+            fi
             git clone https://github.com/microsoft/vcpkg.git vcpkg
           fi
           (cd vcpkg && git fetch --tags --force && git checkout c9fa965c2a1b1334469b4539063f3ce95383653c && ./bootstrap-vcpkg.sh)
