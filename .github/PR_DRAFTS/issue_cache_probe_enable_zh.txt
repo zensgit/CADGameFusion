@@ -1,0 +1,23 @@
+议题 — 仅在引入编译型依赖时启用 cache_probe
+
+背景
+- 当前依赖以 header‑only 为主，vcpkg 二进制缓存命中率显示为 N/A（预期行为）。
+- 工作流已实现 cache_probe（默认关闭），用于一次性安装 zlib 验证缓存链路。
+
+何时启用
+- 当新增“编译型”（非 header‑only）端口时：
+  1) 用 workflow_dispatch 将 `cache_probe=true` 运行一次严格导出或构建测试工作流；
+  2) 再运行一次同一工作流，应观察到命中率 > 0%。
+
+验收标准
+- 严格导出 / 构建测试各运行 2 次；Daily CI 显示命中率非 0，或在纯 header‑only 场景显示 N/A。
+
+参考
+- `.github/workflows/core-strict-exports-validation.yml`
+- `.github/workflows/core-strict-build-tests.yml`
+- `scripts/vcpkg_log_stats.sh`
+
+标签 / 里程碑
+- labels: ci, vcpkg, enhancement
+- milestone: v0.3.1
+

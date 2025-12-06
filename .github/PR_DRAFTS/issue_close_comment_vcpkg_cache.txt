@@ -1,0 +1,29 @@
+- 结论
+  - 性能目标达成（~60–90 秒/次），vcpkg 二进制缓存命中率标注为 N/A（header‑only 场景符合预期）
+  - 监控与可观测性完善：日志/统计产物统一上传，多平台回退稳健
+
+- 关键改动
+  - 显式 files 缓存、固定 triplet（Linux/macOS/Windows）、pin vcpkg 版本
+  - tee CMake 配置/构建日志、生成缓存统计并上传严格导出与构建测试 artifacts
+  - Daily CI 识别 header‑only（cacheable=false）→ 显示 N/A；扩展 artifact 回退（Ubuntu/macOS/Windows）
+  - 新增 workflow_dispatch 输入 `cache_probe`（默认 false），用于一次性安装 zlib 生成 archives 验证链路
+
+- 验证
+  - 各运行两次：Core Strict – Exports, Validation, Comparison 与 Core Strict – Build and Tests（debug=false）
+  - 运行 Daily CI Status，vcpkg 区块显示 N/A（如依赖为 header‑only）
+  - 如需链路证明：设置 `cache_probe=true` 运行一次后再复跑，应出现 >0% 命中
+
+- 报告索引（项目根目录）
+  - VCPKG_CACHE_FINALIZATION_SUMMARY_2025_09_22.md
+  - VCPKG_OPTIMIZATION_FINAL_REPORT_2025_09_22.md
+  - VCPKG_CACHE_TEST_SUMMARY_2025_09_22.md
+  - VCPKG_CACHE_ANALYSIS_AND_SOLUTIONS_2025_09_22.md
+  - VCPKG_CACHE_FIX_REPORT_PR78_2025_09_22.md
+  - VCPKG_CACHE_FIX_FINAL_REPORT_2025_09_22.md
+  - VCPKG_CACHE_METRICS_COMPLETE_2025_09_22.md
+  - VCPKG_CACHE_METRICS_TEST_FINAL_2025_09_22.md
+
+- 后续
+  - 维持 N/A 策略，不继续投入 vcpkg 二进制缓存调优
+  - 如未来引入非 header‑only 端口，再评估 NuGet 后端/容器镜像/自托管 runner
+

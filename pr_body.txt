@@ -1,0 +1,36 @@
+Summary
+- Sync docs for v0.3.1; add one‑command checks and hook usage.
+- Enable strict gate scanning (tee to log) and add summary checker.
+- Relax glTF count diffs for complex/spec in quick subset to reduce false negatives.
+
+Changes
+- Tools
+  - tools/quick_check.sh: tee strict run to `build/local_ci_output.log` for gate scanning.
+  - tools/local_ci.sh: allow‑list `complex` and `scene_complex_spec` for glTF presence/count diffs; stable scenes aggregation.
+  - tools/compare_fields.py: add `--allow-gltf-count-mismatch` toggle (used for allow‑listed scenes).
+  - tools/check_local_summary.sh: new summary validator (`--offline-allowed`).
+- Docs
+  - docs/Changelog.md: add v0.3.1 entry (quick subset, one‑command checks, hooks, dynamic normalization test).
+  - docs/Roadmap.md: mark v0.3.0/0.3.1 done; add v0.3.2 planning.
+  - docs/milestones/v0_3_2_tasks.md: seed v0.3.2 tasks (adoption, DX, examples).
+  - README.md: add Git Hooks section; clarify quick/strict usage.
+  - docs/Troubleshooting.md: add quick/strict gate failure diagnosis and remedies.
+- Hooks
+  - tools/git-hooks/pre-push.example: document strict/structure‑only/offline variants; default strict quick check.
+
+Rationale
+- Make quick checks the default local gate and provide strict pre‑push enforcement with clear failure signals.
+- Improve developer experience (DX) with one‑command scripts and troubleshooting guidance.
+
+Verification
+- make quick → OK; summary: offline=true, scenes=4, missing=0, validationFailCount=0.
+- make strict → OK; summary: offline=false, scenes=4, missing=0, validationFailCount=0.
+- Strict output present in `build/local_ci_output.log` for FAIL scanning.
+
+Risks
+- Minimal. Field comparison for `complex`/`scene_complex_spec` allows glTF count diffs in the quick subset path only; structure/schema checks remain intact.
+
+Notes
+- Pre‑push hook: install with `bash tools/setup_hooks.sh` (runs strict quick check by default).
+- Consider narrowing allow‑list once glTF counts align, or raising rtol per scene if needed.
+

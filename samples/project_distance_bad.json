@@ -1,0 +1,18 @@
+{
+  "header": { "format": "CADGF-PROJ", "version": 1 },
+  "project": { "id": "proj-bad", "name": "Bad Distance", "units": "mm" },
+  "scene": {
+    "entities": [
+      { "id": "p1", "type": "point", "params": {"x": 0, "y": 0} },
+      { "id": "p2", "type": "point", "params": {"x": 1, "y": 1} }
+    ],
+    "constraints": [
+      { "id": "c1", "type": "distance", "refs": ["p1", "p2"], "value": null }
+    ],
+    "parameters": {}
+  },
+  "featureTree": { "nodes": [], "edges": [] },
+  "resources": { "sketches": [], "meshes": [], "materials": [] },
+  "meta": {"version": "v1"}
+}
+

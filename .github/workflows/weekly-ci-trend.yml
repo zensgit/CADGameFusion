@@ -1,0 +1,99 @@
+name: Weekly CI Trend Digest
+# dispatch-refresh: no-op comment to refresh workflow_dispatch registration
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'  # 11:00 UTC+8 every Monday
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Window (days)'
+        required: false
+        default: '7'
+      sr_th:
+        description: 'Success rate threshold (%)'
+        required: false
+        default: '85'
+      p95_th:
+        description: 'p95 duration threshold (minutes)'
+        required: false
+        default: '6'
+      archive_pr:
+        description: 'Open a PR to archive this digest under docs/ci/weekly/YYYY-WW.md'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  weekly-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup gh and jq
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          gh --version || true
+
+      - name: Generate weekly trend digest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DAYS_INPUT='${{ github.event.inputs.days }}'
+          DAYS=${DAYS_INPUT:-7}
+          SR_TH_IN='${{ github.event.inputs.sr_th }}'
+          P95_TH_IN='${{ github.event.inputs.p95_th }}'
+          if [ -n "$SR_TH_IN" ]; then export SR_TH="$SR_TH_IN"; fi
+          if [ -n "$P95_TH_IN" ]; then export P95_TH="$P95_TH_IN"; fi
+          bash scripts/ci_weekly_digest.sh --out WEEKLY_CI_TREND.md --days "$DAYS"
+          echo "Generated WEEKLY_CI_TREND.md:" >&2
+          head -n 40 WEEKLY_CI_TREND.md >&2 || true
+
+      - name: Create or update issue comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_TITLE="Weekly CI Trend Digest"
+          ISSUE_NUMBER=$(gh issue list --search "$ISSUE_TITLE in:title" --state open --json number,title | jq -r '.[0].number // empty')
+          if [ -z "$ISSUE_NUMBER" ]; then
+            gh issue create --title "$ISSUE_TITLE" --body "Automated weekly CI trend digest." || true
+            ISSUE_NUMBER=$(gh issue list --search "$ISSUE_TITLE in:title" --state open --json number | jq -r '.[0].number')
+          fi
+          TODAY=$(date -u '+%Y-%m-%d')
+          {
+            echo "**Weekly CI Trend Digest — ${TODAY}**";
+            echo "";
+            cat WEEKLY_CI_TREND.md;
+          } > WEEKLY_CI_TREND_WITH_HEADER.md
+          gh issue comment "$ISSUE_NUMBER" --body-file WEEKLY_CI_TREND_WITH_HEADER.md || true
+
+      - name: Archive weekly digest via PR (optional)
+        if: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.archive_pr == 'true') || (github.event_name == 'schedule') }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          BRANCH="ci/weekly-archive-$(date -u +%Y-%m-%d)"
+          FILE="docs/ci/weekly/$(date -u +%Y)-W$(date -u +%V).md"
+          git config user.email "actions@users.noreply.github.com"
+          git config user.name "github-actions"
+          git checkout -b "$BRANCH"
+          mkdir -p "$(dirname "$FILE")"
+          echo "---" > "$FILE"
+          echo "title: Weekly CI Trend $(date -u +%Y-%m-%d)" >> "$FILE"
+          echo "---" >> "$FILE"
+          echo >> "$FILE"
+          cat WEEKLY_CI_TREND.md >> "$FILE"
+          git add "$FILE"
+          git commit -m "ci(weekly): archive trend digest for $(date -u +%Y-%m-%d)"
+          git push origin "$BRANCH" || true
+          gh pr create --fill --title "ci(weekly): archive trend digest $(date -u +%Y-%m-%d)" --body "Automated archival of weekly CI trend." || true
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-ci-trend-${{ github.run_id }}
+          path: WEEKLY_CI_TREND.md

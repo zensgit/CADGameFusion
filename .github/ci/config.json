@@ -1,0 +1,27 @@
+{
+  "alerts": {
+    "assignees": "zensgit",
+    "team_mention": "",
+    "recovery_days": 2
+  },
+  "labels": ["ci", "alert"],
+  "milestone": "v0.3.1",
+  "thresholds": {
+    "default": { "sr_th": 85, "p95_th": 6 },
+    "per_workflow": {
+      "Core Strict - Build and Tests": { "sr_th": 85, "p95_th": 6 },
+      "Core Strict - Exports, Validation, Comparison": { "sr_th": 90, "p95_th": 5 },
+      "Quick Check - Verification + Lint": { "sr_th": 95, "p95_th": 2 }
+    }
+  },
+  "per_workflow": {
+    "assignees": {
+      "Core Strict - Build and Tests": "",
+      "Core Strict - Exports, Validation, Comparison": "",
+      "Quick Check - Verification + Lint": ""
+    }
+  },
+  "weekly": {
+    "archive_pr": true
+  }
+}

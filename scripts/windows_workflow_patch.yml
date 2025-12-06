@@ -1,0 +1,131 @@
+# Windows CI Optimization Patches
+# Apply these changes to .github/workflows/core-strict-build-tests.yml
+
+# Patch 1: Enhanced vcpkg cache with versioning
+cache_enhancement: |
+  - name: Cache vcpkg (Enhanced)
+    uses: actions/cache@v4
+    with:
+      path: |
+        C:\vcpkg\installed
+        C:\vcpkg\packages  
+        C:\vcpkg\downloads
+        C:\vcpkg\buildtrees
+        ~/AppData/Local/vcpkg/archives
+      key: ${{ runner.os }}-vcpkg-enhanced-${{ hashFiles('**/vcpkg.json', '**/vcpkg-configuration.json') }}-v4
+      restore-keys: |
+        ${{ runner.os }}-vcpkg-enhanced-
+        ${{ runner.os }}-vcpkg-
+
+# Patch 2: Windows-specific vcpkg setup with mirror selection
+windows_vcpkg_setup: |
+  - name: Setup vcpkg (Windows, Enhanced)
+    if: runner.os == 'Windows'
+    shell: bash
+    run: |
+      # Source the Windows CI fix script
+      source scripts/windows_ci_fix.sh
+      
+      # Set binary sources with multiple fallbacks
+      export VCPKG_BINARY_SOURCES="clear;default;files,$GITHUB_WORKSPACE/vcpkg-cache,readwrite;nuget,GitHub,readwrite"
+      
+      # Use stable vcpkg commit
+      cd vcpkg
+      git fetch origin
+      git checkout 2024.08.23  # Known stable version
+      
+      # Bootstrap with retry
+      ./bootstrap-vcpkg.bat
+      
+      # Configure minimal dependencies for Windows
+      if [ ! -f vcpkg.json.backup ]; then
+        cp vcpkg.json vcpkg.json.backup
+        cp vcpkg-windows-minimal.json vcpkg.json
+      fi
+
+# Patch 3: Windows-specific build with timeout and retry
+windows_build_enhanced: |
+  - name: Configure (Windows, Enhanced)
+    if: runner.os == 'Windows'
+    shell: bash
+    timeout-minutes: 45
+    run: |
+      # Source enhanced retry functions
+      source scripts/windows_ci_fix.sh
+      
+      # Set environment for stability
+      export VCPKG_DEFAULT_BINARY_CACHE="$GITHUB_WORKSPACE/vcpkg-cache"
+      export VCPKG_MAX_CONCURRENCY=1  # Reduce concurrency for stability
+      
+      # Configure with enhanced retry
+      cmake -S . -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DBUILD_EDITOR_QT=OFF \
+        -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+        -DVCPKG_MANIFEST_MODE=ON \
+        -DVCPKG_INSTALL_OPTIONS="--debug;--verbose" \
+        -G "Visual Studio 17 2022" \
+        -A x64
+      
+      echo "Configuration completed successfully"
+
+# Patch 4: Conditional dependency installation
+conditional_dependencies: |
+  - name: Install dependencies (Windows Conditional)
+    if: runner.os == 'Windows' 
+    shell: bash
+    timeout-minutes: 30
+    run: |
+      # Try full dependencies first, fallback to minimal
+      if ! vcpkg_install_with_retry; then
+        echo "⚠️ 完整依赖安装失败，切换到最小依赖"
+        cp vcpkg-windows-minimal.json vcpkg.json
+        vcpkg_install_with_retry
+      fi
+
+# Patch 5: Enhanced error reporting
+error_reporting: |
+  - name: Upload Windows CI logs
+    if: failure() && runner.os == 'Windows'
+    uses: actions/upload-artifact@v4
+    with:
+      name: windows-ci-logs-${{ github.run_number }}
+      path: |
+        build/CMakeFiles/CMakeError.log
+        build/CMakeFiles/CMakeOutput.log
+        build/vcpkg-manifest-install.log
+        C:\vcpkg\buildtrees\**\*.log
+      retention-days: 7
+
+# Complete enhanced Windows job
+enhanced_windows_job: |
+  build-windows:
+    if: matrix.os == 'windows-latest'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    continue-on-error: true  # Keep non-blocking for now
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      
+      # Apply all patches above
+      # ... (cache_enhancement, windows_vcpkg_setup, etc.)
+      
+      - name: Health Check Summary
+        if: always()
+        shell: bash
+        run: |
+          echo "🏥 Windows CI健康检查摘要"
+          echo "========================="
+          echo "运行时间: $(date)"
+          echo "状态: ${{ job.status }}"
+          echo "结论: ${{ job.conclusion }}"
+          
+          # Mirror health summary
+          source scripts/windows_ci_fix.sh
+          check_mirror_health

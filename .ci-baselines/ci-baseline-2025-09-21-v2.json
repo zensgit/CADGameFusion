@@ -1,0 +1,383 @@
+{
+    "name": "ci-baseline-2025-09-21-v2",
+    "date": "2025-09-22T01:59:19Z",
+    "commit": "804061f4695fdea12e75c33aeb04c0a197f1f013",
+    "stats": {
+        "total_runs": 46,
+        "successful_runs": 40,
+        "success_rate": 86,
+        "avg_runtime_min": 1.2,
+        "min_runtime_min": 0,
+        "max_runtime_min": 6
+    },
+    "workflows": [
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T01:45:58Z",
+    "name": "Core Strict - Exports, Validation, Comparison",
+    "run_time": 3,
+    "status": "completed",
+    "updated_at": "2025-09-22T01:49:00Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T01:45:31Z",
+    "name": "Daily CI Status Report",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T01:45:55Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T01:31:05Z",
+    "name": "Daily CI Status Report",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T01:31:28Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-22T01:22:08Z",
+    "name": "Daily CI Status Report",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T01:22:29Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-22T00:27:53Z",
+    "name": ".github/workflows/core-strict-exports-validation.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-22T00:27:53Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:37:45Z",
+    "name": "Test Simple",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:38:56Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:37:45Z",
+    "name": "Core Strict - Build and Tests",
+    "run_time": 3,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:41:07Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:37:45Z",
+    "name": "Core CI",
+    "run_time": 3,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:41:27Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:37:45Z",
+    "name": "Core Strict - Exports, Validation, Comparison",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:40:30Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:37:45Z",
+    "name": "Core Strict - Validation Simple",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:39:39Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:37:45Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:38:14Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:37:45Z",
+    "name": "Test Actions",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:37:51Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-21T15:37:44Z",
+    "name": ".github/workflows/core-strict-exports-validation.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:37:44Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:34:00Z",
+    "name": "Auto Label Qt Tests",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:34:08Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:33:58Z",
+    "name": "Core Strict - Validation Simple",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:35:54Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:33:58Z",
+    "name": "Core Strict - Build and Tests",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:36:49Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:33:58Z",
+    "name": "Core Strict - Exports, Validation, Comparison",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:36:47Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:33:58Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:34:26Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:33:58Z",
+    "name": "Auto Label Qt Changes",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:34:07Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:33:58Z",
+    "name": "Core CI",
+    "run_time": 3,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:37:38Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-21T15:33:37Z",
+    "name": ".github/workflows/core-strict-exports-validation.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:33:37Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-21T15:23:13Z",
+    "name": ".github/workflows/core-strict-exports-validation.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:23:13Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:19:58Z",
+    "name": "Daily CI Status Report",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:20:19Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:19:52Z",
+    "name": "Core Strict - Exports, Validation, Comparison",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:21:34Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:19:13Z",
+    "name": "Core CI",
+    "run_time": 6,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:25:55Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:19:13Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:19:36Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:19:13Z",
+    "name": "Test Actions",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:19:20Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:19:13Z",
+    "name": "Core Strict - Validation Simple",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:21:46Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:19:13Z",
+    "name": "Core Strict - Build and Tests",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:20:59Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:19:13Z",
+    "name": "Test Simple",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:20:15Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-21T15:19:13Z",
+    "name": ".github/workflows/core-strict-exports-validation.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:19:13Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:07:30Z",
+    "name": "Daily CI Status Report",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:07:54Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T15:07:24Z",
+    "name": "Core Strict - Exports, Validation, Comparison",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-21T15:10:06Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T14:55:30Z",
+    "name": "Daily CI Status Report",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T14:55:56Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T14:55:08Z",
+    "name": "Core Strict - Exports, Validation, Comparison",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-21T14:57:39Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T14:55:08Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T14:55:35Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T14:55:08Z",
+    "name": "Auto Label Qt Changes",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T14:55:14Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T14:55:08Z",
+    "name": "Auto Label Qt Tests",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T14:55:12Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T14:55:08Z",
+    "name": "Core CI",
+    "run_time": 4,
+    "status": "completed",
+    "updated_at": "2025-09-21T14:59:19Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T14:55:08Z",
+    "name": "Core Strict - Validation Simple",
+    "run_time": 1,
+    "status": "completed",
+    "updated_at": "2025-09-21T14:57:03Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T14:55:08Z",
+    "name": "Core Strict - Build and Tests",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-21T14:57:38Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T14:44:38Z",
+    "name": "Quick Check - Verification + Lint",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T14:45:06Z"
+  },
+  {
+    "conclusion": "failure",
+    "created_at": "2025-09-21T14:44:37Z",
+    "name": ".github/workflows/core-strict-exports-validation.yml",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T14:44:37Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T02:30:54Z",
+    "name": "Daily CI Status Report",
+    "run_time": 0,
+    "status": "completed",
+    "updated_at": "2025-09-21T02:31:17Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-21T02:30:53Z",
+    "name": "Windows Nightly - Strict Build Monitor",
+    "run_time": 2,
+    "status": "completed",
+    "updated_at": "2025-09-21T02:33:10Z"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2025-09-20T15:03:11Z",
+    "name": "Core CI",
+    "run_time": 3,
+    "status": "completed",
+    "updated_at": "2025-09-20T15:06:23Z"
+  }
+]
+}

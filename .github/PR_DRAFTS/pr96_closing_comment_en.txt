@@ -1,0 +1,21 @@
+PR #96 — Closing Comment (English)
+
+- Decision
+  - Closing this PR: the core capabilities have already landed via other PRs; merging this would reintroduce duplication and doc drift.
+
+- Conflicts and de‑duplication
+  - Already on main:
+    - N/A semantics + cacheable flag: .github/workflows/daily-ci-status.yml, scripts/vcpkg_log_stats.sh
+    - Multi‑platform artifact fallbacks: .github/workflows/daily-ci-status.yml
+    - Stats artifacts + build logs: .github/workflows/core-strict-exports-validation.yml, .github/workflows/core-strict-build-tests.yml
+    - Docs and index: README.md (Reports + Binary Cache Notes)
+  - PR‑specific but now covered:
+    - cache_probe: available as a workflow_dispatch input and probe step in both strict exports and build tests workflows
+
+- References
+  - Replaced by PRs: #78 #79 #80 #82 #83 #88 #91 (add links if desired)
+
+- Next steps
+  - Only enable cache_probe when compiled (non header‑only) deps are introduced; keep it off by default
+  - Track “7‑day trend in Daily CI” as an enhancement in v0.3.1
+

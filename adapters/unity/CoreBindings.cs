@@ -60,5 +60,37 @@ namespace CADGameFusion.UnityAdapter {
             if (core_triangulate_polygon_rings(flatPts, ringCounts, ringCounts.Length, indices, ref count) == 0) return Array.Empty<uint>();
             return indices;
         }
+
+        // Offset (single-contour helpers) — two-call pattern
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int core_offset_single([In] Vec2[] poly, int n, double delta,
+                                                    IntPtr out_pts, IntPtr out_counts,
+                                                    ref int poly_count, ref int total_pts);
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int core_offset_single([In] Vec2[] poly, int n, double delta,
+                                                    [Out] Vec2[] out_pts, [Out] int[] out_counts,
+                                                    ref int poly_count, ref int total_pts);
+
+        public struct OffsetResult {
+            public Vec2[] pts;        // flattened points of all output polygons
+            public int[] counts;       // vertex counts per polygon
+            public int polyCount;      // number of output polygons
+            public int totalPoints;    // total points across polygons
+        }
+
+        public static OffsetResult OffsetSingle(Vec2[] poly, double delta) {
+            int pc = 0, tp = 0;
+            // Query sizes
+            if (core_offset_single(poly, poly.Length, delta, IntPtr.Zero, IntPtr.Zero, ref pc, ref tp) == 0 || pc <= 0 || tp <= 0) {
+                return new OffsetResult { pts = Array.Empty<Vec2>(), counts = Array.Empty<int>(), polyCount = 0, totalPoints = 0 };
+            }
+            var pts = new Vec2[tp];
+            var counts = new int[pc];
+            if (core_offset_single(poly, poly.Length, delta, pts, counts, ref pc, ref tp) == 0) {
+                return new OffsetResult { pts = Array.Empty<Vec2>(), counts = Array.Empty<int>(), polyCount = 0, totalPoints = 0 };
+            }
+            return new OffsetResult { pts = pts, counts = counts, polyCount = pc, totalPoints = tp };
+        }
     }
 }
