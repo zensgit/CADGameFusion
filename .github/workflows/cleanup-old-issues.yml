@@ -1,0 +1,126 @@
+name: Cleanup Old Auto-Generated Issues
+
+on:
+  schedule:
+    # Run weekly on Sundays at 00:00 UTC (08:00 UTC+8)
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+    inputs:
+      days_threshold:
+        description: 'Close issues older than N days'
+        required: false
+        default: '30'
+      dry_run:
+        description: 'Dry run (list issues without closing)'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup old auto-generated issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DAYS_THRESHOLD: ${{ inputs.days_threshold || '30' }}
+          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+        run: |
+          set -e
+
+          echo "🧹 Starting cleanup of old auto-generated issues..."
+          echo "Threshold: ${DAYS_THRESHOLD} days"
+          echo "Dry run: ${DRY_RUN}"
+
+          # Calculate cutoff date (DAYS_THRESHOLD days ago)
+          if [[ "$OSTYPE" == "darwin"* ]]; then
+            CUTOFF_DATE=$(date -v-${DAYS_THRESHOLD}d -u '+%Y-%m-%d')
+          else
+            CUTOFF_DATE=$(date -u -d "${DAYS_THRESHOLD} days ago" '+%Y-%m-%d')
+          fi
+
+          echo "Cutoff date: ${CUTOFF_DATE}"
+          echo ""
+
+          # Patterns for auto-generated issues to clean up
+          PATTERNS=(
+            "Daily CI Status"
+            "Weekly CI Trend Digest"
+            "Auto Daily After Exports"
+          )
+
+          CLOSED_COUNT=0
+          SKIPPED_COUNT=0
+
+          for pattern in "${PATTERNS[@]}"; do
+            echo "🔍 Searching for issues matching: '$pattern'"
+
+            # Get all open issues matching the pattern
+            ISSUES=$(gh issue list \
+              --state open \
+              --search "\"$pattern\" in:title" \
+              --json number,title,createdAt \
+              --jq ".[] | select(.createdAt < \"${CUTOFF_DATE}\") | @json")
+
+            if [ -z "$ISSUES" ]; then
+              echo "  ✓ No old issues found"
+              continue
+            fi
+
+            echo "$ISSUES" | while IFS= read -r issue_json; do
+              NUMBER=$(echo "$issue_json" | jq -r '.number')
+              TITLE=$(echo "$issue_json" | jq -r '.title')
+              CREATED=$(echo "$issue_json" | jq -r '.createdAt[:10]')
+
+              echo "  📝 Issue #${NUMBER}: ${TITLE} (created: ${CREATED})"
+
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "     [DRY RUN] Would close this issue"
+                SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
+              else
+                # Close the issue with a comment
+                gh issue close "$NUMBER" \
+                  --comment "🤖 自动关闭：此自动生成的issue已超过${DAYS_THRESHOLD}天。
+
+创建日期: ${CREATED}
+关闭日期: $(date -u '+%Y-%m-%d')
+
+最新的CI状态可通过以下方式查看：
+- 查看最新的workflow运行: https://github.com/${{ github.repository }}/actions
+- 查看Daily CI Status Report: https://github.com/${{ github.repository }}/actions/workflows/daily-ci-status.yml
+
+此操作由 \`cleanup-old-issues\` 工作流自动执行。" \
+                  && echo "     ✅ Closed" \
+                  || echo "     ❌ Failed to close"
+
+                CLOSED_COUNT=$((CLOSED_COUNT + 1))
+
+                # Add a small delay to avoid rate limiting
+                sleep 1
+              fi
+            done
+          done
+
+          echo ""
+          echo "📊 Summary:"
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "  Would close: ${SKIPPED_COUNT} issues"
+          else
+            echo "  Closed: ${CLOSED_COUNT} issues"
+          fi
+          echo "✨ Cleanup completed!"
+
+      - name: Create summary
+        if: always()
+        run: |
+          echo "### Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Threshold**: ${{ inputs.days_threshold || '30' }} days" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ inputs.dry_run == 'true' && 'Dry Run' || 'Live' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Execution Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for detailed results." >> $GITHUB_STEP_SUMMARY
