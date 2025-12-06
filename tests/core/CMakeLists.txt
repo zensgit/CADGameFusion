@@ -37,6 +37,11 @@ if(TARGET core)
     target_include_directories(core_tests_solver_poc PRIVATE ../../core/include)
     target_link_libraries(core_tests_solver_poc PRIVATE core)
 
+    # Solver constraints tests
+    add_executable(core_tests_solver_constraints test_solver_constraints.cpp)
+    target_include_directories(core_tests_solver_constraints PRIVATE ../../core/include)
+    target_link_libraries(core_tests_solver_constraints PRIVATE core)
+
     # Solver conflict/inconsistency tests (Trial - non-blocking)
     add_executable(core_tests_solver_conflicts test_solver_conflicts.cpp)
     target_include_directories(core_tests_solver_conflicts PRIVATE ../../core/include)

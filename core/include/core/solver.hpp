@@ -26,19 +26,13 @@ public:
     virtual ~ISolver() = default;
     virtual void setMaxIterations(int iters) = 0;
     virtual void setTolerance(double tol) = 0;
+    // Legacy no-binding solve (kept for compatibility)
     virtual SolveResult solve(std::vector<ConstraintSpec>& constraints) = 0;
 
-    using GetVar = double(*)(const VarRef&, bool&);
-    using SetVar = void(*)(const VarRef&, double);
-
-    virtual SolveResult solveWithBindings(std::vector<ConstraintSpec>& constraints,
-                                          const std::function<double(const VarRef&, bool&)>& get,
-                                          const std::function<void(const VarRef&, double)>& set)
-    {
-        // Default fallback: call basic solve; derived solvers may override to use bindings.
-        (void)get; (void)set;
-        return solve(constraints);
-    }
+    // New: solve with variable bindings accessors
+    using GetVar = std::function<double(const VarRef&, bool& ok)>;
+    using SetVar = std::function<void(const VarRef&, double)>;
+    virtual SolveResult solveWithBindings(std::vector<ConstraintSpec>& constraints, const GetVar& get, const SetVar& set) = 0;
 };
 
 // Factory function for a minimal Gauss-Newton style solver
