@@ -13,9 +13,28 @@ CanvasWidget::CanvasWidget(QWidget* parent) : QWidget(parent) {
     setAutoFillBackground(true);
 }
 
+void CanvasWidget::showEvent(QShowEvent* event) {
+    QWidget::showEvent(event);
+    // Center the origin when widget is first shown
+    if (pan_ == QPointF(0, 0)) {
+        pan_ = QPointF(width() / 2.0, height() / 2.0);
+    }
+}
+
+void CanvasWidget::resizeEvent(QResizeEvent* event) {
+    QWidget::resizeEvent(event);
+    // Adjust pan to keep origin centered when resizing
+    if (event->oldSize().isValid() && event->oldSize() != QSize(-1, -1)) {
+        QPointF oldCenter(event->oldSize().width() / 2.0, event->oldSize().height() / 2.0);
+        QPointF newCenter(width() / 2.0, height() / 2.0);
+        pan_ += (newCenter - oldCenter);
+    }
+}
+
 void CanvasWidget::addPolyline(const QVector<QPointF>& poly) {
     polylines_.push_back({poly, QColor(220,220,230), -1});
     update();
+    emit selectionChanged({});
 }
 
 void CanvasWidget::addPolylineColored(const QVector<QPointF>& poly, const QColor& color, int groupId) {
@@ -61,6 +80,7 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
     pr.setRenderHint(QPainter::Antialiasing, true);
     for (int i=0;i<polylines_.size();++i) {
         const auto& pv = polylines_[i];
+        if (!pv.visible) continue;
         const auto& poly = pv.pts;
         if (poly.size() < 2) continue;
         QPainterPath path;
@@ -140,10 +160,11 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
                     break;
                 }
             }
-            if (found) {
-                update(); 
-                return;
-            }
+        if (found) {
+            update(); 
+            emit selectionChanged({selected_});
+            return;
+        }
         }
         // If no polyline matched, test triangle wireframe as a group
         if (!triVerts_.isEmpty() && !triIndices_.isEmpty()) {
@@ -164,6 +185,7 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
         }
         qDebug() << "No polyline/tri selected";
         update();
+        emit selectionChanged({});
     }
 }
 
@@ -209,6 +231,7 @@ void CanvasWidget::removeSelected() {
         polylines_.removeAt(selected_); // Single deletion: do not remove whole group here
         selected_ = -1;
         update();
+        emit selectionChanged({});
     } else {
         qDebug() << "No polyline selected (selected_=" << selected_ << ")";
     }
@@ -241,6 +264,7 @@ int CanvasWidget::removeAllSimilar() {
 
     selected_ = -1;
     update();
+    emit selectionChanged({});
     return removedCount;
 }
 
@@ -248,6 +272,26 @@ void CanvasWidget::addTriMesh(const QVector<QPointF>& vertices, const QVector<un
     triVerts_ = vertices;
     triIndices_ = indices;
     update();
+    emit selectionChanged({});
+}
+
+void CanvasWidget::setTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices) {
+    triVerts_ = vertices;
+    triIndices_ = indices;
+    triSelected_ = false;
+    update();
+    emit selectionChanged({});
+}
+
+void CanvasWidget::clearTriMesh() {
+    qDebug() << "CanvasWidget::clearTriMesh() called - clearing" << triVerts_.size() << "vertices and" << triIndices_.size() << "indices";
+    triVerts_.clear();
+    triIndices_.clear();
+    triSelected_ = false;
+    update();
+    repaint();  // Force immediate repaint
+    qDebug() << "CanvasWidget::clearTriMesh() completed - update and repaint called";
+    emit selectionChanged({});
 }
 
 int CanvasWidget::newGroupId() { return nextGroupId_++; }
@@ -296,4 +340,39 @@ void CanvasWidget::selectGroup(const QPoint& pos) {
         }
     }
     qDebug() << "Alt+Click found no polyline";
+}
+
+void CanvasWidget::removePolylineAt(int index) {
+    if (index >= 0 && index < polylines_.size()) {
+        polylines_.removeAt(index);
+        if (selected_ == index) selected_ = -1;
+        update();
+        emit selectionChanged({});
+    }
+}
+
+bool CanvasWidget::polylineAt(int index, PolyVis& out) const {
+    if (index >= 0 && index < polylines_.size()) { out = polylines_[index]; return true; }
+    return false;
+}
+
+void CanvasWidget::insertPolylineAt(int index, const PolyVis& pv) {
+    if (index < 0 || index > polylines_.size()) index = polylines_.size();
+    polylines_.insert(index, pv);
+    update();
+    emit selectionChanged({index});
+}
+
+void CanvasWidget::setPolylineVisible(int index, bool vis) {
+    if (index>=0 && index<polylines_.size()) {
+        polylines_[index].visible = vis;
+        update();
+    }
+}
+
+void CanvasWidget::restorePolylines(const QVector<PolyVis>& polys) {
+    polylines_ = polys;
+    selected_ = -1;
+    update();
+    emit selectionChanged({});
 }

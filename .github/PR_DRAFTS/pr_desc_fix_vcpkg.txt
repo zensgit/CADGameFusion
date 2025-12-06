@@ -1,0 +1,29 @@
+- 摘要
+  - 显式启用 vcpkg files 缓存，固定 triplet/版本；tee CMake 日志；生成并上传缓存统计；严格导出上传统一 artifact 供 Daily CI 抓取。
+
+- 变更
+  - .github/workflows/core-strict-exports-validation.yml
+    - 设置 `VCPKG_DEFAULT_BINARY_CACHE`、`VCPKG_BINARY_SOURCES=clear;files,<archives>,readwrite;default`、`VCPKG_DEFAULT_TRIPLET=x64-linux`
+    - pin vcpkg 到 c9fa965c2a1b1334469b4539063f3ce95383653c 并 bootstrap
+    - CMake 配置/构建输出分别 tee 到 `build/_cmake_configure.log`、`build/_cmake_build.log`
+    - 生成 `build/vcpkg_cache_stats.json` 并复制到 `vcpkg_cache_stats.json`
+    - 上传 `strict-exports-reports-ubuntu-latest`
+  - .github/workflows/core-strict-build-tests.yml
+    - Windows/Unix 设置 archives 路径与 `VCPKG_BINARY_SOURCES`
+    - 设置 `VCPKG_DEFAULT_TRIPLET`（x64-linux/x64-osx/x64-windows），传入 `-DVCPKG_TARGET_TRIPLET`
+    - tee 日志、上传每 OS 统计 artifact
+
+- 理由
+  - 稳定 ABI 哈希输入，确保缓存路径/源一致；提供可观测日志与统计，便于 Daily CI 展示与排查。
+
+- 验证步骤
+  - 各运行两次（至少 Ubuntu）：Core Strict – Exports… 与 Core Strict – Build and Tests（debug=false）
+  - 运行 Daily CI Status，确认 vcpkg 区块能读取统计并渲染
+
+- 风险与回滚
+  - 低；回滚即还原相应工作流文件
+
+- 相关报告
+  - VCPKG_CACHE_TEST_SUMMARY_2025_09_22.md
+  - VCPKG_CACHE_FIX_FINAL_REPORT_2025_09_22.md
+

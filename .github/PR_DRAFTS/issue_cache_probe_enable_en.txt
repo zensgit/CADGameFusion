@@ -1,0 +1,21 @@
+Issue — Enable cache_probe only when compiled deps are introduced
+
+Context
+- Current deps are header‑only; vcpkg hit rate shows N/A (expected).
+- cache_probe already implemented in workflows; default off.
+
+When to enable
+- When a new compiled (non header‑only) port is added, run workflows with `cache_probe=true` once; rerun to observe >0% hits.
+
+Acceptance
+- Strict exports/build tests run twice; Daily CI shows non‑zero hit or N/A for header‑only.
+
+References
+- .github/workflows/core-strict-exports-validation.yml
+- .github/workflows/core-strict-build-tests.yml
+- scripts/vcpkg_log_stats.sh
+
+Labels/Milestone
+- labels: ci, vcpkg, enhancement
+- milestone: v0.3.1
+

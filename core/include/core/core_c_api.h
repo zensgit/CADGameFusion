@@ -22,12 +22,20 @@ typedef struct core_vec2 { double x; double y; } core_vec2;
 
 typedef struct core_document core_document;
 
+// Return convention
+// Most API functions return int: 1 on success, 0 on failure.
+#define CORE_SUCCESS 1
+#define CORE_FAILURE 0
+
 // Version & feature flags
 // Returns semantic version string, e.g., "0.1.0" (static storage)
 CORE_API const char* core_get_version();
 // Bitflags describing compiled features (earcut/clipper2, etc.)
 // bit 0: USE_EARCUT, bit 1: USE_CLIPPER2
 CORE_API unsigned int core_get_feature_flags();
+// Feature flag helpers
+#define CORE_FEATURE_EARCUT   (1u << 0)
+#define CORE_FEATURE_CLIPPER2 (1u << 1)
 
 CORE_API core_document* core_document_create();
 CORE_API void core_document_destroy(core_document* doc);
@@ -37,13 +45,18 @@ CORE_API core_entity_id core_document_add_polyline(core_document* doc, const cor
 CORE_API int core_document_remove_entity(core_document* doc, core_entity_id id);
 
 // Triangulation C API (stateless)
-// First call with indices=nullptr to query index_count; then allocate and call again.
+// Two-call pattern:
+//  1) Call with indices=nullptr to query index_count (output)
+//  2) Allocate indices buffer and call again to fill
+// Winding convention (recommended):
+//  - CCW for outer rings, CW for holes
 // Returns 1 on success, 0 on failure.
 CORE_API int core_triangulate_polygon(const core_vec2* pts, int n,
                                       unsigned int* indices, int* index_count);
 
-// Triangulate multiple rings (outer + holes). Points are flattened; ring_counts has
+// Triangulate multiple rings (outer + holes). Points are flattened; ring_counts holds
 // the number of points for each ring (including closing point if present).
+// Recommended winding: outer CCW, holes CW. Rings should be non-self-intersecting.
 CORE_API int core_triangulate_polygon_rings(const core_vec2* pts,
                                             const int* ring_counts,
                                             int ring_count,

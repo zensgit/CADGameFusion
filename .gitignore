@@ -43,4 +43,13 @@ vcpkg_installed/
 
 # Precompiled Headers
 *.gch
-*.pch
+
+# Editor artifacts, logs, exports
+*.cgf
+*.png
+*.log
+*.tar.gz
+verification_*.png
+*verification*.png
+*_debug.log
+*_test.log

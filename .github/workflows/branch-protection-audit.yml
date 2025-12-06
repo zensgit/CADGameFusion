@@ -1,0 +1,31 @@
+name: Branch Protection Audit
+
+on:
+  schedule:
+    - cron: '0 1 * * *'  # daily 01:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Run audit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPOSITORY: ${{ github.repository }}
+        run: |
+          bash scripts/audit_branch_protection.sh \
+            --branch main \
+            --expected docs/branch_protection/main_2025_09_22.json \
+            --out build/BRANCH_PROTECTION_AUDIT.md || true
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-protection-audit-${{ github.run_id }}
+          path: build/BRANCH_PROTECTION_AUDIT.md

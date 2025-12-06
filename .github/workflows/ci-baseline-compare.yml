@@ -1,0 +1,59 @@
+name: CI Baseline Comparison
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # daily 03:00 UTC
+  workflow_dispatch:
+    inputs:
+      baseline_name:
+        description: 'Baseline name recorded under .ci-baselines/'
+        required: false
+        default: 'ci-baseline-2025-09-21'
+      post_to_issue:
+        description: 'Post summary as a comment to Issue #64'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure tooling (gh, jq, bc)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gh jq bc || true
+
+      - name: Run baseline comparison
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BASELINE="${{ inputs.baseline_name }}"
+          mkdir -p build
+          bash tools/benchmark_ci.sh --compare-md "$BASELINE" build/CI_COMPARE_REPORT.md || true
+          if [ ! -s build/CI_COMPARE_REPORT.md ]; then
+            echo "# CI Performance Comparison Report" > build/CI_COMPARE_REPORT.md
+            echo "(No data available – gh API may have been unreachable)" >> build/CI_COMPARE_REPORT.md
+          fi
+
+      - name: Upload comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-compare-report-${{ github.run_id }}
+          path: build/CI_COMPARE_REPORT.md
+
+      - name: Post summary to Issue #64 (optional)
+        if: ${{ inputs.post_to_issue }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_NUMBER=64
+          gh issue comment "$ISSUE_NUMBER" --body-file build/CI_COMPARE_REPORT.md || true
+

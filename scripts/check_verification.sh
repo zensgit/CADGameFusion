@@ -28,6 +28,7 @@ set -euo pipefail
 ROOT_DIR="build"
 VERBOSE=false
 QUICK=false
+NO_STRUCT=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,6 +38,8 @@ while [[ $# -gt 0 ]]; do
       VERBOSE=true; shift;;
     --quick)
       QUICK=true; shift;;
+    --no-struct)
+      NO_STRUCT=true; shift;;
     -h|--help)
       grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
     *) echo "Unknown arg: $1" >&2; exit 1;;
@@ -127,13 +130,17 @@ if [ "$NO_COUNT" -gt 0 ]; then
 fi
 note "Consistency stats: $OK_COUNT scenes OK, $NO_COUNT failed, ${#EXPECTED_SCENES[@]} expected scenes present."
 
-# 4. Lightweight JSON structural spot check (first field file only)
-STRUCT_FILE=${FIELD_FILES[0]}
-if ! grep -q '"values"' "$STRUCT_FILE"; then
-  note "No 'values' key in $STRUCT_FILE (acceptable if schema changed), skipping heuristic."
+if [ "$NO_STRUCT" = true ]; then
+  note "Skipping structural spot check (--no-struct)"
 else
-  if grep -q 'NaN' "$STRUCT_FILE"; then
-    fail "Detected NaN in $STRUCT_FILE" 4
+  # 4. Lightweight JSON structural spot check (first field file only)
+  STRUCT_FILE=${FIELD_FILES[0]}
+  if ! grep -q '"values"' "$STRUCT_FILE"; then
+    note "No 'values' key in $STRUCT_FILE (acceptable if schema changed), skipping heuristic."
+  else
+    if grep -q 'NaN' "$STRUCT_FILE"; then
+      fail "Detected NaN in $STRUCT_FILE" 4
+    fi
   fi
 fi
 

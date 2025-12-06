@@ -1,0 +1,8 @@
+scene=scene_cli_complex, json_groups=1, json_points=14, json_rings=3, gltf_vertices=14, gltf_indices=12, triangles=4, ok=YES
+scene=scene_cli_holes, json_groups=1, json_points=8, json_rings=2, gltf_vertices=8, gltf_indices=6, triangles=2, ok=YES
+scene=scene_cli_multi, json_groups=3, json_points=12, json_rings=3, gltf_vertices=NA, gltf_indices=NA, triangles=NA, ok=YES
+scene=scene_cli_sample, json_groups=1, json_points=4, json_rings=1, gltf_vertices=4, gltf_indices=6, triangles=2, ok=YES
+scene=scene_cli_scene_complex_spec, json_groups=1, json_points=14, json_rings=3, gltf_vertices=14, gltf_indices=12, triangles=4, ok=YES
+scene=scene_cli_scene_concave_spec, json_groups=1, json_points=6, json_rings=1, gltf_vertices=6, gltf_indices=12, triangles=4, ok=YES
+scene=scene_cli_scene_nested_holes_spec, json_groups=1, json_points=12, json_rings=3, gltf_vertices=12, gltf_indices=6, triangles=2, ok=YES
+scene=scene_cli_units, json_groups=1, json_points=4, json_rings=1, gltf_vertices=4, gltf_indices=6, triangles=2, ok=YES

@@ -1,0 +1,31 @@
+- 摘要
+  - header‑only 场景将命中率显示为 N/A；Daily CI 扩展多平台 artifact 回退；新增 `cache_probe`（默认关）用于一次性验证链路；README 与报告索引补充。
+
+- 变更
+  - scripts/vcpkg_log_stats.sh
+    - 新增 `cacheable` 字段；`total_signals=0` → `cacheable=false`
+  - .github/workflows/daily-ci-status.yml
+    - 若 `cacheable=false` 显示 N/A
+    - 下载严格导出时尝试 ubuntu/macos/windows 名称；找不到时回退 build-tests 的 linux/macos/windows
+    - 评论中加入 Reports Index
+  - .github/workflows/core-strict-exports-validation.yml
+    - 新增 workflow_dispatch 输入 `cache_probe`；开启时 `vcpkg install zlib` 并刷新统计
+    - 上传 alias artifacts：`strict-exports-reports-macos-latest`、`strict-exports-reports-windows-latest`
+  - .github/workflows/core-strict-build-tests.yml
+    - 同步 `cache_probe`；构建后列出 archives 内容
+  - README.md
+    - 新增 “vcpkg Binary Cache Notes” 与 “Reports (vcpkg cache optimization)” 索引
+  - VCPKG_CACHE_FINALIZATION_SUMMARY_2025_09_22.md
+    - 新增最终小结
+
+- 验证步骤
+  - 常规：各跑两次（debug=false），Daily CI 显示 vcpkg=N/A（header‑only）
+  - 证明链路（可选）：`cache_probe=true` 跑一次后再复跑，命中>0%
+
+- 风险与回滚
+  - 低；`cache_probe` 默认关闭；回滚仅需还原工作流与脚本改动
+
+- 相关报告
+  - VCPKG_CACHE_FINALIZATION_SUMMARY_2025_09_22.md
+  - VCPKG_CACHE_ANALYSIS_AND_SOLUTIONS_2025_09_22.md
+

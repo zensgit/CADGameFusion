@@ -20,6 +20,10 @@ struct ExportOptions {
     std::string specDir; // when set, copy from spec directory
     std::string specFile; // when set, read JSON spec file
     enum class HolesMode { OuterOnly, Full } gltfHolesMode = HolesMode::Full; // glTF holes emission strategy (default: Full)
+    // Experimental glTF feature flags (default OFF)
+    bool emitNormals = false;           // add flat normals (0,0,1)
+    bool emitUVs = false;               // add UV channel 0 (0,0)
+    bool emitMaterialsStub = false;     // add single default material + primitive binding
 };
 
 // Scene definitions
@@ -275,6 +279,23 @@ void writeJSON(const std::string& filepath, const SceneData& scene, double unitS
     file << "],\n";
     
     file << "  \"meta\": {\n";
+    // v0.3 additive meta fields
+    // pipelineVersion, source, exportTime (UTC ISO8601)
+    file << "    \"pipelineVersion\": \"0.3.0\",\n";
+    file << "    \"source\": \"cli\",\n";
+    {
+        // Format export time as ISO8601 UTC
+        std::time_t t = std::time(nullptr);
+        std::tm tm{};
+    #if defined(_WIN32)
+        gmtime_s(&tm, &t);
+    #else
+        gmtime_r(&t, &tm);
+    #endif
+        std::ostringstream oss;
+        oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
+        file << "    \"exportTime\": \"" << oss.str() << "\",\n";
+    }
     file << "    \"joinType\": " << scene.joinType << ",\n";
     file << "    \"miterLimit\": " << std::fixed << std::setprecision(1) 
          << scene.miterLimit << ",\n";
@@ -296,8 +317,9 @@ void writeJSON(const std::string& filepath, const SceneData& scene, double unitS
     file.close();
 }
 
-void writeGLTF(const std::string& gltfPath, const std::string& binPath, 
-               const SceneData& scene, bool outerOnlyFan=false) {
+// EXP_FEATURES: signature extended with ExportOptions for experimental flags (normals/uvs/materials)
+void writeGLTF(const std::string& gltfPath, const std::string& binPath,
+               const SceneData& scene, bool outerOnlyFan, const ExportOptions& opts) {
     // Triangulate the polygon
     std::vector<unsigned int> indices;
     int indexCount = 0;
@@ -349,104 +371,106 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
         indexCount = indices.size();
     }
     
-    // Write binary file
-    std::ofstream binFile(binPath, std::ios::binary);
-    if (!binFile.is_open()) {
-        std::cerr << "Failed to open " << binPath << " for writing\n";
-        return;
-    }
-    
-    // Write vertices (no closing points now)
-    std::vector<float> vertices;
+    // ---- EXP_FEATURES: rebuild binary & glTF with optional normals/uvs/materials ----
+    // Build position list (already partly done above) and optional arrays
+    std::vector<float> positions; positions.reserve(indices.size()*3);
     size_t vertexCount = 0;
     if (outerOnlyFan) {
-        // Only emit outer ring vertices to match golden sample for holes scene
         int outerCount = scene.ringCounts.empty() ? 0 : scene.ringCounts[0];
         vertexCount = static_cast<size_t>(outerCount);
-        for (int i = 0; i < outerCount; ++i) {
+        for (int i=0;i<outerCount;++i) {
             const auto& pt = scene.points[i];
-            vertices.push_back(static_cast<float>(pt.x));
-            vertices.push_back(static_cast<float>(pt.y));
-            vertices.push_back(0.0f);
+            positions.push_back(static_cast<float>(pt.x));
+            positions.push_back(static_cast<float>(pt.y));
+            positions.push_back(0.0f);
         }
     } else {
-        for (size_t ringIdx = 0, off = 0; ringIdx < scene.ringCounts.size(); ++ringIdx) {
+        for (size_t ringIdx=0, off=0; ringIdx<scene.ringCounts.size(); ++ringIdx) {
             int cnt = scene.ringCounts[ringIdx];
-            vertexCount += static_cast<size_t>(cnt);
-            for (int i = 0; i < cnt; ++i) {
-                const auto& pt = scene.points[off + i];
-                vertices.push_back(static_cast<float>(pt.x));
-                vertices.push_back(static_cast<float>(pt.y));
-                vertices.push_back(0.0f);
+            for (int i=0;i<cnt;++i) {
+                const auto& pt = scene.points[off+i];
+                positions.push_back(static_cast<float>(pt.x));
+                positions.push_back(static_cast<float>(pt.y));
+                positions.push_back(0.0f);
             }
+            vertexCount += static_cast<size_t>(cnt);
             off += static_cast<size_t>(cnt);
         }
     }
-    
-    binFile.write(reinterpret_cast<const char*>(vertices.data()), 
-                  vertices.size() * sizeof(float));
-    binFile.write(reinterpret_cast<const char*>(indices.data()), 
-                  indices.size() * sizeof(unsigned int));
-    binFile.close();
-    
-    // Write glTF file
-    std::ofstream gltfFile(gltfPath);
-    if (!gltfFile.is_open()) {
-        std::cerr << "Failed to open " << gltfPath << " for writing\n";
-        return;
-    }
-    
-    size_t vertexByteLength = vertices.size() * sizeof(float);
-    size_t indexByteLength = indices.size() * sizeof(unsigned int);
-    size_t totalByteLength = vertexByteLength + indexByteLength;
 
-    // Compute POSITION min/max (AABB)
-    float minX = std::numeric_limits<float>::infinity();
-    float minY = std::numeric_limits<float>::infinity();
-    float maxX = -std::numeric_limits<float>::infinity();
-    float maxY = -std::numeric_limits<float>::infinity();
-    for (size_t i = 0; i + 2 < vertices.size(); i += 3) {
-        float x = vertices[i];
-        float y = vertices[i + 1];
-        if (x < minX) minX = x; if (x > maxX) maxX = x;
-        if (y < minY) minY = y; if (y > maxY) maxY = y;
+    std::vector<float> normals;
+    if (opts.emitNormals) {
+        normals.resize(vertexCount*3, 0.0f);
+        for (size_t i=0;i<vertexCount;i++) normals[i*3+2] = 1.0f;
     }
-    if (!std::isfinite(minX)) { minX = minY = 0.0f; maxX = maxY = 0.0f; }
-    
-    gltfFile << "{\n";
-    gltfFile << "  \"asset\": { \"version\": \"2.0\" },\n";
-    gltfFile << "  \"buffers\": [\n";
-    gltfFile << "    { \"uri\": \"" << fs::path(binPath).filename().string() 
-             << "\", \"byteLength\": " << totalByteLength << " }\n";
-    gltfFile << "  ],\n";
-    gltfFile << "  \"bufferViews\": [\n";
-    gltfFile << "    { \"buffer\": 0, \"byteOffset\": 0, \"byteLength\": " 
-             << vertexByteLength << ", \"target\": 34962 },\n";
-    gltfFile << "    { \"buffer\": 0, \"byteOffset\": " << vertexByteLength 
-             << ", \"byteLength\": " << indexByteLength << ", \"target\": 34963 }\n";
-    gltfFile << "  ],\n";
-    gltfFile << "  \"accessors\": [\n";
-    gltfFile << "    { \"bufferView\": 0, \"byteOffset\": 0, \"componentType\": 5126, "
-             << "\"count\": " << vertexCount << ", \"type\": \"VEC3\",\n";
-    gltfFile << "      \"min\": [" << minX << "," << minY << ",0], \"max\": [" << maxX << "," << maxY << ",0] },\n";
-    gltfFile << "    { \"bufferView\": 1, \"byteOffset\": 0, \"componentType\": 5125, "
-             << "\"count\": " << indices.size() << ", \"type\": \"SCALAR\" }\n";
-    gltfFile << "  ],\n";
-    gltfFile << "  \"meshes\": [\n";
-    gltfFile << "    { \"primitives\": [ { \"attributes\": { \"POSITION\": 0 }, "
-             << "\"indices\": 1, \"mode\": 4 } ] }\n";
-    gltfFile << "  ],\n";
-    gltfFile << "  \"nodes\": [ { \"mesh\": 0 } ],\n";
-    gltfFile << "  \"scenes\": [ { \"nodes\": [0] } ],\n";
-    gltfFile << "  \"scene\": 0\n";
-    gltfFile << "}\n";
-    
-    gltfFile.close();
+    std::vector<float> uvs;
+    if (opts.emitUVs) {
+        uvs.resize(vertexCount*2, 0.0f);
+    }
+
+    size_t posBytes = positions.size()*sizeof(float);
+    size_t normalsBytes = normals.size()*sizeof(float);
+    size_t uvsBytes = uvs.size()*sizeof(float);
+    size_t idxBytes = indices.size()*sizeof(unsigned int);
+    size_t totalBytes = posBytes + normalsBytes + uvsBytes + idxBytes;
+
+    std::ofstream binFile(binPath, std::ios::binary);
+    if (!binFile.is_open()) { std::cerr << "Failed to open " << binPath << " for writing\n"; return; }
+    binFile.write(reinterpret_cast<const char*>(positions.data()), posBytes);
+    if (!normals.empty()) binFile.write(reinterpret_cast<const char*>(normals.data()), normalsBytes);
+    if (!uvs.empty()) binFile.write(reinterpret_cast<const char*>(uvs.data()), uvsBytes);
+    binFile.write(reinterpret_cast<const char*>(indices.data()), idxBytes);
+    binFile.close();
+
+    // POSITION bounds
+    float minX=std::numeric_limits<float>::infinity(), minY=minX;
+    float maxX=-std::numeric_limits<float>::infinity(), maxY=maxX;
+    for (size_t i=0;i+2<positions.size(); i+=3) {
+        float x=positions[i], y=positions[i+1];
+        if (x<minX) minX=x; if (x>maxX) maxX=x;
+        if (y<minY) minY=y; if (y>maxY) maxY=y;
+    }
+    if (!std::isfinite(minX)) { minX=minY=0.0f; maxX=maxY=0.0f; }
+
+    std::ofstream gltf(gltfPath);
+    if (!gltf.is_open()) { std::cerr << "Failed to open " << gltfPath << " for writing\n"; return; }
+    gltf << "{\n  \"asset\": { \"version\": \"2.0\" },\n";
+    gltf << "  \"buffers\": [ { \"uri\": \"" << fs::path(binPath).filename().string() << "\", \"byteLength\": " << totalBytes << " } ],\n";
+    gltf << "  \"bufferViews\": [\n";
+    size_t cursor = 0; int view = 0;
+    int posView = view; gltf << "    { \"buffer\": 0, \"byteOffset\": 0, \"byteLength\": " << posBytes << ", \"target\": 34962 }"; cursor += posBytes; view++;
+    int normalsView = -1;
+    if (opts.emitNormals) { normalsView = view; gltf << ",\n    { \"buffer\": 0, \"byteOffset\": " << cursor << ", \"byteLength\": " << normalsBytes << ", \"target\": 34962 }"; cursor+=normalsBytes; view++; }
+    int uvsView = -1;
+    if (opts.emitUVs) { uvsView = view; gltf << ",\n    { \"buffer\": 0, \"byteOffset\": " << cursor << ", \"byteLength\": " << uvsBytes << ", \"target\": 34962 }"; cursor+=uvsBytes; view++; }
+    int idxView = view; gltf << ",\n    { \"buffer\": 0, \"byteOffset\": " << cursor << ", \"byteLength\": " << idxBytes << ", \"target\": 34963 }\n  ],\n";
+
+    gltf << "  \"accessors\": [\n";
+    int accessor = 0;
+    int posAccessor = accessor; gltf << "    { \"bufferView\": " << posView << ", \"byteOffset\": 0, \"componentType\": 5126, \"count\": " << vertexCount << ", \"type\": \"VEC3\", \"min\": [" << minX << "," << minY << ",0], \"max\": [" << maxX << "," << maxY << ",0] }"; accessor++;
+    int normalAccessor=-1;
+    if (opts.emitNormals) { normalAccessor = accessor; gltf << ",\n    { \"bufferView\": " << normalsView << ", \"byteOffset\": 0, \"componentType\": 5126, \"count\": " << vertexCount << ", \"type\": \"VEC3\" }"; accessor++; }
+    int uvAccessor=-1;
+    if (opts.emitUVs) { uvAccessor = accessor; gltf << ",\n    { \"bufferView\": " << uvsView << ", \"byteOffset\": 0, \"componentType\": 5126, \"count\": " << vertexCount << ", \"type\": \"VEC2\" }"; accessor++; }
+    int idxAccessor = accessor; gltf << ",\n    { \"bufferView\": " << idxView << ", \"byteOffset\": 0, \"componentType\": 5125, \"count\": " << indices.size() << ", \"type\": \"SCALAR\" }\n  ],\n";
+
+    gltf << "  \"meshes\": [\n    { \"primitives\": [ { \"attributes\": { \"POSITION\": " << posAccessor;
+    if (normalAccessor>=0) gltf << ", \"NORMAL\": " << normalAccessor;
+    if (uvAccessor>=0) gltf << ", \"TEXCOORD_0\": " << uvAccessor;
+    gltf << " }, \"indices\": " << idxAccessor << ", \"mode\": 4";
+    if (opts.emitMaterialsStub) gltf << ", \"material\": 0";
+    gltf << " } ] }\n  ],\n";
+    if (opts.emitMaterialsStub) {
+        gltf << "  \"materials\": [ { \"name\": \"Default\", \"pbrMetallicRoughness\": { \"baseColorFactor\": [1,1,1,1], \"metallicFactor\": 0, \"roughnessFactor\": 1 } } ],\n";
+    }
+    gltf << "  \"nodes\": [ { \"mesh\": 0 } ],\n  \"scenes\": [ { \"nodes\": [0] } ],\n  \"scene\": 0\n}";
+    gltf.close();
+    // ---- EXP_FEATURES END ----
 }
 
 void exportScene(const std::string& outputDir, const std::string& sceneName,
                  const std::vector<SceneData>& scenes, double unitScale,
-                 bool gltfOuterOnlyForHoles) {
+                 bool gltfOuterOnlyForHoles, const ExportOptions& opts) {
     std::string sceneDir = outputDir + "/scene_cli_" + sceneName;
     fs::create_directories(sceneDir);
     
@@ -475,7 +499,7 @@ void exportScene(const std::string& outputDir, const std::string& sceneName,
                 }
             }
             bool outerOnlyFan = (gltfOuterOnlyForHoles && hasHoles);
-            writeGLTF(gltfPath, binPath, scene, outerOnlyFan);
+            writeGLTF(gltfPath, binPath, scene, outerOnlyFan, opts);
         }
     }
     
@@ -562,6 +586,12 @@ void parseArgs(int argc, char* argv[], ExportOptions& opts) {
             if (v == "outer") opts.gltfHolesMode = ExportOptions::HolesMode::OuterOnly;
             else if (v == "full") opts.gltfHolesMode = ExportOptions::HolesMode::Full;
             else { std::cerr << "Invalid value for --gltf-holes (outer|full)\n"; std::exit(2); }
+        } else if (arg == "--emit-normals") {
+            opts.emitNormals = true;
+        } else if (arg == "--emit-uvs") {
+            opts.emitUVs = true;
+        } else if (arg == "--emit-materials-stub") {
+            opts.emitMaterialsStub = true;
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: export_cli [options]\n";
             std::cout << "  --out <dir>    Output directory (default: build/exports)\n";
@@ -570,6 +600,9 @@ void parseArgs(int argc, char* argv[], ExportOptions& opts) {
             std::cout << "  --spec-dir <d> Copy scene files from spec directory (group_*.json, mesh_group_*)\n";
             std::cout << "  --spec <file>  Read JSON spec and generate scene(s)\n";
             std::cout << "  --gltf-holes <outer|full> Emit glTF vertices for holes (default: outer)\n";
+            std::cout << "  --emit-normals           (experimental) add flat normals accessor\n";
+            std::cout << "  --emit-uvs               (experimental) add UV accessor\n";
+            std::cout << "  --emit-materials-stub    (experimental) add default material & primitive.material\n";
             exit(0);
         }
     }
@@ -617,7 +650,7 @@ int main(int argc, char* argv[]) {
             // Use file stem as scene name for clarity
             std::string stem = fs::path(opts.specFile).stem().string();
             if (stem.empty()) stem = "spec";
-            exportScene(opts.outputDir, stem, scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
+            exportScene(opts.outputDir, stem, scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly, opts);
             return 0;
         } catch (const std::exception& e) {
             std::cerr << "[ERROR] Failed to parse spec: " << e.what() << "\n";
@@ -628,19 +661,19 @@ int main(int argc, char* argv[]) {
     // Export requested scene
     if (opts.scene == "sample") {
         std::vector<SceneData> scenes = {createSampleScene()};
-        exportScene(opts.outputDir, "sample", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
+        exportScene(opts.outputDir, "sample", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly, opts);
     } else if (opts.scene == "holes") {
         std::vector<SceneData> scenes = {createHolesScene()};
-        exportScene(opts.outputDir, "holes", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
+        exportScene(opts.outputDir, "holes", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly, opts);
     } else if (opts.scene == "multi") {
         auto scenes = createMultiGroupsScene();
-        exportScene(opts.outputDir, "multi", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
+        exportScene(opts.outputDir, "multi", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly, opts);
     } else if (opts.scene == "units") {
         std::vector<SceneData> scenes = {createUnitsScene(1000.0)};
-        exportScene(opts.outputDir, "units", scenes, 1000.0, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
+        exportScene(opts.outputDir, "units", scenes, 1000.0, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly, opts);
     } else if (opts.scene == "complex") {
         std::vector<SceneData> scenes = {createComplexScene()};
-        exportScene(opts.outputDir, "complex", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly);
+        exportScene(opts.outputDir, "complex", scenes, opts.unitScale, opts.gltfHolesMode == ExportOptions::HolesMode::OuterOnly, opts);
     } else {
         std::cerr << "Unknown scene: " << opts.scene << "\n";
         return 1;

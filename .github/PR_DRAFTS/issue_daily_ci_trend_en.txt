@@ -1,0 +1,21 @@
+Issue — Daily CI: add 7‑day trend and artifact lookup guardrails
+
+Scope
+- Render a 7‑day trend row (success/failure, p50/p95) using existing summaries.
+- Keep artifact fallback names in sync with workflow files across Ubuntu/macOS/Windows.
+
+Tasks
+- Use `scripts/ci_trend_summary.sh` to emit the 7‑day section into `CI_DAILY_STATUS.md`.
+- Ensure artifact listing/debug output remains and periodically verify names match workflow files.
+
+Acceptance
+- Daily CI generates successfully each day with a 7‑day row; missing artifacts are clearly listed in the comment.
+
+References
+- `.github/workflows/daily-ci-status.yml`
+- `scripts/ci_trend_summary.sh`
+
+Labels/Milestone
+- labels: ci, observability, enhancement
+- milestone: v0.3.1
+

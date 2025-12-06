@@ -83,6 +83,20 @@ jobs:
           echo "VCPKG_MAX_CONCURRENCY=1" >> $GITHUB_ENV
           echo "VCPKG_DEFAULT_BINARY_CACHE=$GITHUB_WORKSPACE/vcpkg-cache" >> $GITHUB_ENV
 
+      - name: Snapshot tool versions
+        shell: bash
+        run: |
+          {
+            echo "# Windows Nightly Environment Snapshot";
+            echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')";
+            echo;
+            echo "## vcpkg"; vcpkg version || true; echo;
+            echo "## cmake"; cmake --version || true; echo;
+            echo "## ninja"; ninja --version || true; echo;
+            echo "## cl"; which cl.exe || where cl.exe || true; echo;
+          } > env_snapshot.md
+          echo "Snapshot created:" >&2; cat env_snapshot.md >&2 || true
+
       - name: Configure (strict, with mirror optimization)
         shell: bash
         timeout-minutes: 20
@@ -131,3 +145,4 @@ jobs:
             build/CMakeFiles/CMakeConfigureLog.yaml
             build/**/CMakeError.log
             build/**/CMakeOutput.log
+            env_snapshot.md
