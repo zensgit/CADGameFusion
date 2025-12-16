@@ -27,7 +27,7 @@ else()
 endif()
 
 # Optional dependencies (don't fail if not found)
-find_path(EARCUT_INCLUDE_DIR NAMES mapbox/earcut.hpp PATHS ${CMAKE_PREFIX_PATH}/include NO_DEFAULT_PATH)
+find_path(EARCUT_INCLUDE_DIR NAMES mapbox/earcut.hpp)
 if(EARCUT_INCLUDE_DIR)
     target_compile_definitions(core PUBLIC USE_EARCUT)
     target_include_directories(core PRIVATE ${EARCUT_INCLUDE_DIR})
@@ -37,12 +37,7 @@ else()
 endif()
 
 # Clipper2 (boolean/offset). Header-only usage; enable if headers are found.
-find_path(CLIPPER2_INCLUDE_DIR NAMES clipper2/clipper.h
-    PATHS
-        ${CMAKE_PREFIX_PATH}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg/installed/${VCPKG_TARGET_TRIPLET}/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../vcpkg/installed/x64-linux/include
-    NO_DEFAULT_PATH)
+find_path(CLIPPER2_INCLUDE_DIR NAMES clipper2/clipper.h)
 if(CLIPPER2_INCLUDE_DIR)
     target_compile_definitions(core PUBLIC USE_CLIPPER2)
     target_include_directories(core PRIVATE ${CLIPPER2_INCLUDE_DIR})
