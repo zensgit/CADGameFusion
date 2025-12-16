@@ -19,7 +19,7 @@ struct ExportResult {
     QString validationReport;
 };
 
-enum ExportKind { ExportJSON = 1, ExportGLTF = 2 };
+enum ExportKind { ExportJSON = 1, ExportGLTF = 2, ExportDXF = 4 };
 
 // Simple exporter: writes per-group JSON (rings) and/or a minimal glTF
 ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, int kinds, double unitScale,

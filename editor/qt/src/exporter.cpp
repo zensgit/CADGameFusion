@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QVector3D>
+#include <QTextStream>
 
 #include "core/core_c_api.h"
 
@@ -37,6 +38,45 @@ static double signedArea(const QVector<QPointF>& ring) {
     return 0.5 * a;
 }
 
+static bool writeDXF(const QString& filename, const QVector<ExportItem>& items, double unitScale) {
+    QFile f(filename);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    QTextStream out(&f);
+
+    // Header
+    out << "0\nSECTION\n2\nHEADER\n0\nENDSEC\n";
+
+    // Entities
+    out << "0\nSECTION\n2\nENTITIES\n";
+
+    for (const auto& item : items) {
+        for (const auto& ring : item.rings) {
+            if (ring.size() < 2) continue;
+
+            bool closed = (ring.first() == ring.last());
+            int count = ring.size();
+            if (closed) count--; // Don't write the duplicate last vertex for LWPOLYLINE logic if we set flag 1
+            if (count < 2) continue;
+
+            out << "0\nLWPOLYLINE\n";
+            out << "8\n0\n"; // Layer 0
+            out << "90\n" << count << "\n"; // Number of vertices
+            out << "70\n" << (closed ? 1 : 0) << "\n"; // 1 = Closed, 0 = Open
+
+            for (int i = 0; i < count; ++i) {
+                const auto& p = ring[i];
+                out << "10\n" << (p.x() * unitScale) << "\n";
+                out << "20\n" << (-p.y() * unitScale) << "\n"; // Flip Y for CAD
+            }
+        }
+    }
+
+    out << "0\nENDSEC\n";
+    out << "0\nEOF\n";
+    f.close();
+    return true;
+}
+
 ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, int kinds, double unitScale,
                         const QJsonObject& meta, bool writeRingRoles, bool includeHolesGLTF) {
     ExportResult res;
@@ -44,6 +84,16 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, 
     const QString sceneDir = makeSceneDir(dir);
     if (!dir.mkpath(sceneDir)) { res.error = "Failed to create scene dir"; return res; }
     QDir sdir(sceneDir);
+
+    // DXF Export
+    if (kinds & ExportDXF) {
+        const QString dxfName = sdir.filePath("scene.dxf");
+        if (writeDXF(dxfName, items, unitScale)) {
+            res.written << dxfName;
+        } else {
+            res.error += "Failed to write DXF. ";
+        }
+    }
 
     // Write per-group rings JSON with flattened pts and ring_counts
     for (const auto& it : items) {
@@ -202,6 +252,10 @@ QString validateExportedScene(const QString& sceneDir, int kinds) {
     QStringList lines;
     QDir d(sceneDir);
     if (!d.exists()) return "Scene dir does not exist";
+    if (kinds & ExportDXF) {
+        if (d.exists("scene.dxf")) lines << "DXF file: present";
+        else lines << "DXF file: missing";
+    }
     if (kinds & ExportJSON) {
         auto jsons = d.entryList(QStringList()<<"group_*.json", QDir::Files);
         lines << QString("JSON files: %1").arg(jsons.size());

@@ -249,6 +249,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(actExportJson, &QAction::triggered, [this]{ exportSceneActionImpl(ExportJSON); });
     auto* actExportGltf = fileMenu->addAction("Export Scene (glTF only)...");
     connect(actExportGltf, &QAction::triggered, [this]{ exportSceneActionImpl(ExportGLTF); });
+    auto* actExportDxf = fileMenu->addAction("Export Scene (DXF only)...");
+    connect(actExportDxf, &QAction::triggered, [this]{ exportSceneActionImpl(ExportDXF); });
     fileMenu->addSeparator();
     auto* actExportOpt = fileMenu->addAction("Export with Options...");
     connect(actExportOpt, &QAction::triggered, this, &MainWindow::exportWithOptions);

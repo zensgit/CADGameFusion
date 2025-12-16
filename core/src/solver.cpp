@@ -116,7 +116,8 @@ public:
                 if (best < 1e-12) return false;
                 if (piv!=i){ std::swap(A[piv], A[i]); std::swap(b[piv], b[i]); }
                 double diag = A[i][i];
-                for (size_t j=i;j<n;j++) A[i][j] /= diag; b[i] /= diag;
+                for (size_t j=i;j<n;j++) { A[i][j] /= diag; }
+                b[i] /= diag;
                 for (size_t k=0;k<n;k++) if (k!=i){ double f=A[k][i]; if (std::abs(f)>0){ for (size_t j=i;j<n;j++) A[k][j]-=f*A[i][j]; b[k]-=f*b[i]; } }
             }
             return true;

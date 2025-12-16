@@ -24,6 +24,7 @@ struct ExportOptions {
     bool emitNormals = false;           // add flat normals (0,0,1)
     bool emitUVs = false;               // add UV channel 0 (0,0)
     bool emitMaterialsStub = false;     // add single default material + primitive binding
+    bool emitDxf = false;               // emit DXF file
 };
 
 // Scene definitions
@@ -36,6 +37,35 @@ struct SceneData {
     double miterLimit;
     bool useDocUnit;
 };
+
+static void writeDXF(const std::string& filename, const SceneData& scene, double unitScale) {
+    std::ofstream out(filename);
+    if (!out.is_open()) return;
+
+    out << "0\nSECTION\n2\nHEADER\n0\nENDSEC\n";
+    out << "0\nSECTION\n2\nENTITIES\n";
+
+    size_t offset = 0;
+    for (int count : scene.ringCounts) {
+        if (count < 2) { offset += count; continue; }
+        
+        out << "0\nLWPOLYLINE\n";
+        out << "8\n0\n"; 
+        out << "90\n" << count << "\n";
+        out << "70\n1\n"; // Closed
+
+        for (int i = 0; i < count; ++i) {
+            const auto& p = scene.points[offset + i];
+            out << "10\n" << (p.x * unitScale) << "\n";
+            out << "20\n" << (-p.y * unitScale) << "\n"; // Y-flip
+        }
+        offset += count;
+    }
+
+    out << "0\nENDSEC\n";
+    out << "0\nEOF\n";
+    out.close();
+}
 
 static double signedArea(const std::vector<core_vec2>& pts, size_t start, size_t count) {
     if (count < 3) return 0.0;
@@ -486,6 +516,12 @@ void exportScene(const std::string& outputDir, const std::string& sceneName,
         // Write JSON
         std::string jsonPath = sceneDir + "/" + baseName + ".json";
         writeJSON(jsonPath, scene, unitScale);
+
+        // Write DXF if requested
+        if (opts.emitDxf) {
+            std::string dxfPath = sceneDir + "/mesh_" + baseName + ".dxf";
+            writeDXF(dxfPath, scene, unitScale);
+        }
         
         // Write glTF + bin (skip for multi-groups since they are JSON only)
         if (sceneName != "multi" || scenes.size() == 1) {
@@ -592,6 +628,8 @@ void parseArgs(int argc, char* argv[], ExportOptions& opts) {
             opts.emitUVs = true;
         } else if (arg == "--emit-materials-stub") {
             opts.emitMaterialsStub = true;
+        } else if (arg == "--dxf") {
+            opts.emitDxf = true;
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: export_cli [options]\n";
             std::cout << "  --out <dir>    Output directory (default: build/exports)\n";

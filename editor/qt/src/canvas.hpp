@@ -5,11 +5,21 @@
 #include <QPointF>
 #include <QColor>
 #include <QList>
+#include <QPainterPath>
+#include <QRectF>
 
 class CanvasWidget : public QWidget {
     Q_OBJECT
 public:
-    struct PolyVis { QVector<QPointF> pts; QColor color; int groupId; bool visible{true}; };
+    struct PolyVis { 
+        QVector<QPointF> pts; 
+        QColor color; 
+        int groupId; 
+        bool visible{true};
+        // Cache
+        QPainterPath cachePath;
+        QRectF aabb;
+    };
 
     explicit CanvasWidget(QWidget* parent = nullptr);
     void addPolyline(const QVector<QPointF>& poly);
@@ -52,6 +62,7 @@ protected:
 private:
     QPointF worldToScreen(const QPointF& p) const;
     QPointF screenToWorld(const QPointF& p) const;
+    void updatePolyCache(PolyVis& pv);
 
     double scale_ { 1.0 }; // pixels per world unit
     QPointF pan_ { 0.0, 0.0 }; // in pixels

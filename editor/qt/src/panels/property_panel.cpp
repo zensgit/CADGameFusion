@@ -63,7 +63,8 @@ void PropertyPanel::updateFromSelection(const QList<int>& entityIds) {
         // Always create a fresh checkbox for single selection
         m_visibleCheck = new QCheckBox(m_tree);
         m_visibleCheck->setTristate(false);
-        connect(m_visibleCheck, &QCheckBox::checkStateChanged, this, [this](Qt::CheckState state){
+        connect(m_visibleCheck, &QCheckBox::stateChanged, this, [this](int stateInt){
+            Qt::CheckState state = static_cast<Qt::CheckState>(stateInt);
             if (m_internalChange) return;
             if (m_currentSelection.isEmpty()) return;
             bool v = (state == Qt::Checked);
@@ -83,7 +84,8 @@ void PropertyPanel::updateFromSelection(const QList<int>& entityIds) {
         // Always create a fresh checkbox for multi-selection
         m_visibleCheck = new QCheckBox(m_tree);
         m_visibleCheck->setTristate(true);
-        connect(m_visibleCheck, &QCheckBox::checkStateChanged, this, [this](Qt::CheckState state){
+        connect(m_visibleCheck, &QCheckBox::stateChanged, this, [this](int stateInt){
+            Qt::CheckState state = static_cast<Qt::CheckState>(stateInt);
             if (m_internalChange) return;
             if (m_currentSelection.isEmpty()) return;
             if (state == Qt::PartiallyChecked) {
