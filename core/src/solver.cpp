@@ -1,5 +1,7 @@
 #include "core/solver.hpp"
 #include <cmath>
+#include <iostream>
+#include <Eigen/Dense>
 
 namespace core {
 
@@ -11,21 +13,10 @@ public:
     void setTolerance(double tol) override { tol_ = tol; }
 
     // NOTE: This is a stub that only evaluates residuals without modifying vars.
-    // It reports success if residuals are already within tolerance.
     SolveResult solve(std::vector<ConstraintSpec>& constraints) override {
-        double err2 = 0.0;
-        for (const auto& c : constraints) {
-            if (c.type == "horizontal" && c.vars.size() >= 2) {
-                // expects two vars: y0, y1
-                // This stub assumes value held externally; we can't update vars without a model.
-                // So residual = y1 - y0
-                // Here we can't read numeric values (no storage) — treat as zero-residual placeholder.
-            } else if (c.type == "distance" && c.value.has_value()) {
-                // Can't compute without numeric variables; skip.
-            }
-        }
-        SolveResult r; r.ok = (std::sqrt(err2) <= tol_); r.iterations = 0; r.finalError = std::sqrt(err2);
-        r.message = r.ok ? "Converged (no-op stub)" : "No model bound; cannot solve";
+        // Legacy stub
+        SolveResult r; r.ok = true; r.iterations = 0; r.finalError = 0.0;
+        r.message = "Converged (no-op stub)";
         return r;
     }
 
@@ -95,85 +86,80 @@ public:
         auto add_unique = [&](const VarRef& v){ for (auto& u : vars) if (u.id==v.id && u.key==v.key) return; vars.push_back(v); };
         for (const auto& c : constraints) for (const auto& v : c.vars) add_unique(v);
 
+        const size_t n = vars.size();
+        const size_t m = constraints.size();
+        if (n == 0 || m == 0) {
+             SolveResult out; out.ok = true; out.iterations = 0; out.finalError = 0.0; return out;
+        }
+
         // Current values snapshot
-        std::vector<double> x(vars.size(), 0.0);
-        for (size_t j=0;j<vars.size();++j){ bool okv=false; x[j]=get(vars[j], okv); (void)okv; }
-        auto write_x = [&](){ for (size_t j=0;j<vars.size();++j) set(vars[j], x[j]); };
+        Eigen::VectorXd x(n);
+        for (size_t j=0;j<n;j++){ bool okv=false; x[j]=get(vars[j], okv); }
+
+        auto write_x = [&](const Eigen::VectorXd& currX){ for (size_t j=0;j<n;j++) set(vars[j], currX[j]); };
 
         // Error norm function
         auto eval_norm = [&](){ double n=0.0; for (const auto& c: constraints){ bool okc=false; double rr=residual(c, okc); n += rr*rr; } return std::sqrt(n); };
 
-        write_x();
+        write_x(x);
         double prev = eval_norm();
         int it = 0;
-        // Damped Gauss-Newton (Levenberg-like) with finite-diff Jacobian
-        auto solveLinear = [](std::vector<std::vector<double>>& A, std::vector<double>& b)->bool{
-            const size_t n = A.size();
-            for (size_t i=0;i<n;i++) {
-                // partial pivot
-                size_t piv = i; double best = std::abs(A[i][i]);
-                for (size_t k=i+1;k<n;k++){ double v=std::abs(A[k][i]); if (v>best){best=v;piv=k;} }
-                if (best < 1e-12) return false;
-                if (piv!=i){ std::swap(A[piv], A[i]); std::swap(b[piv], b[i]); }
-                double diag = A[i][i];
-                for (size_t j=i;j<n;j++) { A[i][j] /= diag; }
-                b[i] /= diag;
-                for (size_t k=0;k<n;k++) if (k!=i){ double f=A[k][i]; if (std::abs(f)>0){ for (size_t j=i;j<n;j++) A[k][j]-=f*A[i][j]; b[k]-=f*b[i]; } }
-            }
-            return true;
-        };
-
         double lambda = 1e-3; // damping
-        for (; it < maxIters_; ++it) {
-            // Residuals at x
-            std::vector<double> rvec; rvec.reserve(constraints.size());
-            for (const auto& c : constraints){ bool okc=false; rvec.push_back(residual(c, okc)); }
 
-            // Finite-diff Jacobian J (m x n): J_ij = dr_i/dx_j
+        // Levenberg-Marquardt
+        for (; it < maxIters_; ++it) {
+            // 1. Residual vector
+            Eigen::VectorXd rvec(m);
+            for (size_t i=0; i<m; ++i) { bool okc=false; rvec[i] = residual(constraints[i], okc); }
+
+            // 2. Jacobian J (m x n)
+            Eigen::MatrixXd J(m, n);
             const double eps = 1e-6;
-            const size_t m = rvec.size();
-            const size_t n = vars.size();
-            std::vector<std::vector<double>> J(m, std::vector<double>(n, 0.0));
-            for (size_t j=0;j<n;j++){
+            for (size_t j=0; j<n; ++j) {
                 double xj = x[j];
-                set(vars[j], xj + eps);
-                for (size_t i=0;i<m;i++){ bool okc=false; double r2 = residual(constraints[i], okc); J[i][j] = (r2 - rvec[i]) / eps; }
-                set(vars[j], xj);
-            }
-            // Build normal equations: A = J^T J + lambda I, b = -J^T r
-            std::vector<std::vector<double>> A(n, std::vector<double>(n, 0.0));
-            std::vector<double> b(n, 0.0);
-            for (size_t j=0;j<n;j++){
-                for (size_t k=0;k<n;k++){
-                    double s=0.0; for (size_t i=0;i<m;i++) s += J[i][j]*J[i][k];
-                    A[j][k] = s + (j==k ? lambda : 0.0);
+                set(vars[j], xj + eps); // Perturb
+                for (size_t i=0; i<m; ++i) {
+                    bool okc=false;
+                    double r2 = residual(constraints[i], okc);
+                    J(i, j) = (r2 - rvec[i]) / eps;
                 }
-                double sj=0.0; for (size_t i=0;i<m;i++) sj += J[i][j]*rvec[i];
-                b[j] = -sj;
+                set(vars[j], xj); // Restore
             }
-            // Solve for delta
-            std::vector<std::vector<double>> A2 = A;
-            std::vector<double> b2 = b;
-            bool ok = solveLinear(A2, b2);
-            if (!ok) { lambda *= 10.0; continue; }
-            // Trial step
-            std::vector<double> newx = x; for (size_t j=0;j<n;j++) newx[j] = x[j] + b2[j];
-            for (size_t j=0;j<n;j++) set(vars[j], newx[j]);
-            double nn = eval_norm();
-            if (nn < prev - 1e-9) {
-                // accept, reduce damping
-                x.swap(newx); prev = nn; lambda = std::max(1e-12, lambda*0.5);
+
+            // 3. Normal Equations: (J^T J + lambda I) delta = -J^T r
+            Eigen::MatrixXd A = J.transpose() * J;
+            A.diagonal().array() += lambda;
+            Eigen::VectorXd b = -J.transpose() * rvec;
+
+            // Solve using LDLT (fast for symmetric positive definite)
+            // Or ColPivHouseholderQR for robustness if rank deficient
+            Eigen::VectorXd delta = A.ldlt().solve(b);
+
+            // 4. Update and check
+            Eigen::VectorXd newX = x + delta;
+            write_x(newX);
+            double newNorm = eval_norm();
+
+            if (newNorm < prev) {
+                // Accept step
+                x = newX;
+                prev = newNorm;
+                lambda = std::max(1e-10, lambda * 0.1);
             } else {
-                // reject, increase damping
-                for (size_t j=0;j<n;j++) set(vars[j], x[j]);
-                lambda *= 4.0; // more conservative increase
+                // Reject step
+                write_x(x); // Reset world
+                lambda *= 10.0;
             }
+
             if (prev <= tol_) break;
         }
 
-        write_x();
-        SolveResult out; out.ok = (prev <= tol_); out.iterations = it; out.finalError = prev;
-        out.message = (out.ok ? "Converged (gradient descent)" : "Stopped (max iters or stagnation)");
+        write_x(x);
+        SolveResult out; 
+        out.ok = (prev <= tol_); 
+        out.iterations = it; 
+        out.finalError = prev;
+        out.message = (out.ok ? "Converged (Eigen LM)" : "Stopped (max iters or stagnation)");
         return out;
     }
 };

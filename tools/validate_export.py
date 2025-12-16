@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Export validation script for CADGameFusion
-Validates the structure and consistency of exported JSON and glTF files
+Validates the structure and consistency of exported JSON, glTF, and DXF files
 """
 
 import json
@@ -35,11 +35,12 @@ class ExportValidator:
             self.errors.append(f"Directory does not exist: {self.scene_dir}")
             return False
         
-        # Find all group JSON files
+        # Find all group JSON, glTF, and DXF files
         json_files = list(self.scene_dir.glob("group_*.json"))
         gltf_files = list(self.scene_dir.glob("mesh_group_*.gltf"))
+        dxf_files = list(self.scene_dir.glob("mesh_group_*.dxf"))
         
-        print(f"[INFO] Found {len(json_files)} JSON files and {len(gltf_files)} glTF files")
+        print(f"[INFO] Found {len(json_files)} JSON, {len(gltf_files)} glTF, {len(dxf_files)} DXF files")
         
         # Validate each JSON file
         for json_file in json_files:
@@ -48,9 +49,13 @@ class ExportValidator:
         # Validate each glTF file
         for gltf_file in gltf_files:
             self.validate_gltf(gltf_file)
+
+        # Validate each DXF file
+        for dxf_file in dxf_files:
+            self.validate_dxf(dxf_file)
         
-        # Check consistency between JSON and glTF
-        self.check_consistency(json_files, gltf_files)
+        # Check consistency between JSON, glTF, and DXF
+        self.check_consistency(json_files, gltf_files, dxf_files)
         
         # Print results
         self.print_results()
@@ -167,25 +172,33 @@ class ExportValidator:
                 self.info.append(f"  [OK] Has {field} ({count} items)")
         
         # Check binary file exists
-        bin_path = gltf_path.with_suffix('.bin')
-        if not bin_path.exists():
-            self.errors.append(f"{gltf_path.name}: Missing binary file {bin_path.name}")
-        else:
-            bin_size = bin_path.stat().st_size
-            self.info.append(f"  [OK] Binary file exists ({bin_size} bytes)")
-            
-            # Validate buffer size matches binary
-            if 'buffers' in data and data['buffers']:
-                buffer = data['buffers'][0]
-                if 'byteLength' in buffer:
-                    if buffer['byteLength'] != bin_size:
-                        self.errors.append(
-                            f"{gltf_path.name}: Buffer size mismatch - "
-                            f"glTF says {buffer['byteLength']}, binary is {bin_size}"
-                        )
-                    else:
-                        self.info.append(f"  [OK] Buffer size matches binary")
-        
+        # In tinygltf/embedded buffer mode, buffer[0].uri might be missing (embedded) or data URI
+        # But we explicitly requested separate binary in our code if it wasn't embedded
+        # Wait, if buffer.uri is missing, it's either embedded (data:...) or loaded from memory (GLB)
+        # But here we assume .bin file.
+        if 'buffers' in data and data['buffers']:
+            buffer = data['buffers'][0]
+            uri = buffer.get('uri', '')
+            if uri.endswith('.bin'):
+                bin_path = gltf_path.parent / uri
+                if not bin_path.exists():
+                    self.errors.append(f"{gltf_path.name}: Missing binary file {bin_path.name}")
+                else:
+                    bin_size = bin_path.stat().st_size
+                    self.info.append(f"  [OK] Binary file exists ({bin_size} bytes)")
+                    if 'byteLength' in buffer:
+                        if buffer['byteLength'] != bin_size:
+                            self.errors.append(
+                                f"{gltf_path.name}: Buffer size mismatch - "
+                                f"glTF says {buffer['byteLength']}, binary is {bin_size}"
+                            )
+                        else:
+                            self.info.append(f"  [OK] Buffer size matches binary")
+            elif uri.startswith('data:'):
+                self.info.append(f"  [OK] Buffer is embedded data URI")
+            else:
+                self.warnings.append(f"{gltf_path.name}: Buffer URI is unexpected or empty")
+
         # Check meshes
         if 'meshes' in data and data['meshes']:
             mesh = data['meshes'][0]
@@ -236,17 +249,22 @@ class ExportValidator:
                         exp_ind_bytes = ind_count * 4
                         if int(ind_bv.get('byteLength',0)) != exp_ind_bytes:
                             self.warnings.append(f"{gltf_path.name}: indices bufferView length {ind_bv.get('byteLength')} != {exp_ind_bytes}")
-                        # Full index range check
-                        bin_path = gltf_path.with_suffix('.bin')
-                        with open(bin_path, 'rb') as bf:
-                            start = int(ind_bv.get('byteOffset',0)) + int(ind_acc.get('byteOffset',0))
-                            bf.seek(start)
-                            data_bytes = bf.read(exp_ind_bytes)
-                        for i in range(0, len(data_bytes), 4):
-                            idx = struct.unpack('<I', data_bytes[i:i+4])[0]
-                            if idx >= pos_count:
-                                self.errors.append(f"{gltf_path.name}: index {idx} out of range (verts={pos_count})")
-                                break
+                        
+                        # Full index range check if binary is external (simple check)
+                        buffer = buffers[0]
+                        uri = buffer.get('uri', '')
+                        if uri.endswith('.bin'):
+                            bin_path = gltf_path.parent / uri
+                            if bin_path.exists():
+                                with open(bin_path, 'rb') as bf:
+                                    start = int(ind_bv.get('byteOffset',0)) + int(ind_acc.get('byteOffset',0))
+                                    bf.seek(start)
+                                    data_bytes = bf.read(exp_ind_bytes)
+                                for i in range(0, len(data_bytes), 4):
+                                    idx = struct.unpack('<I', data_bytes[i:i+4])[0]
+                                    if idx >= pos_count:
+                                        self.errors.append(f"{gltf_path.name}: index {idx} out of range (verts={pos_count})")
+                                        break
                         # Experimental extras (normals / uvs / material)
                         if 'NORMAL' in prim.get('attributes', {}):
                             n_idx = prim['attributes']['NORMAL']
@@ -272,16 +290,46 @@ class ExportValidator:
                     self.errors.append(f"{gltf_path.name}: consistency check failed: {ex}")
         
         return True
+
+    def validate_dxf(self, dxf_path: Path) -> bool:
+        """Validate a single DXF export file (Basic text check)"""
+        print(f"\n[DXF] Validating {dxf_path.name}...")
+        
+        try:
+            with open(dxf_path, 'r') as f:
+                content = f.read()
+        except Exception as e:
+            self.errors.append(f"{dxf_path.name}: Failed to read DXF - {e}")
+            return False
+        
+        # Check required sections
+        if "SECTION\n2\nHEADER" not in content:
+            self.errors.append(f"{dxf_path.name}: Missing HEADER section")
+        if "SECTION\n2\nENTITIES" not in content:
+            self.errors.append(f"{dxf_path.name}: Missing ENTITIES section")
+        if "EOF" not in content:
+            self.errors.append(f"{dxf_path.name}: Missing EOF")
+            
+        # Check for Entities
+        if "LWPOLYLINE" in content:
+            self.info.append(f"  [OK] Found LWPOLYLINE entities")
+        else:
+            self.warnings.append(f"{dxf_path.name}: No LWPOLYLINE found (empty scene?)")
+            
+        # Basic layer check
+        if "8\n0\n" in content:
+             self.info.append(f"  [OK] Found Layer 0 usage")
+             
+        return True
     
-    def check_consistency(self, json_files: List[Path], gltf_files: List[Path]):
-        """Check consistency between JSON and glTF exports"""
+    def check_consistency(self, json_files: List[Path], gltf_files: List[Path], dxf_files: List[Path]):
+        """Check consistency between JSON, glTF, and DXF exports"""
         print(f"\n[CHECK] Verifying consistency...")
         
         # Extract group IDs from filenames
         json_groups = set()
         for f in json_files:
-            # Extract number from group_N.json
-            name = f.stem  # 'group_0'
+            name = f.stem
             if name.startswith('group_'):
                 try:
                     group_id = int(name.split('_')[1])
@@ -291,26 +339,32 @@ class ExportValidator:
         
         gltf_groups = set()
         for f in gltf_files:
-            # Extract number from mesh_group_N.gltf
-            name = f.stem  # 'mesh_group_0'
+            name = f.stem
             if name.startswith('mesh_group_'):
                 try:
                     group_id = int(name.split('_')[2])
                     gltf_groups.add(group_id)
                 except (IndexError, ValueError):
                     pass
+                    
+        dxf_groups = set()
+        for f in dxf_files:
+            name = f.stem
+            if name.startswith('mesh_group_'):
+                try:
+                    group_id = int(name.split('_')[2])
+                    dxf_groups.add(group_id)
+                except (IndexError, ValueError):
+                    pass
         
-        # Check if same groups are exported
-        if json_groups and gltf_groups:
-            if json_groups == gltf_groups:
-                self.info.append(f"  [OK] Consistent group IDs: {sorted(json_groups)}")
-            else:
-                only_json = json_groups - gltf_groups
-                only_gltf = gltf_groups - json_groups
-                if only_json:
-                    self.warnings.append(f"Groups only in JSON: {sorted(only_json)}")
-                if only_gltf:
-                    self.warnings.append(f"Groups only in glTF: {sorted(only_gltf)}")
+        # Check if same groups are exported (if files exist)
+        if json_groups and gltf_files:
+            if json_groups != gltf_groups:
+                self.warnings.append(f"Inconsistent groups JSON vs glTF: {json_groups} vs {gltf_groups}")
+        
+        if json_groups and dxf_files:
+            if json_groups != dxf_groups:
+                self.warnings.append(f"Inconsistent groups JSON vs DXF: {json_groups} vs {dxf_groups}")
     
     def print_results(self):
         """Print validation results"""
@@ -381,6 +435,7 @@ def main():
             # Compute stats
             json_files = sorted(scene_path.glob('group_*.json'))
             gltf_files = sorted(scene_path.glob('mesh_group_*.gltf'))
+            dxf_files = sorted(scene_path.glob('mesh_group_*.dxf'))
             json_groups = len(json_files)
             json_points = 0
             json_rings = 0
@@ -412,7 +467,7 @@ def main():
                     pass
             triangles = gltf_indices // 3 if gltf_indices else 0
             ok_flag = 'YES' if success else 'NO'
-            line = f"scene={scene_name}, json_groups={json_groups}, json_points={json_points}, json_rings={json_rings}, gltf_vertices={gltf_vertices if gltf_files else 'NA'}, gltf_indices={gltf_indices if gltf_files else 'NA'}, triangles={triangles if gltf_files else 'NA'}, ok={ok_flag}\n"
+            line = f"scene={scene_name}, json_groups={json_groups}, json_points={json_points}, json_rings={json_rings}, gltf_vertices={gltf_vertices}, dxf_files={len(dxf_files)}, ok={ok_flag}\n"
             with open(args.stats_out, 'a', encoding='utf-8') as outf:
                 outf.write(line)
         except Exception as ex:

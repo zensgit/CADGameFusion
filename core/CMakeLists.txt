@@ -36,6 +36,15 @@ else()
     message(STATUS "Earcut not found - triangulation will use stub")
 endif()
 
+# TinyGLTF (header-only, for glTF export)
+find_path(TINYGLTF_INCLUDE_DIR NAMES tiny_gltf.h)
+if(TINYGLTF_INCLUDE_DIR)
+    target_include_directories(core PRIVATE ${TINYGLTF_INCLUDE_DIR})
+    message(STATUS "TinyGLTF found")
+else()
+    message(STATUS "TinyGLTF not found - glTF export will not be available")
+endif()
+
 # Clipper2 (boolean/offset). Header-only usage; enable if headers are found.
 find_path(CLIPPER2_INCLUDE_DIR NAMES clipper2/clipper.h)
 if(CLIPPER2_INCLUDE_DIR)
@@ -56,6 +65,15 @@ if(CLIPPER2_INCLUDE_DIR)
     endif()
 else()
     message(STATUS "Clipper2 not found - boolean/offset will be stubs")
+endif()
+
+# Eigen3 (header-only, for numerical operations)
+find_package(Eigen3 CONFIG REQUIRED QUIET) # QUIET so CMake won't print status on success
+if(Eigen3_FOUND)
+    target_link_libraries(core PRIVATE Eigen3::Eigen)
+    message(STATUS "Eigen3 found and linked")
+else()
+    message(WARNING "Eigen3 not found. Numerical operations might be less optimized or unavailable.")
 endif()
 
 # Core C API shared library

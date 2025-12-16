@@ -3,6 +3,15 @@ cmake_minimum_required(VERSION 3.16)
 # Export CLI tool
 add_executable(export_cli export_cli.cpp)
 
+# Find TinyGLTF
+find_path(TINYGLTF_INCLUDE_DIR NAMES tiny_gltf.h)
+if(TINYGLTF_INCLUDE_DIR)
+    message(STATUS "TinyGLTF found for tools: ${TINYGLTF_INCLUDE_DIR}")
+    target_include_directories(export_cli PRIVATE ${TINYGLTF_INCLUDE_DIR})
+else()
+    message(WARNING "TinyGLTF not found for tools")
+endif()
+
 # Link with core library
 target_link_libraries(export_cli PRIVATE core_c)
 

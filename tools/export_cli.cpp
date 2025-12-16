@@ -10,6 +10,10 @@
 #include <cmath>
 #include <limits>
 #include "core/core_c_api.h"
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <tiny_gltf.h>
 
 namespace fs = std::filesystem;
 
@@ -348,9 +352,18 @@ void writeJSON(const std::string& filepath, const SceneData& scene, double unitS
 }
 
 // EXP_FEATURES: signature extended with ExportOptions for experimental flags (normals/uvs/materials)
-void writeGLTF(const std::string& gltfPath, const std::string& binPath,
+void writeGLTF(const std::string& gltfPath, const std::string& binPath, 
                const SceneData& scene, bool outerOnlyFan, const ExportOptions& opts) {
-    // Triangulate the polygon
+    tinygltf::Model gltfModel;
+    tinygltf::Scene gltfScene;
+    tinygltf::Mesh gltfMesh;
+    tinygltf::Primitive gltfPrimitive;
+
+    // Asset
+    gltfModel.asset.version = "2.0";
+    gltfModel.asset.generator = "CADGameFusion_CLI_Exporter";
+
+    // 1. Triangulate the polygon
     std::vector<unsigned int> indices;
     int indexCount = 0;
     
@@ -401,10 +414,10 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
         indexCount = indices.size();
     }
     
-    // ---- EXP_FEATURES: rebuild binary & glTF with optional normals/uvs/materials ----
-    // Build position list (already partly done above) and optional arrays
-    std::vector<float> positions; positions.reserve(indices.size()*3);
+    // 2. Build positions, normals, UVs
+    std::vector<float> positions; positions.reserve(scene.points.size() * 3);
     size_t vertexCount = 0;
+
     if (outerOnlyFan) {
         int outerCount = scene.ringCounts.empty() ? 0 : scene.ringCounts[0];
         vertexCount = static_cast<size_t>(outerCount);
@@ -438,64 +451,164 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
         uvs.resize(vertexCount*2, 0.0f);
     }
 
-    size_t posBytes = positions.size()*sizeof(float);
-    size_t normalsBytes = normals.size()*sizeof(float);
-    size_t uvsBytes = uvs.size()*sizeof(float);
-    size_t idxBytes = indices.size()*sizeof(unsigned int);
-    size_t totalBytes = posBytes + normalsBytes + uvsBytes + idxBytes;
+    // 3. Create Buffer
+    tinygltf::Buffer buffer;
+    size_t totalBufferSize = positions.size() * sizeof(float) +
+                             normals.size() * sizeof(float) +
+                             uvs.size() * sizeof(float) +
+                             indices.size() * sizeof(unsigned int);
+    buffer.data.resize(totalBufferSize);
+    unsigned char* bufferPtr = buffer.data.data();
+    size_t currentOffset = 0;
 
-    std::ofstream binFile(binPath, std::ios::binary);
-    if (!binFile.is_open()) { std::cerr << "Failed to open " << binPath << " for writing\n"; return; }
-    binFile.write(reinterpret_cast<const char*>(positions.data()), posBytes);
-    if (!normals.empty()) binFile.write(reinterpret_cast<const char*>(normals.data()), normalsBytes);
-    if (!uvs.empty()) binFile.write(reinterpret_cast<const char*>(uvs.data()), uvsBytes);
-    binFile.write(reinterpret_cast<const char*>(indices.data()), idxBytes);
-    binFile.close();
+    // Positions
+    std::memcpy(bufferPtr + currentOffset, positions.data(), positions.size() * sizeof(float));
+    currentOffset += positions.size() * sizeof(float);
+    // Normals
+    if (!normals.empty()) {
+        std::memcpy(bufferPtr + currentOffset, normals.data(), normals.size() * sizeof(float));
+        currentOffset += normals.size() * sizeof(float);
+    }
+    // UVs
+    if (!uvs.empty()) {
+        std::memcpy(bufferPtr + currentOffset, uvs.data(), uvs.size() * sizeof(float));
+        currentOffset += uvs.size() * sizeof(float);
+    }
+    // Indices
+    std::memcpy(bufferPtr + currentOffset, indices.data(), indices.size() * sizeof(unsigned int));
+    currentOffset += indices.size() * sizeof(unsigned int);
 
-    // POSITION bounds
-    float minX=std::numeric_limits<float>::infinity(), minY=minX;
-    float maxX=-std::numeric_limits<float>::infinity(), maxY=maxX;
-    for (size_t i=0;i+2<positions.size(); i+=3) {
+    buffer.uri = fs::path(binPath).filename().string();
+    gltfModel.buffers.push_back(buffer);
+
+    // 4. Create BufferViews and Accessors
+    int bufferViewIdx = 0;
+    int accessorIdx = 0;
+    currentOffset = 0; // Reset offset for buffer views
+
+    // Positions
+    tinygltf::BufferView posBufferView;
+    posBufferView.buffer = 0;
+    posBufferView.byteOffset = currentOffset;
+    posBufferView.byteLength = positions.size() * sizeof(float);
+    posBufferView.target = TINYGLTF_TARGET_ARRAY_BUFFER;
+    gltfModel.bufferViews.push_back(posBufferView);
+    currentOffset += posBufferView.byteLength;
+
+    tinygltf::Accessor posAccessor;
+    posAccessor.bufferView = bufferViewIdx++;
+    posAccessor.byteOffset = 0;
+    posAccessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+    posAccessor.count = vertexCount;
+    posAccessor.type = TINYGLTF_TYPE_VEC3;
+    float minX = std::numeric_limits<float>::infinity(), minY = minX, minZ = 0.0f;
+    float maxX = -std::numeric_limits<float>::infinity(), maxY = maxX, maxZ = 0.0f;
+    for (size_t i=0; i+2 < positions.size(); i+=3) {
         float x=positions[i], y=positions[i+1];
         if (x<minX) minX=x; if (x>maxX) maxX=x;
         if (y<minY) minY=y; if (y>maxY) maxY=y;
     }
-    if (!std::isfinite(minX)) { minX=minY=0.0f; maxX=maxY=0.0f; }
+    if (!std::isfinite(minX)) { minX=minY=0.0f; maxX=maxY=0.0f; } // Handle empty case
+    posAccessor.minValues = {static_cast<double>(minX), static_cast<double>(minY), static_cast<double>(minZ)};
+    posAccessor.maxValues = {static_cast<double>(maxX), static_cast<double>(maxY), static_cast<double>(maxZ)};
+    gltfModel.accessors.push_back(posAccessor);
+    int posAccessorIdx = accessorIdx++;
 
-    std::ofstream gltf(gltfPath);
-    if (!gltf.is_open()) { std::cerr << "Failed to open " << gltfPath << " for writing\n"; return; }
-    gltf << "{\n  \"asset\": { \"version\": \"2.0\" },\n";
-    gltf << "  \"buffers\": [ { \"uri\": \"" << fs::path(binPath).filename().string() << "\", \"byteLength\": " << totalBytes << " } ],\n";
-    gltf << "  \"bufferViews\": [\n";
-    size_t cursor = 0; int view = 0;
-    int posView = view; gltf << "    { \"buffer\": 0, \"byteOffset\": 0, \"byteLength\": " << posBytes << ", \"target\": 34962 }"; cursor += posBytes; view++;
-    int normalsView = -1;
-    if (opts.emitNormals) { normalsView = view; gltf << ",\n    { \"buffer\": 0, \"byteOffset\": " << cursor << ", \"byteLength\": " << normalsBytes << ", \"target\": 34962 }"; cursor+=normalsBytes; view++; }
-    int uvsView = -1;
-    if (opts.emitUVs) { uvsView = view; gltf << ",\n    { \"buffer\": 0, \"byteOffset\": " << cursor << ", \"byteLength\": " << uvsBytes << ", \"target\": 34962 }"; cursor+=uvsBytes; view++; }
-    int idxView = view; gltf << ",\n    { \"buffer\": 0, \"byteOffset\": " << cursor << ", \"byteLength\": " << idxBytes << ", \"target\": 34963 }\n  ],\n";
+    // Normals
+    int normalAccessorIdx = -1;
+    if (!normals.empty()) {
+        tinygltf::BufferView normalBufferView;
+        normalBufferView.buffer = 0;
+        normalBufferView.byteOffset = currentOffset;
+        normalBufferView.byteLength = normals.size() * sizeof(float);
+        normalBufferView.target = TINYGLTF_TARGET_ARRAY_BUFFER;
+        gltfModel.bufferViews.push_back(normalBufferView);
+        currentOffset += normalBufferView.byteLength;
 
-    gltf << "  \"accessors\": [\n";
-    int accessor = 0;
-    int posAccessor = accessor; gltf << "    { \"bufferView\": " << posView << ", \"byteOffset\": 0, \"componentType\": 5126, \"count\": " << vertexCount << ", \"type\": \"VEC3\", \"min\": [" << minX << "," << minY << ",0], \"max\": [" << maxX << "," << maxY << ",0] }"; accessor++;
-    int normalAccessor=-1;
-    if (opts.emitNormals) { normalAccessor = accessor; gltf << ",\n    { \"bufferView\": " << normalsView << ", \"byteOffset\": 0, \"componentType\": 5126, \"count\": " << vertexCount << ", \"type\": \"VEC3\" }"; accessor++; }
-    int uvAccessor=-1;
-    if (opts.emitUVs) { uvAccessor = accessor; gltf << ",\n    { \"bufferView\": " << uvsView << ", \"byteOffset\": 0, \"componentType\": 5126, \"count\": " << vertexCount << ", \"type\": \"VEC2\" }"; accessor++; }
-    int idxAccessor = accessor; gltf << ",\n    { \"bufferView\": " << idxView << ", \"byteOffset\": 0, \"componentType\": 5125, \"count\": " << indices.size() << ", \"type\": \"SCALAR\" }\n  ],\n";
-
-    gltf << "  \"meshes\": [\n    { \"primitives\": [ { \"attributes\": { \"POSITION\": " << posAccessor;
-    if (normalAccessor>=0) gltf << ", \"NORMAL\": " << normalAccessor;
-    if (uvAccessor>=0) gltf << ", \"TEXCOORD_0\": " << uvAccessor;
-    gltf << " }, \"indices\": " << idxAccessor << ", \"mode\": 4";
-    if (opts.emitMaterialsStub) gltf << ", \"material\": 0";
-    gltf << " } ] }\n  ],\n";
-    if (opts.emitMaterialsStub) {
-        gltf << "  \"materials\": [ { \"name\": \"Default\", \"pbrMetallicRoughness\": { \"baseColorFactor\": [1,1,1,1], \"metallicFactor\": 0, \"roughnessFactor\": 1 } } ],\n";
+        tinygltf::Accessor normalAccessor;
+        normalAccessor.bufferView = bufferViewIdx++;
+        normalAccessor.byteOffset = 0;
+        normalAccessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+        normalAccessor.count = vertexCount;
+        normalAccessor.type = TINYGLTF_TYPE_VEC3;
+        gltfModel.accessors.push_back(normalAccessor);
+        normalAccessorIdx = accessorIdx++;
     }
-    gltf << "  \"nodes\": [ { \"mesh\": 0 } ],\n  \"scenes\": [ { \"nodes\": [0] } ],\n  \"scene\": 0\n}";
-    gltf.close();
-    // ---- EXP_FEATURES END ----
+
+    // UVs
+    int uvAccessorIdx = -1;
+    if (!uvs.empty()) {
+        tinygltf::BufferView uvBufferView;
+        uvBufferView.buffer = 0;
+        uvBufferView.byteOffset = currentOffset;
+        uvBufferView.byteLength = uvs.size() * sizeof(float);
+        uvBufferView.target = TINYGLTF_TARGET_ARRAY_BUFFER;
+        gltfModel.bufferViews.push_back(uvBufferView);
+        currentOffset += uvBufferView.byteLength;
+
+        tinygltf::Accessor uvAccessor;
+        uvAccessor.bufferView = bufferViewIdx++;
+        uvAccessor.byteOffset = 0;
+        uvAccessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+        uvAccessor.count = vertexCount;
+        uvAccessor.type = TINYGLTF_TYPE_VEC2;
+        gltfModel.accessors.push_back(uvAccessor);
+        uvAccessorIdx = accessorIdx++;
+    }
+
+    // Indices
+    tinygltf::BufferView idxBufferView;
+    idxBufferView.buffer = 0;
+    idxBufferView.byteOffset = currentOffset;
+    idxBufferView.byteLength = indices.size() * sizeof(unsigned int);
+    idxBufferView.target = TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER;
+    gltfModel.bufferViews.push_back(idxBufferView);
+    currentOffset += idxBufferView.byteLength;
+
+    tinygltf::Accessor idxAccessor;
+    idxAccessor.bufferView = bufferViewIdx++;
+    idxAccessor.byteOffset = 0;
+    idxAccessor.componentType = TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
+    idxAccessor.count = indices.size();
+    idxAccessor.type = TINYGLTF_TYPE_SCALAR;
+    gltfModel.accessors.push_back(idxAccessor);
+    int idxAccessorIdx = accessorIdx++;
+
+    // 5. Create Primitive and Mesh
+    gltfPrimitive.attributes["POSITION"] = posAccessorIdx;
+    if (normalAccessorIdx != -1) gltfPrimitive.attributes["NORMAL"] = normalAccessorIdx;
+    if (uvAccessorIdx != -1) gltfPrimitive.attributes["TEXCOORD_0"] = uvAccessorIdx;
+    gltfPrimitive.indices = idxAccessorIdx;
+    gltfPrimitive.mode = TINYGLTF_MODE_TRIANGLES;
+
+    if (opts.emitMaterialsStub) {
+        tinygltf::Material material;
+        material.name = "Default";
+        material.pbrMetallicRoughness.baseColorFactor = {1.0, 1.0, 1.0, 1.0};
+        material.pbrMetallicRoughness.metallicFactor = 0.0;
+        material.pbrMetallicRoughness.roughnessFactor = 1.0;
+        gltfModel.materials.push_back(material);
+        gltfPrimitive.material = 0;
+    }
+
+    gltfMesh.primitives.push_back(gltfPrimitive);
+    gltfModel.meshes.push_back(gltfMesh);
+
+    // 6. Create Node and Scene
+    tinygltf::Node node;
+    node.mesh = 0;
+    gltfModel.nodes.push_back(node);
+
+    gltfScene.nodes.push_back(0);
+    gltfModel.scenes.push_back(gltfScene);
+    gltfModel.defaultScene = 0;
+
+    // 7. Save GLTF
+    tinygltf::TinyGLTF gltfLoader;
+    bool ret = gltfLoader.WriteGltfSceneToFile(&gltfModel, gltfPath, false, false, true, false);
+    if (!ret) {
+        std::cerr << "Failed to write glTF file: " << gltfPath << "\n";
+    }
 }
 
 void exportScene(const std::string& outputDir, const std::string& sceneName,
@@ -587,7 +700,7 @@ void exportScene(const std::string& outputDir, const std::string& sceneName,
                 if (js.contains("ring_roles")) for (const auto& rr : js.at("ring_roles")) roles.push_back(rr.get<int>());
             }
 
-            if (roles.empty() && !counts.empty()) { roles.push_back(0); for (size_t i=1;i<counts.size();++i) roles.push_back(1);}        
+            if (roles.empty() && !counts.empty()) { roles.push_back(0); for (size_t i=1;i<counts.size();++i) roles.push_back(1);}
             if (pts.empty() || counts.empty()) throw std::runtime_error("Spec must contain 'rings' or 'flat_pts' + 'ring_counts'");
 
             sc.points = std::move(pts); sc.ringCounts = std::move(counts); sc.ringRoles = std::move(roles);
@@ -595,7 +708,7 @@ void exportScene(const std::string& outputDir, const std::string& sceneName,
         };
 
         std::vector<SceneData> out;
-        if (j.contains("scenes")) { for (const auto& it : j.at("scenes")) out.push_back(parse_one(it)); }
+        if (j.contains("scenes")) { for (const auto& it : j.at("scenes")) out.push_back(parse_one(it)); } 
         else { out.push_back(parse_one(j)); }
         return out;
     #else
@@ -641,6 +754,7 @@ void parseArgs(int argc, char* argv[], ExportOptions& opts) {
             std::cout << "  --emit-normals           (experimental) add flat normals accessor\n";
             std::cout << "  --emit-uvs               (experimental) add UV accessor\n";
             std::cout << "  --emit-materials-stub    (experimental) add default material & primitive.material\n";
+            std::cout << "  --dxf                    emit DXF file\n";
             exit(0);
         }
     }

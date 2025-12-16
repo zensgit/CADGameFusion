@@ -3,6 +3,8 @@
   "version-string": "0.1.0",
   "dependencies": [
     "earcut-hpp",
-    "clipper2"
+    "clipper2",
+    "tinygltf",
+    "eigen3"
   ]
 }

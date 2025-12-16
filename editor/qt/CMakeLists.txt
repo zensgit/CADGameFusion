@@ -8,6 +8,14 @@ set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 COMPONENTS Widgets REQUIRED QUIET)
 
+# Find TinyGLTF
+find_path(TINYGLTF_INCLUDE_DIR NAMES tiny_gltf.h)
+if(TINYGLTF_INCLUDE_DIR)
+    message(STATUS "TinyGLTF found for editor: ${TINYGLTF_INCLUDE_DIR}")
+else()
+    message(WARNING "TinyGLTF not found for editor")
+endif()
+
 add_executable(editor_qt
     src/main.cpp
     src/mainwindow.cpp
@@ -33,6 +41,7 @@ add_executable(editor_qt
 target_include_directories(editor_qt PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${TINYGLTF_INCLUDE_DIR}
 )
 
 target_link_libraries(editor_qt PRIVATE Qt6::Widgets core_c core)
