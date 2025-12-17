@@ -6,6 +6,7 @@
 class CommandManager;
 class QMenu;
 class Project;
+class LayerPanel;
 
 class QListWidget;
 
@@ -45,6 +46,7 @@ private:
     bool performSave(const QString& path, bool updateCurrent);
 
     QListWidget* list_{};
+    LayerPanel* m_layerPanel{nullptr};
     // Persistent document context (for settings like unit scale)
     core::Document m_document;
     QUndoStack* m_undoStack{nullptr};

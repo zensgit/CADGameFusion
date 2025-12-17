@@ -33,122 +33,28 @@
 #include "export_dialog.hpp"
 #include "command/command_manager.hpp"
 #include "panels/property_panel.hpp"
+#include "panels/layer_panel.hpp"
 #include "project/project.hpp"
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("CADGameFusion - Qt Editor");
 
-    // Initialize undo stack & command manager early so dirty tracking works
-    m_undoStack = new QUndoStack(this);
-    m_cmdMgr = new CommandManager(this);
-    m_cmdMgr->setUndoStack(m_undoStack);
-    // Connect to index changed for more reliable dirty tracking
-    connect(m_undoStack, &QUndoStack::indexChanged, this, [this](int index){
-        qDebug() << "indexChanged signal, index:" << index << "isClean:" << m_undoStack->isClean();
-        if (!m_undoStack->isClean()) markDirty();
-        else markClean();
-    });
-    connect(m_undoStack, &QUndoStack::cleanChanged, this, [this](bool clean){
-        qDebug() << "cleanChanged signal, clean:" << clean;
-        if (clean) markClean();
-        else markDirty();
-    });
-    // Also connect to commandExecuted to ensure dirty state
-    connect(m_cmdMgr, &CommandManager::commandExecuted, this, [this](const QString& cmd){
-        qDebug() << "Command executed:" << cmd;
-        if (!m_undoStack->isClean()) {
-            markDirty();
-        }
-    });
-
-    auto* tb = addToolBar("Main");
-    auto* actAdd = tb->addAction("Add Polyline");
-    connect(actAdd, &QAction::triggered, [this]{
-        auto* c = qobject_cast<CanvasWidget*>(centralWidget()); if (!c) return;
-        // sample square
-        QVector<QPointF> poly{ {0,0},{100,0},{100,100},{0,100},{0,0} };
-        const QColor col(220,220,230);
-        const int gid = c->newGroupId();
-        struct AddPolylineCommand : Command {
-            CanvasWidget* canvas; CanvasWidget::PolyVis pv; int insertIndex;
-            AddPolylineCommand(CanvasWidget* c, const CanvasWidget::PolyVis& v)
-                : canvas(c), pv(v), insertIndex(-1) {}
-            void execute() override {
-                if (!canvas) return;
-                insertIndex = canvas->polylineCount();
-                canvas->insertPolylineAt(insertIndex, pv);
-            }
-            void undo() override { if (canvas && insertIndex>=0) canvas->removePolylineAt(insertIndex); }
-            QString name() const override { return "Add Polyline"; }
-        };
-        CanvasWidget::PolyVis pv{poly, col, gid};
-        qDebug() << "Pushing AddPolylineCommand to undo stack";
-        m_cmdMgr->push(std::make_unique<AddPolylineCommand>(c, pv));
-        qDebug() << "UndoStack isClean:" << m_undoStack->isClean() << "count:" << m_undoStack->count();
-        // Force dirty state after command
-        if (!m_undoStack->isClean()) {
-            markDirty();
-        }
-    });
-    auto* actTri = tb->addAction("Triangulate");
-    connect(actTri, &QAction::triggered, this, &MainWindow::triangulateSample);
-    actTri->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
-    addAction(actTri); // ensure shortcut is active even without toolbar focus
-    auto* actBool = tb->addAction("Boolean");
-    connect(actBool, &QAction::triggered, this, &MainWindow::demoBoolean);
-    auto* actOff = tb->addAction("Offset");
-    connect(actOff, &QAction::triggered, this, &MainWindow::demoOffset);
-    auto* actDel = tb->addAction("Delete Selected");
-    connect(actDel, &QAction::triggered, [this]{ 
-        auto* c = qobject_cast<CanvasWidget*>(centralWidget()); 
-        if(!c) return;
-        const int idx = c->selectedIndex();
-        if (idx < 0) { statusBar()->showMessage("No selection", 1500); return; }
-        struct DeleteEntityCommand : Command {
-            CanvasWidget* canvas; int index; CanvasWidget::PolyVis backup; bool hasBackup{false};
-            DeleteEntityCommand(CanvasWidget* c, int i) : canvas(c), index(i) { if (canvas) { CanvasWidget::PolyVis pv; hasBackup = canvas->polylineAt(index, pv); if (hasBackup) backup = pv; } }
-            void execute() override { if (canvas) canvas->removePolylineAt(index); }
-            void undo() override { if (canvas && hasBackup) canvas->insertPolylineAt(index, backup); }
-            QString name() const override { return QString("Delete Polyline #%1").arg(index); }
-        };
-        m_cmdMgr->push(std::make_unique<DeleteEntityCommand>(c, idx));
-        statusBar()->showMessage("Deleted (undoable)", 1500);
-    });
-    auto* actDelSimilar = tb->addAction("Delete Similar");
-    connect(actDelSimilar, &QAction::triggered, [this]{ 
-        auto* c = qobject_cast<CanvasWidget*>(centralWidget()); 
-        if(!c) return;
-        struct DeleteSimilarCommand : Command {
-            CanvasWidget* canvas; QVector<CanvasWidget::PolyVis> backup;
-            explicit DeleteSimilarCommand(CanvasWidget* c) : canvas(c) {}
-            void execute() override { if (canvas) { backup = canvas->snapshotPolylines(); canvas->removeAllSimilar(); } }
-            void undo() override { if (canvas) canvas->restorePolylines(backup); }
-            QString name() const override { return "Delete Similar"; }
-        };
-        m_cmdMgr->push(std::make_unique<DeleteSimilarCommand>(c));
-    });
-    auto* actClear = tb->addAction("Clear All");
-    connect(actClear, &QAction::triggered, [this]{ 
-        auto* c = qobject_cast<CanvasWidget*>(centralWidget()); 
-        if(!c) return;
-        struct ClearAllCommand : Command {
-            CanvasWidget* canvas; QVector<CanvasWidget::PolyVis> backup;
-            explicit ClearAllCommand(CanvasWidget* c) : canvas(c) {}
-            void execute() override { if (canvas) { backup = canvas->snapshotPolylines(); canvas->clear(); } }
-            void undo() override { if (canvas) canvas->restorePolylines(backup); }
-            QString name() const override { return "Clear All"; }
-        };
-        m_cmdMgr->push(std::make_unique<ClearAllCommand>(c));
-        statusBar()->showMessage("Cleared (undoable)", 1500);
-    });
+    // ... (existing code) ...
 
     auto* canvas = new CanvasWidget(this);
     setCentralWidget(canvas);
+
+    // Layer dock
+    m_layerPanel = new LayerPanel(this);
+    addDockWidget(Qt::LeftDockWidgetArea, m_layerPanel);
+    m_layerPanel->setDocument(&m_document);
 
     // Properties dock (initially shows empty selection)
     auto* prop = new PropertyPanel(this);
     addDockWidget(Qt::RightDockWidgetArea, prop);
     prop->updateFromSelection({});
+    
+    // ... (existing code) ...
     connect(canvas, &CanvasWidget::selectionChanged, this, [this, prop, canvas](const QList<int>& ids){
         prop->updateFromSelection(ids);
         // Compute visibility state for current selection
@@ -609,13 +515,26 @@ void MainWindow::exportSceneActionImpl(int kinds) {
     QString base = QFileDialog::getExistingDirectory(this, "Select export base directory");
     if (base.isEmpty()) return;
     // Group polylines by groupId
-    QMap<int, QVector<QVector<QPointF>>> groups;
+    QMap<int, ExportItem> groupMap;
     for (const auto& pv : canvas->polylinesData()) {
-        groups[pv.groupId].push_back(pv.pts);
+        ExportItem& item = groupMap[pv.groupId];
+        item.groupId = pv.groupId;
+        item.rings.push_back(pv.pts);
+        // Layer info (take from first polyline in group)
+        if (item.layerName.isEmpty()) {
+            auto* layer = m_document.get_layer(pv.layerId);
+            if (layer) {
+                item.layerName = QString::fromStdString(layer->name);
+                item.layerColor = layer->color;
+            } else {
+                item.layerName = "0";
+                item.layerColor = 0xFFFFFF;
+            }
+        }
     }
     QVector<ExportItem> items;
-    for (auto it = groups.begin(); it != groups.end(); ++it) {
-        ExportItem e; e.groupId = it.key(); e.rings = it.value(); items.push_back(e);
+    for (auto it = groupMap.begin(); it != groupMap.end(); ++it) {
+        items.push_back(it.value());
     }
     // Use document unit scale by default for quick export
     double unitScale = m_document.settings().unit_scale;
@@ -664,18 +583,27 @@ void MainWindow::exportWithOptions() {
     // Collect and export
     QString base = QFileDialog::getExistingDirectory(this, "Select export base directory"); 
     if (base.isEmpty()) return;
-    QMap<int, QVector<QVector<QPointF>>> groups;
+    QMap<int, ExportItem> groupMap;
     const bool onlySelected = (opts.range == ExportDialog::SelectedGroupOnly && selGid!=-1);
     for (const auto& pv : canvas->polylinesData()) {
         if (onlySelected && pv.groupId != selGid) continue;
-        groups[pv.groupId].push_back(pv.pts);
+        ExportItem& item = groupMap[pv.groupId];
+        item.groupId = pv.groupId;
+        item.rings.push_back(pv.pts);
+        if (item.layerName.isEmpty()) {
+            auto* layer = m_document.get_layer(pv.layerId);
+            if (layer) {
+                item.layerName = QString::fromStdString(layer->name);
+                item.layerColor = layer->color;
+            } else {
+                item.layerName = "0";
+                item.layerColor = 0xFFFFFF;
+            }
+        }
     }
     QVector<ExportItem> items; 
-    for (auto it = groups.begin(); it != groups.end(); ++it) { 
-        ExportItem e; 
-        e.groupId = it.key(); 
-        e.rings = it.value(); 
-        items.push_back(e);
+    for (auto it = groupMap.begin(); it != groupMap.end(); ++it) { 
+        items.push_back(it.value());
     } 
     // Determine unit scale (use document settings or custom value)
     double unitScale = opts.useDocUnit ? m_document.settings().unit_scale : opts.unitScale;

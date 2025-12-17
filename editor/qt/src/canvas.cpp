@@ -1,4 +1,5 @@
 #include "canvas.hpp"
+#include "core/document.hpp"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -31,6 +32,11 @@ void CanvasWidget::resizeEvent(QResizeEvent* event) {
     }
 }
 
+void CanvasWidget::setDocument(core::Document* doc) {
+    m_doc = doc;
+    update();
+}
+
 void CanvasWidget::updatePolyCache(PolyVis& pv) {
     pv.cachePath = QPainterPath();
     if (pv.pts.size() < 2) {
@@ -53,16 +59,16 @@ void CanvasWidget::updatePolyCache(PolyVis& pv) {
     pv.aabb = QRectF(QPointF(minX, minY), QPointF(maxX, maxY));
 }
 
-void CanvasWidget::addPolyline(const QVector<QPointF>& poly) {
-    PolyVis pv{poly, QColor(220,220,230), -1};
+void CanvasWidget::addPolyline(const QVector<QPointF>& poly, int layerId) {
+    PolyVis pv{poly, QColor(220,220,230), -1, true, layerId};
     updatePolyCache(pv);
     polylines_.push_back(pv);
     update();
     emit selectionChanged({});
 }
 
-void CanvasWidget::addPolylineColored(const QVector<QPointF>& poly, const QColor& color, int groupId) {
-    PolyVis pv{poly, color, groupId};
+void CanvasWidget::addPolylineColored(const QVector<QPointF>& poly, const QColor& color, int groupId, int layerId) {
+    PolyVis pv{poly, color, groupId, true, layerId};
     updatePolyCache(pv);
     polylines_.push_back(pv);
     update();
@@ -146,6 +152,11 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
         const auto& pv = polylines_[i];
         if (!pv.visible) continue;
         
+        if (m_doc) {
+            auto* layer = m_doc->get_layer(pv.layerId);
+            if (layer && !layer->visible) continue;
+        }
+
         QPen pen(pv.color, 2); 
         pen.setCosmetic(true);
         if (i == selected_) {

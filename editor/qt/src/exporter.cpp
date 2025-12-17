@@ -51,30 +51,57 @@ static bool writeDXF(const QString& filename, const QVector<ExportItem>& items, 
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
     QTextStream out(&f);
 
+    // Collect unique layers
+    QSet<QString> layerNames;
+    QMap<QString, uint32_t> layerColors;
+    layerNames.insert("0");
+    layerColors["0"] = 0xFFFFFF;
+
+    for(const auto& item : items) {
+        if(!item.layerName.isEmpty()) {
+            layerNames.insert(item.layerName);
+            layerColors[item.layerName] = item.layerColor;
+        }
+    }
+
     // Header
     out << "0\nSECTION\n2\nHEADER\n0\nENDSEC\n";
+
+    // Tables (Layers)
+    out << "0\nSECTION\n2\nTABLES\n";
+    out << "0\nTABLE\n2\nLAYER\n";
+    for(const auto& name : layerNames) {
+        out << "0\nLAYER\n";
+        out << "2\n" << name << "\n";
+        out << "70\n0\n";
+        uint32_t c = layerColors.value(name, 0xFFFFFF) & 0x00FFFFFF;
+        out << "420\n" << c << "\n"; // True Color
+    }
+    out << "0\nENDTAB\n";
+    out << "0\nENDSEC\n";
 
     // Entities
     out << "0\nSECTION\n2\nENTITIES\n";
 
     for (const auto& item : items) {
+        QString layer = item.layerName.isEmpty() ? "0" : item.layerName;
         for (const auto& ring : item.rings) {
             if (ring.size() < 2) continue;
 
             bool closed = (ring.first() == ring.last());
             int count = ring.size();
-            if (closed) count--; // Don't write the duplicate last vertex for LWPOLYLINE logic if we set flag 1
+            if (closed) count--;
             if (count < 2) continue;
 
             out << "0\nLWPOLYLINE\n";
-            out << "8\n0\n"; // Layer 0
-            out << "90\n" << count << "\n"; // Number of vertices
-            out << "70\n" << (closed ? 1 : 0) << "\n"; // 1 = Closed, 0 = Open
+            out << "8\n" << layer << "\n"; // Layer Name
+            out << "90\n" << count << "\n";
+            out << "70\n" << (closed ? 1 : 0) << "\n";
 
             for (int i = 0; i < count; ++i) {
                 const auto& p = ring[i];
                 out << "10\n" << (p.x() * unitScale) << "\n";
-                out << "20\n" << (-p.y() * unitScale) << "\n"; // Flip Y for CAD
+                out << "20\n" << (-p.y() * unitScale) << "\n"; // Flip Y
             }
         }
     }

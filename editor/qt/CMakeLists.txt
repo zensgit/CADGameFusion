@@ -33,6 +33,9 @@ add_executable(editor_qt
     # Property panel
     include/panels/property_panel.hpp
     src/panels/property_panel.cpp
+    # Layer panel
+    include/panels/layer_panel.hpp
+    src/panels/layer_panel.cpp
     # Project management
     include/project/project.hpp
     src/project/project.cpp

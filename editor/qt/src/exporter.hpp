@@ -8,6 +8,8 @@
 
 struct ExportItem {
     int groupId;
+    QString layerName;
+    uint32_t layerColor;
     QVector<QVector<QPointF>> rings; // outer + holes as separate closed polylines
 };
 

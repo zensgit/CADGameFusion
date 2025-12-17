@@ -8,6 +8,11 @@
 #include <QPainterPath>
 #include <QRectF>
 
+class QPainterPath;
+class QRectF;
+
+namespace core { class Document; }
+
 class CanvasWidget : public QWidget {
     Q_OBJECT
 public:
@@ -16,14 +21,17 @@ public:
         QColor color; 
         int groupId; 
         bool visible{true};
+        int layerId{0}; // Layer association
         // Cache
         QPainterPath cachePath;
         QRectF aabb;
     };
 
     explicit CanvasWidget(QWidget* parent = nullptr);
-    void addPolyline(const QVector<QPointF>& poly);
-    void addPolylineColored(const QVector<QPointF>& poly, const QColor& color, int groupId = -1);
+    void setDocument(core::Document* doc);
+
+    void addPolyline(const QVector<QPointF>& poly, int layerId = 0);
+    void addPolylineColored(const QVector<QPointF>& poly, const QColor& color, int groupId = -1, int layerId = 0);
     void clear();
     void addTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);
     // Tri mesh accessors (for undoable commands)
@@ -74,4 +82,5 @@ private:
     int  nextGroupId_ { 1 };
     QVector<QPointF> triVerts_;
     QVector<unsigned int> triIndices_;
+    core::Document* m_doc{nullptr};
 };
