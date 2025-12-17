@@ -16,7 +16,6 @@ CanvasWidget::CanvasWidget(QWidget* parent) : QWidget(parent) {
 
 void CanvasWidget::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
-    // Center the origin when widget is first shown
     if (pan_ == QPointF(0, 0)) {
         pan_ = QPointF(width() / 2.0, height() / 2.0);
     }
@@ -24,7 +23,6 @@ void CanvasWidget::showEvent(QShowEvent* event) {
 
 void CanvasWidget::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-    // Adjust pan to keep origin centered when resizing
     if (event->oldSize().isValid() && event->oldSize() != QSize(-1, -1)) {
         QPointF oldCenter(event->oldSize().width() / 2.0, event->oldSize().height() / 2.0);
         QPointF newCenter(width() / 2.0, height() / 2.0);
@@ -47,7 +45,6 @@ void CanvasWidget::updatePolyCache(PolyVis& pv) {
     for (int i = 1; i < pv.pts.size(); ++i) {
         pv.cachePath.lineTo(pv.pts[i]);
     }
-    // Compute AABB from points directly (more accurate/faster than path.boundingRect sometimes)
     qreal minX = pv.pts[0].x(), maxX = minX;
     qreal minY = pv.pts[0].y(), maxY = minY;
     for (const auto& p : pv.pts) {
@@ -78,7 +75,8 @@ void CanvasWidget::clear() {
     polylines_.clear();
     triVerts_.clear();
     triIndices_.clear();
-    selected_ = -1;  // Also clear selection
+    selected_ = -1;
+    m_currentSnap.active = false;
     update();
 }
 
@@ -90,68 +88,103 @@ QPointF CanvasWidget::screenToWorld(const QPointF& p) const {
     return QPointF((p.x() - pan_.x()) / scale_, (p.y() - pan_.y()) / scale_);
 }
 
+CanvasWidget::SnapResult CanvasWidget::findSnapPoint(const QPointF& queryPosWorld) {
+    SnapResult best;
+    best.active = false;
+    
+    // Snap radius in screen pixels
+    const double snapPx = 12.0;
+    double snapWorld = snapPx / scale_;
+    double minDSq = snapWorld * snapWorld;
+    
+    QRectF queryRect(queryPosWorld.x()-snapWorld, queryPosWorld.y()-snapWorld, snapWorld*2, snapWorld*2);
+
+    for (const auto& pv : polylines_) {
+        if (!pv.visible) continue;
+        if (m_doc) {
+            auto* l = m_doc->get_layer(pv.layerId);
+            if (l && !l->visible) continue;
+        }
+        
+        if (!pv.aabb.intersects(queryRect)) continue;
+
+        // Check vertices (Endpoints)
+        for (const auto& pt : pv.pts) {
+            double dx = pt.x() - queryPosWorld.x();
+            double dy = pt.y() - queryPosWorld.y();
+            double dSq = dx*dx + dy*dy;
+            if (dSq < minDSq) {
+                minDSq = dSq;
+                best.active = true;
+                best.pos = pt;
+                best.type = SnapType::Endpoint;
+            }
+        }
+        
+        // Check midpoints
+        for (int i=0; i<pv.pts.size()-1; ++i) {
+            QPointF mid = (pv.pts[i] + pv.pts[i+1]) * 0.5;
+            double dx = mid.x() - queryPosWorld.x();
+            double dy = mid.y() - queryPosWorld.y();
+            double dSq = dx*dx + dy*dy;
+            if (dSq < minDSq) {
+                minDSq = dSq;
+                best.active = true;
+                best.pos = mid;
+                best.type = SnapType::Midpoint;
+            }
+        }
+    }
+    return best;
+}
+
 void CanvasWidget::paintEvent(QPaintEvent*) {
     QPainter pr(this);
     pr.fillRect(rect(), QColor(30,30,35));
 
-    // Setup transform
     QTransform transform;
     transform.translate(pan_.x(), pan_.y());
     transform.scale(scale_, scale_);
     
-    // 1. Draw Grid (Adaptive)
-    // We want grid lines approx every 25-80 pixels on screen
-    // base step in world units = 50.0 (from original code), let's make it power of 10
+    // 1. Draw Grid
     double targetPixelSpacing = 50.0;
-    // solve: worldStep * scale_ ~= targetPixelSpacing
-    // worldStep ~= targetPixelSpacing / scale_
     double rawStep = targetPixelSpacing / scale_;
     double logStep = std::log10(rawStep);
     double floorLog = std::floor(logStep);
     double base = std::pow(10.0, floorLog);
     double step = base;
-    
-    // refine step to be 1x, 2x, or 5x of base
     double residue = rawStep / base;
     if (residue >= 5.0) step *= 5.0;
     else if (residue >= 2.0) step *= 2.0;
     
-    // Draw grid in world coordinates using transform
     pr.save();
     pr.setTransform(transform);
     
     QPen gridPen(QColor(60,60,70)); 
     gridPen.setCosmetic(true); 
-    gridPen.setWidthF(1.0); // Make sure it's 1px
+    gridPen.setWidthF(1.0);
     pr.setPen(gridPen);
 
-    // Visible world bounds
     QPointF tl = screenToWorld(QPointF(0,0));
     QPointF br = screenToWorld(QPointF(width(), height()));
-    
-    // Expand slightly to avoid clipping artifacts
     double startX = std::floor(tl.x() / step) * step;
     double endX   = std::ceil(br.x() / step) * step;
     double startY = std::floor(tl.y() / step) * step;
     double endY   = std::ceil(br.y() / step) * step;
 
-    for (double x = startX; x <= endX; x += step)
-        pr.drawLine(QPointF(x, startY), QPointF(x, endY));
-    for (double y = startY; y <= endY; y += step)
-        pr.drawLine(QPointF(startX, y), QPointF(endX, y));
+    for (double x = startX; x <= endX; x += step) pr.drawLine(QPointF(x, startY), QPointF(x, endY));
+    for (double y = startY; y <= endY; y += step) pr.drawLine(QPointF(startX, y), QPointF(endX, y));
 
-    // Axis
     QPen xPen(QColor(80,180,255), 1); xPen.setCosmetic(true); pr.setPen(xPen);
     pr.drawLine(QPointF(-100000, 0), QPointF(100000, 0));
     QPen yPen(QColor(255,120,120), 1); yPen.setCosmetic(true); pr.setPen(yPen);
     pr.drawLine(QPointF(0, -100000), QPointF(0, 100000));
 
-    // 2. Draw Polylines (Cached)
+    // 2. Draw Polylines
     pr.setRenderHint(QPainter::Antialiasing, true);
     for (int i=0; i<polylines_.size(); ++i) {
         const auto& pv = polylines_[i];
         if (!pv.visible) continue;
-        
         if (m_doc) {
             auto* layer = m_doc->get_layer(pv.layerId);
             if (layer && !layer->visible) continue;
@@ -167,14 +200,12 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
         pr.drawPath(pv.cachePath);
     }
 
-    // 3. Draw Triangle Wireframe (Immediate mode for now, could be cached too if large)
+    // 3. Draw Triangle Wireframe
     if (!triVerts_.isEmpty() && !triIndices_.isEmpty()) {
         QPen tpen(QColor(120,200,120), 1); 
         tpen.setCosmetic(true);
         if (triSelected_) tpen.setColor(QColor(255,180,60));
         pr.setPen(tpen);
-        
-        // Draw lines directly (drawLines is faster than loop)
         QVector<QLineF> lines;
         lines.reserve(triIndices_.size());
         for (int i=0; i+2<triIndices_.size(); i+=3) {
@@ -189,6 +220,27 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
     }
     
     pr.restore();
+
+    // 4. Draw Snap Marker (in screen space)
+    if (m_currentSnap.active) {
+        QPointF sPos = worldToScreen(m_currentSnap.pos);
+        QPen sPen(QColor(255, 255, 0), 2); // Yellow
+        pr.setPen(sPen);
+        pr.setBrush(Qt::NoBrush);
+        
+        const double sz = 10.0;
+        if (m_currentSnap.type == SnapType::Endpoint) {
+            // Square
+            pr.drawRect(QRectF(sPos.x()-sz/2, sPos.y()-sz/2, sz, sz));
+        } else if (m_currentSnap.type == SnapType::Midpoint) {
+            // Triangle
+            QPolygonF tri;
+            tri << QPointF(sPos.x(), sPos.y() - sz/2 - 2)
+                << QPointF(sPos.x() - sz/2, sPos.y() + sz/2 + 2)
+                << QPointF(sPos.x() + sz/2, sPos.y() + sz/2 + 2);
+            pr.drawPolygon(tri);
+        }
+    }
 }
 
 void CanvasWidget::wheelEvent(QWheelEvent* e) {
@@ -198,8 +250,7 @@ void CanvasWidget::wheelEvent(QWheelEvent* e) {
     const QPointF wBefore = screenToWorld(mousePos);
     scale_ *= factor;
     if (scale_ < 0.05) scale_ = 0.05;
-    if (scale_ > 5000.0) scale_ = 5000.0; // Increased max zoom
-    // keep mouse world position fixed
+    if (scale_ > 5000.0) scale_ = 5000.0;
     pan_ = mousePos - QPointF(wBefore.x()*scale_, wBefore.y()*scale_);
     update();
 }
@@ -213,7 +264,6 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
     QPointF mouseWorld = screenToWorld(mouseScreen);
 
     if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::AltModifier)) {
-        // Alt+Click: Select entire group
         selectGroup(e->pos());
         return;
     }
@@ -222,30 +272,27 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
         selected_ = -1;
         triSelected_ = false;
         
-        // Threshold in pixels -> threshold in world units
         const double thPx = 12.0; 
         const double thWorld = thPx / scale_;
         const double thWorldSq = thWorld * thWorld;
 
-        // Search from back to front
         for (int pi = polylines_.size() - 1; pi >= 0; --pi) {
             const auto& pv = polylines_[pi];
             if (!pv.visible) continue;
+            if (m_doc) {
+                auto* l = m_doc->get_layer(pv.layerId);
+                if (l && !l->visible) continue;
+            }
             
-            // 1. AABB Check (Pre-filter)
-            // Expand AABB by threshold
             if (!pv.aabb.adjusted(-thWorld, -thWorld, thWorld, thWorld).contains(mouseWorld)) {
                 continue;
             }
 
-            // 2. Detailed segment check
             const auto& poly = pv.pts;
             bool found = false;
             for (int i = 0; i + 1 < poly.size(); ++i) {
                 const QPointF& a = poly[i];
                 const QPointF& b = poly[i+1];
-                
-                // Point to segment distance squared
                 QPointF ab = b - a;
                 QPointF ap = mouseWorld - a;
                 double lenSq = ab.x()*ab.x() + ab.y()*ab.y();
@@ -266,7 +313,6 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
             }
         }
 
-        // Triangle mesh hit test
         if (!triVerts_.isEmpty() && !triIndices_.isEmpty()) {
              auto testEdge = [&](const QPointF& u, const QPointF& v, const QPointF& p){
                 QPointF uv = v-u, up = p-u;
@@ -300,6 +346,19 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
         pan_ += QPointF(d.x(), d.y());
         lastPos_ = e->pos();
         update();
+    } else {
+        // Snap logic
+        QPointF mouseScreen = e->position();
+        QPointF mouseWorld = screenToWorld(mouseScreen);
+        SnapResult res = findSnapPoint(mouseWorld);
+        
+        bool changed = (res.active != m_currentSnap.active);
+        if (res.active) {
+            if (res.pos != m_currentSnap.pos || res.type != m_currentSnap.type) changed = true;
+        }
+        m_currentSnap = res;
+        
+        if (changed) update();
     }
 }
 

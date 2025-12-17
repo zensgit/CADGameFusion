@@ -16,6 +16,13 @@ namespace core { class Document; }
 class CanvasWidget : public QWidget {
     Q_OBJECT
 public:
+    enum class SnapType { None, Endpoint, Midpoint };
+    struct SnapResult {
+        bool active{false};
+        QPointF pos;
+        SnapType type{SnapType::None};
+    };
+
     struct PolyVis { 
         QVector<QPointF> pts; 
         QColor color; 
@@ -71,10 +78,12 @@ private:
     QPointF worldToScreen(const QPointF& p) const;
     QPointF screenToWorld(const QPointF& p) const;
     void updatePolyCache(PolyVis& pv);
+    SnapResult findSnapPoint(const QPointF& queryPosWorld);
 
     double scale_ { 1.0 }; // pixels per world unit
     QPointF pan_ { 0.0, 0.0 }; // in pixels
     QPoint lastPos_ {};
+    SnapResult m_currentSnap;
     // storage for polylines
     QVector<PolyVis> polylines_;
     int selected_ { -1 };
