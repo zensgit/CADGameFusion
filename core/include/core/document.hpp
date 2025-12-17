@@ -42,6 +42,7 @@ public:
     // Layer management
     int add_layer(const std::string& name, uint32_t color = 0xFFFFFF);
     Layer* get_layer(int id);
+    const Layer* get_layer(int id) const;
     const std::vector<Layer>& layers() const { return layers_; }
 
     EntityId add_polyline(const Polyline& pl, const std::string& name = "", int layerId = 0);
@@ -60,4 +61,3 @@ private:
 };
 
 } // namespace core
-

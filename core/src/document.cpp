@@ -30,6 +30,13 @@ Layer* Document::get_layer(int id) {
     return nullptr;
 }
 
+const Layer* Document::get_layer(int id) const {
+    for (const auto& l : layers_) {
+        if (l.id == id) return &l;
+    }
+    return nullptr;
+}
+
 EntityId Document::add_polyline(const Polyline& pl, const std::string& name, int layerId) {
     Entity e;
     e.id = next_id_++;

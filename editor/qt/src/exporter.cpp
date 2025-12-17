@@ -16,7 +16,7 @@
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <tiny_gltf.h>
 
-#include "core/core_c_api.h"
+#include "core/ops2d.hpp"
 
 static QString makeSceneDir(const QDir& base) {
     const QString ts = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
@@ -175,13 +175,19 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, 
         }
 
         // Write minimal glTF + bin for this group (positions + indices)
-        // 1) Build flat points and ring counts for triangulation
-        QVector<core_vec2> flat;
-        QVector<int> rc; flat.reserve(128);
+        // 1) Build rings for triangulation
+        std::vector<std::vector<core::Vec2>> rings;
+        rings.reserve(static_cast<size_t>(it.rings.size()));
+        auto appendRingScaled = [&](const QVector<QPointF>& ring) {
+            std::vector<core::Vec2> r;
+            r.reserve(static_cast<size_t>(ring.size()));
+            for (const auto& p : ring) r.push_back(core::Vec2{p.x() * unitScale, p.y() * unitScale});
+            rings.push_back(std::move(r));
+        };
+
         if (includeHolesGLTF) {
             for (const auto& ring : it.rings) {
-                rc.push_back(ring.size());
-                for (const auto& p : ring) flat.push_back(core_vec2{p.x()*unitScale, p.y()*unitScale});
+                appendRingScaled(ring);
             }
         } else {
             // Heuristic: pick the largest CCW ring as outer
@@ -193,126 +199,121 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, 
             }
             if (pick < 0 && !it.rings.isEmpty()) pick = 0; // fallback
             if (pick >= 0) {
-                const auto& ring = it.rings[pick];
-                rc.push_back(ring.size());
-                for (const auto& p : ring) flat.push_back(core_vec2{p.x()*unitScale, p.y()*unitScale});
+                appendRingScaled(it.rings[pick]);
             }
         }
-        // 2) Triangulate via C API (rings)
-        int idxCount = 0;
+        // 2) Triangulate via C++ core (rings)
         bool triangulated = false;
-        if ((kinds & ExportGLTF) && !flat.isEmpty() && !rc.isEmpty()) {
-            if (core_triangulate_polygon_rings(flat.data(), rc.data(), rc.size(), nullptr, &idxCount) && idxCount > 0) {
-                QVector<unsigned int> indices; indices.resize(idxCount);
-                if (core_triangulate_polygon_rings(flat.data(), rc.data(), rc.size(), indices.data(), &idxCount)) {
-                    tinygltf::Model gltfModel;
-                    tinygltf::Scene gltfScene;
-                    tinygltf::Mesh gltfMesh;
-                    tinygltf::Primitive gltfPrimitive;
+        if ((kinds & ExportGLTF) && !rings.empty()) {
+            core::TriMesh2D mesh = core::triangulate_rings(rings);
+            if (!mesh.indices.empty() && !mesh.vertices.empty()) {
+                tinygltf::Model gltfModel;
+                tinygltf::Scene gltfScene;
+                tinygltf::Mesh gltfMesh;
+                tinygltf::Primitive gltfPrimitive;
 
-                    // Asset
-                    gltfModel.asset.version = "2.0";
-                    gltfModel.asset.generator = "CADGameFusion_Qt_Exporter";
+                // Asset
+                gltfModel.asset.version = "2.0";
+                gltfModel.asset.generator = "CADGameFusion_Qt_Exporter";
 
-                    // Vertices (Positions)
-                    std::vector<float> positions;
-                    positions.reserve(flat.size() * 3);
-                    float minX = std::numeric_limits<float>::max(), minY = minX, minZ = 0.0f;
-                    float maxX = std::numeric_limits<float>::lowest(), maxY = maxX, maxZ = 0.0f;
-                    for (const auto& p : flat) {
-                        float x = static_cast<float>(p.x);
-                        float y = static_cast<float>(p.y);
-                        positions.push_back(x);
-                        positions.push_back(y);
-                        positions.push_back(0.0f); // 2D geometry in XY plane
+                // Vertices (Positions)
+                std::vector<float> positions;
+                positions.reserve(mesh.vertices.size() * 3);
+                float minX = std::numeric_limits<float>::max(), minY = minX, minZ = 0.0f;
+                float maxX = std::numeric_limits<float>::lowest(), maxY = maxX, maxZ = 0.0f;
+                for (const auto& p : mesh.vertices) {
+                    float x = static_cast<float>(p.x);
+                    float y = static_cast<float>(p.y);
+                    positions.push_back(x);
+                    positions.push_back(y);
+                    positions.push_back(0.0f); // 2D geometry in XY plane
 
-                        if (x < minX) minX = x;
-                        if (x > maxX) maxX = x;
-                        if (y < minY) minY = y;
-                        if (y > maxY) maxY = y;
-                    }
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
 
-                    // Indices
-                    std::vector<unsigned int> gltfIndices(indices.begin(), indices.end());
+                // Indices
+                std::vector<uint32_t> gltfIndices(mesh.indices.begin(), mesh.indices.end());
 
-                    // Buffer (positions + indices)
-                    tinygltf::Buffer buffer;
-                    buffer.data.resize(positions.size() * sizeof(float) + gltfIndices.size() * sizeof(unsigned int));
-                    
-                    unsigned char* bufferPtr = buffer.data.data();
-                    std::memcpy(bufferPtr, positions.data(), positions.size() * sizeof(float));
-                    std::memcpy(bufferPtr + positions.size() * sizeof(float), gltfIndices.data(), gltfIndices.size() * sizeof(unsigned int));
-                    
-                    // Set URI for separate binary file
-                    QString binName = QString("mesh_group_%1.bin").arg(it.groupId);
-                    buffer.uri = binName.toStdString();
-                    gltfModel.buffers.push_back(buffer);
+                // Buffer (positions + indices)
+                tinygltf::Buffer buffer;
+                buffer.data.resize(positions.size() * sizeof(float) + gltfIndices.size() * sizeof(uint32_t));
 
-                    // BufferViews
-                    tinygltf::BufferView posBufferView;
-                    posBufferView.buffer = 0;
-                    posBufferView.byteOffset = 0;
-                    posBufferView.byteLength = positions.size() * sizeof(float);
-                    posBufferView.target = TINYGLTF_TARGET_ARRAY_BUFFER;
-                    gltfModel.bufferViews.push_back(posBufferView);
+                unsigned char* bufferPtr = buffer.data.data();
+                std::memcpy(bufferPtr, positions.data(), positions.size() * sizeof(float));
+                std::memcpy(bufferPtr + positions.size() * sizeof(float), gltfIndices.data(), gltfIndices.size() * sizeof(uint32_t));
 
-                    tinygltf::BufferView idxBufferView;
-                    idxBufferView.buffer = 0;
-                    idxBufferView.byteOffset = positions.size() * sizeof(float);
-                    idxBufferView.byteLength = gltfIndices.size() * sizeof(unsigned int);
-                    idxBufferView.target = TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER;
-                    gltfModel.bufferViews.push_back(idxBufferView);
+                // Set URI for separate binary file
+                QString binName = QString("mesh_group_%1.bin").arg(it.groupId);
+                buffer.uri = binName.toStdString();
+                gltfModel.buffers.push_back(buffer);
 
-                    // Accessors
-                    tinygltf::Accessor posAccessor;
-                    posAccessor.bufferView = 0;
-                    posAccessor.byteOffset = 0;
-                    posAccessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
-                    posAccessor.count = flat.size();
-                    posAccessor.type = TINYGLTF_TYPE_VEC3;
-                    posAccessor.minValues = {static_cast<double>(minX), static_cast<double>(minY), static_cast<double>(minZ)};
-                    posAccessor.maxValues = {static_cast<double>(maxX), static_cast<double>(maxY), static_cast<double>(maxZ)};
-                    gltfModel.accessors.push_back(posAccessor);
+                // BufferViews
+                tinygltf::BufferView posBufferView;
+                posBufferView.buffer = 0;
+                posBufferView.byteOffset = 0;
+                posBufferView.byteLength = positions.size() * sizeof(float);
+                posBufferView.target = TINYGLTF_TARGET_ARRAY_BUFFER;
+                gltfModel.bufferViews.push_back(posBufferView);
 
-                    tinygltf::Accessor idxAccessor;
-                    idxAccessor.bufferView = 1;
-                    idxAccessor.byteOffset = 0;
-                    idxAccessor.componentType = TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
-                    idxAccessor.count = gltfIndices.size();
-                    idxAccessor.type = TINYGLTF_TYPE_SCALAR;
-                    gltfModel.accessors.push_back(idxAccessor);
+                tinygltf::BufferView idxBufferView;
+                idxBufferView.buffer = 0;
+                idxBufferView.byteOffset = positions.size() * sizeof(float);
+                idxBufferView.byteLength = gltfIndices.size() * sizeof(uint32_t);
+                idxBufferView.target = TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER;
+                gltfModel.bufferViews.push_back(idxBufferView);
 
-                    // Primitive
-                    gltfPrimitive.attributes["POSITION"] = 0;
-                    gltfPrimitive.indices = 1;
-                    gltfPrimitive.mode = TINYGLTF_MODE_TRIANGLES;
-                    gltfMesh.primitives.push_back(gltfPrimitive);
-                    gltfModel.meshes.push_back(gltfMesh);
+                // Accessors
+                tinygltf::Accessor posAccessor;
+                posAccessor.bufferView = 0;
+                posAccessor.byteOffset = 0;
+                posAccessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+                posAccessor.count = mesh.vertices.size();
+                posAccessor.type = TINYGLTF_TYPE_VEC3;
+                posAccessor.minValues = {static_cast<double>(minX), static_cast<double>(minY), static_cast<double>(minZ)};
+                posAccessor.maxValues = {static_cast<double>(maxX), static_cast<double>(maxY), static_cast<double>(maxZ)};
+                gltfModel.accessors.push_back(posAccessor);
 
-                    // Node
-                    tinygltf::Node node;
-                    node.mesh = 0;
-                    gltfModel.nodes.push_back(node);
+                tinygltf::Accessor idxAccessor;
+                idxAccessor.bufferView = 1;
+                idxAccessor.byteOffset = 0;
+                idxAccessor.componentType = TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
+                idxAccessor.count = gltfIndices.size();
+                idxAccessor.type = TINYGLTF_TYPE_SCALAR;
+                gltfModel.accessors.push_back(idxAccessor);
 
-                    // Scene
-                    gltfScene.nodes.push_back(0);
-                    gltfModel.scenes.push_back(gltfScene);
-                    gltfModel.defaultScene = 0;
+                // Primitive
+                gltfPrimitive.attributes["POSITION"] = 0;
+                gltfPrimitive.indices = 1;
+                gltfPrimitive.mode = TINYGLTF_MODE_TRIANGLES;
+                gltfMesh.primitives.push_back(gltfPrimitive);
+                gltfModel.meshes.push_back(gltfMesh);
 
-                    // Save GLTF
-                    tinygltf::TinyGLTF gltfLoader;
-                    QString gltfName = QString("mesh_group_%1.gltf").arg(it.groupId);
-                    const QString gltfPath = sdir.filePath(gltfName);
-                    
-                    // Save to file, no embedded images, no embedded buffers (separate bin), pretty print, text format (not binary .glb)
-                    if (gltfLoader.WriteGltfSceneToFile(&gltfModel, gltfPath.toStdString(), false, false, true, false)) { 
-                        res.written << gltfPath;
-                        // Also track bin file? tinygltf writes it.
-                        res.written << sdir.filePath(binName);
-                        triangulated = true;
-                    } else {
-                        res.error += QString("Failed to write glTF file for group %1. ").arg(it.groupId);
-                    }
+                // Node
+                tinygltf::Node node;
+                node.mesh = 0;
+                gltfModel.nodes.push_back(node);
+
+                // Scene
+                gltfScene.nodes.push_back(0);
+                gltfModel.scenes.push_back(gltfScene);
+                gltfModel.defaultScene = 0;
+
+                // Save GLTF
+                tinygltf::TinyGLTF gltfLoader;
+                QString gltfName = QString("mesh_group_%1.gltf").arg(it.groupId);
+                const QString gltfPath = sdir.filePath(gltfName);
+
+                // Save to file, no embedded images, no embedded buffers (separate bin), pretty print, text format (not binary .glb)
+                if (gltfLoader.WriteGltfSceneToFile(&gltfModel, gltfPath.toStdString(), false, false, true, false)) {
+                    res.written << gltfPath;
+                    // Also track bin file? tinygltf writes it.
+                    res.written << sdir.filePath(binName);
+                    triangulated = true;
+                } else {
+                    res.error += QString("Failed to write glTF file for group %1. ").arg(it.groupId);
                 }
             }
         }

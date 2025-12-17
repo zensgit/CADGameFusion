@@ -43,11 +43,12 @@ add_executable(editor_qt
 
 target_include_directories(editor_qt PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
+    ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${TINYGLTF_INCLUDE_DIR}
 )
 
-target_link_libraries(editor_qt PRIVATE Qt6::Widgets core_c core)
+target_link_libraries(editor_qt PRIVATE Qt6::Widgets core core_c ${CMAKE_DL_LIBS})
 
 if (WIN32)
   set_target_properties(editor_qt PROPERTIES WIN32_EXECUTABLE YES)

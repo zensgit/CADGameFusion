@@ -1,23 +1,20 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Core library
-add_library(core STATIC
+add_library(core SHARED
     src/geometry2d.cpp
     src/document.cpp
     src/commands.cpp
     src/ops2d.cpp
-    src/core_c_api.cpp
     src/solver.cpp
 )
 
 target_include_directories(core PUBLIC include)
 target_compile_features(core PUBLIC cxx_std_17)
 
-# Need -fPIC for static library when used in shared library
-set_property(TARGET core PROPERTY POSITION_INDEPENDENT_CODE ON)
-
-# Define CORE_BUILD when building the library (for Windows DLL exports)
-target_compile_definitions(core PRIVATE CORE_BUILD)
+# Export all symbols on Windows to keep C++ API usable without per-symbol declspec.
+# This avoids having to mark every C++ symbol as dllexport/dllimport at this stage.
+set_target_properties(core PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 # Optional: Compiler warnings
 if(MSVC)

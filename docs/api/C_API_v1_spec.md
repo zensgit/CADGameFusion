@@ -1,51 +1,50 @@
 # Core C API v1 — Draft Spec
 
-Purpose
+> Canonical reference (kept in sync with source):
+> - `docs/API.md`
+> - `core/include/core/core_c_api.h`
+>
+> Naming: prefer exported symbols with the stable prefix **`cadgf_*`**. Legacy **`core_*`** symbols are kept as compatibility aliases.
+
+## Goals
+
 - Provide a stable C ABI for engines/tools (Unity, CLI) over the C++ core.
+- Avoid C++ ABI/CRT issues across DLL boundaries (especially Windows).
+- No STL types, no exceptions across the ABI boundary.
 
-Principles
-- C89-compatible headers, `extern "C"` guards.
-- Opaque handles for documents and geometry; no STL in headers.
-- Versioned API: `core_c_get_version()`, feature bitmask.
-- Clear error codes; no exceptions across the ABI boundary.
+## Conventions
 
-Types
-- `typedef void* core_doc_t;` — opaque document handle
-- `typedef int32_t core_err_t;` — error codes (0=OK, >0 errors)
-- `typedef struct { float x, y; } core_vec2_t;`
-- `typedef struct { const core_vec2_t* pts; int count; } core_ring_view_t;`
+- Headers: C-compatible with `extern "C"` guards.
+- Return values: most functions return `int` (`1` success, `0` failure).
+- Memory: caller-allocated buffers; use **two-call** query-then-fill where sizes are unknown.
+- Coordinates: `double` (2D).
+- Winding (recommended): outer rings CCW, holes CW.
 
-Version/feature
-- `uint32_t core_c_get_version(void);`
-- `uint32_t core_c_get_features(void);` // bit0=EARCUT, bit1=CLIPPER2, etc.
+## Implemented surface (today)
 
-Lifecycle
-- `core_doc_t core_doc_create(void);`
-- `void core_doc_destroy(core_doc_t d);`
-- `core_err_t core_doc_clear(core_doc_t d);`
+### Version & features
 
-Editing (MVP)
-- `core_err_t core_doc_add_polyline(core_doc_t d, const core_vec2_t* pts, int n);`
-- `core_err_t core_doc_add_polygon(core_doc_t d, const core_vec2_t* pts, int n);`
-- `core_err_t core_doc_offset(core_doc_t d, float dist);` // offsets last polygon
-- `core_err_t core_doc_boolean_union(core_doc_t d);` // union last two polygons
+- `const char* cadgf_get_version(void);`
+- `unsigned int cadgf_get_feature_flags(void);` (`CADGF_FEATURE_EARCUT`, `CADGF_FEATURE_CLIPPER2`)
 
-Triangulation
-- `core_err_t core_triangulate_rings(const core_ring_view_t* rings, int ring_count, const char* out_path);`
-- `core_err_t core_triangulate_flat(const float* xy, int count, const int* ring_counts, int ring_count, const char* out_path);`
+### Document (minimal entity model)
 
-Export/Import
-- `core_err_t core_doc_export_json(core_doc_t d, const char* dir);`
-- `core_err_t core_doc_export_gltf(core_doc_t d, const char* dir);`
-- `core_err_t core_doc_import_json(core_doc_t d, const char* path);`
+- `cadgf_document* cadgf_document_create(void);`
+- `void cadgf_document_destroy(cadgf_document* doc);`
+- `cadgf_entity_id cadgf_document_add_polyline(_ex)(...);`
+- `int cadgf_document_remove_entity(...);`
+- Query APIs: layer/entity enumeration + UTF-8 name two-call patterns
 
-Errors
-- `#define CORE_OK 0`
-- `#define CORE_EINVAL 1`
-- `#define CORE_EIO 2`
-- `#define CORE_EUNIMPL 3`
+### Geometry ops (stateless)
 
-Notes
-- Keep binary‑compatible; extend via new functions and feature bits.
-- Document ring winding (outer CCW, holes CW) and closure assumptions.
+- Triangulation:
+  - `int cadgf_triangulate_polygon(...);`
+  - `int cadgf_triangulate_polygon_rings(...);` (earcut-only backend; fails if unavailable)
+- Boolean/Offset:
+  - `int cadgf_boolean_op_single/multi(...);`
+  - `int cadgf_offset_single/multi(...);`
 
+## Notes
+
+- ABI evolution: keep v1 **append-only**; add new functions/types instead of changing existing layouts.
+- If a backend is not compiled in (earcut/Clipper2), related functions may fail and feature flags must be checked at runtime.
