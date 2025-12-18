@@ -18,20 +18,57 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/vcpkg/archives
+            vcpkg/installed
+            vcpkg_installed
+            build/vcpkg_installed
+          key: ubuntu-vcpkg-solver-demo-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json') }}-${{ github.run_number }}
+          restore-keys: |
+            ubuntu-vcpkg-solver-demo-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json') }}-
+            ubuntu-vcpkg-solver-demo-
+
+      - name: Setup vcpkg
+        shell: bash
+        run: |
+          export VCPKG_DEFAULT_BINARY_CACHE="$HOME/.cache/vcpkg/archives"
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$VCPKG_DEFAULT_BINARY_CACHE" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite" >> $GITHUB_ENV
+
+          if [ ! -d "vcpkg/.git" ]; then
+            [ -d "vcpkg" ] && rm -rf vcpkg
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+          fi
+          (cd vcpkg && git fetch --tags --force && git checkout a20d95d3c76906363896754eb1cc93db2a694f16 && ./bootstrap-vcpkg.sh)
+          echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
+
       - name: Configure
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -G Ninja || \
-            cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_EDITOR_QT=OFF \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -G Ninja
 
       - name: Build solver demo and tests
         run: |
-          cmake --build build --config Release --target solve_demo --parallel 2 || true
-          cmake --build build --config Release --target core_tests_solver_poc --parallel 2 || true
-          cmake --build build --config Release --target core_tests_solver_constraints --parallel 2 || true
+          cmake --build build --config Release --target solve_demo --parallel 2
+          cmake --build build --config Release --target core_tests_solver_poc --parallel 2
+          cmake --build build --config Release --target core_tests_solver_constraints --parallel 2
 
       - name: Run solver demo
         run: |
           if [ -f build/tools/solve_demo ]; then DEMO=build/tools/solve_demo; else DEMO=build/solve_demo; fi
+          [ -f "$DEMO" ] || { echo "solve_demo not found"; exit 1; }
           echo "Running: $DEMO samples/project_minimal.json"
           "$DEMO" samples/project_minimal.json
 

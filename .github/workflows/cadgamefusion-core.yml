@@ -34,9 +34,8 @@ jobs:
 
       - name: Setup vcpkg (optional)
         uses: lukka/run-vcpkg@v11
-        continue-on-error: true
         with:
-          vcpkgGitCommitId: 'c9fa965c2a1b1334469b4539063f3ce95383653c'
+          vcpkgGitCommitId: 'a20d95d3c76906363896754eb1cc93db2a694f16'
           
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -71,21 +70,20 @@ jobs:
           fi
           echo "=== Attempting CMake configuration ==="
           CMAKE_ARGS="-DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release"
-          
-          # Try with vcpkg first if available
-          if [ -d "$VCPKG_ROOT" ]; then
-            echo "vcpkg detected at: $VCPKG_ROOT"
-            echo "Attempting build with vcpkg..."
-            if cmake -S . -B build $CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake 2>&1; then
-              echo "✅ CMake configured with vcpkg"
-            else
-              echo "⚠️ vcpkg configuration failed, falling back to standard build"
-              rm -rf build
-              cmake -S . -B build $CMAKE_ARGS 2>&1
-            fi
-          else
-            cmake -S . -B build $CMAKE_ARGS 2>&1
-          fi || {
+
+          if [ ! -d "$VCPKG_ROOT" ]; then
+            echo "ERROR: VCPKG_ROOT not set (vcpkg setup failed)"
+            exit 1
+          fi
+
+          GEN=""
+          if [ "${{ runner.os }}" != "Windows" ]; then
+            GEN="-G Ninja"
+          fi
+
+          cmake -S . -B build $CMAKE_ARGS \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            $GEN 2>&1 || {
             echo "=== CMake configuration failed ==="
             echo "=== Checking for error details ==="
             if [ -f "build/CMakeFiles/CMakeOutput.log" ]; then

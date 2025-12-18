@@ -80,7 +80,7 @@ jobs:
             rm -rf "$VCPKG_DIR"
             retry git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"
           fi
-          (cd "$VCPKG_DIR" && retry git checkout c9fa965c2a1b1334469b4539063f3ce95383653c)
+          (cd "$VCPKG_DIR" && retry git checkout a20d95d3c76906363896754eb1cc93db2a694f16)
           (cd "$VCPKG_DIR" && retry ./bootstrap-vcpkg.bat -disableMetrics)
           echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
           echo "$VCPKG_DIR" >> $GITHUB_PATH
@@ -109,13 +109,18 @@ jobs:
           mkdir -p "$HOME/.cache/vcpkg/archives"
           # Set OS-specific default triplet
           if [ "${{ runner.os }}" = "macOS" ]; then
-            echo "VCPKG_DEFAULT_TRIPLET=x64-osx" >> $GITHUB_ENV
+            arch="$(uname -m)"
+            if [ "$arch" = "arm64" ]; then
+              echo "VCPKG_DEFAULT_TRIPLET=arm64-osx" >> $GITHUB_ENV
+            else
+              echo "VCPKG_DEFAULT_TRIPLET=x64-osx" >> $GITHUB_ENV
+            fi
           else
             echo "VCPKG_DEFAULT_TRIPLET=x64-linux" >> $GITHUB_ENV
           fi
           VCPKG_DIR="$HOME/vcpkg"
           if [ -d "$VCPKG_DIR/.git" ]; then (cd "$VCPKG_DIR" && git pull --ff-only); else rm -rf "$VCPKG_DIR" && git clone https://github.com/Microsoft/vcpkg.git "$VCPKG_DIR"; fi
-          (cd "$VCPKG_DIR" && git checkout c9fa965c2a1b1334469b4539063f3ce95383653c)
+          (cd "$VCPKG_DIR" && git checkout a20d95d3c76906363896754eb1cc93db2a694f16)
           (cd "$VCPKG_DIR" && ./bootstrap-vcpkg.sh -disableMetrics)
           echo "VCPKG_ROOT=$VCPKG_DIR" >> $GITHUB_ENV
           echo "$VCPKG_DIR" >> $GITHUB_PATH
@@ -123,6 +128,17 @@ jobs:
       - name: OS deps
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y cmake ninja-build build-essential
+
+      - name: OS deps (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake ninja pkg-config || true
+
+      - name: OS deps (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install ninja -y
 
       - name: Install Python deps
         shell: bash

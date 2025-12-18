@@ -23,6 +23,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config python3 python3-pip
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
@@ -41,62 +46,46 @@ jobs:
         run: |
           bash scripts/dev_env_verify.sh
 
-      - name: Configure CMake (minimal)
-        run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -G Ninja
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/vcpkg/archives
+            vcpkg/installed
+            vcpkg_installed
+            build/vcpkg_installed
+          key: ubuntu-vcpkg-quick-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json') }}-${{ github.run_number }}
+          restore-keys: |
+            ubuntu-vcpkg-quick-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json') }}-
+            ubuntu-vcpkg-quick-
 
-      - name: Build export_cli (quick)
+      - name: Setup vcpkg
+        shell: bash
         run: |
-          cmake --build build --config Release --target export_cli --parallel 2
+          export VCPKG_DEFAULT_BINARY_CACHE="$HOME/.cache/vcpkg/archives"
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$VCPKG_DEFAULT_BINARY_CACHE" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite" >> $GITHUB_ENV
 
-      - name: Generate verification data (minimal scenes)
-        run: |
-          # Create exports directory
-          mkdir -p build/exports
-          
-          # Generate only critical scenes for quick check
-          EXPORT_CLI="build/tools/export_cli"
-          if [ ! -f "$EXPORT_CLI" ]; then
-            echo "export_cli not found, trying alternative paths..."
-            for candidate in "build/bin/export_cli" "build/Release/export_cli"; do
-              if [ -f "$candidate" ]; then
-                EXPORT_CLI="$candidate"
-                break
-              fi
-            done
+          if [ ! -d "vcpkg/.git" ]; then
+            [ -d "vcpkg" ] && rm -rf vcpkg
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
           fi
-          
-          if [ ! -f "$EXPORT_CLI" ]; then
-            echo "❌ export_cli not found in any expected location"
-            exit 1
-          fi
-          
-          echo "Using export_cli: $EXPORT_CLI"
-          
-          # Generate minimal scene set for verification
-          "$EXPORT_CLI" --out build/exports --scene sample --gltf-holes full
-          "$EXPORT_CLI" --out build/exports --scene holes --gltf-holes full
-          "$EXPORT_CLI" --out build/exports --scene complex --gltf-holes full
+          (cd vcpkg && git fetch --tags --force && git checkout a20d95d3c76906363896754eb1cc93db2a694f16 && ./bootstrap-vcpkg.sh)
+          echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
 
-      - name: Basic validation checks
+      - name: Run local_ci.sh (quick)
+        shell: bash
         run: |
-          # Quick schema validation
-          python3 tools/validate_export.py build/exports/scene_cli_sample --schema
-          python3 tools/validate_export.py build/exports/scene_cli_holes --schema
-          python3 tools/validate_export.py build/exports/scene_cli_complex --schema
-          
-          # Generate basic field reports for verification script
-          python3 tools/compare_fields.py build/exports/scene_cli_sample sample_exports/scene_sample --rtol 1e-6 --json-out build/field_sample.json --mode counts-only
-          python3 tools/compare_fields.py build/exports/scene_cli_holes sample_exports/scene_holes --rtol 1e-6 --json-out build/field_holes.json --mode counts-only
-          python3 tools/compare_fields.py build/exports/scene_cli_complex sample_exports/scene_complex --rtol 1e-6 --json-out build/field_complex.json --mode counts-only
-
-      - name: Generate minimal consistency stats
-        run: |
-          mkdir -p build
-          cat > build/consistency_stats.txt << 'EOF'
-          scene=scene_cli_sample, json_groups=1, json_points=4, json_rings=1, ok=YES
-          scene=scene_cli_complex, json_groups=1, json_points=14, json_rings=3, ok=YES
-          EOF
+          bash tools/local_ci.sh \
+            --build-dir build \
+            --toolchain "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            --build-type Release \
+            --rtol 1e-6 \
+            --gltf-holes full \
+            --quick \
+            --clean-exports \
+            --strict-exit
 
       - name: Run verification script (quick mode)
         run: |
@@ -168,6 +157,9 @@ jobs:
         with:
           name: quick-check-artifacts
           path: |
+            build/consistency_stats.txt
             build/field_*.json
             build/exports/scene_cli_*/
+            build/local_ci_output.log
+            build/local_ci_summary.json
             scripts/dev_env_verify.sh

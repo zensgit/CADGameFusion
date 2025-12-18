@@ -50,7 +50,7 @@ jobs:
             [ -d "vcpkg" ] && rm -rf vcpkg
             git clone https://github.com/microsoft/vcpkg.git vcpkg
           fi
-          (cd vcpkg && git fetch --tags --force && git checkout c9fa965c2a1b1334469b4539063f3ce95383653c && ./bootstrap-vcpkg.sh)
+          (cd vcpkg && git fetch --tags --force && git checkout a20d95d3c76906363896754eb1cc93db2a694f16 && ./bootstrap-vcpkg.sh)
           echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
 
       - name: Install system dependencies
