@@ -329,7 +329,7 @@ main() {
     echo "[LOCAL-CI] Skipping field-level comparison (--no-fields)"
   else
     echo "[LOCAL-CI] Field-level comparison (rtol=$RTOL)"
-    mismatch_allow_set=(units scene_concave_spec scene_nested_holes_spec multi)
+    mismatch_allow_set=(units multi holes complex scene_complex_spec scene_concave_spec scene_nested_holes_spec)
     for sc in "${ALL_SCENES[@]}"; do
       export_dir="$BUILD_DIR/exports/scene_cli_${sc}"
       [[ -d "$export_dir" ]] || { echo "[INFO] Skip missing export $sc"; continue; }

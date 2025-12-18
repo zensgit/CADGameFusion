@@ -72,15 +72,11 @@ jobs:
           EVENT_NAME="${{ github.event_name }}"
           QUICK_INPUT="${{ github.event.inputs.quick || 'false' }}"
 
-          # Default to quick mode for PRs (and pushes to main) so this workflow does not block
-          # development while field-level compare golden files are being aligned.
-          #
-          # NOTE: We also temporarily disable field-level comparisons in CI to keep the gate green.
-          # Once field-compare is stable (golden updated + tolerance policy agreed), drop --no-fields.
+          # Default to quick mode for PRs (and pushes to main) to keep the gate fast.
           if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "push" ]; then
-            EXTRA_FLAGS="--quick --no-fields"
+            EXTRA_FLAGS="--quick"
           elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$QUICK_INPUT" = "true" ]; then
-            EXTRA_FLAGS="--quick --no-fields"
+            EXTRA_FLAGS="--quick"
           fi
 
           # Run local_ci.sh with vcpkg toolchain
