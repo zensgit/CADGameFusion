@@ -1,8 +1,12 @@
 # CADGameFusion 架构演进设计文档 v0.6.0+
 
-> 版本: 1.1 (Revised)
-> 日期: 2025-12-17
-> 状态: 草案
+> 版本: 1.2 (Code-aligned)
+> 日期: 2025-12-18
+> 状态: 草案（已对齐当前实现）
+
+> 重要说明（稳定边界 / Stability Boundary）：
+> - 对外稳定 ABI：`core_c` 的 C API（`cadgf_*`/`core_*`）与 `plugin_abi_c_v1` 的插件 C ABI（`cadgf_plugin_get_api_v1`）。
+> - 内部实现细节：`core::Document` 等 C++ API 属于内部接口，不承诺跨 DLL/so 的 ABI 稳定；外部语言与插件应通过 C API 访问数据。
 
 ---
 
@@ -28,7 +32,7 @@
 ### 1.1 文档目的
 
 本文档定义 CADGameFusion 从 v0.5.0 向 v0.8.0 演进的架构设计，包括：
-- 模块化改造（SHARED 库、Pimpl 模式）
+- 模块化改造（SHARED 库、稳定边界与可选 Pimpl）
 - 插件系统设计
 - 编辑器功能增强
 - 约束系统完善
@@ -64,8 +68,13 @@ CADGameFusion/
 │   │   ├── ops2d.hpp         # 2D 操作
 │   │   ├── solver.hpp        # 约束求解器
 │   │   ├── commands.hpp      # 命令系统
-│   │   └── core_c_api.h      # C API (cadgf_* preferred; core_* compat)
+│   │   ├── core_c_api.h      # C API (cadgf_* preferred; core_* compat)
+│   │   └── plugin_abi_c_v1.h # 插件 C ABI (function-table, v1)
 │   └── src/
+│
+├── plugins/              # 示例插件（动态库，C ABI 函数表）
+│   ├── sample_exporter_plugin.cpp
+│   └── CMakeLists.txt
 │
 ├── editor/qt/            # Qt 编辑器
 │   ├── src/
@@ -75,16 +84,19 @@ CADGameFusion/
 │   └── include/
 │
 └── tools/                # CLI 工具
-    └── export_cli.cpp
+    ├── export_cli.cpp
+    ├── plugin_host_demo.cpp
+    ├── plugin_registry.hpp
+    └── shared_library.hpp
 ```
 
 ### 2.2 当前问题
 
 | 问题 | 影响 | 严重度 |
 |------|------|--------|
-| Document 暴露 STL | 跨 DLL 边界不安全（Windows） | 高 |
+| Document 暴露 STL | **不作为稳定边界**；跨 DLL/so 不安全（Windows） | 高 |
 | MainWindow 紧耦合 Document | 难以复用 Document | 中 |
-| 无插件架构 | 扩展需修改源码 | 中 |
+| Editor 数据模型“双轨制” | Canvas 存一份、Document 存一份，影响撤销/序列化/约束 | 中 |
 | API 命名通用性 | 已引入 cadgf_ 作为推荐前缀，core_ 仅兼容 | 低 |
 
 ### 2.3 依赖关系图（当前）
@@ -126,16 +138,15 @@ CADGameFusion/
           └────────────┴──────┬──────┴──────────────┘
                               │
 ┌─────────────────────────────┴───────────────────────────────┐
-│                     Plugin Layer                             │
-│   ┌───────────┐  ┌───────────┐  ┌───────────┐               │
-│   │ IExporter │  │   ITool   │  │ IImporter │               │
-│   └───────────┘  └───────────┘  └───────────┘               │
-│                  PluginManager                               │
+│                   Plugin Layer (C ABI)                       │
+│   plugins: cadgf_plugin_get_api_v1 -> cadgf_plugin_api_v1     │
+│   exporters/importers: cadgf_exporter_api_v1 / importer_api   │
+│   Host: editor_qt / tools(plugin_registry.hpp)                │
 └─────────────────────────────┬───────────────────────────────┘
                               │
 ┌─────────────────────────────┴───────────────────────────────┐
 │                  Core C API (稳定 ABI)                       │
-│                    cadgf_core_c.so / dll                     │
+│                     core_c.so / dll                          │
 │   ┌─────────────────────────────────────────────────────┐   │
 │   │ cadgf_document_* cadgf_solver_* cadgf_triangulate_* │   │
 │   └─────────────────────────────────────────────────────┘   │
@@ -143,10 +154,10 @@ CADGameFusion/
                               │
 ┌─────────────────────────────┴───────────────────────────────┐
 │                  Core C++ (SHARED)                           │
-│                    cadgf_core.so / dll                       │
+│                      core.so / dll                           │
 │   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
 │   │ Document │  │  Solver  │  │  Ops2D   │  │ Commands │   │
-│   │ (Pimpl)  │  │          │  │          │  │          │   │
+│   │ (internal) │  │          │  │          │  │          │   │
 │   └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
 └─────────────────────────────┬───────────────────────────────┘
                               │
@@ -164,8 +175,8 @@ CADGameFusion/
 |------|------|------|----------|
 | core 库 | SHARED（`core`）+ C ABI wrapper（`core_c`） | SHARED（保持） | 构建系统 |
 | API 前缀 | `core_`（兼容）/ `cadgf_`（推荐） | `cadgf_` | 接口重构 |
-| Document | 暴露 STL | Pimpl 隐藏实现 | API 重构 |
-| C API | 基础操作 | 完整覆盖 | API 扩展 |
+| Document | 暴露 STL（内部用） | **不承诺跨 DLL/so ABI**；如需跨边界再评估 Pimpl | 边界策略 |
+| C API | 基础操作（已覆盖关键路径） | 逐步补齐缺口（保持向后兼容） | API 扩展 |
 
 ---
 
@@ -207,8 +218,8 @@ Level 0: 头文件模块
 | 边界 | 接口类型 | 稳定性 |
 |------|----------|--------|
 | Core ↔ 外部语言 | C API (cadgf_*) | 高（ABI 兼容） |
-| Core ↔ Editor | C++ 接口（Pimpl） | 中（源码兼容） |
-| Editor ↔ Plugin | 虚函数接口 | 中 |
+| Core ↔ Editor | C++ 接口（内部） | 中（源码兼容；不承诺 ABI） |
+| Editor/Tools ↔ Plugin | 插件 C ABI（`plugin_abi_c_v1`） | 高（ABI 兼容） |
 | 内部模块 | 直接调用 | 低（可变） |
 
 ---
@@ -233,10 +244,11 @@ Level 0: 头文件模块
 
 | 周 | 任务 | 交付物 | 验收标准 |
 |----|------|--------|----------|
-| W1 | SHARED 库构建 | CMakeLists.txt 修改 | 三平台构建通过，输出 `cadgf_core` |
-| W1 | API 重命名 | cadgf_api.h | 提供 `cadgf_` 接口，保留 `core_` 兼容 |
-| W1 | 符号导出宏 | export.hpp | Windows DLL 无警告 |
-| W2 | Document Pimpl | document.hpp 重构 | sizeof(Document) == sizeof(void*) |
+| W1 | SHARED 库构建 | CMakeLists.txt 修改 | 三平台构建通过，输出 `core` / `core_c` |
+| W1 | C API 命名统一 | core_c_api.h | `cadgf_*` 为推荐入口；`core_*` 兼容保留 |
+| W1 | C ABI 导出宏 | core_c_api.h / plugin_abi_c_v1.h | Windows DLL 无警告 |
+| W2 | 稳定边界声明 | 文档/约定 | 明确：仅 C API + 插件 C ABI 承诺稳定 |
+| W2 | Document Pimpl（可选） | document.hpp 重构 | **仅在需要跨 DLL/so 暴露 C++ API 时启动** |
 | W2 | C API 扩展 | Layer/Solver API | 单元测试通过 |
 
 ### 5.3 Phase 2: 编辑器增强（v0.7.0）— 3 周
@@ -247,10 +259,10 @@ Level 0: 头文件模块
 |----|------|--------|----------|
 | W3 | 框选功能 | BoxSelect 实现 | 左→右/右→左 行为正确 |
 | W3 | Snap 重构 | SnapManager 类 | Grid/Endpoint/Midpoint 工作 |
-| W4 | 插件接口 | IPlugin/ITool/IExporter | 接口定义完成（使用 cadgf_ 风格） |
+| W4 | 插件接口（C ABI） | plugin_abi_c_v1 | 示例插件 + Host 加载通过 |
 | W4 | LineTool | 直线绘制工具 | 可绘制直线 |
 | W5 | Rect/Circle Tool | 更多绘图工具 | 基础图形绘制 |
-| W5 | 示例导出插件 | SVG Exporter | 可导出 SVG |
+| W5 | 示例导出插件 | JSON Exporter（示例） | 可导出 JSON |
 
 ### 5.4 Phase 3: 约束系统（v0.8.0）— 4 周
 
@@ -271,166 +283,67 @@ Level 0: 头文件模块
 
 ### 6.1 符号导出宏
 
-```cpp
-// core/include/core/export.hpp
+当前实现将“稳定边界”的符号导出集中在 C ABI 头文件中：
 
-#pragma once
+- `core/include/core/core_c_api.h`：`CORE_API`/`CADGF_API`（Windows 下 `__declspec(dllexport/dllimport)`）
+- `core/include/core/plugin_abi_c_v1.h`：`CADGF_PLUGIN_EXPORT`（插件入口点导出）
 
-// 平台检测
-#if defined(_WIN32) || defined(_WIN64)
-    #define CORE_PLATFORM_WINDOWS
-#elif defined(__APPLE__)
-    #define CORE_PLATFORM_MACOS
-#elif defined(__linux__)
-    #define CORE_PLATFORM_LINUX
+示例（节选）：
+
+```c
+// core/include/core/core_c_api.h
+#ifdef _WIN32
+#  ifdef CORE_BUILD
+#    define CORE_API __declspec(dllexport)
+#  else
+#    define CORE_API __declspec(dllimport)
+#  endif
+#else
+#  define CORE_API
 #endif
 
-// 符号可见性
-#ifdef CORE_PLATFORM_WINDOWS
-    #ifdef CORE_EXPORTS
-        #define CORE_API __declspec(dllexport)
-    #else
-        #define CORE_API __declspec(dllimport)
-    #endif
-    #define CORE_LOCAL
-#else
-    #ifdef CORE_EXPORTS
-        #define CORE_API __attribute__((visibility("default")))
-        #define CORE_LOCAL __attribute__((visibility("hidden")))
-    #else
-        #define CORE_API
-        #define CORE_LOCAL
-    #endif
-#endif
-
-// C 导出辅助
-#ifdef __cplusplus
-    #define CORE_EXTERN_C extern "C"
-    #define CORE_EXTERN_C_BEGIN extern "C" { 
-    #define CORE_EXTERN_C_END }
-#else
-    #define CORE_EXTERN_C
-    #define CORE_EXTERN_C_BEGIN
-    #define CORE_EXTERN_C_END
+#ifndef CADGF_API
+#  define CADGF_API CORE_API
 #endif
 ```
 
 ### 6.2 CMake 构建配置
 
+当前仓库实现的要点是：`core` 为 SHARED，`core_c` 为**薄封装**并链接到 `core`，以避免同进程出现两份 Core 实现（详见 `docs/CMAKE_TARGET_SPLIT_v0.6.md`）。
+
 ```cmake
-# core/CMakeLists.txt
-
-cmake_minimum_required(VERSION 3.16)
-
-# 源文件列表
-set(CORE_SOURCES
+# core/CMakeLists.txt（节选，当前实现）
+add_library(core SHARED
     src/geometry2d.cpp
     src/document.cpp
-    src/document_impl.cpp
     src/commands.cpp
     src/ops2d.cpp
     src/solver.cpp
 )
 
-set(CORE_HEADERS
-    include/core/export.hpp
-    include/core/geometry2d.hpp
-    include/core/document.hpp
-    include/core/commands.hpp
-    include/core/ops2d.hpp
-    include/core/solver.hpp
-    include/core/plugin.hpp
-)
+set_target_properties(core PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
-# ============================================ 
-# 静态库（内部使用）
-# ============================================ 
-add_library(core_static STATIC ${CORE_SOURCES})
-target_include_directories(core_static PUBLIC include)
-target_compile_features(core_static PUBLIC cxx_std_17)
-set_property(TARGET core_static PROPERTY POSITION_INDEPENDENT_CODE ON)
-target_compile_definitions(core_static PRIVATE CORE_STATIC_BUILD)
-
-# ============================================ 
-# 共享库（外部使用）
-# ============================================ 
-add_library(core SHARED ${CORE_SOURCES})
-target_include_directories(core PUBLIC include)
-target_compile_features(core PUBLIC cxx_std_17)
-target_compile_definitions(core PRIVATE CORE_EXPORTS)
-
-# 符号可见性（非 Windows）
-if(NOT MSVC)
-    target_compile_options(core PRIVATE -fvisibility=hidden)
-    target_compile_options(core PRIVATE -fvisibility-inlines-hidden)
-endif()
-
-# 设置输出名（ABI 前缀标准化）
-set_target_properties(core PROPERTIES
-    OUTPUT_NAME "cadgf_core"
-    VERSION ${PROJECT_VERSION}
-    SOVERSION ${PROJECT_VERSION_MAJOR}
-)
-
-# ============================================ 
-# C API 共享库
-# ============================================ 
 add_library(core_c SHARED src/core_c_api.cpp)
-#
-# 注意：为避免在同一进程内出现“两份 core 实现”（尤其 editor 同时链接 core + core_c 的情况下），
-# 推荐让 core_c 仅作为薄封装并链接到 SHARED 的 core，而不是静态嵌入 core_static。
-# 详细建议见：docs/CMAKE_TARGET_SPLIT_v0.6.md
 target_link_libraries(core_c PRIVATE core)
 target_include_directories(core_c PUBLIC include)
-target_compile_definitions(core_c PRIVATE CORE_EXPORTS)
-
-set_target_properties(core_c PROPERTIES
-    OUTPUT_NAME "cadgf_core_c"
-    VERSION ${PROJECT_VERSION}
-    SOVERSION ${PROJECT_VERSION_MAJOR}
-)
-
-# ============================================ 
-# 依赖配置（保持现有逻辑）
-# ============================================ 
-# Earcut
-find_path(EARCUT_INCLUDE_DIR NAMES mapbox/earcut.hpp)
-if(EARCUT_INCLUDE_DIR)
-    target_compile_definitions(core PUBLIC USE_EARCUT)
-    target_compile_definitions(core_static PUBLIC USE_EARCUT)
-    target_include_directories(core PRIVATE ${EARCUT_INCLUDE_DIR})
-    target_include_directories(core_static PRIVATE ${EARCUT_INCLUDE_DIR})
-    message(STATUS "Earcut found")
-endif()
-
-# Clipper2
-find_path(CLIPPER2_INCLUDE_DIR NAMES clipper2/clipper.h)
-if(CLIPPER2_INCLUDE_DIR)
-    target_compile_definitions(core PUBLIC USE_CLIPPER2)
-    target_compile_definitions(core_static PUBLIC USE_CLIPPER2)
-    target_include_directories(core PRIVATE ${CLIPPER2_INCLUDE_DIR})
-    target_include_directories(core_static PRIVATE ${CLIPPER2_INCLUDE_DIR})
-    message(STATUS "Clipper2 found")
-endif()
-
-# Eigen3
-find_package(Eigen3 CONFIG REQUIRED)
-target_link_libraries(core PRIVATE Eigen3::Eigen)
-target_link_libraries(core_static PRIVATE Eigen3::Eigen)
-
-# ============================================ 
-# 安装规则
-# ============================================ 
-install(TARGETS core core_c core_static
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
-)
-
-install(FILES ${CORE_HEADERS} DESTINATION include/core)
+target_compile_definitions(core_c PRIVATE CORE_BUILD)
 ```
 
-### 6.3 Document Pimpl 实现 (内容同前，略)
+插件示例（节选）：
+
+```cmake
+# plugins/CMakeLists.txt（节选，当前实现）
+add_library(cadgf_sample_plugin SHARED sample_exporter_plugin.cpp)
+target_link_libraries(cadgf_sample_plugin PRIVATE core_c)
+```
+
+### 6.3 C++ API 稳定性（不承诺 ABI）
+
+当前阶段**不以 C++ API（如 `core::Document`）作为跨 DLL/so 的稳定边界**，因此：
+
+- `core::Document` 可以继续使用 STL 类型（`std::vector/std::string`），作为内部实现与 Editor 直接链接使用；
+- 外部语言绑定与插件扩展只通过 `core_c` 的 C API 访问 `cadgf_document`；
+- 如未来确需跨边界暴露 C++ API，再评估 Pimpl/句柄化（成本高，需慎重）。
 
 ### 6.4 API 命名规范与迁移策略
 
@@ -453,40 +366,52 @@ install(FILES ${CORE_HEADERS} DESTINATION include/core)
 
 ### 7.1 插件接口定义
 
-```cpp
-// core/include/core/plugin.hpp
+当前实现采用 **C ABI 函数表（Function Table）** 作为插件边界（避免 C++ 虚函数 ABI 地狱），接口定义位于：
 
-#pragma once
+- `core/include/core/plugin_abi_c_v1.h`
 
-#include "export.hpp"
-#include "document.hpp"
+核心约定：
 
-namespace core {
+- 插件必须导出：`cadgf_plugin_get_api_v1()`（返回 `cadgf_plugin_api_v1*`）
+- Host 通过 `size`/`abi_version` 做兼容性校验；在 v1 内**只允许追加字段**（append-only）
 
-// ... (IPlugin, ITool, IExporter, IImporter 接口定义同前) ...
+示例（节选）：
 
-// ============================================ 
-// 插件入口点宏（标准化 cadgf_ 前缀）
-// ============================================ 
+```c
+// core/include/core/plugin_abi_c_v1.h（节选）
+#define CADGF_PLUGIN_ABI_V1 1
+typedef struct cadgf_plugin_api_v1 {
+    int32_t size;
+    int32_t abi_version;
+    cadgf_plugin_desc_v1 (*describe)(void);
+    int32_t (*initialize)(void);
+    void (*shutdown)(void);
+    int32_t (*exporter_count)(void);
+    const cadgf_exporter_api_v1* (*get_exporter)(int32_t index);
+    int32_t (*importer_count)(void);
+    const cadgf_importer_api_v1* (*get_importer)(int32_t index);
+} cadgf_plugin_api_v1;
 
-/// 插件必须导出的函数
-#define CORE_PLUGIN_ENTRY(PluginClass)                          \
-    CORE_EXTERN_C CORE_API IPlugin* cadgf_plugin_create() {     \
-        return new PluginClass();                               \
-    }                                                           \
-    CORE_EXTERN_C CORE_API void cadgf_plugin_destroy(IPlugin* p) { \
-        delete p;                                               \
-    }                                                           \
-    CORE_EXTERN_C CORE_API int cadgf_plugin_api_version() {     \
-        return 1;                                               \
-    }
-
-} // namespace core
+typedef const cadgf_plugin_api_v1* (*cadgf_plugin_get_api_v1_fn)(void);
 ```
 
-### 7.2 插件管理器 (内容同前，略)
+### 7.2 插件管理器（Host）
 
-### 7.3 示例：SVG 导出器插件 (内容同前，略)
+当前仓库提供了一个轻量 Host 实现用于加载/校验插件：
+
+- `tools/shared_library.hpp`：跨平台 `dlopen/LoadLibrary` 封装
+- `tools/plugin_registry.hpp`：加载 `cadgf_plugin_get_api_v1`，做 ABI 校验与 exporter/ importer 枚举
+- `tools/plugin_host_demo.cpp`：最小可运行示例（加载插件并导出）
+
+Editor 侧也已接入插件导出菜单（通过 `cadgf::PluginRegistry`）。
+
+### 7.3 示例插件
+
+当前提供示例导出插件（JSON）：
+
+- `plugins/sample_exporter_plugin.cpp`
+
+该插件仅通过 C API（`cadgf_document_*`）读取文档数据并写出文件，避免依赖 C++ 内部结构。
 
 ---
 
