@@ -54,3 +54,6 @@ verification_*.png
 *verification*.png
 *_debug.log
 *_test.log
+
+# Git bundles
+*.bundle
