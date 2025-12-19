@@ -32,10 +32,33 @@ jobs:
           echo "=== Core directory ==="
           ls -la core/ || echo "core/ not found"
 
-      - name: Setup vcpkg (optional)
-        uses: lukka/run-vcpkg@v11
+      - name: Cache vcpkg packages (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/cache@v4
         with:
-          vcpkgGitCommitId: 'a20d95d3c76906363896754eb1cc93db2a694f16'
+          path: |
+            ~/.cache/vcpkg/archives
+            vcpkg_installed
+            build/vcpkg_installed
+            vcpkg/installed
+          key: ${{ runner.os }}-vcpkg-core-a20d95d3-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            ${{ runner.os }}-vcpkg-core-a20d95d3-
+            ${{ runner.os }}-vcpkg-core-
+
+      - name: Cache vcpkg packages (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/Users/runneradmin/AppData/Local/vcpkg/archives
+            vcpkg_installed
+            build/vcpkg_installed
+            vcpkg/installed
+          key: windows-vcpkg-core-a20d95d3-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            windows-vcpkg-core-a20d95d3-
+            windows-vcpkg-core-
           
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -53,6 +76,62 @@ jobs:
         shell: pwsh
         run: |
           choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+
+      - name: Setup vcpkg (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          export VCPKG_DEFAULT_BINARY_CACHE="$HOME/.cache/vcpkg/archives"
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$VCPKG_DEFAULT_BINARY_CACHE" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite" >> $GITHUB_ENV
+
+          retry() {
+            local n=0; local max=5; local delay=5
+            until "$@"; do
+              n=$((n+1))
+              if [ $n -ge $max ]; then
+                echo "[retry] command failed after $n attempts: $*" >&2
+                return 1
+              fi
+              echo "[retry] attempt $n failed; retrying in ${delay}s..."
+              sleep $delay; delay=$((delay*2))
+            done
+          }
+
+          if [ ! -d "vcpkg/.git" ]; then
+            [ -d "vcpkg" ] && rm -rf vcpkg
+            retry git clone https://github.com/microsoft/vcpkg.git vcpkg
+          fi
+          (cd vcpkg && retry git fetch --tags --force && retry git checkout a20d95d3c76906363896754eb1cc93db2a694f16 && ./bootstrap-vcpkg.sh -disableMetrics)
+          echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
+
+      - name: Setup vcpkg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $cacheDir = Join-Path $env:LOCALAPPDATA "vcpkg\\archives"
+          New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$cacheDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKG_BINARY_SOURCES=clear;files,$cacheDir,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          $vcpkgDir = Join-Path $PWD "vcpkg"
+          if (-Not (Test-Path (Join-Path $vcpkgDir ".git"))) {
+            if (Test-Path $vcpkgDir) { Remove-Item $vcpkgDir -Recurse -Force }
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgDir
+          }
+
+          Push-Location $vcpkgDir
+          git fetch --tags --force
+          git checkout a20d95d3c76906363896754eb1cc93db2a694f16
+          cmd /c bootstrap-vcpkg.bat -disableMetrics
+          Pop-Location
+
+          "VCPKG_ROOT=vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Configure
         shell: bash

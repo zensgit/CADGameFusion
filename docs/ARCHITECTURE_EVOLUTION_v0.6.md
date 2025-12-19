@@ -1,8 +1,14 @@
 # CADGameFusion 架构演进设计文档 v0.6.0+
 
-> 版本: 1.1 (Revised)
-> 日期: 2025-12-17
-> 状态: 草案
+> 版本: 1.2 (Reality-aligned)
+> 日期: 2025-12-19
+> 状态: 修订草案（对齐仓库现状）
+
+**重要声明（稳定边界 / Stability Boundary）**：
+- 对外承诺的稳定边界仅包含 **C ABI**：
+  - `core/include/core/core_c_api.h`（`cadgf_*` C API；`cadgf_document*` 为不透明句柄）
+  - `core/include/core/plugin_abi_c_v1.h`（插件 ABI：C 函数表 `cadgf_plugin_api_v1`）
+- `core/include/core/document.hpp` 的 `core::Document` 属于 **内部 C++ API**：不承诺跨 DLL/跨编译器 ABI 稳定；若未来要作为对外 C++ SDK，再评估 Pimpl/导出策略。
 
 ---
 
@@ -28,8 +34,8 @@
 ### 1.1 文档目的
 
 本文档定义 CADGameFusion 从 v0.5.0 向 v0.8.0 演进的架构设计，包括：
-- 模块化改造（SHARED 库、Pimpl 模式）
-- 插件系统设计
+- 模块化改造（`core`/`core_c` 目标拆分与稳定边界）
+- 插件系统设计（以 **C ABI 函数表**为主，避免 C++ 虚函数 ABI 地狱）
 - 编辑器功能增强
 - 约束系统完善
 
@@ -57,14 +63,15 @@
 
 ```
 CADGameFusion/
-├── core/                 # 几何核心（SHARED + C ABI wrapper）
+├── core/                 # 几何核心（C++ 实现）+ C ABI wrapper（稳定边界）
 │   ├── include/core/
-│   │   ├── document.hpp      # 文档模型（暴露 STL）
+│   │   ├── document.hpp      # 文档模型（内部 C++ API；暴露 STL）
 │   │   ├── geometry2d.hpp    # 2D 几何原语
 │   │   ├── ops2d.hpp         # 2D 操作
 │   │   ├── solver.hpp        # 约束求解器
 │   │   ├── commands.hpp      # 命令系统
-│   │   └── core_c_api.h      # C API (cadgf_* preferred; core_* compat)
+│   │   ├── core_c_api.h      # C API（稳定边界；cadgf_* 推荐，core_* 兼容别名）
+│   │   └── plugin_abi_c_v1.h # 插件 ABI（稳定边界；C 函数表）
 │   └── src/
 │
 ├── editor/qt/            # Qt 编辑器
@@ -82,9 +89,10 @@ CADGameFusion/
 
 | 问题 | 影响 | 严重度 |
 |------|------|--------|
-| Document 暴露 STL | 跨 DLL 边界不安全（Windows） | 高 |
+| `core::Document` 暴露 STL | **仅当**把 C++ API 当成跨 DLL/跨编译器边界时才危险；当前策略是把稳定边界收敛到 C API | 中 |
 | MainWindow 紧耦合 Document | 难以复用 Document | 中 |
-| 无插件架构 | 扩展需修改源码 | 中 |
+| 文档误导：插件=虚函数 | 与仓库现状不符；当前已有 `plugin_abi_c_v1`（C ABI 函数表） | 中 |
+| Editor 数据模型“双轨制” | Canvas 自存一份几何，Document 自存一份实体；阻碍撤销/约束/序列化 | 高 |
 | API 命名通用性 | 已引入 cadgf_ 作为推荐前缀，core_ 仅兼容 | 低 |
 
 ### 2.3 依赖关系图（当前）
@@ -127,15 +135,16 @@ CADGameFusion/
                               │
 ┌─────────────────────────────┴───────────────────────────────┐
 │                     Plugin Layer                             │
-│   ┌───────────┐  ┌───────────┐  ┌───────────┐               │
-│   │ IExporter │  │   ITool   │  │ IImporter │               │
-│   └───────────┘  └───────────┘  └───────────┘               │
-│                  PluginManager                               │
+│   ┌───────────────────────┐  ┌───────────────────────┐      │
+│   │ Exporter ABI (C v1)   │  │ Importer ABI (C v1)   │      │
+│   └───────────────────────┘  └───────────────────────┘      │
+│   Host: tools/plugin_registry.hpp (dlopen/LoadLibrary)        │
+│   Note: Editor UI tools 插件化属于 editor-only ABI（后置）      │
 └─────────────────────────────┬───────────────────────────────┘
                               │
 ┌─────────────────────────────┴───────────────────────────────┐
 │                  Core C API (稳定 ABI)                       │
-│                    cadgf_core_c.so / dll                     │
+│                    core_c (SHARED)                           │
 │   ┌─────────────────────────────────────────────────────┐   │
 │   │ cadgf_document_* cadgf_solver_* cadgf_triangulate_* │   │
 │   └─────────────────────────────────────────────────────┘   │
@@ -143,10 +152,11 @@ CADGameFusion/
                               │
 ┌─────────────────────────────┴───────────────────────────────┐
 │                  Core C++ (SHARED)                           │
-│                    cadgf_core.so / dll                       │
+│                    core (SHARED)                             │
 │   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
 │   │ Document │  │  Solver  │  │  Ops2D   │  │ Commands │   │
-│   │ (Pimpl)  │  │          │  │          │  │          │   │
+│   │ (internal│  │          │  │          │  │          │   │
+│   │  C++ API)│  │          │  │          │  │          │   │
 │   └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
 └─────────────────────────────┬───────────────────────────────┘
                               │
@@ -164,7 +174,7 @@ CADGameFusion/
 |------|------|------|----------|
 | core 库 | SHARED（`core`）+ C ABI wrapper（`core_c`） | SHARED（保持） | 构建系统 |
 | API 前缀 | `core_`（兼容）/ `cadgf_`（推荐） | `cadgf_` | 接口重构 |
-| Document | 暴露 STL | Pimpl 隐藏实现 | API 重构 |
+| Document | 暴露 STL（内部 C++ API） | 若未来对外发布 C++ SDK，再评估 Pimpl/导出策略 | API 策略 |
 | C API | 基础操作 | 完整覆盖 | API 扩展 |
 
 ---
@@ -206,9 +216,10 @@ Level 0: 头文件模块
 
 | 边界 | 接口类型 | 稳定性 |
 |------|----------|--------|
-| Core ↔ 外部语言 | C API (cadgf_*) | 高（ABI 兼容） |
-| Core ↔ Editor | C++ 接口（Pimpl） | 中（源码兼容） |
-| Editor ↔ Plugin | 虚函数接口 | 中 |
+| Host ↔ 外部语言 | C API（`cadgf_*`） | 高（ABI 兼容） |
+| Host ↔ Plugins | 插件 ABI（`plugin_abi_c_v1`：C 函数表） | 高（ABI 兼容；append-only within v1） |
+| Core ↔ Editor | C++ 内部接口（`core::Document`） | 低（仅源码级；不承诺跨 DLL ABI） |
+| Editor ↔ UI Tools | 先内置（Qt 内部扩展点） | 低（后续可单独设计 editor-only ABI） |
 | 内部模块 | 直接调用 | 低（可变） |
 
 ---
@@ -233,10 +244,10 @@ Level 0: 头文件模块
 
 | 周 | 任务 | 交付物 | 验收标准 |
 |----|------|--------|----------|
-| W1 | SHARED 库构建 | CMakeLists.txt 修改 | 三平台构建通过，输出 `cadgf_core` |
-| W1 | API 重命名 | cadgf_api.h | 提供 `cadgf_` 接口，保留 `core_` 兼容 |
-| W1 | 符号导出宏 | export.hpp | Windows DLL 无警告 |
-| W2 | Document Pimpl | document.hpp 重构 | sizeof(Document) == sizeof(void*) |
+| W1 | SHARED 库构建 | `core` + `core_c`（CMake） | 三平台构建通过，输出 `core`/`core_c` |
+| W1 | API 命名与兼容 | `core_c_api.h` | `cadgf_*` 为推荐 ABI；`core_*` 兼容别名可用 |
+| W1 | Windows 导出策略 | CMake + `CORE_BUILD` | `core` 可用（`WINDOWS_EXPORT_ALL_SYMBOLS`）；`core_c` 导出 C API |
+| W2 | （可选/后置）C++ ABI 稳定 | Pimpl/导出策略评估 | 仅在“要对外发布 C++ SDK”时才做 |
 | W2 | C API 扩展 | Layer/Solver API | 单元测试通过 |
 
 ### 5.3 Phase 2: 编辑器增强（v0.7.0）— 3 周
@@ -247,7 +258,7 @@ Level 0: 头文件模块
 |----|------|--------|----------|
 | W3 | 框选功能 | BoxSelect 实现 | 左→右/右→左 行为正确 |
 | W3 | Snap 重构 | SnapManager 类 | Grid/Endpoint/Midpoint 工作 |
-| W4 | 插件接口 | IPlugin/ITool/IExporter | 接口定义完成（使用 cadgf_ 风格） |
+| W4 | 插件 ABI v1 | `plugin_abi_c_v1.h` + 文档 | `cadgf_plugin_get_api_v1` 可被 host 加载并通过校验 |
 | W4 | LineTool | 直线绘制工具 | 可绘制直线 |
 | W5 | Rect/Circle Tool | 更多绘图工具 | 基础图形绘制 |
 | W5 | 示例导出插件 | SVG Exporter | 可导出 SVG |
@@ -269,168 +280,32 @@ Level 0: 头文件模块
 
 ## 6. 详细设计
 
-### 6.1 符号导出宏
+### 6.1 符号导出与 ABI 边界（现状对齐）
 
-```cpp
-// core/include/core/export.hpp
+当前仓库选择把“稳定性成本”集中在 **C ABI**，避免在 Windows 上为 C++ 跨 DLL ABI 稳定付出高昂代价。
 
-#pragma once
+- C API 导出：`core/include/core/core_c_api.h`
+  - 使用 `CORE_API` / `CADGF_API` 宏；
+  - 构建 `core_c` 时定义 `CORE_BUILD` 以导出符号。
+- C++ core（`core`）导出：
+  - `core/CMakeLists.txt` 在 Windows 上使用 `WINDOWS_EXPORT_ALL_SYMBOLS ON`（便于 editor/内部使用）。
+  - **不承诺** `core::Document` 跨 DLL/跨编译器 ABI 稳定。
+- 插件导出：`core/include/core/plugin_abi_c_v1.h`
+  - `CADGF_PLUGIN_EXPORT` 用于导出插件入口符号 `cadgf_plugin_get_api_v1`。
 
-// 平台检测
-#if defined(_WIN32) || defined(_WIN64)
-    #define CORE_PLATFORM_WINDOWS
-#elif defined(__APPLE__)
-    #define CORE_PLATFORM_MACOS
-#elif defined(__linux__)
-    #define CORE_PLATFORM_LINUX
-#endif
+### 6.2 CMake 构建配置（现状对齐）
 
-// 符号可见性
-#ifdef CORE_PLATFORM_WINDOWS
-    #ifdef CORE_EXPORTS
-        #define CORE_API __declspec(dllexport)
-    #else
-        #define CORE_API __declspec(dllimport)
-    #endif
-    #define CORE_LOCAL
-#else
-    #ifdef CORE_EXPORTS
-        #define CORE_API __attribute__((visibility("default")))
-        #define CORE_LOCAL __attribute__((visibility("hidden")))
-    #else
-        #define CORE_API
-        #define CORE_LOCAL
-    #endif
-#endif
+以 v0.6.x 现有代码为准：
 
-// C 导出辅助
-#ifdef __cplusplus
-    #define CORE_EXTERN_C extern "C"
-    #define CORE_EXTERN_C_BEGIN extern "C" { 
-    #define CORE_EXTERN_C_END }
-#else
-    #define CORE_EXTERN_C
-    #define CORE_EXTERN_C_BEGIN
-    #define CORE_EXTERN_C_END
-#endif
-```
+- `core`：C++ 实现库（SHARED）
+- `core_c`：C ABI wrapper（SHARED，链接到 `core`，避免同进程双份 core 实现）
+- 目标拆分的动机与推荐图谱：`docs/CMAKE_TARGET_SPLIT_v0.6.md`
+- 依赖建议统一走 vcpkg manifest：`vcpkg.json`（Eigen3/Clipper2/TinyGLTF/Earcut）
 
-### 6.2 CMake 构建配置
+### 6.3 Document Pimpl（后置）
 
-```cmake
-# core/CMakeLists.txt
-
-cmake_minimum_required(VERSION 3.16)
-
-# 源文件列表
-set(CORE_SOURCES
-    src/geometry2d.cpp
-    src/document.cpp
-    src/document_impl.cpp
-    src/commands.cpp
-    src/ops2d.cpp
-    src/solver.cpp
-)
-
-set(CORE_HEADERS
-    include/core/export.hpp
-    include/core/geometry2d.hpp
-    include/core/document.hpp
-    include/core/commands.hpp
-    include/core/ops2d.hpp
-    include/core/solver.hpp
-    include/core/plugin.hpp
-)
-
-# ============================================ 
-# 静态库（内部使用）
-# ============================================ 
-add_library(core_static STATIC ${CORE_SOURCES})
-target_include_directories(core_static PUBLIC include)
-target_compile_features(core_static PUBLIC cxx_std_17)
-set_property(TARGET core_static PROPERTY POSITION_INDEPENDENT_CODE ON)
-target_compile_definitions(core_static PRIVATE CORE_STATIC_BUILD)
-
-# ============================================ 
-# 共享库（外部使用）
-# ============================================ 
-add_library(core SHARED ${CORE_SOURCES})
-target_include_directories(core PUBLIC include)
-target_compile_features(core PUBLIC cxx_std_17)
-target_compile_definitions(core PRIVATE CORE_EXPORTS)
-
-# 符号可见性（非 Windows）
-if(NOT MSVC)
-    target_compile_options(core PRIVATE -fvisibility=hidden)
-    target_compile_options(core PRIVATE -fvisibility-inlines-hidden)
-endif()
-
-# 设置输出名（ABI 前缀标准化）
-set_target_properties(core PROPERTIES
-    OUTPUT_NAME "cadgf_core"
-    VERSION ${PROJECT_VERSION}
-    SOVERSION ${PROJECT_VERSION_MAJOR}
-)
-
-# ============================================ 
-# C API 共享库
-# ============================================ 
-add_library(core_c SHARED src/core_c_api.cpp)
-#
-# 注意：为避免在同一进程内出现“两份 core 实现”（尤其 editor 同时链接 core + core_c 的情况下），
-# 推荐让 core_c 仅作为薄封装并链接到 SHARED 的 core，而不是静态嵌入 core_static。
-# 详细建议见：docs/CMAKE_TARGET_SPLIT_v0.6.md
-target_link_libraries(core_c PRIVATE core)
-target_include_directories(core_c PUBLIC include)
-target_compile_definitions(core_c PRIVATE CORE_EXPORTS)
-
-set_target_properties(core_c PROPERTIES
-    OUTPUT_NAME "cadgf_core_c"
-    VERSION ${PROJECT_VERSION}
-    SOVERSION ${PROJECT_VERSION_MAJOR}
-)
-
-# ============================================ 
-# 依赖配置（保持现有逻辑）
-# ============================================ 
-# Earcut
-find_path(EARCUT_INCLUDE_DIR NAMES mapbox/earcut.hpp)
-if(EARCUT_INCLUDE_DIR)
-    target_compile_definitions(core PUBLIC USE_EARCUT)
-    target_compile_definitions(core_static PUBLIC USE_EARCUT)
-    target_include_directories(core PRIVATE ${EARCUT_INCLUDE_DIR})
-    target_include_directories(core_static PRIVATE ${EARCUT_INCLUDE_DIR})
-    message(STATUS "Earcut found")
-endif()
-
-# Clipper2
-find_path(CLIPPER2_INCLUDE_DIR NAMES clipper2/clipper.h)
-if(CLIPPER2_INCLUDE_DIR)
-    target_compile_definitions(core PUBLIC USE_CLIPPER2)
-    target_compile_definitions(core_static PUBLIC USE_CLIPPER2)
-    target_include_directories(core PRIVATE ${CLIPPER2_INCLUDE_DIR})
-    target_include_directories(core_static PRIVATE ${CLIPPER2_INCLUDE_DIR})
-    message(STATUS "Clipper2 found")
-endif()
-
-# Eigen3
-find_package(Eigen3 CONFIG REQUIRED)
-target_link_libraries(core PRIVATE Eigen3::Eigen)
-target_link_libraries(core_static PRIVATE Eigen3::Eigen)
-
-# ============================================ 
-# 安装规则
-# ============================================ 
-install(TARGETS core core_c core_static
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-    RUNTIME DESTINATION bin
-)
-
-install(FILES ${CORE_HEADERS} DESTINATION include/core)
-```
-
-### 6.3 Document Pimpl 实现 (内容同前，略)
+`core::Document` 当前被定位为内部 C++ API（editor/内部工具同编译器同 CRT 场景使用）。
+只有在“要对外发布 C++ SDK / 跨 DLL”成为明确目标时，才考虑引入 Pimpl 与更严格的导出策略。
 
 ### 6.4 API 命名规范与迁移策略
 
@@ -449,48 +324,61 @@ install(FILES ${CORE_HEADERS} DESTINATION include/core)
 
 ---
 
-## 7. 插件系统设计
+## 7. 插件系统设计（C ABI 函数表）
 
-### 7.1 插件接口定义
+插件系统以 **C ABI function-table** 为稳定边界，避免 C++ 虚函数/RTTI/异常/STL 跨 DLL 引发的 ABI 与 CRT 兼容问题。
 
-```cpp
-// core/include/core/plugin.hpp
+### 7.1 入口符号与版本检查
 
-#pragma once
+- 插件共享库必须导出一个入口符号：`cadgf_plugin_get_api_v1`
+- 返回 `const cadgf_plugin_api_v1*`，由 host 做以下检查：
+  - `api != NULL`
+  - `api->abi_version == CADGF_PLUGIN_ABI_V1`
+  - `api->size >= sizeof(cadgf_plugin_api_v1_min)`（v1 追加字段的兼容保障）
 
-#include "export.hpp"
-#include "document.hpp"
+最小示意：
 
-namespace core {
-
-// ... (IPlugin, ITool, IExporter, IImporter 接口定义同前) ...
-
-// ============================================ 
-// 插件入口点宏（标准化 cadgf_ 前缀）
-// ============================================ 
-
-/// 插件必须导出的函数
-#define CORE_PLUGIN_ENTRY(PluginClass)                          \
-    CORE_EXTERN_C CORE_API IPlugin* cadgf_plugin_create() {     \
-        return new PluginClass();                               \
-    }                                                           \
-    CORE_EXTERN_C CORE_API void cadgf_plugin_destroy(IPlugin* p) { \
-        delete p;                                               \
-    }                                                           \
-    CORE_EXTERN_C CORE_API int cadgf_plugin_api_version() {     \
-        return 1;                                               \
-    }
-
-} // namespace core
+```c
+/* plugin_abi_c_v1.h */
+extern "C" CADGF_PLUGIN_EXPORT const cadgf_plugin_api_v1* cadgf_plugin_get_api_v1(void);
 ```
 
-### 7.2 插件管理器 (内容同前，略)
+### 7.2 Host 侧加载流程（现状）
 
-### 7.3 示例：SVG 导出器插件 (内容同前，略)
+- 加载：`tools/shared_library.hpp`
+- 注册/校验/枚举 exporter/importer：`tools/plugin_registry.hpp`
+- 插件与文档交互：仅允许通过 `core/include/core/core_c_api.h` 的 `cadgf_*` C API（不跨边界传递 STL）
+
+### 7.3 参考实现与规范
+
+- ABI 头文件：`core/include/core/plugin_abi_c_v1.h`
+- 设计文档：`docs/PLUGIN_ABI_C_V1.md`
+- 示例插件：`plugins/sample_exporter_plugin.cpp`
+
+> 注：Editor 的 UI 工具类插件（ITool/交互/渲染）与 Qt 强耦合，建议后置单独设计 editor-only ABI；v0.6–v0.8 先聚焦 core-level importer/exporter。
 
 ---
 
-## 8. 编辑器增强设计 (内容同前，略)
+## 8. 编辑器增强设计（对齐现状 + 后续方向）
+
+### 8.1 统一数据模型：Document 为真相，Canvas 为投影（优先级高）
+
+现状问题（v0.6.x）：
+- Canvas（如 `CanvasWidget`）维护一份几何（例如 `polylines_`）
+- Core `core::Document` 也维护一份实体（`entities_` / `layers_`）
+- 两者形成“双轨制”，会显著放大撤销/重做、约束系统、序列化/导入导出的实现成本。
+
+建议方向：
+- **Document 作为 Single Source of Truth**：所有编辑操作先落到 Document（或命令系统），再通知 Canvas 更新渲染投影。
+- Canvas 只做：
+  - 视口/坐标变换
+  - 命中测试（可缓存加速）
+  - 临时交互态（rubber band / preview），但不持久化业务数据
+
+渐进迁移建议：
+1. 新功能（约束、撤销）全部基于 Document 实现，不再扩展 Canvas 的持久状态。
+2. 将 Canvas 的持久数据逐步替换为从 Document 派生的缓存/投影（允许一段时间“双写”，但要集中到单个同步层）。
+3. 最终删除 Canvas 的业务持久容器，仅保留渲染缓存。
 
 ## 9. 约束系统增强 (内容同前，略)
 

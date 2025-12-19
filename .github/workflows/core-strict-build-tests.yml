@@ -148,15 +148,6 @@ jobs:
             python -m pip install -r requirements-ci.txt
           fi
 
-      - name: Use minimal vcpkg config for Windows
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          if [ -f vcpkg-windows-minimal.json ]; then
-            echo "Using minimal vcpkg configuration for Windows to avoid MSYS2 issues"
-            cp vcpkg-windows-minimal.json vcpkg.json
-          fi
-
       - name: Configure
         shell: bash
         run: |
