@@ -11,6 +11,20 @@ int main() {
     cadgf_document* doc = cadgf_document_create();
     assert(doc);
 
+    // Document settings: unit scale
+    double unit_scale = cadgf_document_get_unit_scale(doc);
+    assert(unit_scale == 1.0);
+    ok = cadgf_document_set_unit_scale(doc, 2.5);
+    assert(ok == CADGF_SUCCESS);
+    unit_scale = cadgf_document_get_unit_scale(doc);
+    assert(unit_scale == 2.5);
+
+    // Group id allocation (monotonic)
+    int gid1 = cadgf_document_alloc_group_id(doc);
+    int gid2 = cadgf_document_alloc_group_id(doc);
+    assert(gid1 >= 1);
+    assert(gid2 == gid1 + 1);
+
     // Layer: add + enumerate + UTF-8 name query
     const char* layer_name = u8"图层_中文_Alpha";
     int layer_id = -1;
@@ -70,6 +84,15 @@ int main() {
     assert(ei.id == eid);
     assert(ei.type == CADGF_ENTITY_TYPE_POLYLINE);
     assert(ei.layer_id == layer_id);
+
+    ok = cadgf_document_set_entity_group_id(doc, eid, gid1);
+    assert(ok == CADGF_SUCCESS);
+    cadgf_entity_info_v2 ei2{};
+    ok = cadgf_document_get_entity_info_v2(doc, eid, &ei2);
+    assert(ok == CADGF_SUCCESS);
+    assert(ei2.group_id == gid1);
+    assert(ei2.visible == 1);
+    assert(ei2.color == 0);
 
     int ent_required_bytes = 0;
     ok = cadgf_document_get_entity_name(doc, eid, nullptr, 0, &ent_required_bytes);
