@@ -20,6 +20,10 @@
 extern "C" {
 #endif
 
+// ABI stability boundary:
+// - cadgf_* C API exported from core_c is the stable external surface.
+// - C++ APIs (core::Document, etc.) are internal and not ABI-stable across DLL/DSO.
+// - ABI evolution is append-only within a major version; use cadgf_get_version().
 typedef uint64_t core_entity_id;
 
 typedef struct core_vec2 { double x; double y; } core_vec2;
