@@ -168,6 +168,19 @@ CORE_API int core_document_get_entity_info(const core_document* doc, core_entity
     return 1;
 }
 
+CORE_API int core_document_get_entity_info_v2(const core_document* doc, core_entity_id id, core_entity_info_v2* out_info) {
+    if (!doc || !out_info) return 0;
+    const auto* e = find_entity(doc->impl, id);
+    if (!e) return 0;
+    out_info->id = static_cast<core_entity_id>(e->id);
+    out_info->type = CORE_ENTITY_TYPE_POLYLINE;
+    out_info->layer_id = e->layerId;
+    out_info->visible = e->visible ? 1 : 0;
+    out_info->group_id = e->groupId;
+    out_info->color = static_cast<unsigned int>(e->color);
+    return 1;
+}
+
 CORE_API int core_document_get_entity_name(const core_document* doc, core_entity_id id,
                                            char* out_name_utf8, int out_name_capacity,
                                            int* out_required_bytes) {
@@ -196,6 +209,21 @@ CORE_API int core_document_get_polyline_points(const core_document* doc, core_en
 
     for (int i = 0; i < count; ++i) out_pts[i] = core_vec2{pl->points[static_cast<size_t>(i)].x, pl->points[static_cast<size_t>(i)].y};
     return 1;
+}
+
+CORE_API int core_document_set_entity_visible(core_document* doc, core_entity_id id, int visible) {
+    if (!doc) return 0;
+    return doc->impl.set_entity_visible(static_cast<EntityId>(id), visible != 0) ? 1 : 0;
+}
+
+CORE_API int core_document_set_entity_color(core_document* doc, core_entity_id id, unsigned int color) {
+    if (!doc) return 0;
+    return doc->impl.set_entity_color(static_cast<EntityId>(id), static_cast<uint32_t>(color)) ? 1 : 0;
+}
+
+CORE_API int core_document_set_entity_group_id(core_document* doc, core_entity_id id, int group_id) {
+    if (!doc) return 0;
+    return doc->impl.set_entity_group_id(static_cast<EntityId>(id), group_id) ? 1 : 0;
 }
 
 } // extern C
@@ -412,6 +440,10 @@ CADGF_API int cadgf_document_get_entity_info(const cadgf_document* doc, cadgf_en
     return core_document_get_entity_info(doc, id, out_info);
 }
 
+CADGF_API int cadgf_document_get_entity_info_v2(const cadgf_document* doc, cadgf_entity_id id, cadgf_entity_info_v2* out_info) {
+    return core_document_get_entity_info_v2(doc, id, out_info);
+}
+
 CADGF_API int cadgf_document_get_entity_name(const cadgf_document* doc, cadgf_entity_id id,
                                              char* out_name_utf8, int out_name_capacity,
                                              int* out_required_bytes) {
@@ -422,6 +454,18 @@ CADGF_API int cadgf_document_get_polyline_points(const cadgf_document* doc, cadg
                                                  cadgf_vec2* out_pts, int out_pts_capacity,
                                                  int* out_required_points) {
     return core_document_get_polyline_points(doc, id, out_pts, out_pts_capacity, out_required_points);
+}
+
+CADGF_API int cadgf_document_set_entity_visible(cadgf_document* doc, cadgf_entity_id id, int visible) {
+    return core_document_set_entity_visible(doc, id, visible);
+}
+
+CADGF_API int cadgf_document_set_entity_color(cadgf_document* doc, cadgf_entity_id id, unsigned int color) {
+    return core_document_set_entity_color(doc, id, color);
+}
+
+CADGF_API int cadgf_document_set_entity_group_id(cadgf_document* doc, cadgf_entity_id id, int group_id) {
+    return core_document_set_entity_group_id(doc, id, group_id);
 }
 
 CADGF_API int cadgf_triangulate_polygon(const cadgf_vec2* pts, int n,

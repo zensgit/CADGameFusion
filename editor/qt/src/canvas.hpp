@@ -7,11 +7,14 @@
 #include <QList>
 #include <QPainterPath>
 #include <QRectF>
+#include <cstdint>
 
 class QPainterPath;
 class QRectF;
 
 namespace core { class Document; }
+
+using EntityId = uint64_t; // Mirror core::EntityId
 
 class CanvasWidget : public QWidget {
     Q_OBJECT
@@ -23,12 +26,13 @@ public:
         SnapType type{SnapType::None};
     };
 
-    struct PolyVis { 
-        QVector<QPointF> pts; 
-        QColor color; 
-        int groupId; 
+    struct PolyVis {
+        QVector<QPointF> pts;
+        QColor color;
+        int groupId;
         bool visible{true};
         int layerId{0}; // Layer association
+        EntityId entityId{0}; // PR5: 0 = not bound to Document entity
         // Cache
         QPainterPath cachePath;
         QRectF aabb;
@@ -36,6 +40,8 @@ public:
 
     explicit CanvasWidget(QWidget* parent = nullptr);
     void setDocument(core::Document* doc);
+    void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
+    EntityId entityIdAt(int index) const; // PR5: get EntityId for polyline at index
 
     void addPolyline(const QVector<QPointF>& poly, int layerId = 0);
     void addPolylineColored(const QVector<QPointF>& poly, const QColor& color, int groupId = -1, int layerId = 0);

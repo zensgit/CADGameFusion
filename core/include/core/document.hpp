@@ -20,6 +20,11 @@ struct Entity {
     std::string name;
     int layerId{0}; // 0 is default layer
     std::shared_ptr<void> payload; // simple placeholder, to be replaced by variant
+
+    // Editor metadata (PR4: single source of truth)
+    bool visible{true};           // per-entity visibility override
+    int groupId{-1};              // grouping identifier (-1 = ungrouped)
+    uint32_t color{0};            // per-entity color (0 = inherit from layer)
 };
 
 struct Layer {
@@ -47,6 +52,14 @@ public:
 
     EntityId add_polyline(const Polyline& pl, const std::string& name = "", int layerId = 0);
     bool     remove_entity(EntityId id);
+    void     clear();
+
+    // Entity property setters (PR4: single source of truth)
+    Entity* get_entity(EntityId id);
+    const Entity* get_entity(EntityId id) const;
+    bool set_entity_visible(EntityId id, bool visible);
+    bool set_entity_color(EntityId id, uint32_t color);
+    bool set_entity_group_id(EntityId id, int groupId);
 
     const std::vector<Entity>& entities() const { return entities_; }
     DocumentSettings& settings() { return settings_; }

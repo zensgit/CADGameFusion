@@ -7,14 +7,13 @@
 #include <QJsonObject>
 #include <QVector3D>
 #include <QTextStream>
-// Define implementations only in one place (e.g. main.cpp or here if strictly needed)
-// But since export_cli.cpp already defines them, we might get duplicate symbols if linked together?
-// No, export_cli is a separate executable. editor_qt is separate.
-// So we need definitions here too for editor_qt.
+// TinyGLTF is optional (PR3/PR5: graceful degradation)
+#ifdef CADGF_HAS_TINYGLTF
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <tiny_gltf.h>
+#endif
 
 #include "core/ops2d.hpp"
 
@@ -204,6 +203,7 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, 
         }
         // 2) Triangulate via C++ core (rings)
         bool triangulated = false;
+#ifdef CADGF_HAS_TINYGLTF
         if ((kinds & ExportGLTF) && !rings.empty()) {
             core::TriMesh2D mesh = core::triangulate_rings(rings);
             if (!mesh.indices.empty() && !mesh.vertices.empty()) {
@@ -317,6 +317,11 @@ ExportResult exportScene(const QVector<ExportItem>& items, const QDir& baseDir, 
                 }
             }
         }
+#else
+        if (kinds & ExportGLTF) {
+            res.error += "glTF export unavailable (TinyGLTF not compiled). ";
+        }
+#endif
     }
 
     // TODO: materials, normals, colors as future work

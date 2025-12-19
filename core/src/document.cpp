@@ -4,12 +4,7 @@
 namespace core {
 
 Document::Document() {
-    // Default layer 0
-    Layer l0;
-    l0.id = 0;
-    l0.name = "0";
-    l0.color = 0xFFFFFF;
-    layers_.push_back(l0);
+    clear();
 }
 
 Document::~Document() = default;
@@ -53,6 +48,57 @@ bool Document::remove_entity(EntityId id) {
         if (it->id == id) { entities_.erase(it); return true; }
     }
     return false;
+}
+
+void Document::clear() {
+    settings_ = DocumentSettings{};
+    entities_.clear();
+    layers_.clear();
+    next_id_ = 1;
+    next_layer_id_ = 1;
+
+    Layer l0;
+    l0.id = 0;
+    l0.name = "0";
+    l0.color = 0xFFFFFF;
+    l0.visible = true;
+    l0.locked = false;
+    layers_.push_back(l0);
+}
+
+Entity* Document::get_entity(EntityId id) {
+    for (auto& e : entities_) {
+        if (e.id == id) return &e;
+    }
+    return nullptr;
+}
+
+const Entity* Document::get_entity(EntityId id) const {
+    for (const auto& e : entities_) {
+        if (e.id == id) return &e;
+    }
+    return nullptr;
+}
+
+bool Document::set_entity_visible(EntityId id, bool visible) {
+    auto* e = get_entity(id);
+    if (!e) return false;
+    e->visible = visible;
+    return true;
+}
+
+bool Document::set_entity_color(EntityId id, uint32_t color) {
+    auto* e = get_entity(id);
+    if (!e) return false;
+    e->color = color;
+    return true;
+}
+
+bool Document::set_entity_group_id(EntityId id, int groupId) {
+    auto* e = get_entity(id);
+    if (!e) return false;
+    e->groupId = groupId;
+    return true;
 }
 
 } // namespace core
