@@ -1,0 +1,193 @@
+name: Gemini Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to review (for manual trigger)'
+        required: false
+        type: string
+
+# Prevent concurrent reviews on the same PR
+concurrency:
+  group: gemini-review-${{ github.event.pull_request.number || github.event.inputs.pr_number }}
+  cancel-in-progress: true
+
+jobs:
+  gemini-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get PR info
+        id: pr-info
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ github.event.inputs.pr_number }}" ]; then
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          else
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          fi
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+
+          # Get PR details
+          gh pr view $PR_NUMBER --json title,body,additions,deletions,changedFiles --jq '
+            "title=" + .title,
+            "additions=" + (.additions | tostring),
+            "deletions=" + (.deletions | tostring),
+            "changed_files=" + (.changedFiles | tostring)
+          ' >> $GITHUB_OUTPUT
+
+      - name: Get PR diff
+        id: pr-diff
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.pr-info.outputs.pr_number }}"
+
+          # Get the diff, limit to 50KB to avoid token limits
+          gh pr diff $PR_NUMBER > pr_diff.txt
+
+          # Truncate if too large
+          if [ $(wc -c < pr_diff.txt) -gt 50000 ]; then
+            head -c 50000 pr_diff.txt > pr_diff_truncated.txt
+            echo -e "\n\n[Diff truncated - showing first 50KB]" >> pr_diff_truncated.txt
+            mv pr_diff_truncated.txt pr_diff.txt
+          fi
+
+          echo "diff_file=pr_diff.txt" >> $GITHUB_OUTPUT
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install google-generativeai
+
+      - name: Run Gemini Code Review
+        id: gemini-review
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PR_TITLE: ${{ steps.pr-info.outputs.title }}
+          PR_ADDITIONS: ${{ steps.pr-info.outputs.additions }}
+          PR_DELETIONS: ${{ steps.pr-info.outputs.deletions }}
+          PR_CHANGED_FILES: ${{ steps.pr-info.outputs.changed_files }}
+        run: |
+          python3 << 'PYTHON_SCRIPT'
+          import os
+          import google.generativeai as genai
+
+          # Configure Gemini
+          genai.configure(api_key=os.environ['GEMINI_API_KEY'])
+
+          # Read the diff
+          with open('pr_diff.txt', 'r', encoding='utf-8', errors='ignore') as f:
+              diff_content = f.read()
+
+          # Prepare the prompt
+          pr_title = os.environ.get('PR_TITLE', 'Unknown')
+          pr_additions = os.environ.get('PR_ADDITIONS', '0')
+          pr_deletions = os.environ.get('PR_DELETIONS', '0')
+          pr_changed_files = os.environ.get('PR_CHANGED_FILES', '0')
+
+          prompt = f"""You are an expert code reviewer. Please review the following pull request.
+
+          ## PR Information
+          - **Title**: {pr_title}
+          - **Lines Added**: {pr_additions}
+          - **Lines Deleted**: {pr_deletions}
+          - **Files Changed**: {pr_changed_files}
+
+          ## Diff
+          ```diff
+          {diff_content}
+          ```
+
+          ## Review Guidelines
+          Please provide a thorough code review covering:
+
+          1. **Code Quality** - Are there any code style issues, naming conventions, or best practices violations?
+          2. **Potential Bugs** - Are there any logical errors, edge cases, or potential runtime issues?
+          3. **Security** - Are there any security vulnerabilities (injection, exposed secrets, etc.)?
+          4. **Performance** - Are there any performance concerns or optimization opportunities?
+          5. **Maintainability** - Is the code readable, well-documented, and easy to maintain?
+
+          ## Response Format
+          Please structure your review as:
+
+          ### Summary
+          A brief 2-3 sentence summary of the changes and overall assessment.
+
+          ### Strengths
+          - What's done well in this PR
+
+          ### Suggestions
+          - Specific actionable suggestions for improvement (if any)
+
+          ### Potential Issues
+          - Any bugs, security issues, or concerns that should be addressed before merging
+
+          Be constructive, specific, and helpful. If the code looks good, say so!
+          Use Chinese for your response since the maintainers prefer Chinese.
+          """
+
+          # Call Gemini API
+          model = genai.GenerativeModel('gemini-1.5-flash')
+          response = model.generate_content(prompt)
+
+          review_text = response.text
+
+          # Save to file for the next step
+          with open('review_output.md', 'w', encoding='utf-8') as f:
+              f.write(review_text)
+
+          print("Review generated successfully!")
+          print("---")
+          print(review_text[:500] + "..." if len(review_text) > 500 else review_text)
+          PYTHON_SCRIPT
+
+      - name: Post review comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.pr-info.outputs.pr_number }}"
+
+          # Add header to review
+          {
+            echo "## 🤖 Gemini Code Review"
+            echo ""
+            echo "> Automated review by Google Gemini AI"
+            echo ""
+            cat review_output.md
+            echo ""
+            echo "---"
+            echo "*This review was automatically generated. Please use your judgment when considering suggestions.*"
+          } > final_review.md
+
+          # Post as PR comment
+          gh pr comment $PR_NUMBER --body-file final_review.md
+
+          echo "Review posted to PR #$PR_NUMBER"
+
+      - name: Upload review artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gemini-review-pr-${{ steps.pr-info.outputs.pr_number }}
+          path: |
+            review_output.md
+            pr_diff.txt
+          if-no-files-found: warn
