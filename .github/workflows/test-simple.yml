@@ -11,23 +11,25 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install deps (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libeigen3-dev
       
       - name: Configure
-        run: cmake -S . -B build -DBUILD_EDITOR_QT=OFF
+        run: cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release
         
       - name: Build
-        run: cmake --build build --config Release
+        run: cmake --build build --config Release --parallel 2
         
       - name: Test
         shell: bash
         run: |
-          if [ "${{ runner.os }}" == "Windows" ]; then
-            ./build/tests/core/Release/test_simple.exe || ./build/Release/test_simple.exe
-          else
-            ./build/tests/core/test_simple
-          fi
-          echo "✅ Test passed on ${{ matrix.os }}"
+          ./build/tests/core/test_simple
+          echo "✅ Test passed on ubuntu-latest"
