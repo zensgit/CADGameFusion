@@ -86,51 +86,72 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             prop->setVisibleCheckState(cs, /*silent*/true);
         }
     });
-    connect(prop, &PropertyPanel::propertyEdited, [this, canvas](int entityId, const QString& key, const QVariant& value){
+    connect(prop, &PropertyPanel::propertyEdited, [this, canvas](int entityIdx, const QString& key, const QVariant& value){
         if (!canvas) return;
+        // PR7: Commands operate on Document, then reload Canvas
         if (key == "visible") {
-            struct SetPropertyCommand : Command {
-                CanvasWidget* canvas; int idx; QString prop; QVariant newVal; QVariant oldVal; bool haveOld{false};
-                SetPropertyCommand(CanvasWidget* c, int i, QString p, QVariant nv)
-                    : canvas(c), idx(i), prop(std::move(p)), newVal(std::move(nv)) {
-                    if (canvas && prop == "visible") { CanvasWidget::PolyVis pv; haveOld = canvas->polylineAt(idx, pv); if (haveOld) oldVal = pv.visible; }
+            // Get EntityId from canvas index
+            EntityId eid = canvas->entityIdAt(entityIdx);
+            if (eid == 0) {
+                // Fallback for entities not in Document (legacy canvas-only items)
+                statusBar()->showMessage("Entity not bound to Document", 1500);
+                return;
+            }
+            struct SetVisibleCommand : Command {
+                core::Document* doc; CanvasWidget* canvas; EntityId eid; bool newVal; bool oldVal;
+                SetVisibleCommand(core::Document* d, CanvasWidget* c, EntityId e, bool nv)
+                    : doc(d), canvas(c), eid(e), newVal(nv), oldVal(true) {
+                    if (doc) {
+                        auto* entity = doc->get_entity(eid);
+                        if (entity) oldVal = entity->visible;
+                    }
                 }
-                void apply(const QVariant& v) {
-                    if (!canvas) return;
-                    if (prop == "visible") canvas->setPolylineVisible(idx, v.toBool());
+                void execute() override {
+                    if (doc) doc->set_entity_visible(eid, newVal);
+                    if (canvas) canvas->reloadFromDocument();
                 }
-                void execute() override { apply(newVal); }
-                void undo() override { if (haveOld) apply(oldVal); }
-                QString name() const override { return QString("Set %1").arg(prop); }
+                void undo() override {
+                    if (doc) doc->set_entity_visible(eid, oldVal);
+                    if (canvas) canvas->reloadFromDocument();
+                }
+                QString name() const override { return "Set Visible"; }
             };
-            m_cmdMgr->push(std::make_unique<SetPropertyCommand>(canvas, entityId, "visible", value));
+            m_cmdMgr->push(std::make_unique<SetVisibleCommand>(&m_document, canvas, eid, value.toBool()));
         }
     });
-    connect(prop, &PropertyPanel::propertyEditedBatch, [this, canvas](const QList<int>& ids, const QString& key, const QVariant& value){
-        if (!canvas || key != "visible" || ids.isEmpty()) return;
-        struct BatchSetVisible : Command {
-            CanvasWidget* canvas; QList<int> validIds; QVector<bool> oldVals; bool newVal;
-            BatchSetVisible(CanvasWidget* c, QList<int> is, bool nv) : canvas(c), newVal(nv) {
-                QSet<int> seen;
-                validIds.reserve(is.size());
-                oldVals.reserve(is.size());
-                for (int idx : is) {
-                    if (seen.contains(idx)) continue; // de-duplicate
-                    seen.insert(idx);
-                    CanvasWidget::PolyVis pv;
-                    if (canvas && canvas->polylineAt(idx, pv)) {
-                        validIds.push_back(idx);
-                        oldVals.push_back(pv.visible);
+    connect(prop, &PropertyPanel::propertyEditedBatch, [this, canvas](const QList<int>& idxs, const QString& key, const QVariant& value){
+        if (!canvas || key != "visible" || idxs.isEmpty()) return;
+        // PR7: Batch commands operate on Document, then reload Canvas
+        struct BatchSetVisibleDoc : Command {
+            core::Document* doc; CanvasWidget* canvas;
+            QVector<EntityId> entityIds; QVector<bool> oldVals; bool newVal;
+            BatchSetVisibleDoc(core::Document* d, CanvasWidget* c, const QList<int>& idxs, bool nv)
+                : doc(d), canvas(c), newVal(nv) {
+                QSet<EntityId> seen;
+                for (int idx : idxs) {
+                    EntityId eid = c->entityIdAt(idx);
+                    if (eid == 0 || seen.contains(eid)) continue;
+                    seen.insert(eid);
+                    auto* entity = d->get_entity(eid);
+                    if (entity) {
+                        entityIds.push_back(eid);
+                        oldVals.push_back(entity->visible);
                     }
                 }
             }
-            void execute() override { for (int idx : validIds) canvas->setPolylineVisible(idx, newVal); }
-            void undo() override { for (int i=0;i<validIds.size();++i) canvas->setPolylineVisible(validIds[i], oldVals[i]); }
+            void execute() override {
+                for (EntityId eid : entityIds) doc->set_entity_visible(eid, newVal);
+                if (canvas) canvas->reloadFromDocument();
+            }
+            void undo() override {
+                for (int i = 0; i < entityIds.size(); ++i) doc->set_entity_visible(entityIds[i], oldVals[i]);
+                if (canvas) canvas->reloadFromDocument();
+            }
             QString name() const override { return "Set Visible (Batch)"; }
         };
-        auto cmd = std::make_unique<BatchSetVisible>(canvas, ids, value.toBool());
-        if (cmd->validIds.isEmpty()) {
-            statusBar()->showMessage("No valid selection for visibility change", 1200);
+        auto cmd = std::make_unique<BatchSetVisibleDoc>(&m_document, canvas, idxs, value.toBool());
+        if (cmd->entityIds.isEmpty()) {
+            statusBar()->showMessage("No valid entities for visibility change", 1200);
             return;
         }
         m_cmdMgr->push(std::move(cmd));
@@ -394,17 +415,18 @@ void MainWindow::maybeAutoRestore() {
 }
 
 void MainWindow::addSamplePolyline() {
-    core::Vec2 pts[5] = {{0, 0}, {100, 0}, {100, 100}, {0, 100}, {0, 0}};  // 已经正确闭合
+    // PR7: Add to Document, then reload Canvas (single source of truth)
+    core::Vec2 pts[5] = {{0, 0}, {100, 0}, {100, 100}, {0, 100}, {0, 0}};  // closed square
     core::Polyline pl;
     pl.points.reserve(5);
     for (const auto& p : pts) pl.points.push_back(p);
-    auto id = m_document.add_polyline(pl);
-    QVector<QPointF> poly;
-    for (auto& p : pts) poly.push_back(QPointF(p.x, p.y));
+    auto id = m_document.add_polyline(pl, "Sample Square");
+    // Set default groupId using next available
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
     if (canvas) {
         int gid = canvas->newGroupId();
-        canvas->addPolylineColored(poly, QColor(220,220,230), gid);
+        m_document.set_entity_group_id(id, gid);
+        canvas->reloadFromDocument();
     }
     statusBar()->showMessage(QString("Added polyline id=%1").arg(static_cast<qulonglong>(id)), 2000);
 }
@@ -463,6 +485,7 @@ void MainWindow::triangulateSample() {
 }
 
 void MainWindow::demoBoolean() {
+    // PR7: Add result polylines to Document, then reload Canvas
     // simple union of two overlapping boxes (闭合多边形)
     core::Polyline a;
     a.points = {{0, 0}, {100, 0}, {100, 100}, {0, 100}, {0, 0}};  // 正确闭合
@@ -477,16 +500,22 @@ void MainWindow::demoBoolean() {
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
     if (!canvas) return;
     int gidB = canvas->newGroupId();
-    for (int i = 0; i < static_cast<int>(resPolys.size()); i++) {
-        QVector<QPointF> poly;
-        poly.reserve(static_cast<int>(resPolys[static_cast<size_t>(i)].points.size()));
-        for (const auto& p : resPolys[static_cast<size_t>(i)].points) poly.push_back(QPointF(p.x, p.y));
-        const QColor col = (i%2==0) ? QColor(100,200,255) : QColor(255,180,120);
-        canvas->addPolylineColored(poly, col, gidB);
+    // Add result polylines to Document (single source of truth)
+    for (size_t i = 0; i < resPolys.size(); i++) {
+        std::string name = "Boolean_" + std::to_string(i);
+        auto id = m_document.add_polyline(resPolys[i], name);
+        m_document.set_entity_group_id(id, gidB);
+        // Alternate colors: 0x64C8FF (cyan) and 0xFFB478 (orange)
+        uint32_t col = (i % 2 == 0) ? 0x64C8FF : 0xFFB478;
+        m_document.set_entity_color(id, col);
     }
+    canvas->reloadFromDocument();
+    markDirty();
+    statusBar()->showMessage(QString("Boolean union: %1 result(s)").arg(resPolys.size()), 2000);
 }
 
 void MainWindow::demoOffset() {
+    // PR7: Add result polylines to Document, then reload Canvas
     core::Polyline a;
     a.points = {{0, 0}, {100, 0}, {100, 100}, {0, 100}, {0, 0}};  // 正确闭合的矩形
     std::vector<core::Polyline> resPolys = core::offset({a}, 10.0);
@@ -497,12 +526,17 @@ void MainWindow::demoOffset() {
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
     if (!canvas) return;
     int gidO = canvas->newGroupId();
-    for (int i = 0; i < static_cast<int>(resPolys.size()); i++) {
-        QVector<QPointF> poly;
-        poly.reserve(static_cast<int>(resPolys[static_cast<size_t>(i)].points.size()));
-        for (const auto& p : resPolys[static_cast<size_t>(i)].points) poly.push_back(QPointF(p.x, p.y));
-        canvas->addPolylineColored(poly, QColor(180,255,120), gidO);
+    // Add result polylines to Document (single source of truth)
+    for (size_t i = 0; i < resPolys.size(); i++) {
+        std::string name = "Offset_" + std::to_string(i);
+        auto id = m_document.add_polyline(resPolys[i], name);
+        m_document.set_entity_group_id(id, gidO);
+        // Green color: 0xB4FF78
+        m_document.set_entity_color(id, 0xB4FF78);
     }
+    canvas->reloadFromDocument();
+    markDirty();
+    statusBar()->showMessage(QString("Offset: %1 result(s)").arg(resPolys.size()), 2000);
 }
 
 void MainWindow::showAboutCore() {
