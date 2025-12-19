@@ -51,6 +51,11 @@ if(TARGET core)
     add_executable(core_tests_c_api_document_query test_c_api_document_query.cpp)
     target_include_directories(core_tests_c_api_document_query PRIVATE ../../core/include)
     target_link_libraries(core_tests_c_api_document_query PRIVATE core_c)
+
+    # Document group id allocation smoke test
+    add_executable(core_tests_document_group_id test_document_group_id.cpp)
+    target_include_directories(core_tests_document_group_id PRIVATE ../../core/include)
+    target_link_libraries(core_tests_document_group_id PRIVATE core)
 else()
     message(WARNING "Core library not found, skipping complex tests")
 endif()

@@ -141,6 +141,8 @@ CORE_API int core_document_get_polyline_points(const core_document* doc, core_en
 CORE_API int core_document_set_entity_visible(core_document* doc, core_entity_id id, int visible);
 CORE_API int core_document_set_entity_color(core_document* doc, core_entity_id id, unsigned int color);
 CORE_API int core_document_set_entity_group_id(core_document* doc, core_entity_id id, int group_id);
+// Allocate a new group id (>=1). Returns -1 on failure.
+CORE_API int core_document_alloc_group_id(core_document* doc);
 
 CADGF_API int cadgf_document_get_layer_count(const cadgf_document* doc, int* out_count);
 CADGF_API int cadgf_document_get_layer_id_at(const cadgf_document* doc, int index, int* out_layer_id);
@@ -168,6 +170,8 @@ CADGF_API int cadgf_document_get_polyline_points(const cadgf_document* doc, cadg
 CADGF_API int cadgf_document_set_entity_visible(cadgf_document* doc, cadgf_entity_id id, int visible);
 CADGF_API int cadgf_document_set_entity_color(cadgf_document* doc, cadgf_entity_id id, unsigned int color);
 CADGF_API int cadgf_document_set_entity_group_id(cadgf_document* doc, cadgf_entity_id id, int group_id);
+// Allocate a new group id (>=1). Returns -1 on failure.
+CADGF_API int cadgf_document_alloc_group_id(cadgf_document* doc);
 
 // Triangulation C API (stateless)
 // Two-call pattern:
