@@ -5,6 +5,7 @@
 #include <QPushButton>
 #include <QHeaderView>
 #include <QCheckBox>
+#include <QtGlobal>
 
 LayerPanel::LayerPanel(QWidget* parent) : QDockWidget(parent) {
     setWindowTitle("Layers");
@@ -46,9 +47,15 @@ void LayerPanel::refresh() {
         // Use copy capture for layer id/state since layer is a reference in loop (wait, it's const ref from vector)
         // vector might realloc, so we should capture ID.
         int lid = layer.id;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+        connect(chk, &QCheckBox::checkStateChanged, this, [this, lid](Qt::CheckState state){
+            emit layerVisibilityChanged(lid, state == Qt::Checked);
+        });
+#else
         connect(chk, &QCheckBox::stateChanged, this, [this, lid](int state){
             emit layerVisibilityChanged(lid, state == Qt::Checked);
         });
+#endif
         m_tree->setItemWidget(item, 1, chk);
     }
 }

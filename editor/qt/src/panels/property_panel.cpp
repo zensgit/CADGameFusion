@@ -63,6 +63,15 @@ void PropertyPanel::updateFromSelection(const QList<qulonglong>& entityIds) {
         // Always create a fresh checkbox for single selection
         m_visibleCheck = new QCheckBox(m_tree);
         m_visibleCheck->setTristate(false);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+        connect(m_visibleCheck, &QCheckBox::checkStateChanged, this, [this](Qt::CheckState state){
+            if (m_internalChange) return;
+            if (m_currentSelection.isEmpty()) return;
+            bool v = (state == Qt::Checked);
+            qDebug() << "PropertyPanel: Single selection visible changed to" << v << "for entity" << m_currentSelection[0];
+            emit propertyEdited(m_currentSelection[0], "visible", v);
+        });
+#else
         connect(m_visibleCheck, &QCheckBox::stateChanged, this, [this](int stateInt){
             Qt::CheckState state = static_cast<Qt::CheckState>(stateInt);
             if (m_internalChange) return;
@@ -71,6 +80,7 @@ void PropertyPanel::updateFromSelection(const QList<qulonglong>& entityIds) {
             qDebug() << "PropertyPanel: Single selection visible changed to" << v << "for entity" << m_currentSelection[0];
             emit propertyEdited(m_currentSelection[0], "visible", v);
         });
+#endif
         m_internalChange = true;
         m_visibleCheck->setChecked(true);
         m_internalChange = false;
@@ -84,6 +94,19 @@ void PropertyPanel::updateFromSelection(const QList<qulonglong>& entityIds) {
         // Always create a fresh checkbox for multi-selection
         m_visibleCheck = new QCheckBox(m_tree);
         m_visibleCheck->setTristate(true);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+        connect(m_visibleCheck, &QCheckBox::checkStateChanged, this, [this](Qt::CheckState state){
+            if (m_internalChange) return;
+            if (m_currentSelection.isEmpty()) return;
+            if (state == Qt::PartiallyChecked) {
+                qDebug() << "PropertyPanel: Ignoring PartiallyChecked state click";
+                return;
+            }
+            bool v = (state == Qt::Checked);
+            qDebug() << "PropertyPanel: Batch visible changed to" << v << "for entities" << m_currentSelection;
+            emit propertyEditedBatch(m_currentSelection, "visible", v);
+        });
+#else
         connect(m_visibleCheck, &QCheckBox::stateChanged, this, [this](int stateInt){
             Qt::CheckState state = static_cast<Qt::CheckState>(stateInt);
             if (m_internalChange) return;
@@ -96,6 +119,7 @@ void PropertyPanel::updateFromSelection(const QList<qulonglong>& entityIds) {
             qDebug() << "PropertyPanel: Batch visible changed to" << v << "for entities" << m_currentSelection;
             emit propertyEditedBatch(m_currentSelection, "visible", v);
         });
+#endif
         // Compute tri-state from current selection visibility
         bool anyChecked = false, anyUnchecked = false;
         // We cannot access CanvasWidget here; rely on a temporary hint via tooltip if needed.
