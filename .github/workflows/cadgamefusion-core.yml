@@ -200,6 +200,12 @@ jobs:
         shell: bash
         run: |
           echo "=== Running tests on ${{ matrix.os }} ==="
+
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            # Ensure core.dll and vcpkg runtime DLLs are discoverable when running tests from bash.
+            # (test binaries live under build/tests/... while core.dll is under build/core/Release)
+            export PATH="$(pwd)/build/core/Release:$(pwd)/build/core:$(pwd)/build/vcpkg_installed/x64-windows/bin:$(pwd)/vcpkg_installed/x64-windows/bin:$PATH"
+          fi
           
           # Find test executables
           if [ "${{ runner.os }}" == "Windows" ]; then

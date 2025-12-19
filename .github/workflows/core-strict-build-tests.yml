@@ -162,8 +162,14 @@ jobs:
             mkdir -p "$HOME/.cache/vcpkg/archives"
           fi
           TOOLCHAIN="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
-          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DVCPKG_TARGET_TRIPLET="$VCPKG_DEFAULT_TRIPLET" -G Ninja || \
-          cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DVCPKG_TARGET_TRIPLET="$VCPKG_DEFAULT_TRIPLET"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            # On Windows, avoid Ninja+MinGW from Git Bash; prefer the default Visual Studio generator (MSVC),
+            # matching the x64-windows vcpkg triplet libraries.
+            cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DVCPKG_TARGET_TRIPLET="$VCPKG_DEFAULT_TRIPLET"
+          else
+            cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DVCPKG_TARGET_TRIPLET="$VCPKG_DEFAULT_TRIPLET" -G Ninja || \
+            cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN" -DCMAKE_BUILD_TYPE=Release -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DVCPKG_TARGET_TRIPLET="$VCPKG_DEFAULT_TRIPLET"
+          fi
 
       - name: Build
         run: cmake --build build --config Release --parallel 2
@@ -171,7 +177,14 @@ jobs:
       - name: Run core tests
         shell: bash
         run: |
-          if [ "${{ runner.os }}" == "Windows" ]; then TEST_DIR="build/tests/core/Release"; TEST_SUFFIX=".exe"; else TEST_DIR="build/tests/core"; fi
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            export PATH="$(pwd)/build/core/Release:$(pwd)/build/core:$(pwd)/build/vcpkg_installed/x64-windows/bin:$(pwd)/vcpkg_installed/x64-windows/bin:C:/vcpkg/installed/x64-windows/bin:$PATH"
+            TEST_DIR="build/tests/core/Release"
+            TEST_SUFFIX=".exe"
+          else
+            TEST_DIR="build/tests/core"
+            TEST_SUFFIX=""
+          fi
           for T in test_simple core_tests_triangulation core_tests_boolean_offset core_tests_complex_strict; do
             if [ -f "$TEST_DIR/$T$TEST_SUFFIX" ]; then echo "Running $T"; "$TEST_DIR/$T$TEST_SUFFIX"; fi
           done
@@ -179,6 +192,9 @@ jobs:
       - name: Run tools tests (meta.normalize)
         shell: bash
         run: |
+          if [ "${{ runner.os }}" == "Windows" ]; then
+            export PATH="$(pwd)/build/core/Release:$(pwd)/build/core:$(pwd)/build/vcpkg_installed/x64-windows/bin:$(pwd)/vcpkg_installed/x64-windows/bin:C:/vcpkg/installed/x64-windows/bin:$PATH"
+          fi
           if [ "${{ runner.os }}" == "Windows" ]; then TOOL_DIR="build/tests/tools/Release"; SUFFIX=".exe"; else TOOL_DIR="build/tests/tools"; SUFFIX=""; fi
           TGT="$TOOL_DIR/test_meta_normalize$SUFFIX"
           if [ -f "$TGT" ]; then
