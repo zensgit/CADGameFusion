@@ -33,6 +33,7 @@
 - `void cadgf_document_destroy(cadgf_document* doc);`
 - `cadgf_entity_id cadgf_document_add_polyline(_ex)(...);`
 - `int cadgf_document_remove_entity(...);`
+- `int cadgf_document_alloc_group_id(cadgf_document* doc);` (>=1, -1 on failure)
 - Query APIs: layer/entity enumeration + UTF-8 name two-call patterns
 
 ### Geometry ops (stateless)

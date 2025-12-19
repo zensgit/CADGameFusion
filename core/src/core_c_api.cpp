@@ -226,6 +226,11 @@ CORE_API int core_document_set_entity_group_id(core_document* doc, core_entity_i
     return doc->impl.set_entity_group_id(static_cast<EntityId>(id), group_id) ? 1 : 0;
 }
 
+CORE_API int core_document_alloc_group_id(core_document* doc) {
+    if (!doc) return -1;
+    return doc->impl.alloc_group_id();
+}
+
 } // extern C
 
 extern "C" {
@@ -466,6 +471,10 @@ CADGF_API int cadgf_document_set_entity_color(cadgf_document* doc, cadgf_entity_
 
 CADGF_API int cadgf_document_set_entity_group_id(cadgf_document* doc, cadgf_entity_id id, int group_id) {
     return core_document_set_entity_group_id(doc, id, group_id);
+}
+
+CADGF_API int cadgf_document_alloc_group_id(cadgf_document* doc) {
+    return core_document_alloc_group_id(doc);
 }
 
 CADGF_API int cadgf_triangulate_polygon(const cadgf_vec2* pts, int n,

@@ -27,6 +27,8 @@ Entities (demo scope)
   - Adds a polyline entity; n points. Returns entity id (>0) or 0 on failure.
 - `int cadgf_document_remove_entity(cadgf_document* doc, cadgf_entity_id id);`
   - Removes entity by id. Returns 1 on success.
+- `int cadgf_document_alloc_group_id(cadgf_document* doc);`
+  - Allocates a new group id (>=1) for entity grouping. Returns -1 on failure.
 
 Triangulation
 - `int cadgf_triangulate_polygon(const cadgf_vec2* pts, int n, unsigned int* indices, int* index_count);`
