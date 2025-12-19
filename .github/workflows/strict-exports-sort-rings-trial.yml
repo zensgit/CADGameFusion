@@ -21,13 +21,45 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build python3-pip
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config python3-pip
           python3 -m pip install --user --upgrade pip jsonschema
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/vcpkg/archives
+            vcpkg/installed
+            vcpkg_installed
+            build/vcpkg_installed
+          key: ubuntu-vcpkg-trial-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json') }}-${{ github.run_number }}
+          restore-keys: |
+            ubuntu-vcpkg-trial-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json') }}-
+            ubuntu-vcpkg-trial-
+
+      - name: Setup vcpkg
+        shell: bash
+        run: |
+          export VCPKG_DEFAULT_BINARY_CACHE="$HOME/.cache/vcpkg/archives"
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$VCPKG_DEFAULT_BINARY_CACHE" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite" >> $GITHUB_ENV
+
+          if [ ! -d "vcpkg/.git" ]; then
+            [ -d "vcpkg" ] && rm -rf vcpkg
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+          fi
+          (cd vcpkg && git fetch --tags --force && git checkout a20d95d3c76906363896754eb1cc93db2a694f16 && ./bootstrap-vcpkg.sh)
+          echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
 
       - name: Configure with sort-rings
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_EDITOR_QT=OFF -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_MANIFEST_MODE=ON \
+            -DVCPKG_TARGET_TRIPLET=x64-linux \
+            -DVCPKG_INSTALLED_DIR=vcpkg/installed \
             -DCADGF_USE_NLOHMANN_JSON=ON -DCADGF_SORT_RINGS=ON
 
       - name: Build export_cli and tests
@@ -65,4 +97,3 @@ jobs:
           path: |
             build/exports/scene_cli_*/*
             consistency_stats.txt
-
