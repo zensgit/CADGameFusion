@@ -20,7 +20,7 @@
 
 3. 方案概述
 - 数据流：Canvas 多环折线 → Exporter 生成 flat_pts/ring_counts/ring_roles 与 glTF（通过 C API rings 三角化） → Unity WatchAndReload 监控目录，优先 glTF 加载；否则 JSON + CoreBindings.TriangulateRings → Mesh。
-- 版本/特性：core_get_version()/core_get_feature_flags() 支持运行时判定 EARCUT/CLIPPER2。
+- 版本/特性：cadgf_get_version()/cadgf_get_feature_flags() 支持运行时判定 EARCUT/CLIPPER2。
 
 4. 详细设计
 - 数据结构/文件格式
@@ -32,7 +32,7 @@
     - POSITION float32 VEC3（Z=0）、indices uint32；单 buffer、两个 bufferView、两个 accessor、单 mesh/node/scene。
 - Core & C API
   - triangulate_rings(rings): 使用 earcut，将多环转换为 indices。
-  - C API：core_triangulate_polygon_rings(flatPts, ringCounts, ringCount, indices, indexCount)。
+  - C API：cadgf_triangulate_polygon_rings(flatPts, ringCounts, ringCount, indices, indexCount)。
 - 导出器（Qt）
   - 写 JSON：flat_pts/ring_counts/ring_roles 与 legacy polygons；unitScale 参与坐标缩放。
   - 写 glTF：调用 C API rings 三角化构建 POSITION/INDICES；写出最小 glTF + bin。
@@ -70,4 +70,3 @@
 
 10. 后续工作
 - 完整洞支持的样式/材质；大网格分块；更多导出元数据；更丰富的 glTF 属性（法线/颜色）。
-

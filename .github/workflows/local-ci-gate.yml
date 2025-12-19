@@ -1,0 +1,169 @@
+name: Local CI Gate
+
+# This workflow runs the same local_ci.sh that developers run locally,
+# ensuring CI and local validation are identical ("single source of truth").
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      quick:
+        description: 'Use quick scene subset'
+        required: false
+        default: 'true'
+        type: boolean
+
+jobs:
+  local-ci-ubuntu:
+    name: Local CI (Ubuntu)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/vcpkg/archives
+            vcpkg/installed
+            vcpkg_installed
+            build/vcpkg_installed
+          key: ubuntu-vcpkg-localci-${{ hashFiles('**/vcpkg.json') }}-${{ github.run_number }}
+          restore-keys: |
+            ubuntu-vcpkg-localci-${{ hashFiles('**/vcpkg.json') }}-
+            ubuntu-vcpkg-localci-
+
+      - name: Setup vcpkg
+        shell: bash
+        run: |
+          export VCPKG_DEFAULT_BINARY_CACHE="$HOME/.cache/vcpkg/archives"
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$VCPKG_DEFAULT_BINARY_CACHE" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite" >> $GITHUB_ENV
+
+          if [ ! -d "vcpkg/.git" ]; then
+            [ -d "vcpkg" ] && rm -rf vcpkg
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+          fi
+          (cd vcpkg && git fetch --tags --force && git checkout a20d95d3c76906363896754eb1cc93db2a694f16 && ./bootstrap-vcpkg.sh)
+          echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build python3 python3-pip
+          pip3 install jsonschema
+
+      - name: Run local_ci.sh (strict mode)
+        id: local_ci
+        shell: bash
+        run: |
+          # Export vcpkg settings for CMake
+          export VCPKG_DEFAULT_BINARY_CACHE="${VCPKG_DEFAULT_BINARY_CACHE:-$HOME/.cache/vcpkg/archives}"
+          export VCPKG_BINARY_SOURCES="${VCPKG_BINARY_SOURCES:-clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite}"
+
+          # Determine flags
+          EXTRA_FLAGS=""
+          EVENT_NAME="${{ github.event_name }}"
+          QUICK_INPUT="${{ github.event.inputs.quick || 'false' }}"
+
+          # Default to quick mode for PRs (and pushes to main) to keep the gate fast.
+          if [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "push" ]; then
+            EXTRA_FLAGS="--quick"
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$QUICK_INPUT" = "true" ]; then
+            EXTRA_FLAGS="--quick"
+          fi
+
+          # Run local_ci.sh with vcpkg toolchain
+          echo "Running: bash tools/local_ci.sh --build-dir build --toolchain \$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake --build-type Release --rtol 1e-6 --gltf-holes full --strict-exit $EXTRA_FLAGS"
+
+          bash tools/local_ci.sh \
+            --build-dir build \
+            --toolchain "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            --build-type Release \
+            --rtol 1e-6 \
+            --gltf-holes full \
+            --strict-exit \
+            $EXTRA_FLAGS
+
+      - name: Show summary JSON
+        if: always()
+        shell: bash
+        run: |
+          echo "=== local_ci_summary.json ==="
+          if [ -f "build/local_ci_summary.json" ]; then
+            cat build/local_ci_summary.json
+          else
+            echo "Summary JSON not found"
+          fi
+
+      - name: Upload local_ci artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-ci-results-ubuntu
+          path: |
+            build/local_ci_output.log
+            build/local_ci_summary.json
+            build/consistency_stats.txt
+            build/field_*.json
+          if-no-files-found: warn
+
+      - name: Upload exports bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-ci-exports-ubuntu
+          path: |
+            build/exports/**
+          if-no-files-found: warn
+
+      - name: Generate CI summary
+        if: always()
+        shell: bash
+        run: |
+          echo "## 🎯 Local CI Gate Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f "build/local_ci_summary.json" ]; then
+            echo "### Summary" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat build/local_ci_summary.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            # Extract key metrics
+            VALID_FAIL=$(jq -r '.validationFailCount // 0' build/local_ci_summary.json)
+            STRUCT_FAIL=$(jq -r '.structCompareFailCount // 0' build/local_ci_summary.json)
+            FIELD_FAIL=$(jq -r '.fieldCompareFailCount // 0' build/local_ci_summary.json)
+            MISSING=$(jq -r '.missingScenes | length' build/local_ci_summary.json)
+
+            echo "### Metrics" >> $GITHUB_STEP_SUMMARY
+            echo "| Check | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Validation Failures | $VALID_FAIL |" >> $GITHUB_STEP_SUMMARY
+            echo "| Structure Compare Failures | $STRUCT_FAIL |" >> $GITHUB_STEP_SUMMARY
+            echo "| Field Compare Failures | $FIELD_FAIL |" >> $GITHUB_STEP_SUMMARY
+            echo "| Missing Scenes | $MISSING |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            TOTAL_FAIL=$((VALID_FAIL + STRUCT_FAIL + FIELD_FAIL + MISSING))
+            if [ $TOTAL_FAIL -eq 0 ]; then
+              echo "### ✅ All checks passed!" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "### ❌ Some checks failed (total: $TOTAL_FAIL)" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "### ⚠️ Summary JSON not found" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- \`local_ci_output.log\` - Full execution log" >> $GITHUB_STEP_SUMMARY
+          echo "- \`local_ci_summary.json\` - Machine-readable summary" >> $GITHUB_STEP_SUMMARY
+          echo "- \`field_*.json\` - Field comparison details" >> $GITHUB_STEP_SUMMARY

@@ -11,7 +11,9 @@ Checks:
   - group_* presence and matching group_id sets
   - For each group: ring_counts, ring_roles (if present), flat_pts length
   - Coordinates equality with tolerance (object or array format)
-  - glTF presence for both or neither; if both, POSITION and indices accessor counts match
+  - glTF checks (optional):
+      - By default: glTF presence must match and accessor counts must match
+      - With --allow-gltf-mismatch: skip ALL glTF checks (presence/group/counts)
 """
 
 import argparse
@@ -102,15 +104,19 @@ def compare_json_groups(lpath: Path, rpath: Path, rtol: float, mode: str, check_
 
 
 def compare_gltf_counts(ldir: Path, rdir: Path, errors: List[str], allow_mismatch: bool = False):
+    if allow_mismatch:
+        # Field compare is intended to validate JSON-level geometry determinism.
+        # glTF triangulation can legitimately differ while still being structurally valid
+        # (validated separately by validate_export.py). When allow_mismatch is enabled,
+        # we skip all glTF-related comparisons (presence / group sets / accessor counts).
+        return
+
     # Expect both to have mesh_group_*.gltf or neither.
     lmeshes = sorted(ldir.glob('mesh_group_*.gltf'))
     rmeshes = sorted(rdir.glob('mesh_group_*.gltf'))
     if bool(lmeshes) != bool(rmeshes):
-        if allow_mismatch:
-            return
-        else:
-            errors.append("glTF presence mismatch between scenes")
-            return
+        errors.append("glTF presence mismatch between scenes")
+        return
     if not lmeshes:
         return
     # Compare per group by extracting id from filename
@@ -151,7 +157,7 @@ def main() -> int:
     ap.add_argument('right', help='Right scene directory (e.g., sample)')
     ap.add_argument('--rtol', type=float, default=1e-6, help='Relative tolerance for float comparisons')
     ap.add_argument('--json-out', type=str, default='', help='Write detailed JSON report to this path')
-    ap.add_argument('--allow-gltf-mismatch', action='store_true', help='Do not fail when glTF presence differs')
+    ap.add_argument('--allow-gltf-mismatch', action='store_true', help='Skip all glTF checks (presence/group/counts)')
     ap.add_argument('--mode', type=str, default='full', choices=['full','counts-only'], help='Comparison mode')
     ap.add_argument('--meta-mode', type=str, default='auto', choices=['auto','on','off'], help='Meta comparison mode: auto(full only), on(always), off(never)')
     args = ap.parse_args()

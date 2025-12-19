@@ -32,6 +32,18 @@ install(TARGETS export_cli
     RUNTIME DESTINATION bin
 )
 
+# Plugin host demo (loads a plugin .so/.dll and runs its exporter)
+add_executable(plugin_host_demo plugin_host_demo.cpp)
+target_link_libraries(plugin_host_demo PRIVATE core_c ${CMAKE_DL_LIBS})
+target_include_directories(plugin_host_demo PRIVATE
+    ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/tools
+)
+set_target_properties(plugin_host_demo PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
 # Solver demo (PoC): parse minimal project JSON and run solver
 add_executable(solve_demo solve_demo.cpp)
 target_link_libraries(solve_demo PRIVATE core)

@@ -33,7 +33,7 @@ struct ExportOptions {
 
 // Scene definitions
 struct SceneData {
-    std::vector<core_vec2> points;
+    std::vector<cadgf_vec2> points;
     std::vector<int> ringCounts;
     std::vector<int> ringRoles;
     int groupId;
@@ -71,7 +71,7 @@ static void writeDXF(const std::string& filename, const SceneData& scene, double
     out.close();
 }
 
-static double signedArea(const std::vector<core_vec2>& pts, size_t start, size_t count) {
+static double signedArea(const std::vector<cadgf_vec2>& pts, size_t start, size_t count) {
     if (count < 3) return 0.0;
     double a = 0.0;
     for (size_t i = 0; i < count; ++i) {
@@ -152,7 +152,7 @@ static void sortRingsByRoleAndArea(SceneData& scene) {
         return a.start < b.start;
     });
     // Rebuild points and metadata based on new order
-    std::vector<core_vec2> newPts;
+    std::vector<cadgf_vec2> newPts;
     newPts.reserve(scene.points.size());
     std::vector<int> newCounts; newCounts.reserve(scene.ringCounts.size());
     std::vector<int> newRoles; newRoles.reserve(scene.ringRoles.size());
@@ -371,8 +371,8 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
     bool success = false;
     if (!outerOnlyFan && scene.ringRoles.size() > 1 && scene.ringRoles[1] == 1) {
         // Has holes - use rings API if available
-        success = core_triangulate_polygon_rings(
-            reinterpret_cast<const core_vec2*>(scene.points.data()),
+        success = cadgf_triangulate_polygon_rings(
+            scene.points.data(),
             scene.ringCounts.data(),
             static_cast<int>(scene.ringCounts.size()),
             nullptr, 
@@ -380,8 +380,8 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
         
         if (success && indexCount > 0) {
             indices.resize(indexCount);
-            core_triangulate_polygon_rings(
-                reinterpret_cast<const core_vec2*>(scene.points.data()),
+            cadgf_triangulate_polygon_rings(
+                scene.points.data(),
                 scene.ringCounts.data(),
                 static_cast<int>(scene.ringCounts.size()),
                 indices.data(),
@@ -390,13 +390,13 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
     } else {
         // Simple polygon - use basic triangulation
         int outerCount = scene.ringCounts[0];
-        success = core_triangulate_polygon(
+        success = cadgf_triangulate_polygon(
             scene.points.data(), outerCount,
             nullptr, &indexCount);
         
         if (success && indexCount > 0) {
             indices.resize(indexCount);
-            core_triangulate_polygon(
+            cadgf_triangulate_polygon(
                 scene.points.data(), outerCount,
                 indices.data(), &indexCount);
         }
@@ -676,14 +676,14 @@ void exportScene(const std::string& outputDir, const std::string& sceneName,
 
             std::vector<int> counts;
             std::vector<int> roles;
-            std::vector<core_vec2> pts;
+            std::vector<cadgf_vec2> pts;
 
             if (js.contains("rings")) {
                 for (const auto& ring : js.at("rings")) {
                     int cnt = 0;
                     for (const auto& p : ring) {
-                        if (p.is_object()) pts.push_back(core_vec2{ p.value("x",0.0), p.value("y",0.0) });
-                        else if (p.is_array() && p.size()>=2) pts.push_back(core_vec2{ p[0].get<double>(), p[1].get<double>() });
+                        if (p.is_object()) pts.push_back(cadgf_vec2{ p.value("x",0.0), p.value("y",0.0) });
+                        else if (p.is_array() && p.size()>=2) pts.push_back(cadgf_vec2{ p[0].get<double>(), p[1].get<double>() });
                         cnt++;
                     }
                     counts.push_back(cnt);
@@ -692,8 +692,8 @@ void exportScene(const std::string& outputDir, const std::string& sceneName,
             } else {
                 if (js.contains("flat_pts")) {
                     for (const auto& p : js.at("flat_pts")) {
-                        if (p.is_object()) pts.push_back(core_vec2{ p.value("x",0.0), p.value("y",0.0) });
-                        else if (p.is_array() && p.size()>=2) pts.push_back(core_vec2{ p[0].get<double>(), p[1].get<double>() });
+                        if (p.is_object()) pts.push_back(cadgf_vec2{ p.value("x",0.0), p.value("y",0.0) });
+                        else if (p.is_array() && p.size()>=2) pts.push_back(cadgf_vec2{ p[0].get<double>(), p[1].get<double>() });
                     }
                 }
                 if (js.contains("ring_counts")) for (const auto& c : js.at("ring_counts")) counts.push_back(c.get<int>());

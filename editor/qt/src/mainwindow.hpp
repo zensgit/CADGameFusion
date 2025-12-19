@@ -1,19 +1,28 @@
 #pragma once
 
+#include <memory>
+
 #include <QMainWindow>
 #include <QUndoStack>
 #include "core/document.hpp"
 class CommandManager;
 class QMenu;
+class QAction;
 class Project;
 class LayerPanel;
 
 class QListWidget;
 
+namespace cadgf { class PluginRegistry; }
+struct core_document;
+typedef core_document cadgf_document;
+struct cadgf_exporter_api_v1;
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
     explicit MainWindow(QWidget* parent = nullptr);
+    ~MainWindow() override;
 private slots:
     void newFile();
     void openFile();
@@ -27,6 +36,7 @@ private slots:
     void exportSceneAction();
     void exportSceneActionImpl(int kinds);
     void exportWithOptions();
+    void loadPlugin();
 protected:
     void closeEvent(QCloseEvent* event) override;
 private:
@@ -44,6 +54,9 @@ private:
     void maybeAutoRestore();
 
     bool performSave(const QString& path, bool updateCurrent);
+    void rebuildPluginExportMenu();
+    void exportViaPlugin(const cadgf_exporter_api_v1* exporter);
+    bool buildCadgfDocumentFromCanvas(cadgf_document* doc, QString* error) const;
 
     QListWidget* list_{};
     LayerPanel* m_layerPanel{nullptr};
@@ -59,4 +72,10 @@ private:
     QStringList m_recentFiles;
     QMenu* m_recentMenu{nullptr};
     static constexpr int kMaxRecent = 8;
+
+    // Plugins (C ABI)
+    QMenu* m_pluginsMenu{nullptr};
+    QMenu* m_pluginExportMenu{nullptr};
+    QAction* m_loadPluginAct{nullptr};
+    std::unique_ptr<cadgf::PluginRegistry> m_pluginRegistry;
 };

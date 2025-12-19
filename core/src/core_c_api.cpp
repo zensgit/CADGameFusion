@@ -4,6 +4,9 @@
 #include "core/ops2d.hpp"
 #include "core/version.hpp"
 
+#include <algorithm>
+#include <cstring>
+
 using namespace core;
 
 struct core_document { Document impl; };
@@ -41,9 +44,158 @@ CORE_API core_entity_id core_document_add_polyline(core_document* doc, const cor
     return doc->impl.add_polyline(pl);
 }
 
+CORE_API core_entity_id core_document_add_polyline_ex(core_document* doc, const core_vec2* pts, int n,
+                                                      const char* name_utf8, int layer_id) {
+    if (!doc || !pts || n <= 1) return 0;
+    Polyline pl;
+    pl.points.reserve(static_cast<size_t>(n));
+    for (int i=0;i<n;i++) pl.points.push_back(Vec2{pts[i].x, pts[i].y});
+    return doc->impl.add_polyline(pl, name_utf8 ? name_utf8 : "", layer_id);
+}
+
 CORE_API int core_document_remove_entity(core_document* doc, core_entity_id id) {
     if (!doc) return 0;
     return doc->impl.remove_entity(id) ? 1 : 0;
+}
+
+static bool copy_utf8(const std::string& s, char* out, int out_cap, int* out_required_bytes) {
+    const int required = static_cast<int>(s.size()) + 1; // include NUL
+    if (out_required_bytes) *out_required_bytes = required;
+
+    if (!out || out_cap <= 0) return true; // query only
+
+    const int copy_len = std::min(static_cast<int>(s.size()), out_cap - 1);
+    if (copy_len > 0) std::memcpy(out, s.data(), static_cast<size_t>(copy_len));
+    out[copy_len] = '\0';
+
+    return out_cap >= required;
+}
+
+CORE_API int core_document_get_layer_count(const core_document* doc, int* out_count) {
+    if (!doc || !out_count) return 0;
+    *out_count = static_cast<int>(doc->impl.layers().size());
+    return 1;
+}
+
+CORE_API int core_document_get_layer_id_at(const core_document* doc, int index, int* out_layer_id) {
+    if (!doc || !out_layer_id || index < 0) return 0;
+    const auto& layers = doc->impl.layers();
+    if (static_cast<size_t>(index) >= layers.size()) return 0;
+    *out_layer_id = layers[static_cast<size_t>(index)].id;
+    return 1;
+}
+
+CORE_API int core_document_get_layer_info(const core_document* doc, int layer_id, core_layer_info* out_info) {
+    if (!doc || !out_info) return 0;
+    const auto* layer = doc->impl.get_layer(layer_id);
+    if (!layer) return 0;
+    out_info->id = layer->id;
+    out_info->color = static_cast<unsigned int>(layer->color);
+    out_info->visible = layer->visible ? 1 : 0;
+    out_info->locked = layer->locked ? 1 : 0;
+    return 1;
+}
+
+CORE_API int core_document_get_layer_name(const core_document* doc, int layer_id,
+                                          char* out_name_utf8, int out_name_capacity,
+                                          int* out_required_bytes) {
+    if (!doc) return 0;
+    const auto* layer = doc->impl.get_layer(layer_id);
+    if (!layer) return 0;
+    const bool ok = copy_utf8(layer->name, out_name_utf8, out_name_capacity, out_required_bytes);
+    return ok ? 1 : 0;
+}
+
+CORE_API int core_document_add_layer(core_document* doc, const char* name_utf8, unsigned int color, int* out_layer_id) {
+    if (!doc || !out_layer_id) return 0;
+    *out_layer_id = doc->impl.add_layer(name_utf8 ? name_utf8 : "", static_cast<uint32_t>(color));
+    return (*out_layer_id >= 0) ? 1 : 0;
+}
+
+CORE_API int core_document_set_layer_visible(core_document* doc, int layer_id, int visible) {
+    if (!doc) return 0;
+    auto* layer = doc->impl.get_layer(layer_id);
+    if (!layer) return 0;
+    layer->visible = (visible != 0);
+    return 1;
+}
+
+CORE_API int core_document_set_layer_locked(core_document* doc, int layer_id, int locked) {
+    if (!doc) return 0;
+    auto* layer = doc->impl.get_layer(layer_id);
+    if (!layer) return 0;
+    layer->locked = (locked != 0);
+    return 1;
+}
+
+CORE_API int core_document_set_layer_color(core_document* doc, int layer_id, unsigned int color) {
+    if (!doc) return 0;
+    auto* layer = doc->impl.get_layer(layer_id);
+    if (!layer) return 0;
+    layer->color = static_cast<uint32_t>(color);
+    return 1;
+}
+
+CORE_API int core_document_get_entity_count(const core_document* doc, int* out_count) {
+    if (!doc || !out_count) return 0;
+    *out_count = static_cast<int>(doc->impl.entities().size());
+    return 1;
+}
+
+CORE_API int core_document_get_entity_id_at(const core_document* doc, int index, core_entity_id* out_entity_id) {
+    if (!doc || !out_entity_id || index < 0) return 0;
+    const auto& ents = doc->impl.entities();
+    if (static_cast<size_t>(index) >= ents.size()) return 0;
+    *out_entity_id = static_cast<core_entity_id>(ents[static_cast<size_t>(index)].id);
+    return 1;
+}
+
+static const Entity* find_entity(const Document& d, core_entity_id id) {
+    const auto& ents = d.entities();
+    for (const auto& e : ents) {
+        if (e.id == static_cast<EntityId>(id)) return &e;
+    }
+    return nullptr;
+}
+
+CORE_API int core_document_get_entity_info(const core_document* doc, core_entity_id id, core_entity_info* out_info) {
+    if (!doc || !out_info) return 0;
+    const auto* e = find_entity(doc->impl, id);
+    if (!e) return 0;
+    out_info->id = static_cast<core_entity_id>(e->id);
+    out_info->type = CORE_ENTITY_TYPE_POLYLINE; // currently only polyline exists in Document
+    out_info->layer_id = e->layerId;
+    return 1;
+}
+
+CORE_API int core_document_get_entity_name(const core_document* doc, core_entity_id id,
+                                           char* out_name_utf8, int out_name_capacity,
+                                           int* out_required_bytes) {
+    if (!doc) return 0;
+    const auto* e = find_entity(doc->impl, id);
+    if (!e) return 0;
+    const bool ok = copy_utf8(e->name, out_name_utf8, out_name_capacity, out_required_bytes);
+    return ok ? 1 : 0;
+}
+
+CORE_API int core_document_get_polyline_points(const core_document* doc, core_entity_id id,
+                                               core_vec2* out_pts, int out_pts_capacity,
+                                               int* out_required_points) {
+    if (!doc || !out_required_points) return 0;
+    const auto* e = find_entity(doc->impl, id);
+    if (!e || e->type != EntityType::Polyline || !e->payload) return 0;
+
+    const auto* pl = static_cast<const Polyline*>(e->payload.get());
+    if (!pl) return 0;
+
+    const int count = static_cast<int>(pl->points.size());
+    *out_required_points = count;
+
+    if (!out_pts || out_pts_capacity <= 0) return 1; // query only
+    if (out_pts_capacity < count) return 0;
+
+    for (int i = 0; i < count; ++i) out_pts[i] = core_vec2{pl->points[static_cast<size_t>(i)].x, pl->points[static_cast<size_t>(i)].y};
+    return 1;
 }
 
 } // extern C
@@ -189,6 +341,129 @@ CORE_API int core_offset_multi(const core_vec2* pts, const int* ring_counts, int
     int pos=0;
     for (int i=0;i<pc;i++) { out_counts[i] = static_cast<int>(res[i].points.size()); for (auto& p : res[i].points) out_pts[pos++] = core_vec2{p.x, p.y}; }
     return pc > 0 ? 1 : 0;
+}
+
+} // extern C
+
+extern "C" {
+
+CADGF_API const char* cadgf_get_version() { return core_get_version(); }
+CADGF_API unsigned int cadgf_get_feature_flags() { return core_get_feature_flags(); }
+
+CADGF_API cadgf_document* cadgf_document_create() { return core_document_create(); }
+CADGF_API void cadgf_document_destroy(cadgf_document* doc) { core_document_destroy(doc); }
+
+CADGF_API cadgf_entity_id cadgf_document_add_polyline(cadgf_document* doc, const cadgf_vec2* pts, int n) {
+    return core_document_add_polyline(doc, pts, n);
+}
+
+CADGF_API cadgf_entity_id cadgf_document_add_polyline_ex(cadgf_document* doc, const cadgf_vec2* pts, int n,
+                                                         const char* name_utf8, int layer_id) {
+    return core_document_add_polyline_ex(doc, pts, n, name_utf8, layer_id);
+}
+
+CADGF_API int cadgf_document_remove_entity(cadgf_document* doc, cadgf_entity_id id) {
+    return core_document_remove_entity(doc, id);
+}
+
+CADGF_API int cadgf_document_get_layer_count(const cadgf_document* doc, int* out_count) {
+    return core_document_get_layer_count(doc, out_count);
+}
+
+CADGF_API int cadgf_document_get_layer_id_at(const cadgf_document* doc, int index, int* out_layer_id) {
+    return core_document_get_layer_id_at(doc, index, out_layer_id);
+}
+
+CADGF_API int cadgf_document_get_layer_info(const cadgf_document* doc, int layer_id, cadgf_layer_info* out_info) {
+    return core_document_get_layer_info(doc, layer_id, out_info);
+}
+
+CADGF_API int cadgf_document_get_layer_name(const cadgf_document* doc, int layer_id,
+                                            char* out_name_utf8, int out_name_capacity,
+                                            int* out_required_bytes) {
+    return core_document_get_layer_name(doc, layer_id, out_name_utf8, out_name_capacity, out_required_bytes);
+}
+
+CADGF_API int cadgf_document_add_layer(cadgf_document* doc, const char* name_utf8, unsigned int color, int* out_layer_id) {
+    return core_document_add_layer(doc, name_utf8, color, out_layer_id);
+}
+
+CADGF_API int cadgf_document_set_layer_visible(cadgf_document* doc, int layer_id, int visible) {
+    return core_document_set_layer_visible(doc, layer_id, visible);
+}
+
+CADGF_API int cadgf_document_set_layer_locked(cadgf_document* doc, int layer_id, int locked) {
+    return core_document_set_layer_locked(doc, layer_id, locked);
+}
+
+CADGF_API int cadgf_document_set_layer_color(cadgf_document* doc, int layer_id, unsigned int color) {
+    return core_document_set_layer_color(doc, layer_id, color);
+}
+
+CADGF_API int cadgf_document_get_entity_count(const cadgf_document* doc, int* out_count) {
+    return core_document_get_entity_count(doc, out_count);
+}
+
+CADGF_API int cadgf_document_get_entity_id_at(const cadgf_document* doc, int index, cadgf_entity_id* out_entity_id) {
+    return core_document_get_entity_id_at(doc, index, out_entity_id);
+}
+
+CADGF_API int cadgf_document_get_entity_info(const cadgf_document* doc, cadgf_entity_id id, cadgf_entity_info* out_info) {
+    return core_document_get_entity_info(doc, id, out_info);
+}
+
+CADGF_API int cadgf_document_get_entity_name(const cadgf_document* doc, cadgf_entity_id id,
+                                             char* out_name_utf8, int out_name_capacity,
+                                             int* out_required_bytes) {
+    return core_document_get_entity_name(doc, id, out_name_utf8, out_name_capacity, out_required_bytes);
+}
+
+CADGF_API int cadgf_document_get_polyline_points(const cadgf_document* doc, cadgf_entity_id id,
+                                                 cadgf_vec2* out_pts, int out_pts_capacity,
+                                                 int* out_required_points) {
+    return core_document_get_polyline_points(doc, id, out_pts, out_pts_capacity, out_required_points);
+}
+
+CADGF_API int cadgf_triangulate_polygon(const cadgf_vec2* pts, int n,
+                                        unsigned int* indices, int* index_count) {
+    return core_triangulate_polygon(pts, n, indices, index_count);
+}
+
+CADGF_API int cadgf_triangulate_polygon_rings(const cadgf_vec2* pts,
+                                              const int* ring_counts,
+                                              int ring_count,
+                                              unsigned int* indices,
+                                              int* index_count) {
+    return core_triangulate_polygon_rings(pts, ring_counts, ring_count, indices, index_count);
+}
+
+CADGF_API int cadgf_boolean_op_single(const cadgf_vec2* subj, int subj_n,
+                                      const cadgf_vec2* clip, int clip_n,
+                                      int op,
+                                      cadgf_vec2* out_pts, int* out_counts,
+                                      int* poly_count, int* total_pts) {
+    return core_boolean_op_single(subj, subj_n, clip, clip_n, op, out_pts, out_counts, poly_count, total_pts);
+}
+
+CADGF_API int cadgf_offset_single(const cadgf_vec2* poly, int n, double delta,
+                                  cadgf_vec2* out_pts, int* out_counts,
+                                  int* poly_count, int* total_pts) {
+    return core_offset_single(poly, n, delta, out_pts, out_counts, poly_count, total_pts);
+}
+
+CADGF_API int cadgf_boolean_op_multi(const cadgf_vec2* subj_pts, const int* subj_counts, int subj_ring_count,
+                                     const cadgf_vec2* clip_pts, const int* clip_counts, int clip_ring_count,
+                                     int op, int fill_rule,
+                                     cadgf_vec2* out_pts, int* out_counts, int* poly_count, int* total_pts) {
+    return core_boolean_op_multi(subj_pts, subj_counts, subj_ring_count, clip_pts, clip_counts, clip_ring_count,
+                                 op, fill_rule, out_pts, out_counts, poly_count, total_pts);
+}
+
+CADGF_API int cadgf_offset_multi(const cadgf_vec2* pts, const int* ring_counts, int ring_count,
+                                 double delta, int join_type, double miter_limit,
+                                 cadgf_vec2* out_pts, int* out_counts, int* poly_count, int* total_pts) {
+    return core_offset_multi(pts, ring_counts, ring_count, delta, join_type, miter_limit,
+                             out_pts, out_counts, poly_count, total_pts);
 }
 
 } // extern C

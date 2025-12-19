@@ -27,6 +27,8 @@
 #include <QDebug>
 #include <QSet>
 
+#include "core/ops2d.hpp"
+#include "core/version.hpp"
 #include "core/core_c_api.h"
 #include "canvas.hpp"
 #include "exporter.hpp"
@@ -35,6 +37,13 @@
 #include "panels/property_panel.hpp"
 #include "panels/layer_panel.hpp"
 #include "project/project.hpp"
+
+#include "plugin_registry.hpp"
+
+#include <unordered_map>
+#include <vector>
+
+MainWindow::~MainWindow() = default;
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("CADGameFusion - Qt Editor");
@@ -160,6 +169,13 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     fileMenu->addSeparator();
     auto* actExportOpt = fileMenu->addAction("Export with Options...");
     connect(actExportOpt, &QAction::triggered, this, &MainWindow::exportWithOptions);
+
+    fileMenu->addSeparator();
+    m_pluginsMenu = fileMenu->addMenu("Plugins");
+    m_loadPluginAct = m_pluginsMenu->addAction("Load Plugin...");
+    connect(m_loadPluginAct, &QAction::triggered, this, &MainWindow::loadPlugin);
+    m_pluginExportMenu = m_pluginsMenu->addMenu("Export via Plugin");
+    rebuildPluginExportMenu();
 
     // Edit menu (Undo/Redo)
     auto* editMenu = menuBar()->addMenu("Edit");
@@ -378,10 +394,11 @@ void MainWindow::maybeAutoRestore() {
 }
 
 void MainWindow::addSamplePolyline() {
-    core_document* doc = core_document_create();
-    core_vec2 pts[5] = { {0,0},{100,0},{100,100},{0,100},{0,0} };  // 已经正确闭合
-    auto id = core_document_add_polyline(doc, pts, 5);
-    core_document_destroy(doc);
+    core::Vec2 pts[5] = {{0, 0}, {100, 0}, {100, 100}, {0, 100}, {0, 0}};  // 已经正确闭合
+    core::Polyline pl;
+    pl.points.reserve(5);
+    for (const auto& p : pts) pl.points.push_back(p);
+    auto id = m_document.add_polyline(pl);
     QVector<QPointF> poly;
     for (auto& p : pts) poly.push_back(QPointF(p.x, p.y));
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
@@ -426,75 +443,77 @@ void MainWindow::triangulateSample() {
         QString name() const override { return "Triangulate"; }
     };
 
-    core_vec2 pts[5] = { {0,0},{120,0},{120,80},{0,80},{0,0} }; // closed
-    int idxCount = 0;
-    if (!core_triangulate_polygon(pts, 5, nullptr, &idxCount) || idxCount <= 0) {
+    std::vector<core::Vec2> pts{{0, 0}, {120, 0}, {120, 80}, {0, 80}, {0, 0}}; // closed
+    core::TriMesh2D m = core::triangulate_polygon(pts);
+    if (m.indices.empty() || m.vertices.empty()) {
         statusBar()->showMessage("Triangulation failed", 2000);
         return;
     }
-    std::vector<unsigned int> indices(idxCount);
-    if (!core_triangulate_polygon(pts, 5, indices.data(), &idxCount)) {
-        statusBar()->showMessage("Triangulation fill failed", 2000);
-        return;
-    }
-    QVector<QPointF> verts; verts.reserve(4);
-    for (int i=0;i<4;++i) verts.push_back(QPointF(pts[i].x, pts[i].y));
-    QVector<unsigned int> qidx(indices.begin(), indices.end());
+    QVector<QPointF> verts;
+    verts.reserve(static_cast<int>(m.vertices.size()));
+    for (const auto& p : m.vertices) verts.push_back(QPointF(p.x, p.y));
+    QVector<unsigned int> qidx;
+    qidx.reserve(static_cast<int>(m.indices.size()));
+    for (auto idx : m.indices) qidx.push_back(static_cast<unsigned int>(idx));
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget()); if (!canvas) return;
     m_cmdMgr->push(std::make_unique<TriangulateCommand>(canvas, verts, qidx));
     // Ensure dirty marker for UI (wireframe is not serialized but we mark edit intent)
     markDirty();
-    statusBar()->showMessage(QString("Triangulated %1 triangles (undoable)").arg(idxCount/3), 2000);
+    statusBar()->showMessage(QString("Triangulated %1 triangles (undoable)").arg(qidx.size() / 3), 2000);
 }
 
 void MainWindow::demoBoolean() {
     // simple union of two overlapping boxes (闭合多边形)
-    std::vector<core_vec2> a{{0,0},{100,0},{100,100},{0,100},{0,0}};  // 正确闭合
-    std::vector<core_vec2> b{{50,50},{150,50},{150,150},{50,150},{50,50}};  // 正确闭合
-    int poly_count=0,total_pts=0;
-    int ok = core_boolean_op_single(a.data(), (int)a.size(), b.data(), (int)b.size(), 0,
-                                    nullptr, nullptr, &poly_count, &total_pts);
-    if (!ok || poly_count<=0) { statusBar()->showMessage("Boolean empty (maybe no CLIPPER2)",2000); return; }
-    std::vector<core_vec2> out_pts(total_pts);
-    std::vector<int> counts(poly_count);
-    core_boolean_op_single(a.data(), (int)a.size(), b.data(), (int)b.size(), 0,
-                           out_pts.data(), counts.data(), &poly_count, &total_pts);
+    core::Polyline a;
+    a.points = {{0, 0}, {100, 0}, {100, 100}, {0, 100}, {0, 0}};  // 正确闭合
+    core::Polyline b;
+    b.points = {{50, 50}, {150, 50}, {150, 150}, {50, 150}, {50, 50}};  // 正确闭合
+
+    std::vector<core::Polyline> resPolys = core::boolean_op({a}, {b}, core::BoolOp::Union);
+    if (resPolys.empty()) {
+        statusBar()->showMessage("Boolean empty (maybe no CLIPPER2)", 2000);
+        return;
+    }
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
     if (!canvas) return;
-    int off=0;
     int gidB = canvas->newGroupId();
-    for (int i=0;i<poly_count;i++) {
+    for (int i = 0; i < static_cast<int>(resPolys.size()); i++) {
         QVector<QPointF> poly;
-        for (int j=0;j<counts[i];j++) poly.push_back(QPointF(out_pts[off+j].x, out_pts[off+j].y));
-        off += counts[i];
+        poly.reserve(static_cast<int>(resPolys[static_cast<size_t>(i)].points.size()));
+        for (const auto& p : resPolys[static_cast<size_t>(i)].points) poly.push_back(QPointF(p.x, p.y));
         const QColor col = (i%2==0) ? QColor(100,200,255) : QColor(255,180,120);
         canvas->addPolylineColored(poly, col, gidB);
     }
 }
 
 void MainWindow::demoOffset() {
-    std::vector<core_vec2> a{{0,0},{100,0},{100,100},{0,100},{0,0}};  // 正确闭合的矩形
-    int poly_count=0,total_pts=0;
-    int ok = core_offset_single(a.data(), (int)a.size(), 10.0, nullptr, nullptr, &poly_count, &total_pts);
-    if (!ok || poly_count<=0) { statusBar()->showMessage("Offset empty (maybe no CLIPPER2)",2000); return; }
-    std::vector<core_vec2> out_pts(total_pts);
-    std::vector<int> counts(poly_count);
-    core_offset_single(a.data(), (int)a.size(), 10.0, out_pts.data(), counts.data(), &poly_count, &total_pts);
+    core::Polyline a;
+    a.points = {{0, 0}, {100, 0}, {100, 100}, {0, 100}, {0, 0}};  // 正确闭合的矩形
+    std::vector<core::Polyline> resPolys = core::offset({a}, 10.0);
+    if (resPolys.empty()) {
+        statusBar()->showMessage("Offset empty (maybe no CLIPPER2)", 2000);
+        return;
+    }
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
     if (!canvas) return;
-    int off=0;
     int gidO = canvas->newGroupId();
-    for (int i=0;i<poly_count;i++) {
+    for (int i = 0; i < static_cast<int>(resPolys.size()); i++) {
         QVector<QPointF> poly;
-        for (int j=0;j<counts[i];j++) poly.push_back(QPointF(out_pts[off+j].x, out_pts[off+j].y));
-        off += counts[i];
+        poly.reserve(static_cast<int>(resPolys[static_cast<size_t>(i)].points.size()));
+        for (const auto& p : resPolys[static_cast<size_t>(i)].points) poly.push_back(QPointF(p.x, p.y));
         canvas->addPolylineColored(poly, QColor(180,255,120), gidO);
     }
 }
 
 void MainWindow::showAboutCore() {
-    const char* ver = core_get_version();
-    unsigned int flags = core_get_feature_flags();
+    const char* ver = core::version_string();
+    unsigned int flags = 0u;
+#if defined(USE_EARCUT)
+    flags |= 1u << 0;
+#endif
+#if defined(USE_CLIPPER2)
+    flags |= 1u << 1;
+#endif
     QStringList feats;
     feats << QString("USE_EARCUT: ") + ((flags & (1u<<0)) ? "ON" : "OFF");
     feats << QString("USE_CLIPPER2: ") + ((flags & (1u<<1)) ? "ON" : "OFF");
@@ -638,4 +657,177 @@ void MainWindow::exportWithOptions() {
     } else {
         QMessageBox::warning(this, "Export", QString("Export failed: %1").arg(r.error));
     }
+}
+
+static QString svToQString(cadgf_string_view v) {
+    if (!v.data || v.size <= 0) return {};
+    return QString::fromUtf8(v.data, v.size);
+}
+
+void MainWindow::rebuildPluginExportMenu() {
+    if (!m_pluginExportMenu) return;
+    m_pluginExportMenu->clear();
+
+    if (!m_pluginRegistry) {
+        QAction* a = m_pluginExportMenu->addAction("(No plugins loaded)");
+        a->setEnabled(false);
+        m_pluginExportMenu->setEnabled(false);
+        return;
+    }
+
+    const auto exporters = m_pluginRegistry->exporters();
+    if (exporters.empty()) {
+        QAction* a = m_pluginExportMenu->addAction("(No exporters)");
+        a->setEnabled(false);
+        m_pluginExportMenu->setEnabled(false);
+        return;
+    }
+
+    m_pluginExportMenu->setEnabled(true);
+    for (const cadgf_exporter_api_v1* ex : exporters) {
+        if (!ex || !ex->name || !ex->extension || !ex->export_document) continue;
+        const QString name = svToQString(ex->name());
+        const QString ext = svToQString(ex->extension());
+        const QString label = ext.isEmpty() ? name : QString("%1 (*.%2)").arg(name, ext);
+        QAction* act = m_pluginExportMenu->addAction(label);
+        connect(act, &QAction::triggered, this, [this, ex] { exportViaPlugin(ex); });
+    }
+}
+
+void MainWindow::loadPlugin() {
+    const QString filter = "CADGameFusion Plugin (*.so *.dll *.dylib);;All Files (*)";
+    const QString path = QFileDialog::getOpenFileName(this, "Load Plugin", QDir::currentPath(), filter);
+    if (path.isEmpty()) return;
+
+    if (!m_pluginRegistry) m_pluginRegistry = std::make_unique<cadgf::PluginRegistry>();
+
+    std::string err;
+    if (!m_pluginRegistry->load_plugin(path.toStdString(), &err)) {
+        QMessageBox::critical(this, "Plugin", QString("Failed to load plugin:\n%1\n\n%2").arg(path, QString::fromStdString(err)));
+        return;
+    }
+
+    const auto& plugins = m_pluginRegistry->plugins();
+    const cadgf_plugin_desc_v1 d = plugins.empty() ? cadgf_plugin_desc_v1{} : plugins.back().desc;
+    statusBar()->showMessage(QString("Loaded plugin: %1 (%2)")
+                                 .arg(svToQString(d.name), svToQString(d.version)),
+                             3000);
+    rebuildPluginExportMenu();
+}
+
+bool MainWindow::buildCadgfDocumentFromCanvas(cadgf_document* doc, QString* error) const {
+    if (!doc) {
+        if (error) *error = "Invalid cadgf_document";
+        return false;
+    }
+
+    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
+    if (!canvas) {
+        if (error) *error = "CanvasWidget not found";
+        return false;
+    }
+
+    std::unordered_map<int, int> layerMap;
+    layerMap.reserve(static_cast<size_t>(m_document.layers().size()));
+
+    for (const auto& layer : m_document.layers()) {
+        if (layer.id == 0) {
+            (void)cadgf_document_set_layer_color(doc, 0, layer.color);
+            (void)cadgf_document_set_layer_visible(doc, 0, layer.visible ? 1 : 0);
+            (void)cadgf_document_set_layer_locked(doc, 0, layer.locked ? 1 : 0);
+            layerMap.emplace(0, 0);
+            continue;
+        }
+
+        int outLayerId = -1;
+        if (!cadgf_document_add_layer(doc, layer.name.c_str(), layer.color, &outLayerId)) {
+            if (error) *error = QString("Failed to add layer: %1").arg(QString::fromStdString(layer.name));
+            return false;
+        }
+        (void)cadgf_document_set_layer_visible(doc, outLayerId, layer.visible ? 1 : 0);
+        (void)cadgf_document_set_layer_locked(doc, outLayerId, layer.locked ? 1 : 0);
+        layerMap.emplace(layer.id, outLayerId);
+    }
+
+    const auto& polys = canvas->polylinesData();
+    for (int i = 0; i < polys.size(); ++i) {
+        const auto& pv = polys[i];
+        if (pv.pts.size() <= 1) continue;
+
+        int layerId = 0;
+        if (auto it = layerMap.find(pv.layerId); it != layerMap.end()) layerId = it->second;
+
+        std::vector<cadgf_vec2> pts;
+        pts.reserve(static_cast<size_t>(pv.pts.size()));
+        for (const auto& qp : pv.pts) pts.push_back(cadgf_vec2{qp.x(), qp.y()});
+
+        const QString name = (pv.groupId >= 0) ? QString("group_%1_poly_%2").arg(pv.groupId).arg(i)
+                                              : QString("polyline_%1").arg(i);
+        const QByteArray nameUtf8 = name.toUtf8();
+
+        const cadgf_entity_id id = cadgf_document_add_polyline_ex(doc, pts.data(), static_cast<int>(pts.size()),
+                                                                  nameUtf8.constData(), layerId);
+        if (id == 0) {
+            if (error) *error = QString("Failed to add polyline #%1").arg(i);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void MainWindow::exportViaPlugin(const cadgf_exporter_api_v1* exporter) {
+    if (!exporter || !exporter->export_document || !exporter->name || !exporter->extension) {
+        QMessageBox::warning(this, "Plugin Export", "Invalid exporter");
+        return;
+    }
+
+    const QString name = svToQString(exporter->name());
+    QString ext = svToQString(exporter->extension());
+    if (ext.startsWith('.')) ext.remove(0, 1);
+
+    QString filter = svToQString(exporter->file_type_description ? exporter->file_type_description() : cadgf_string_view{nullptr, 0});
+    if (filter.isEmpty()) filter = ext.isEmpty() ? "All Files (*)" : QString("%1 (*.%2)").arg(name, ext);
+
+    QString suggested = QDir::currentPath();
+    if (!ext.isEmpty()) suggested += QString("/export.%1").arg(ext);
+    QString outPath = QFileDialog::getSaveFileName(this, "Export via Plugin", suggested, filter);
+    if (outPath.isEmpty()) return;
+    if (!ext.isEmpty() && QFileInfo(outPath).suffix().isEmpty()) outPath += QString(".%1").arg(ext);
+
+    cadgf_document* doc = cadgf_document_create();
+    if (!doc) {
+        QMessageBox::critical(this, "Plugin Export", "cadgf_document_create failed");
+        return;
+    }
+
+    QString buildErr;
+    if (!buildCadgfDocumentFromCanvas(doc, &buildErr)) {
+        cadgf_document_destroy(doc);
+        QMessageBox::critical(this, "Plugin Export", QString("Failed to build export document:\n%1").arg(buildErr));
+        return;
+    }
+
+    cadgf_export_options_v1 options{};
+    options.include_hidden_layers = 1;
+    options.include_metadata = 1;
+    options.scale = m_document.settings().unit_scale;
+    options.custom_json.data = nullptr;
+    options.custom_json.size = 0;
+
+    cadgf_error_v1 err{};
+    err.code = 0;
+    err.message[0] = 0;
+
+    const QByteArray outUtf8 = outPath.toUtf8();
+    const int32_t ok = exporter->export_document(doc, outUtf8.constData(), &options, &err);
+    cadgf_document_destroy(doc);
+
+    if (!ok) {
+        QMessageBox::critical(this, "Plugin Export",
+                              QString("Export failed (code=%1):\n%2").arg(err.code).arg(QString::fromUtf8(err.message)));
+        return;
+    }
+
+    statusBar()->showMessage(QString("Exported via plugin: %1").arg(outPath), 3000);
 }

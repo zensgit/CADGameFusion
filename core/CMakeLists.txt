@@ -1,23 +1,20 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Core library
-add_library(core STATIC
+add_library(core SHARED
     src/geometry2d.cpp
     src/document.cpp
     src/commands.cpp
     src/ops2d.cpp
-    src/core_c_api.cpp
     src/solver.cpp
 )
 
 target_include_directories(core PUBLIC include)
 target_compile_features(core PUBLIC cxx_std_17)
 
-# Need -fPIC for static library when used in shared library
-set_property(TARGET core PROPERTY POSITION_INDEPENDENT_CODE ON)
-
-# Define CORE_BUILD when building the library (for Windows DLL exports)
-target_compile_definitions(core PRIVATE CORE_BUILD)
+# Export all symbols on Windows to keep C++ API usable without per-symbol declspec.
+# This avoids having to mark every C++ symbol as dllexport/dllimport at this stage.
+set_target_properties(core PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
 # Optional: Compiler warnings
 if(MSVC)
@@ -45,24 +42,32 @@ else()
     message(STATUS "TinyGLTF not found - glTF export will not be available")
 endif()
 
-# Clipper2 (boolean/offset). Header-only usage; enable if headers are found.
-find_path(CLIPPER2_INCLUDE_DIR NAMES clipper2/clipper.h)
-if(CLIPPER2_INCLUDE_DIR)
-    target_compile_definitions(core PUBLIC USE_CLIPPER2)
-    target_include_directories(core PRIVATE ${CLIPPER2_INCLUDE_DIR})
-    # Try pkg-config for linking
+# Clipper2 (boolean/offset). Prefer CMake config targets (vcpkg); fall back to pkg-config.
+set(CADGF_CLIPPER2_LINK_TARGET "")
+
+# Best: CMake config package (provides per-config libs on Windows: Debug/Release)
+find_package(Clipper2 CONFIG QUIET)
+if(Clipper2_FOUND)
+    set(CADGF_CLIPPER2_LINK_TARGET Clipper2::Clipper2)
+    message(STATUS "Clipper2 found (CMake config)")
+endif()
+
+# Fallback: pkg-config (common on Unix)
+if(NOT CADGF_CLIPPER2_LINK_TARGET)
     find_package(PkgConfig QUIET)
     if(PkgConfig_FOUND)
         pkg_check_modules(Clipper2 QUIET IMPORTED_TARGET Clipper2)
         if(Clipper2_FOUND)
-            target_link_libraries(core PRIVATE PkgConfig::Clipper2)
-            message(STATUS "Clipper2 found (pkg-config) and linked")
-        else()
-            message(STATUS "Clipper2 headers found, pkg-config not available; assuming header-only")
+            set(CADGF_CLIPPER2_LINK_TARGET PkgConfig::Clipper2)
+            message(STATUS "Clipper2 found (pkg-config)")
         endif()
-    else()
-        message(STATUS "Clipper2 headers found; pkg-config not found; assuming header-only")
     endif()
+endif()
+
+if(CADGF_CLIPPER2_LINK_TARGET)
+    target_compile_definitions(core PUBLIC USE_CLIPPER2)
+    target_link_libraries(core PRIVATE ${CADGF_CLIPPER2_LINK_TARGET})
+    message(STATUS "Clipper2 enabled")
 else()
     message(STATUS "Clipper2 not found - boolean/offset will be stubs")
 endif()

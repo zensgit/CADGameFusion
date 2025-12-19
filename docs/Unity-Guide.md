@@ -34,7 +34,7 @@ public class Example : UnityEngine.MonoBehaviour {
     // Create document and add a polyline
     var doc = CoreBindings.CreateDocument();
     var pts = new CoreBindings.Vec2[]{ new(){x=0,y=0}, new(){x=1,y=0}, new(){x=1,y=1}, new(){x=0,y=0} };
-    var id = CoreBindings.core_document_add_polyline(doc.Ptr, pts, pts.Length);
+    var id = CoreBindings.cadgf_document_add_polyline(doc.Ptr, pts, pts.Length);
     UnityEngine.Debug.Log($"Added polyline id={id}");
     CoreBindings.Destroy(doc);
   }
@@ -61,4 +61,3 @@ public class Example : UnityEngine.MonoBehaviour {
 - Approach 1: File watcher in Unity to reload meshes when an exported file changes.
 - Approach 2: IPC (named pipe/socket) to stream updates from the Qt editor.
 - Start with file-based hot reload for simplicity.
-

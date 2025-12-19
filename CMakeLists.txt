@@ -32,6 +32,7 @@ endif()
 add_subdirectory(tests/core)
 add_subdirectory(tools)
 add_subdirectory(tests/tools)
+add_subdirectory(plugins)
 
 # Examples (C API minimal)
 add_executable(c_api_minimal examples/c_api_minimal.c)
@@ -64,3 +65,11 @@ add_test(NAME doc_export_example_run
     -Dexe="$<TARGET_FILE:doc_export_example>"
     -Dout="${DOC_EXPORT_OUT}"
     -P "${CMAKE_SOURCE_DIR}/cmake/RunDocExportExample.cmake")
+
+set(PLUGIN_DEMO_OUT "${CMAKE_BINARY_DIR}/out_plugin_export.json")
+add_test(NAME plugin_host_demo_run
+  COMMAND ${CMAKE_COMMAND}
+    -Dexe="$<TARGET_FILE:plugin_host_demo>"
+    -Dplugin="$<TARGET_FILE:cadgf_sample_plugin>"
+    -Dout="${PLUGIN_DEMO_OUT}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunPluginHostDemo.cmake")

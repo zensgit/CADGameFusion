@@ -4,13 +4,13 @@
 #include "core/core_c_api.h"
 
 int main(void) {
-    printf("core version: %s\n", core_get_version());
-    unsigned int feats = core_get_feature_flags();
+    printf("cadgf version: %s\n", cadgf_get_version());
+    unsigned int feats = cadgf_get_feature_flags();
     printf("features: EARCUT=%s CLIPPER2=%s\n", (feats & 1u)?"on":"off", (feats & 2u)?"on":"off");
 
-    core_vec2 tri[3] = { {0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0} };
+    cadgf_vec2 tri[3] = { {0.0, 0.0}, {1.0, 0.0}, {0.0, 1.0} };
     int idx_count = 0;
-    if (!core_triangulate_polygon(tri, 3, NULL, &idx_count) || idx_count <= 0) {
+    if (!cadgf_triangulate_polygon(tri, 3, NULL, &idx_count) || idx_count <= 0) {
         printf("query index count failed\n");
         return 0;
     }
@@ -19,7 +19,7 @@ int main(void) {
         printf("too many indices (%d), increase buffer in example\n", idx_count);
         return 0;
     }
-    if (!core_triangulate_polygon(tri, 3, indices_buf, &idx_count)) {
+    if (!cadgf_triangulate_polygon(tri, 3, indices_buf, &idx_count)) {
         printf("triangulation failed\n");
         return 0;
     }
@@ -28,4 +28,3 @@ int main(void) {
     printf("\nOK\n");
     return 0;
 }
-
