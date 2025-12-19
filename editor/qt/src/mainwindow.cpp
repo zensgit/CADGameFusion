@@ -142,9 +142,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         // PR7: Commands operate on Document, then reload Canvas
         if (key == "visible") {
             EntityId eid = static_cast<EntityId>(entityId);
-            if (eid == 0) {
-                // Fallback for entities not in Document (legacy canvas-only items)
-                statusBar()->showMessage("Entity not bound to Document", 1500);
+            if (eid == 0 || !m_document.get_entity(eid)) {
+                statusBar()->showMessage("Entity not found in Document", 1500);
                 return;
             }
             struct SetVisibleCommand : Command {
@@ -476,11 +475,9 @@ void MainWindow::addSamplePolyline() {
     auto id = m_document.add_polyline(pl, "Sample Square");
     // Set default groupId using next available
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
-    if (canvas) {
-        int gid = canvas->newGroupId();
-        m_document.set_entity_group_id(id, gid);
-        canvas->reloadFromDocument();
-    }
+    int gid = m_document.alloc_group_id();
+    m_document.set_entity_group_id(id, gid);
+    if (canvas) canvas->reloadFromDocument();
     statusBar()->showMessage(QString("Added polyline id=%1").arg(static_cast<qulonglong>(id)), 2000);
 }
 
@@ -552,7 +549,7 @@ void MainWindow::demoBoolean() {
     }
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
     if (!canvas) return;
-    int gidB = canvas->newGroupId();
+    int gidB = m_document.alloc_group_id();
     // Add result polylines to Document (single source of truth)
     for (size_t i = 0; i < resPolys.size(); i++) {
         std::string name = "Boolean_" + std::to_string(i);
@@ -578,7 +575,7 @@ void MainWindow::demoOffset() {
     }
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
     if (!canvas) return;
-    int gidO = canvas->newGroupId();
+    int gidO = m_document.alloc_group_id();
     // Add result polylines to Document (single source of truth)
     for (size_t i = 0; i < resPolys.size(); i++) {
         std::string name = "Offset_" + std::to_string(i);

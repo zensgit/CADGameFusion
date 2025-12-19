@@ -60,6 +60,7 @@ public:
     bool set_entity_visible(EntityId id, bool visible);
     bool set_entity_color(EntityId id, uint32_t color);
     bool set_entity_group_id(EntityId id, int groupId);
+    int alloc_group_id();
 
     const std::vector<Entity>& entities() const { return entities_; }
     DocumentSettings& settings() { return settings_; }
@@ -71,6 +72,7 @@ private:
     std::vector<Layer> layers_{};
     EntityId next_id_{1};
     int next_layer_id_{1};
+    int next_group_id_{1};
 };
 
 } // namespace core

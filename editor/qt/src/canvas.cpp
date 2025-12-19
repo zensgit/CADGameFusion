@@ -402,8 +402,6 @@ void CanvasWidget::clearTriMesh() {
     emit selectionChanged({});
 }
 
-int CanvasWidget::newGroupId() { return nextGroupId_++; }
-
 void CanvasWidget::selectGroup(const QPoint& pos) {
     const double thPx = 12.0;
     const double thWorld = thPx / scale_;
@@ -450,7 +448,6 @@ void CanvasWidget::reloadFromDocument() {
 
     polylines_.clear();
     selected_entities_.clear();
-    int maxGroupId = -1;
 
     // Iterate over all entities in Document and create PolyVis for each
     const auto& entities = m_doc->entities();
@@ -472,7 +469,6 @@ void CanvasWidget::reloadFromDocument() {
         pv.groupId = e.groupId;
         pv.layerId = e.layerId;
         pv.entityId = e.id;
-        if (e.groupId >= 0 && e.groupId > maxGroupId) maxGroupId = e.groupId;
 
         // Color: use entity color if set, otherwise inherit from layer
         if (e.color != 0) {
@@ -496,7 +492,6 @@ void CanvasWidget::reloadFromDocument() {
         polylines_.append(pv);
     }
 
-    nextGroupId_ = (maxGroupId >= 0) ? (maxGroupId + 1) : 1;
     update();
     emit selectionChanged({});
 }
