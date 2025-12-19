@@ -51,6 +51,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // ... (existing code) ...
 
     auto* canvas = new CanvasWidget(this);
+    canvas->setDocument(&m_document);
     setCentralWidget(canvas);
 
     // Layer dock
@@ -294,8 +295,11 @@ void MainWindow::setCurrentFile(const QString& fileName) {
 void MainWindow::newFile() {
     if (!maybeSave()) return;
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
+    m_document.clear();
     if (canvas) {
-        canvas->clear();
+        canvas->setDocument(&m_document);
+        canvas->reloadFromDocument();
+        canvas->clearTriMesh();
         m_undoStack->clear();  // Clear undo history
     }
     setCurrentFile("untitled.cgf");

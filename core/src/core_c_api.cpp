@@ -165,6 +165,16 @@ CORE_API int core_document_get_entity_info(const core_document* doc, core_entity
     out_info->id = static_cast<core_entity_id>(e->id);
     out_info->type = CORE_ENTITY_TYPE_POLYLINE; // currently only polyline exists in Document
     out_info->layer_id = e->layerId;
+    return 1;
+}
+
+CORE_API int core_document_get_entity_info_v2(const core_document* doc, core_entity_id id, core_entity_info_v2* out_info) {
+    if (!doc || !out_info) return 0;
+    const auto* e = find_entity(doc->impl, id);
+    if (!e) return 0;
+    out_info->id = static_cast<core_entity_id>(e->id);
+    out_info->type = CORE_ENTITY_TYPE_POLYLINE;
+    out_info->layer_id = e->layerId;
     out_info->visible = e->visible ? 1 : 0;
     out_info->group_id = e->groupId;
     out_info->color = static_cast<unsigned int>(e->color);
@@ -428,6 +438,10 @@ CADGF_API int cadgf_document_get_entity_id_at(const cadgf_document* doc, int ind
 
 CADGF_API int cadgf_document_get_entity_info(const cadgf_document* doc, cadgf_entity_id id, cadgf_entity_info* out_info) {
     return core_document_get_entity_info(doc, id, out_info);
+}
+
+CADGF_API int cadgf_document_get_entity_info_v2(const cadgf_document* doc, cadgf_entity_id id, cadgf_entity_info_v2* out_info) {
+    return core_document_get_entity_info_v2(doc, id, out_info);
 }
 
 CADGF_API int cadgf_document_get_entity_name(const cadgf_document* doc, cadgf_entity_id id,

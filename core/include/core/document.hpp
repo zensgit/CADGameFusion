@@ -52,6 +52,7 @@ public:
 
     EntityId add_polyline(const Polyline& pl, const std::string& name = "", int layerId = 0);
     bool     remove_entity(EntityId id);
+    void     clear();
 
     // Entity property setters (PR4: single source of truth)
     Entity* get_entity(EntityId id);

@@ -385,6 +385,13 @@ void CanvasWidget::removeSelected() {
         return;
     }
     if (selected_>=0 && selected_<polylines_.size()) {
+        if (m_doc) {
+            EntityId eid = polylines_[selected_].entityId;
+            if (eid != 0 && m_doc->remove_entity(eid)) {
+                reloadFromDocument();
+                return;
+            }
+        }
         polylines_.removeAt(selected_);
         selected_ = -1;
         update();
@@ -397,7 +404,29 @@ int CanvasWidget::removeAllSimilar() {
     
     int removedCount = 0;
     int gid = polylines_[selected_].groupId;
-    
+
+    if (m_doc) {
+        QVector<EntityId> ids;
+        if (gid != -1) {
+            for (int i = 0; i < polylines_.size(); ++i) {
+                if (polylines_[i].groupId == gid && polylines_[i].entityId != 0) ids.push_back(polylines_[i].entityId);
+            }
+        } else {
+            QColor targetColor = polylines_[selected_].color;
+            for (int i = 0; i < polylines_.size(); ++i) {
+                if (polylines_[i].color == targetColor && polylines_[i].entityId != 0) ids.push_back(polylines_[i].entityId);
+            }
+        }
+
+        if (!ids.isEmpty()) {
+            for (EntityId eid : ids) {
+                if (m_doc->remove_entity(eid)) removedCount++;
+            }
+            reloadFromDocument();
+            return removedCount;
+        }
+    }
+
     if (gid != -1) {
         QVector<int> idx;
         for (int i=0;i<polylines_.size();++i) if (polylines_[i].groupId == gid) idx.push_back(i);
@@ -534,6 +563,7 @@ void CanvasWidget::reloadFromDocument() {
 
     polylines_.clear();
     selected_ = -1;
+    int maxGroupId = -1;
 
     // Iterate over all entities in Document and create PolyVis for each
     const auto& entities = m_doc->entities();
@@ -555,6 +585,7 @@ void CanvasWidget::reloadFromDocument() {
         pv.groupId = e.groupId;
         pv.layerId = e.layerId;
         pv.entityId = e.id;
+        if (e.groupId >= 0 && e.groupId > maxGroupId) maxGroupId = e.groupId;
 
         // Color: use entity color if set, otherwise inherit from layer
         if (e.color != 0) {
@@ -578,6 +609,7 @@ void CanvasWidget::reloadFromDocument() {
         polylines_.append(pv);
     }
 
+    nextGroupId_ = (maxGroupId >= 0) ? (maxGroupId + 1) : 1;
     update();
     emit selectionChanged({});
 }

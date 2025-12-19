@@ -3,6 +3,7 @@
 #include "core/geometry2d.hpp"
 #include "../canvas.hpp"
 #include <QFile>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
@@ -93,29 +94,46 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
     m_meta.createdAt = meta.value("createdAt").toString();
     m_meta.modifiedAt = meta.value("modifiedAt").toString();
 
+    // Reset document only after successful parse
+    doc.clear();
+
     // Check version for format compatibility
     const QString version = m_meta.version;
 
     auto docJson = root.value("document").toObject();
+    QHash<int, int> layerIdMap;
+    layerIdMap.insert(0, 0);
 
     // Load layers (v0.3+)
     if (version >= "0.3") {
         auto layersJson = docJson.value("layers").toArray();
-        // Skip default layer (id=0), it's created by Document constructor
         for (const auto& val : layersJson) {
             auto layerObj = val.toObject();
-            int id = layerObj.value("id").toInt();
-            if (id == 0) continue; // Default layer already exists
+            int srcId = layerObj.value("id").toInt();
 
             QString name = layerObj.value("name").toString();
             uint32_t color = static_cast<uint32_t>(layerObj.value("color").toInteger(0xFFFFFF));
-            int newId = doc.add_layer(name.toStdString(), color);
+            bool visible = layerObj.value("visible").toBool(true);
+            bool locked = layerObj.value("locked").toBool(false);
 
-            // Set visibility and locked state
+            if (srcId == 0) {
+                auto* layer0 = doc.get_layer(0);
+                if (layer0) {
+                    layer0->name = name.toStdString();
+                    layer0->color = color;
+                    layer0->visible = visible;
+                    layer0->locked = locked;
+                }
+                layerIdMap.insert(0, 0);
+                continue;
+            }
+
+            int newId = doc.add_layer(name.toStdString(), color);
+            layerIdMap.insert(srcId, newId);
             auto* layer = doc.get_layer(newId);
             if (layer) {
-                layer->visible = layerObj.value("visible").toBool(true);
-                layer->locked = layerObj.value("locked").toBool(false);
+                layer->visible = visible;
+                layer->locked = locked;
             }
         }
     }
@@ -138,6 +156,11 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
 
                 QString name = entityObj.value("name").toString();
                 int layerId = entityObj.value("layerId").toInt(0);
+                if (layerIdMap.contains(layerId)) {
+                    layerId = layerIdMap.value(layerId);
+                } else {
+                    layerId = 0;
+                }
 
                 core::EntityId eid = doc.add_polyline(pl, name.toStdString(), layerId);
 
@@ -190,4 +213,3 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
 
     return true;
 }
-
