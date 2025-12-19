@@ -32,6 +32,7 @@ endif()
 add_subdirectory(tests/core)
 add_subdirectory(tools)
 add_subdirectory(tests/tools)
+add_subdirectory(tests/c_abi)
 add_subdirectory(plugins)
 
 # Examples (C API minimal)

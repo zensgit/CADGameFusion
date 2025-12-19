@@ -4,6 +4,9 @@ cmake_minimum_required(VERSION 3.16)
 add_subdirectory(core)
 add_subdirectory(tools)
 
+# C ABI header compilation test (ensures headers remain pure C)
+add_subdirectory(c_abi)
+
 # Qt-specific tests (only if editor is enabled)
 if(BUILD_EDITOR_QT)
   add_executable(test_qt_export_meta qt/test_qt_export_meta.cpp)
