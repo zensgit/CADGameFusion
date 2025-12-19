@@ -144,8 +144,8 @@ jobs:
           Use Chinese for your response since the maintainers prefer Chinese.
           """
 
-          # Call Gemini API (using gemini-1.5-pro for best quality)
-          model = genai.GenerativeModel('gemini-1.5-pro')
+          # Call Gemini API (using gemini-3-flash-preview for best performance)
+          model = genai.GenerativeModel('gemini-3-flash-preview')
           response = model.generate_content(prompt)
 
           review_text = response.text
