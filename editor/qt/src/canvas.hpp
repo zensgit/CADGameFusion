@@ -5,6 +5,7 @@
 #include <QPointF>
 #include <QColor>
 #include <QList>
+#include <QSet>
 #include <QPainterPath>
 #include <QRectF>
 #include <cstdint>
@@ -41,10 +42,7 @@ public:
     explicit CanvasWidget(QWidget* parent = nullptr);
     void setDocument(core::Document* doc);
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
-    EntityId entityIdAt(int index) const; // PR5: get EntityId for polyline at index
 
-    void addPolyline(const QVector<QPointF>& poly, int layerId = 0);
-    void addPolylineColored(const QVector<QPointF>& poly, const QColor& color, int groupId = -1, int layerId = 0);
     void clear();
     void addTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);
     // Tri mesh accessors (for undoable commands)
@@ -52,24 +50,12 @@ public:
     const QVector<unsigned int>& triIndices() const { return triIndices_; }
     void setTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);
     void clearTriMesh();
-    void removeSelected();
     int  newGroupId();
-    int removeAllSimilar();  // Returns number of removed items
-    int polylineCount() const { return polylines_.size(); }
-    void removePolylineAt(int index);
-    bool polylineAt(int index, PolyVis& out) const;
-    void insertPolylineAt(int index, const PolyVis& pv);
-    void setPolylineVisible(int index, bool vis);
-    int selectedIndex() const { return selected_; }
-    QVector<PolyVis> snapshotPolylines() const { return polylines_; }
-    void restorePolylines(const QVector<PolyVis>& polys);
-
-    const QVector<PolyVis>& polylinesData() const { return polylines_; }
-    int selectedGroupId() const;
-    void selectGroup(const QPoint& pos);  // Alt+Click to select entire group
+    void setSelection(const QList<qulonglong>& entityIds);
 
 signals:
-    void selectionChanged(const QList<int>& indices);
+    void selectionChanged(const QList<qulonglong>& entityIds);
+    void deleteRequested(bool allSimilar);
 
 protected:
     void paintEvent(QPaintEvent*) override;
@@ -85,6 +71,7 @@ private:
     QPointF screenToWorld(const QPointF& p) const;
     void updatePolyCache(PolyVis& pv);
     SnapResult findSnapPoint(const QPointF& queryPosWorld);
+    void selectGroup(const QPoint& pos);  // Alt+Click to select entire group
 
     double scale_ { 1.0 }; // pixels per world unit
     QPointF pan_ { 0.0, 0.0 }; // in pixels
@@ -92,7 +79,7 @@ private:
     SnapResult m_currentSnap;
     // storage for polylines
     QVector<PolyVis> polylines_;
-    int selected_ { -1 };
+    QSet<EntityId> selected_entities_;
     bool triSelected_ { false };
     int  nextGroupId_ { 1 };
     QVector<QPointF> triVerts_;

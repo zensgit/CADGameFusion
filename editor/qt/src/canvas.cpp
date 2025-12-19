@@ -57,27 +57,23 @@ void CanvasWidget::updatePolyCache(PolyVis& pv) {
     pv.aabb = QRectF(QPointF(minX, minY), QPointF(maxX, maxY));
 }
 
-void CanvasWidget::addPolyline(const QVector<QPointF>& poly, int layerId) {
-    PolyVis pv{poly, QColor(220,220,230), -1, true, layerId};
-    updatePolyCache(pv);
-    polylines_.push_back(pv);
-    update();
-    emit selectionChanged({});
-}
-
-void CanvasWidget::addPolylineColored(const QVector<QPointF>& poly, const QColor& color, int groupId, int layerId) {
-    PolyVis pv{poly, color, groupId, true, layerId};
-    updatePolyCache(pv);
-    polylines_.push_back(pv);
-    update();
-}
-
 void CanvasWidget::clear() {
     polylines_.clear();
     triVerts_.clear();
     triIndices_.clear();
-    selected_ = -1;
+    selected_entities_.clear();
+    triSelected_ = false;
     m_currentSnap.active = false;
+    update();
+}
+
+void CanvasWidget::setSelection(const QList<qulonglong>& entityIds) {
+    selected_entities_.clear();
+    for (qulonglong id : entityIds) {
+        if (id != 0) {
+            selected_entities_.insert(static_cast<EntityId>(id));
+        }
+    }
     update();
 }
 
@@ -193,7 +189,7 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
 
         QPen pen(pv.color, 2); 
         pen.setCosmetic(true);
-        if (i == selected_) {
+        if (selected_entities_.contains(pv.entityId)) {
             pen.setColor(QColor(255,220,100));
             pen.setWidth(3);
         }
@@ -265,17 +261,18 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
     QPointF mouseWorld = screenToWorld(mouseScreen);
 
     if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::AltModifier)) {
+        triSelected_ = false;
         selectGroup(e->pos());
         return;
     }
     
     if (e->button() == Qt::LeftButton && !(e->modifiers() & (Qt::AltModifier | Qt::ShiftModifier))) {
-        selected_ = -1;
         triSelected_ = false;
         
         const double thPx = 12.0; 
         const double thWorld = thPx / scale_;
         const double thWorldSq = thWorld * thWorld;
+        EntityId hitId = 0;
 
         for (int pi = polylines_.size() - 1; pi >= 0; --pi) {
             const auto& pv = polylines_[pi];
@@ -302,14 +299,14 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
                 double distSq = (h.x()-mouseWorld.x())*(h.x()-mouseWorld.x()) + (h.y()-mouseWorld.y())*(h.y()-mouseWorld.y());
                 
                 if (distSq < thWorldSq) {
-                    selected_ = pi;
-                    found = true;
+                    hitId = pv.entityId;
+                    found = (hitId != 0);
                     break;
                 }
             }
             if (found) {
                 update();
-                emit selectionChanged({selected_});
+                emit selectionChanged({static_cast<qulonglong>(hitId)});
                 return;
             }
         }
@@ -331,6 +328,7 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
                 if (testEdge(a,b,mouseWorld) || testEdge(b,c,mouseWorld) || testEdge(c,a,mouseWorld)) { 
                     triSelected_ = true; 
                     update(); 
+                    emit selectionChanged({});
                     return; 
                 }
             }
@@ -365,86 +363,20 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
 
 void CanvasWidget::keyPressEvent(QKeyEvent* e) {
     if (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) {
-        if (e->modifiers() & Qt::ShiftModifier) {
-            removeAllSimilar();
-        } else {
-            removeSelected();
+        if (triSelected_) {
+            triVerts_.clear();
+            triIndices_.clear();
+            triSelected_ = false;
+            update();
+            emit selectionChanged({});
+            return;
         }
+        emit deleteRequested(e->modifiers() & Qt::ShiftModifier);
     } else if (e->key() == Qt::Key_Escape) {
-        selected_ = -1;
-        update();
-    }
-}
-
-void CanvasWidget::removeSelected() {
-    if (triSelected_) {
-        triVerts_.clear();
-        triIndices_.clear();
         triSelected_ = false;
-        update();
-        return;
-    }
-    if (selected_>=0 && selected_<polylines_.size()) {
-        if (m_doc) {
-            EntityId eid = polylines_[selected_].entityId;
-            if (eid != 0 && m_doc->remove_entity(eid)) {
-                reloadFromDocument();
-                return;
-            }
-        }
-        polylines_.removeAt(selected_);
-        selected_ = -1;
         update();
         emit selectionChanged({});
     }
-}
-
-int CanvasWidget::removeAllSimilar() {
-    if (selected_ < 0 || selected_ >= polylines_.size()) return 0;
-    
-    int removedCount = 0;
-    int gid = polylines_[selected_].groupId;
-
-    if (m_doc) {
-        QVector<EntityId> ids;
-        if (gid != -1) {
-            for (int i = 0; i < polylines_.size(); ++i) {
-                if (polylines_[i].groupId == gid && polylines_[i].entityId != 0) ids.push_back(polylines_[i].entityId);
-            }
-        } else {
-            QColor targetColor = polylines_[selected_].color;
-            for (int i = 0; i < polylines_.size(); ++i) {
-                if (polylines_[i].color == targetColor && polylines_[i].entityId != 0) ids.push_back(polylines_[i].entityId);
-            }
-        }
-
-        if (!ids.isEmpty()) {
-            for (EntityId eid : ids) {
-                if (m_doc->remove_entity(eid)) removedCount++;
-            }
-            reloadFromDocument();
-            return removedCount;
-        }
-    }
-
-    if (gid != -1) {
-        QVector<int> idx;
-        for (int i=0;i<polylines_.size();++i) if (polylines_[i].groupId == gid) idx.push_back(i);
-        for (int k=idx.size()-1; k>=0; --k) { polylines_.removeAt(idx[k]); removedCount++; }
-    } else {
-        QColor targetColor = polylines_[selected_].color;
-        for (int i = polylines_.size() - 1; i >= 0; --i) {
-            if (polylines_[i].color == targetColor) {
-                polylines_.removeAt(i);
-                removedCount++;
-            }
-        }
-    }
-
-    selected_ = -1;
-    update();
-    emit selectionChanged({});
-    return removedCount;
 }
 
 void CanvasWidget::addTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices) {
@@ -472,11 +404,6 @@ void CanvasWidget::clearTriMesh() {
 
 int CanvasWidget::newGroupId() { return nextGroupId_++; }
 
-int CanvasWidget::selectedGroupId() const {
-    if (selected_>=0 && selected_<polylines_.size()) return polylines_[selected_].groupId;
-    return -1;
-}
-
 void CanvasWidget::selectGroup(const QPoint& pos) {
     const double thPx = 12.0;
     const double thWorld = thPx / scale_;
@@ -498,63 +425,23 @@ void CanvasWidget::selectGroup(const QPoint& pos) {
             double distSq = (h.x()-mouseWorld.x())*(h.x()-mouseWorld.x()) + (h.y()-mouseWorld.y())*(h.y()-mouseWorld.y());
             
             if (distSq < thWorldSq) {
-                int gid = polylines_[pi].groupId;
+                QList<qulonglong> ids;
+                const int gid = polylines_[pi].groupId;
                 if (gid != -1) {
-                    for (int j=0; j<polylines_.size(); ++j) {
-                        if (polylines_[j].groupId == gid) {
-                            selected_ = j;
-                            update();
-                            return;
+                    for (const auto& pv : polylines_) {
+                        if (pv.groupId == gid && pv.entityId != 0) {
+                            ids.append(static_cast<qulonglong>(pv.entityId));
                         }
                     }
-                } else {
-                    selected_ = pi;
+                } else if (polylines_[pi].entityId != 0) {
+                    ids.append(static_cast<qulonglong>(polylines_[pi].entityId));
                 }
                 update();
+                emit selectionChanged(ids);
                 return;
             }
         }
     }
-}
-
-void CanvasWidget::removePolylineAt(int index) {
-    if (index >= 0 && index < polylines_.size()) {
-        polylines_.removeAt(index);
-        if (selected_ == index) selected_ = -1;
-        update();
-        emit selectionChanged({});
-    }
-}
-
-bool CanvasWidget::polylineAt(int index, PolyVis& out) const {
-    if (index >= 0 && index < polylines_.size()) { out = polylines_[index]; return true; }
-    return false;
-}
-
-void CanvasWidget::insertPolylineAt(int index, const PolyVis& pv) {
-    if (index < 0 || index > polylines_.size()) index = polylines_.size();
-    PolyVis newPv = pv;
-    updatePolyCache(newPv); // Ensure cache is valid
-    polylines_.insert(index, newPv);
-    update();
-    emit selectionChanged({index});
-}
-
-void CanvasWidget::setPolylineVisible(int index, bool vis) {
-    if (index>=0 && index<polylines_.size()) {
-        polylines_[index].visible = vis;
-        update();
-    }
-}
-
-void CanvasWidget::restorePolylines(const QVector<PolyVis>& polys) {
-    polylines_ = polys;
-    // Rebuild cache for restored items just in case
-    for(auto& pv : polylines_) {
-        updatePolyCache(pv);
-    }
-    selected_ = -1;
-    update();
     emit selectionChanged({});
 }
 
@@ -562,7 +449,7 @@ void CanvasWidget::reloadFromDocument() {
     if (!m_doc) return;
 
     polylines_.clear();
-    selected_ = -1;
+    selected_entities_.clear();
     int maxGroupId = -1;
 
     // Iterate over all entities in Document and create PolyVis for each
@@ -612,11 +499,4 @@ void CanvasWidget::reloadFromDocument() {
     nextGroupId_ = (maxGroupId >= 0) ? (maxGroupId + 1) : 1;
     update();
     emit selectionChanged({});
-}
-
-EntityId CanvasWidget::entityIdAt(int index) const {
-    if (index >= 0 && index < polylines_.size()) {
-        return polylines_[index].entityId;
-    }
-    return 0;
 }

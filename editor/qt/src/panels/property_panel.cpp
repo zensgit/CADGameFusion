@@ -33,7 +33,7 @@ void PropertyPanel::setVisibleCheckState(Qt::CheckState state, bool silent) {
     if (silent) m_internalChange = false;
 }
 
-void PropertyPanel::updateFromSelection(const QList<int>& entityIds) {
+void PropertyPanel::updateFromSelection(const QList<qulonglong>& entityIds) {
     qDebug() << "PropertyPanel::updateFromSelection - entityIds:" << entityIds;
     m_currentSelection = entityIds;
 
@@ -76,7 +76,7 @@ void PropertyPanel::updateFromSelection(const QList<int>& entityIds) {
         m_internalChange = false;
         m_tree->setItemWidget(visRow, 1, m_visibleCheck);
     } else if (entityIds.size() > 1) {
-        for (int id : entityIds) root->addChild(new QTreeWidgetItem(QStringList{ "id", QString::number(id) }));
+        for (qulonglong id : entityIds) root->addChild(new QTreeWidgetItem(QStringList{ "id", QString::number(id) }));
         // Visible tri-state
         auto* visRow = new QTreeWidgetItem(QStringList{ "visible", "" });
         m_tree->addTopLevelItem(visRow);

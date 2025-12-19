@@ -56,12 +56,13 @@ private:
     bool performSave(const QString& path, bool updateCurrent);
     void rebuildPluginExportMenu();
     void exportViaPlugin(const cadgf_exporter_api_v1* exporter);
-    bool buildCadgfDocumentFromCanvas(cadgf_document* doc, QString* error) const;
+    bool buildCadgfDocumentFromDocument(cadgf_document* doc, QString* error) const;
 
     QListWidget* list_{};
     LayerPanel* m_layerPanel{nullptr};
     // Persistent document context (for settings like unit scale)
     core::Document m_document;
+    QList<qulonglong> m_selection;
     QUndoStack* m_undoStack{nullptr};
     CommandManager* m_cmdMgr{nullptr};
 

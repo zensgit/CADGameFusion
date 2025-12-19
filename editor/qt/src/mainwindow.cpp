@@ -43,6 +43,12 @@
 #include <unordered_map>
 #include <vector>
 
+static uint32_t effectiveEntityColor(const core::Document& doc, const core::Entity& e);
+static int selectionGroupId(const core::Document& doc, const QList<qulonglong>& selection);
+static QVector<core::EntityId> buildRemovalSet(const core::Document& doc,
+                                               const QList<qulonglong>& selection,
+                                               bool allSimilar);
+
 MainWindow::~MainWindow() = default;
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
@@ -65,34 +71,77 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     prop->updateFromSelection({});
     
     // ... (existing code) ...
-    connect(canvas, &CanvasWidget::selectionChanged, this, [this, prop, canvas](const QList<int>& ids){
-        prop->updateFromSelection(ids);
-        // Compute visibility state for current selection
-        if (!ids.isEmpty()) {
-            bool anyTrue=false, anyFalse=false;
-            for (int idx : ids) {
-                CanvasWidget::PolyVis pv;
-                if (canvas->polylineAt(idx, pv)) {
-                    anyTrue  = anyTrue  || pv.visible;
-                    anyFalse = anyFalse || !pv.visible;
-                }
+    connect(canvas, &CanvasWidget::selectionChanged, this, [this, prop, canvas](const QList<qulonglong>& entityIds){
+        m_selection = entityIds;
+        prop->updateFromSelection(m_selection);
+        // Compute visibility state for current selection from Document
+        if (!m_selection.isEmpty()) {
+            bool anyTrue=false, anyFalse=false, hasAny=false;
+            for (qulonglong id : m_selection) {
+                auto* entity = m_document.get_entity(static_cast<EntityId>(id));
+                if (!entity) continue;
+                hasAny = true;
+                anyTrue  = anyTrue  || entity->visible;
+                anyFalse = anyFalse || !entity->visible;
             }
             Qt::CheckState cs = Qt::PartiallyChecked;
-            if (ids.size() == 1) {
-                cs = anyTrue ? Qt::Checked : Qt::Unchecked;
-            } else {
-                if (anyTrue && !anyFalse) cs = Qt::Checked;
-                else if (!anyTrue && anyFalse) cs = Qt::Unchecked;
+            if (hasAny) {
+                if (m_selection.size() == 1) {
+                    cs = anyTrue ? Qt::Checked : Qt::Unchecked;
+                } else {
+                    if (anyTrue && !anyFalse) cs = Qt::Checked;
+                    else if (!anyTrue && anyFalse) cs = Qt::Unchecked;
+                }
             }
             prop->setVisibleCheckState(cs, /*silent*/true);
         }
+        if (canvas) canvas->setSelection(m_selection);
     });
-    connect(prop, &PropertyPanel::propertyEdited, [this, canvas](int entityIdx, const QString& key, const QVariant& value){
+    connect(canvas, &CanvasWidget::deleteRequested, this, [this, canvas](bool allSimilar){
+        const QVector<core::EntityId> ids = buildRemovalSet(m_document, m_selection, allSimilar);
+        if (ids.isEmpty()) return;
+        struct RemoveEntitiesCommand : Command {
+            core::Document* doc;
+            CanvasWidget* canvas;
+            QVector<core::Entity> removed;
+            QVector<core::EntityId> ids;
+            RemoveEntitiesCommand(core::Document* d, CanvasWidget* c, QVector<core::EntityId> removeIds)
+                : doc(d), canvas(c), ids(std::move(removeIds)) {}
+            void execute() override {
+                if (!doc) return;
+                removed.clear();
+                removed.reserve(ids.size());
+                for (core::EntityId id : ids) {
+                    if (const auto* e = doc->get_entity(id)) {
+                        removed.push_back(*e);
+                        doc->remove_entity(id);
+                    }
+                }
+                if (canvas) canvas->reloadFromDocument();
+            }
+            void undo() override {
+                if (!doc) return;
+                for (const auto& e : removed) {
+                    if (e.type != core::EntityType::Polyline || !e.payload) continue;
+                    const auto* pl = static_cast<const core::Polyline*>(e.payload.get());
+                    if (!pl) continue;
+                    core::EntityId newId = doc->add_polyline(*pl, e.name, e.layerId);
+                    doc->set_entity_visible(newId, e.visible);
+                    doc->set_entity_group_id(newId, e.groupId);
+                    doc->set_entity_color(newId, e.color);
+                }
+                if (canvas) canvas->reloadFromDocument();
+            }
+            QString name() const override { return "Remove Entities"; }
+        };
+        m_cmdMgr->push(std::make_unique<RemoveEntitiesCommand>(&m_document, canvas, ids));
+        markDirty();
+    });
+    connect(prop, &PropertyPanel::propertyEdited, [this, canvas](qulonglong entityId, const QString& key, const QVariant& value){
         if (!canvas) return;
         // PR7: Commands operate on Document, then reload Canvas
         if (key == "visible") {
-            // Get EntityId from canvas index
-            EntityId eid = canvas->entityIdAt(entityIdx);
+            EntityId eid = static_cast<EntityId>(entityId);
             if (eid == 0) {
                 // Fallback for entities not in Document (legacy canvas-only items)
                 statusBar()->showMessage("Entity not bound to Document", 1500);
@@ -120,17 +169,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             m_cmdMgr->push(std::make_unique<SetVisibleCommand>(&m_document, canvas, eid, value.toBool()));
         }
     });
-    connect(prop, &PropertyPanel::propertyEditedBatch, [this, canvas](const QList<int>& idxs, const QString& key, const QVariant& value){
-        if (!canvas || key != "visible" || idxs.isEmpty()) return;
+    connect(prop, &PropertyPanel::propertyEditedBatch, [this, canvas](const QList<qulonglong>& entityIds, const QString& key, const QVariant& value){
+        if (!canvas || key != "visible" || entityIds.isEmpty()) return;
         // PR7: Batch commands operate on Document, then reload Canvas
         struct BatchSetVisibleDoc : Command {
             core::Document* doc; CanvasWidget* canvas;
             QVector<EntityId> entityIds; QVector<bool> oldVals; bool newVal;
-            BatchSetVisibleDoc(core::Document* d, CanvasWidget* c, const QList<int>& idxs, bool nv)
+            BatchSetVisibleDoc(core::Document* d, CanvasWidget* c, const QList<qulonglong>& ids, bool nv)
                 : doc(d), canvas(c), newVal(nv) {
                 QSet<EntityId> seen;
-                for (int idx : idxs) {
-                    EntityId eid = c->entityIdAt(idx);
+                for (qulonglong id : ids) {
+                    EntityId eid = static_cast<EntityId>(id);
                     if (eid == 0 || seen.contains(eid)) continue;
                     seen.insert(eid);
                     auto* entity = d->get_entity(eid);
@@ -150,7 +199,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             }
             QString name() const override { return "Set Visible (Batch)"; }
         };
-        auto cmd = std::make_unique<BatchSetVisibleDoc>(&m_document, canvas, idxs, value.toBool());
+        auto cmd = std::make_unique<BatchSetVisibleDoc>(&m_document, canvas, entityIds, value.toBool());
         if (cmd->entityIds.isEmpty()) {
             statusBar()->showMessage("No valid entities for visibility change", 1200);
             return;
@@ -562,32 +611,102 @@ void MainWindow::showAboutCore() {
     QMessageBox::about(this, "About Core", msg);
 }
 
+static void appendExportEntity(const core::Document& doc, const core::Entity& e, QMap<int, ExportItem>& groupMap) {
+    if (e.type != core::EntityType::Polyline || !e.payload) return;
+    const auto* pl = static_cast<const core::Polyline*>(e.payload.get());
+    if (!pl || pl->points.size() < 2) return;
+
+    ExportItem& item = groupMap[e.groupId];
+    item.groupId = e.groupId;
+
+    QVector<QPointF> ring;
+    ring.reserve(static_cast<int>(pl->points.size()));
+    for (const auto& pt : pl->points) ring.push_back(QPointF(pt.x, pt.y));
+    item.rings.push_back(ring);
+
+    if (item.layerName.isEmpty()) {
+        auto* layer = doc.get_layer(e.layerId);
+        if (layer) {
+            item.layerName = QString::fromStdString(layer->name);
+            item.layerColor = layer->color;
+        } else {
+            item.layerName = "0";
+            item.layerColor = 0xFFFFFF;
+        }
+    }
+}
+
+static uint32_t effectiveEntityColor(const core::Document& doc, const core::Entity& e) {
+    if (e.color != 0) return e.color;
+    const auto* layer = doc.get_layer(e.layerId);
+    return layer ? layer->color : 0xDCDCE6;
+}
+
+static int selectionGroupId(const core::Document& doc, const QList<qulonglong>& selection) {
+    if (selection.isEmpty()) return -1;
+    const core::Entity* first = doc.get_entity(static_cast<core::EntityId>(selection.front()));
+    if (!first || first->groupId == -1) return -1;
+    const int gid = first->groupId;
+    for (int i = 1; i < selection.size(); ++i) {
+        const auto* e = doc.get_entity(static_cast<core::EntityId>(selection[i]));
+        if (!e || e->groupId != gid) return -1;
+    }
+    return gid;
+}
+
+static QVector<core::EntityId> buildRemovalSet(const core::Document& doc,
+                                               const QList<qulonglong>& selection,
+                                               bool allSimilar) {
+    QVector<core::EntityId> ids;
+    if (selection.isEmpty()) return ids;
+
+    QSet<core::EntityId> seen;
+    auto addId = [&](core::EntityId id) {
+        if (id == 0 || seen.contains(id)) return;
+        if (!doc.get_entity(id)) return;
+        seen.insert(id);
+        ids.push_back(id);
+    };
+
+    if (!allSimilar || selection.size() != 1) {
+        for (qulonglong sel : selection) {
+            addId(static_cast<core::EntityId>(sel));
+        }
+        return ids;
+    }
+
+    const core::EntityId selId = static_cast<core::EntityId>(selection.front());
+    const core::Entity* sel = doc.get_entity(selId);
+    if (!sel || sel->type != core::EntityType::Polyline) return ids;
+
+    if (sel->groupId != -1) {
+        const int gid = sel->groupId;
+        for (const auto& e : doc.entities()) {
+            if (e.type != core::EntityType::Polyline) continue;
+            if (e.groupId == gid) addId(e.id);
+        }
+        return ids;
+    }
+
+    const uint32_t targetColor = effectiveEntityColor(doc, *sel);
+    for (const auto& e : doc.entities()) {
+        if (e.type != core::EntityType::Polyline) continue;
+        if (effectiveEntityColor(doc, e) == targetColor) addId(e.id);
+    }
+    return ids;
+}
+
 void MainWindow::exportSceneAction() {
     exportSceneActionImpl(ExportJSON | ExportGLTF);
 }
 
 void MainWindow::exportSceneActionImpl(int kinds) {
-    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
-    if (!canvas) return;
     QString base = QFileDialog::getExistingDirectory(this, "Select export base directory");
     if (base.isEmpty()) return;
     // Group polylines by groupId
     QMap<int, ExportItem> groupMap;
-    for (const auto& pv : canvas->polylinesData()) {
-        ExportItem& item = groupMap[pv.groupId];
-        item.groupId = pv.groupId;
-        item.rings.push_back(pv.pts);
-        // Layer info (take from first polyline in group)
-        if (item.layerName.isEmpty()) {
-            auto* layer = m_document.get_layer(pv.layerId);
-            if (layer) {
-                item.layerName = QString::fromStdString(layer->name);
-                item.layerColor = layer->color;
-            } else {
-                item.layerName = "0";
-                item.layerColor = 0xFFFFFF;
-            }
-        }
+    for (const auto& e : m_document.entities()) {
+        appendExportEntity(m_document, e, groupMap);
     }
     QVector<ExportItem> items;
     for (auto it = groupMap.begin(); it != groupMap.end(); ++it) {
@@ -627,9 +746,7 @@ void MainWindow::exportWithOptions() {
     // Simple inline dialog (future: move to its own class/UI)
     // Use ExportDialog for options
     ExportDialog::ExportOptions opts;
-    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
-    if (!canvas) return;
-    int selGid = canvas->selectedGroupId();
+    int selGid = selectionGroupId(m_document, m_selection);
     if (!ExportDialog::getExportOptions(this, nullptr, selGid, opts)) return;
 
     int kinds = 0;
@@ -642,21 +759,9 @@ void MainWindow::exportWithOptions() {
     if (base.isEmpty()) return;
     QMap<int, ExportItem> groupMap;
     const bool onlySelected = (opts.range == ExportDialog::SelectedGroupOnly && selGid!=-1);
-    for (const auto& pv : canvas->polylinesData()) {
-        if (onlySelected && pv.groupId != selGid) continue;
-        ExportItem& item = groupMap[pv.groupId];
-        item.groupId = pv.groupId;
-        item.rings.push_back(pv.pts);
-        if (item.layerName.isEmpty()) {
-            auto* layer = m_document.get_layer(pv.layerId);
-            if (layer) {
-                item.layerName = QString::fromStdString(layer->name);
-                item.layerColor = layer->color;
-            } else {
-                item.layerName = "0";
-                item.layerColor = 0xFFFFFF;
-            }
-        }
+    for (const auto& e : m_document.entities()) {
+        if (onlySelected && e.groupId != selGid) continue;
+        appendExportEntity(m_document, e, groupMap);
     }
     QVector<ExportItem> items; 
     for (auto it = groupMap.begin(); it != groupMap.end(); ++it) { 
@@ -753,15 +858,9 @@ void MainWindow::loadPlugin() {
     rebuildPluginExportMenu();
 }
 
-bool MainWindow::buildCadgfDocumentFromCanvas(cadgf_document* doc, QString* error) const {
+bool MainWindow::buildCadgfDocumentFromDocument(cadgf_document* doc, QString* error) const {
     if (!doc) {
         if (error) *error = "Invalid cadgf_document";
-        return false;
-    }
-
-    auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
-    if (!canvas) {
-        if (error) *error = "CanvasWidget not found";
         return false;
     }
 
@@ -787,28 +886,38 @@ bool MainWindow::buildCadgfDocumentFromCanvas(cadgf_document* doc, QString* erro
         layerMap.emplace(layer.id, outLayerId);
     }
 
-    const auto& polys = canvas->polylinesData();
-    for (int i = 0; i < polys.size(); ++i) {
-        const auto& pv = polys[i];
-        if (pv.pts.size() <= 1) continue;
+    int polyIndex = 0;
+    for (const auto& e : m_document.entities()) {
+        if (e.type != core::EntityType::Polyline || !e.payload) continue;
+        const auto* pl = static_cast<const core::Polyline*>(e.payload.get());
+        if (!pl || pl->points.size() < 2) continue;
 
         int layerId = 0;
-        if (auto it = layerMap.find(pv.layerId); it != layerMap.end()) layerId = it->second;
+        if (auto it = layerMap.find(e.layerId); it != layerMap.end()) layerId = it->second;
 
         std::vector<cadgf_vec2> pts;
-        pts.reserve(static_cast<size_t>(pv.pts.size()));
-        for (const auto& qp : pv.pts) pts.push_back(cadgf_vec2{qp.x(), qp.y()});
+        pts.reserve(pl->points.size());
+        for (const auto& pt : pl->points) pts.push_back(cadgf_vec2{pt.x, pt.y});
 
-        const QString name = (pv.groupId >= 0) ? QString("group_%1_poly_%2").arg(pv.groupId).arg(i)
-                                              : QString("polyline_%1").arg(i);
+        QString name;
+        if (!e.name.empty()) {
+            name = QString::fromStdString(e.name);
+        } else {
+            name = (e.groupId >= 0) ? QString("group_%1_poly_%2").arg(e.groupId).arg(polyIndex)
+                                    : QString("polyline_%1").arg(polyIndex);
+        }
         const QByteArray nameUtf8 = name.toUtf8();
 
         const cadgf_entity_id id = cadgf_document_add_polyline_ex(doc, pts.data(), static_cast<int>(pts.size()),
                                                                   nameUtf8.constData(), layerId);
         if (id == 0) {
-            if (error) *error = QString("Failed to add polyline #%1").arg(i);
+            if (error) *error = QString("Failed to add polyline #%1").arg(polyIndex);
             return false;
         }
+        (void)cadgf_document_set_entity_visible(doc, id, e.visible ? 1 : 0);
+        (void)cadgf_document_set_entity_group_id(doc, id, e.groupId);
+        (void)cadgf_document_set_entity_color(doc, id, e.color);
+        polyIndex++;
     }
 
     return true;
@@ -840,7 +949,7 @@ void MainWindow::exportViaPlugin(const cadgf_exporter_api_v1* exporter) {
     }
 
     QString buildErr;
-    if (!buildCadgfDocumentFromCanvas(doc, &buildErr)) {
+    if (!buildCadgfDocumentFromDocument(doc, &buildErr)) {
         cadgf_document_destroy(doc);
         QMessageBox::critical(this, "Plugin Export", QString("Failed to build export document:\n%1").arg(buildErr));
         return;
