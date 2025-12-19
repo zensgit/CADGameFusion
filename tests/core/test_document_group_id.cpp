@@ -1,4 +1,5 @@
 #include "core/document.hpp"
+#include "core/geometry2d.hpp"
 #include <cassert>
 
 int main() {
