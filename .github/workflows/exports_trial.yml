@@ -19,9 +19,48 @@ jobs:
         materials: [false, true]
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/vcpkg/archives
+            vcpkg/installed
+            vcpkg_installed
+            build/vcpkg_installed
+          key: ubuntu-vcpkg-exports-trial-a20d95d3-${{ hashFiles('**/vcpkg.json', 'vcpkg-configuration.json') }}
+          restore-keys: |
+            ubuntu-vcpkg-exports-trial-a20d95d3-
+            ubuntu-vcpkg-exports-trial-
+
+      - name: Setup vcpkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          export VCPKG_DEFAULT_BINARY_CACHE="$HOME/.cache/vcpkg/archives"
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$VCPKG_DEFAULT_BINARY_CACHE" >> $GITHUB_ENV
+          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite" >> $GITHUB_ENV
+
+          if [ ! -d "vcpkg/.git" ]; then
+            [ -d "vcpkg" ] && rm -rf vcpkg
+            git clone https://github.com/microsoft/vcpkg.git vcpkg
+          fi
+          (cd vcpkg && git fetch --tags --force && git checkout a20d95d3c76906363896754eb1cc93db2a694f16 && ./bootstrap-vcpkg.sh -disableMetrics)
+          echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
+
       - name: Configure
         run: |
-          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_EDITOR_QT=OFF \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -G Ninja
       - name: Build export_cli
         run: |
           cmake --build build --target export_cli -j 4
@@ -42,4 +81,3 @@ jobs:
           name: scene-sample-n${{ matrix.normals }}-u${{ matrix.uvs }}-m${{ matrix.materials }}
           path: build/exports/scene_cli_sample
           if-no-files-found: warn
-

@@ -27,8 +27,9 @@ jobs:
       - name: Cleanup old auto-generated issues
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DAYS_THRESHOLD: ${{ inputs.days_threshold || '30' }}
-          DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          # Use github.event.inputs so schedule runs don't fail workflow parsing.
+          DAYS_THRESHOLD: ${{ github.event.inputs.days_threshold || '30' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
         run: |
           set -e
 
@@ -119,8 +120,8 @@ jobs:
         run: |
           echo "### Cleanup Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Threshold**: ${{ inputs.days_threshold || '30' }} days" >> $GITHUB_STEP_SUMMARY
-          echo "- **Mode**: ${{ inputs.dry_run == 'true' && 'Dry Run' || 'Live' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Threshold**: ${{ github.event.inputs.days_threshold || '30' }} days" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ github.event.inputs.dry_run == 'true' && 'Dry Run' || 'Live' }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Execution Time**: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Check the logs above for detailed results." >> $GITHUB_STEP_SUMMARY
