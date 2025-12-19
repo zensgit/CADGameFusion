@@ -20,12 +20,19 @@ CORE_API const char* core_get_version() {
 CORE_API unsigned int core_get_feature_flags() {
     unsigned int flags = 0u;
 #if defined(USE_EARCUT)
-    flags |= 1u << 0;
+    flags |= CORE_FEATURE_EARCUT;
 #endif
 #if defined(USE_CLIPPER2)
-    flags |= 1u << 1;
+    flags |= CORE_FEATURE_CLIPPER2;
+#endif
+#if defined(CADGF_HAS_TINYGLTF)
+    flags |= CORE_FEATURE_TINYGLTF;
 #endif
     return flags;
+}
+
+CORE_API unsigned int core_get_api_version(void) {
+    return CADGF_CORE_API_VERSION;
 }
 
 CORE_API core_document* core_document_create() {
@@ -349,6 +356,7 @@ extern "C" {
 
 CADGF_API const char* cadgf_get_version() { return core_get_version(); }
 CADGF_API unsigned int cadgf_get_feature_flags() { return core_get_feature_flags(); }
+CADGF_API unsigned int cadgf_get_api_version(void) { return core_get_api_version(); }
 
 CADGF_API cadgf_document* cadgf_document_create() { return core_document_create(); }
 CADGF_API void cadgf_document_destroy(cadgf_document* doc) { core_document_destroy(doc); }

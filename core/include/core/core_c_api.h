@@ -16,6 +16,36 @@
 
 #include <stdint.h>
 
+/*
+ * ============================================================================
+ * CADGameFusion Core C API - Stable Boundary
+ * ============================================================================
+ * This header defines the stable C ABI for CADGameFusion core library.
+ * All symbols prefixed with cadgf_* or core_* are part of the stable boundary.
+ *
+ * Stability guarantees (within major version):
+ *   - Existing struct fields will not be removed or reordered
+ *   - Existing function signatures will not change
+ *   - New fields may be appended to structs (check size field)
+ *   - New functions may be added
+ *
+ * See docs/STABLE_BOUNDARY.md for full documentation.
+ * ============================================================================
+ */
+
+/* C API version (increment when adding new functions/structs) */
+#define CADGF_CORE_API_VERSION_MAJOR 1
+#define CADGF_CORE_API_VERSION_MINOR 0
+#define CADGF_CORE_API_VERSION_PATCH 0
+#define CADGF_CORE_API_VERSION \
+    ((CADGF_CORE_API_VERSION_MAJOR << 16) | (CADGF_CORE_API_VERSION_MINOR << 8) | CADGF_CORE_API_VERSION_PATCH)
+
+/* Aliases for legacy compatibility */
+#define CORE_API_VERSION_MAJOR CADGF_CORE_API_VERSION_MAJOR
+#define CORE_API_VERSION_MINOR CADGF_CORE_API_VERSION_MINOR
+#define CORE_API_VERSION_PATCH CADGF_CORE_API_VERSION_PATCH
+#define CORE_API_VERSION CADGF_CORE_API_VERSION
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -66,10 +96,16 @@ CORE_API const char* core_get_version();
 // bit 0: USE_EARCUT, bit 1: USE_CLIPPER2
 CORE_API unsigned int core_get_feature_flags();
 // Feature flag helpers
-#define CORE_FEATURE_EARCUT   (1u << 0)
-#define CORE_FEATURE_CLIPPER2 (1u << 1)
-#define CADGF_FEATURE_EARCUT CORE_FEATURE_EARCUT
+#define CORE_FEATURE_EARCUT    (1u << 0)
+#define CORE_FEATURE_CLIPPER2  (1u << 1)
+#define CORE_FEATURE_TINYGLTF  (1u << 2)
+#define CADGF_FEATURE_EARCUT   CORE_FEATURE_EARCUT
 #define CADGF_FEATURE_CLIPPER2 CORE_FEATURE_CLIPPER2
+#define CADGF_FEATURE_TINYGLTF CORE_FEATURE_TINYGLTF
+
+// Runtime API version query (returns CADGF_CORE_API_VERSION packed value)
+CORE_API unsigned int core_get_api_version(void);
+CADGF_API unsigned int cadgf_get_api_version(void);
 
 // CADGameFusion preferred API names (ABI-level aliases, exported as symbols)
 CADGF_API const char* cadgf_get_version();

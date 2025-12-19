@@ -4,11 +4,30 @@
 
 #include <stdint.h>
 
+/*
+ * ============================================================================
+ * CADGameFusion Plugin ABI (C Function Table) - Stable Boundary
+ * ============================================================================
+ * This header defines the stable C plugin ABI for CADGameFusion.
+ * Plugins implementing this ABI are binary-compatible across:
+ *   - Different compilers (MSVC, GCC, Clang)
+ *   - Different C++ standard library versions
+ *   - Different build configurations (Release/Debug)
+ *
+ * ABI v1 guarantees:
+ *   - cadgf_plugin_api_v1 is append-only (new fields at end only)
+ *   - Host checks api->size >= sizeof(cadgf_plugin_api_v1_min)
+ *   - Existing struct layouts are frozen within v1
+ *
+ * See docs/STABLE_BOUNDARY.md for full documentation.
+ * ============================================================================
+ */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Plugin entry point export macro
+/* Plugin entry point export macro */
 #if defined(_WIN32)
 #  define CADGF_PLUGIN_EXPORT __declspec(dllexport)
 #elif defined(__GNUC__) || defined(__clang__)
@@ -17,7 +36,18 @@ extern "C" {
 #  define CADGF_PLUGIN_EXPORT
 #endif
 
+/* Plugin ABI version (increment major for breaking changes, minor for additions) */
+#define CADGF_PLUGIN_ABI_VERSION_MAJOR 1
+#define CADGF_PLUGIN_ABI_VERSION_MINOR 0
 #define CADGF_PLUGIN_ABI_V1 1
+
+/* Packed version for runtime comparison */
+#define CADGF_PLUGIN_ABI_VERSION \
+    ((CADGF_PLUGIN_ABI_VERSION_MAJOR << 8) | CADGF_PLUGIN_ABI_VERSION_MINOR)
+
+/* Compile-time check: ensure plugin targets compatible ABI */
+#define CADGF_PLUGIN_CHECK_ABI(host_major, host_minor) \
+    ((host_major) == CADGF_PLUGIN_ABI_VERSION_MAJOR && (host_minor) >= CADGF_PLUGIN_ABI_VERSION_MINOR)
 
 typedef struct cadgf_string_view {
     const char* data; // UTF-8
