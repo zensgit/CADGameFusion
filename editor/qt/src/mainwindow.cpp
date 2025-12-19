@@ -860,6 +860,10 @@ bool MainWindow::buildCadgfDocumentFromDocument(cadgf_document* doc, QString* er
         if (error) *error = "Invalid cadgf_document";
         return false;
     }
+    if (!cadgf_document_set_unit_scale(doc, m_document.settings().unit_scale)) {
+        if (error) *error = "Failed to set document unit scale";
+        return false;
+    }
 
     std::unordered_map<int, int> layerMap;
     layerMap.reserve(static_cast<size_t>(m_document.layers().size()));
