@@ -45,8 +45,11 @@ typedef struct core_layer_info {
 
 typedef struct core_entity_info {
     core_entity_id id;
-    int type;      // CORE_ENTITY_TYPE_*
+    int type;           // CORE_ENTITY_TYPE_*
     int layer_id;
+    int visible;        // 0/1 (PR4: entity visibility)
+    int group_id;       // -1 = ungrouped (PR4: entity grouping)
+    unsigned int color; // 0xRRGGBB, 0 = inherit from layer (PR4: entity color)
 } core_entity_info;
 
 typedef core_layer_info  cadgf_layer_info;
@@ -121,6 +124,11 @@ CORE_API int core_document_get_polyline_points(const core_document* doc, core_en
                                                core_vec2* out_pts, int out_pts_capacity,
                                                int* out_required_points);
 
+// Entity property setters (PR4: single source of truth)
+CORE_API int core_document_set_entity_visible(core_document* doc, core_entity_id id, int visible);
+CORE_API int core_document_set_entity_color(core_document* doc, core_entity_id id, unsigned int color);
+CORE_API int core_document_set_entity_group_id(core_document* doc, core_entity_id id, int group_id);
+
 CADGF_API int cadgf_document_get_layer_count(const cadgf_document* doc, int* out_count);
 CADGF_API int cadgf_document_get_layer_id_at(const cadgf_document* doc, int index, int* out_layer_id);
 CADGF_API int cadgf_document_get_layer_info(const cadgf_document* doc, int layer_id, cadgf_layer_info* out_info);
@@ -141,6 +149,11 @@ CADGF_API int cadgf_document_get_entity_name(const cadgf_document* doc, cadgf_en
 CADGF_API int cadgf_document_get_polyline_points(const cadgf_document* doc, cadgf_entity_id id,
                                                  cadgf_vec2* out_pts, int out_pts_capacity,
                                                  int* out_required_points);
+
+// Entity property setters (PR4: single source of truth)
+CADGF_API int cadgf_document_set_entity_visible(cadgf_document* doc, cadgf_entity_id id, int visible);
+CADGF_API int cadgf_document_set_entity_color(cadgf_document* doc, cadgf_entity_id id, unsigned int color);
+CADGF_API int cadgf_document_set_entity_group_id(cadgf_document* doc, cadgf_entity_id id, int group_id);
 
 // Triangulation C API (stateless)
 // Two-call pattern:
