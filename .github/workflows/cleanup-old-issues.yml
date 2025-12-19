@@ -84,17 +84,12 @@ jobs:
                 SKIPPED_COUNT=$((SKIPPED_COUNT + 1))
               else
                 # Close the issue with a comment
+                COMMENT="$(
+                  printf '%b' "🤖 自动关闭：此自动生成的issue已超过${DAYS_THRESHOLD}天。\\n\\n创建日期: ${CREATED}\\n关闭日期: $(date -u '+%Y-%m-%d')\\n\\n最新的CI状态可通过以下方式查看：\\n- 查看最新的workflow运行: https://github.com/${{ github.repository }}/actions\\n- 查看Daily CI Status Report: https://github.com/${{ github.repository }}/actions/workflows/daily-ci-status.yml\\n\\n此操作由 \\`cleanup-old-issues\\` 工作流自动执行。"
+                )"
+
                 gh issue close "$NUMBER" \
-                  --comment "🤖 自动关闭：此自动生成的issue已超过${DAYS_THRESHOLD}天。
-
-创建日期: ${CREATED}
-关闭日期: $(date -u '+%Y-%m-%d')
-
-最新的CI状态可通过以下方式查看：
-- 查看最新的workflow运行: https://github.com/${{ github.repository }}/actions
-- 查看Daily CI Status Report: https://github.com/${{ github.repository }}/actions/workflows/daily-ci-status.yml
-
-此操作由 \`cleanup-old-issues\` 工作流自动执行。" \
+                  --comment "$COMMENT" \
                   && echo "     ✅ Closed" \
                   || echo "     ❌ Failed to close"
 
