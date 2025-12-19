@@ -8,12 +8,14 @@ set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 COMPONENTS Widgets REQUIRED QUIET)
 
-# Find TinyGLTF
+# Find TinyGLTF (optional - glTF export will be disabled if not found)
 find_path(TINYGLTF_INCLUDE_DIR NAMES tiny_gltf.h)
 if(TINYGLTF_INCLUDE_DIR)
     message(STATUS "TinyGLTF found for editor: ${TINYGLTF_INCLUDE_DIR}")
+    set(CADGF_EDITOR_HAS_TINYGLTF TRUE)
 else()
-    message(WARNING "TinyGLTF not found for editor")
+    message(STATUS "TinyGLTF not found for editor - glTF export disabled (JSON/DXF still available)")
+    set(CADGF_EDITOR_HAS_TINYGLTF FALSE)
 endif()
 
 add_executable(editor_qt
@@ -45,8 +47,13 @@ target_include_directories(editor_qt PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../..
     ${CMAKE_SOURCE_DIR}/tools
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${TINYGLTF_INCLUDE_DIR}
 )
+
+# Add TinyGLTF include and define if available
+if(CADGF_EDITOR_HAS_TINYGLTF)
+    target_include_directories(editor_qt PRIVATE ${TINYGLTF_INCLUDE_DIR})
+    target_compile_definitions(editor_qt PRIVATE CADGF_HAS_TINYGLTF)
+endif()
 
 target_link_libraries(editor_qt PRIVATE Qt6::Widgets core core_c ${CMAKE_DL_LIBS})
 
