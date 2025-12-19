@@ -56,6 +56,7 @@ void Document::clear() {
     layers_.clear();
     next_id_ = 1;
     next_layer_id_ = 1;
+    next_group_id_ = 1;
 
     Layer l0;
     l0.id = 0;
@@ -98,7 +99,15 @@ bool Document::set_entity_group_id(EntityId id, int groupId) {
     auto* e = get_entity(id);
     if (!e) return false;
     e->groupId = groupId;
+    if (groupId >= 0 && groupId >= next_group_id_) {
+        next_group_id_ = groupId + 1;
+    }
     return true;
+}
+
+int Document::alloc_group_id() {
+    if (next_group_id_ < 1) next_group_id_ = 1;
+    return next_group_id_++;
 }
 
 } // namespace core

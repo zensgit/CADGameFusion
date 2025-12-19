@@ -50,7 +50,6 @@ public:
     const QVector<unsigned int>& triIndices() const { return triIndices_; }
     void setTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);
     void clearTriMesh();
-    int  newGroupId();
     void setSelection(const QList<qulonglong>& entityIds);
 
 signals:
@@ -81,7 +80,6 @@ private:
     QVector<PolyVis> polylines_;
     QSet<EntityId> selected_entities_;
     bool triSelected_ { false };
-    int  nextGroupId_ { 1 };
     QVector<QPointF> triVerts_;
     QVector<unsigned int> triIndices_;
     core::Document* m_doc{nullptr};
