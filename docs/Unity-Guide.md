@@ -41,6 +41,13 @@ public class Example : UnityEngine.MonoBehaviour {
 }
 ```
 
+## Grouping (optional)
+- Use group ids to tag related entities (e.g., export by group).
+```csharp
+var gid = CoreBindings.cadgf_document_alloc_group_id(doc.Ptr);
+CoreBindings.cadgf_document_set_entity_group_id(doc.Ptr, id, gid);
+```
+
 ## Triangulate to Mesh
 - Use helper `CoreBindings.Triangulate(Vec2[])` to get indices, then build a Unity `Mesh`.
 - Sample provided: `adapters/unity-sample/Assets/Scripts/TriangulateToMesh.cs`

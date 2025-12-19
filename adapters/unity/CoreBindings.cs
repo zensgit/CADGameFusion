@@ -29,6 +29,12 @@ namespace CADGameFusion.UnityAdapter {
         [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cadgf_document_remove_entity(IntPtr doc, UInt64 id);
 
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int cadgf_document_set_entity_group_id(IntPtr doc, UInt64 id, int group_id);
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int cadgf_document_alloc_group_id(IntPtr doc);
+
         // Convenience wrappers
         public static Document CreateDocument() => new Document { Ptr = cadgf_document_create() };
         public static void Destroy(Document d) { if (d.Ptr != IntPtr.Zero) cadgf_document_destroy(d.Ptr); }
@@ -112,6 +118,13 @@ namespace CADGameFusion.UnityAdapter {
 
         [Obsolete("Use cadgf_document_remove_entity")]
         public static int core_document_remove_entity(IntPtr doc, UInt64 id) => cadgf_document_remove_entity(doc, id);
+
+        [Obsolete("Use cadgf_document_set_entity_group_id")]
+        public static int core_document_set_entity_group_id(IntPtr doc, UInt64 id, int group_id)
+            => cadgf_document_set_entity_group_id(doc, id, group_id);
+
+        [Obsolete("Use cadgf_document_alloc_group_id")]
+        public static int core_document_alloc_group_id(IntPtr doc) => cadgf_document_alloc_group_id(doc);
 
         [Obsolete("Use cadgf_triangulate_polygon")]
         public static int core_triangulate_polygon(Vec2[] pts, int n, IntPtr indices, ref int index_count)
