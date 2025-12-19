@@ -92,7 +92,7 @@ CADGameFusion/
 | `core::Document` 暴露 STL | **仅当**把 C++ API 当成跨 DLL/跨编译器边界时才危险；当前策略是把稳定边界收敛到 C API | 中 |
 | MainWindow 紧耦合 Document | 难以复用 Document | 中 |
 | 文档误导：插件=虚函数 | 与仓库现状不符；当前已有 `plugin_abi_c_v1`（C ABI 函数表） | 中 |
-| Editor 数据模型“双轨制” | Canvas 自存一份几何，Document 自存一份实体；阻碍撤销/约束/序列化 | 高 |
+| Editor 数据模型“双轨制” | **已显著收敛**：编辑/删除/导出均落到 Document；Canvas 仅保留投影缓存与命中测试 | 低 |
 | API 命名通用性 | 已引入 cadgf_ 作为推荐前缀，core_ 仅兼容 | 低 |
 
 ### 2.3 依赖关系图（当前）
@@ -363,10 +363,9 @@ extern "C" CADGF_PLUGIN_EXPORT const cadgf_plugin_api_v1* cadgf_plugin_get_api_v
 
 ### 8.1 统一数据模型：Document 为真相，Canvas 为投影（优先级高）
 
-现状问题（v0.6.x）：
-- Canvas（如 `CanvasWidget`）维护一份几何（例如 `polylines_`）
-- Core `core::Document` 也维护一份实体（`entities_` / `layers_`）
-- 两者形成“双轨制”，会显著放大撤销/重做、约束系统、序列化/导入导出的实现成本。
+现状进展（v0.6.0+）：
+- **编辑/删除/导出均基于 Document**（含插件导出），Canvas 仅作为渲染投影。
+- Canvas 保留命中测试与渲染缓存，选择状态已上收到 MainWindow 层统一维护。
 
 建议方向：
 - **Document 作为 Single Source of Truth**：所有编辑操作先落到 Document（或命令系统），再通知 Canvas 更新渲染投影。
