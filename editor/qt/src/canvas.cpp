@@ -1,5 +1,6 @@
 #include "canvas.hpp"
 #include "core/document.hpp"
+#include "core/geometry2d.hpp"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -526,4 +527,64 @@ void CanvasWidget::restorePolylines(const QVector<PolyVis>& polys) {
     selected_ = -1;
     update();
     emit selectionChanged({});
+}
+
+void CanvasWidget::reloadFromDocument() {
+    if (!m_doc) return;
+
+    polylines_.clear();
+    selected_ = -1;
+
+    // Iterate over all entities in Document and create PolyVis for each
+    const auto& entities = m_doc->entities();
+    for (const auto& e : entities) {
+        if (e.type != core::EntityType::Polyline) continue;
+        if (!e.payload) continue;
+
+        const auto* pl = static_cast<const core::Polyline*>(e.payload.get());
+        if (!pl || pl->points.size() < 2) continue;
+
+        PolyVis pv;
+        pv.pts.reserve(static_cast<int>(pl->points.size()));
+        for (const auto& pt : pl->points) {
+            pv.pts.append(QPointF(pt.x, pt.y));
+        }
+
+        // Use entity metadata from PR4
+        pv.visible = e.visible;
+        pv.groupId = e.groupId;
+        pv.layerId = e.layerId;
+        pv.entityId = e.id;
+
+        // Color: use entity color if set, otherwise inherit from layer
+        if (e.color != 0) {
+            // Entity has its own color (0xRRGGBB)
+            pv.color = QColor((e.color >> 16) & 0xFF,
+                              (e.color >> 8) & 0xFF,
+                              e.color & 0xFF);
+        } else {
+            // Inherit from layer
+            const auto* layer = m_doc->get_layer(e.layerId);
+            if (layer) {
+                pv.color = QColor((layer->color >> 16) & 0xFF,
+                                  (layer->color >> 8) & 0xFF,
+                                  layer->color & 0xFF);
+            } else {
+                pv.color = QColor(220, 220, 230); // Default gray
+            }
+        }
+
+        updatePolyCache(pv);
+        polylines_.append(pv);
+    }
+
+    update();
+    emit selectionChanged({});
+}
+
+EntityId CanvasWidget::entityIdAt(int index) const {
+    if (index >= 0 && index < polylines_.size()) {
+        return polylines_[index].entityId;
+    }
+    return 0;
 }
