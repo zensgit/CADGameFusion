@@ -55,32 +55,28 @@ ctest --test-dir build_verify_pr115_full -V
 
 ## 3. CI 现状与预期修复点
 
-### 3.1 远端 CI 查询限制（本环境）
+### 3.1 CI 结果（GitHub Actions）
 
-当前执行环境存在两点限制：
-- 无法写入 `.git/**`（`Operation not permitted`），因此无法在此直接 `git commit` / `git push`。
-- 无法解析/连接 `github.com`（DNS/网络不可达），且 `gh auth status` 显示 token invalid，因此无法在此查询或 rerun GitHub Actions。
+PR #115 最新提交（`3879bf3`）对应的 checks 已全绿：
 
-### 3.2 上一次可观测到的 CI fail（在 `40346bc` 之后）
+- Core CI（Ubuntu/macOS/Windows）✅
+  - run: https://github.com/zensgit/CADGameFusion/actions/runs/20355846200
+- Core Strict - Build and Tests（Ubuntu/macOS/Windows）✅
+  - run: https://github.com/zensgit/CADGameFusion/actions/runs/20355846223
+- Local CI Gate（Ubuntu）✅
+  - run: https://github.com/zensgit/CADGameFusion/actions/runs/20355846204
+- quick-check（Ubuntu）✅
+  - run: https://github.com/zensgit/CADGameFusion/actions/runs/20355846193
+- solver-demo（Ubuntu）✅
+  - run: https://github.com/zensgit/CADGameFusion/actions/runs/20355846222
+- solver-project（Ubuntu）✅
+  - run: https://github.com/zensgit/CADGameFusion/actions/runs/20355846183
 
-> 这是“上一次能拿到日志时”的失败摘要，用于解释为何需要下面这些改动。
+### 3.2 本轮修复要点（使 Windows 变绿）
 
-- `solver-project`：`actions/setup-python@v5` 配 `cache: pip` 但仓库无 `requirements.txt` / `pyproject.toml`，导致 cache step 直接失败。
-- `core-strict-build-tests (windows)`：workflow 覆盖成 `vcpkg-windows-minimal.json`，缺 `Eigen3`，configure 失败。
-- `Core CI (macos)`：`lukka/run-vcpkg` 偶发 clone vcpkg 网络失败。
-- `Core CI (windows)`：链接报 `LNK2019`（Clipper2 符号未解析），根因是只找到了头文件但未链接库。
-
-### 3.3 本次已做的“针对性修复”（待提交）
-
-- `solver-project-trial.yml`：为 `setup-python` 增加 `cache-dependency-path: requirements-ci.txt`。
-- `core-strict-build-tests.yml`：移除 Windows “minimal vcpkg.json 覆盖”步骤（让 Windows 走完整 `vcpkg.json` 安装 Eigen3/Clipper2/TinyGLTF/Earcut）。
-- `cadgamefusion-core.yml`：去掉 `lukka/run-vcpkg`，改为自建 vcpkg（固定 commit）+ cache，并为 Unix clone 增加 retry。
-- `core/CMakeLists.txt`：Clipper2 检测改为“找到可链接目标才启用 `USE_CLIPPER2`”，并在无 pkg-config 时 `find_library` 兜底（Windows 必需）。
-
-预期效果：
-- `solver-project` 由 “cache step 失败” → 正常安装依赖并继续执行。
-- Windows jobs 由 “缺 Eigen3/Clipper2 链接失败” → 正常 configure/build。
-- macOS Core CI 由 “run-vcpkg clone 偶发失败” → retry + cache 后显著降低 flaky。
+- Windows 运行测试前追加 `PATH`（保证 `core.dll` / vcpkg DLL 可被发现）。
+- Windows 严格构建避免 Ninja+MinGW（改用 Visual Studio/MSVC，匹配 vcpkg `x64-windows`）。
+- Clipper2 链接改为优先使用 `find_package(Clipper2 CONFIG)` 的 `Clipper2::Clipper2` target（避免 Debug/Release CRT 混用）。
 
 ## 4. 续跑步骤（在你的本机终端执行）
 
@@ -106,4 +102,3 @@ gh pr checks 115 --watch
 ```
 
 如果你不使用 `gh`，也可以在 GitHub PR 页面点 “Re-run jobs / Re-run failed jobs”。
-
