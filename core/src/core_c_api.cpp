@@ -231,6 +231,17 @@ CORE_API int core_document_alloc_group_id(core_document* doc) {
     return doc->impl.alloc_group_id();
 }
 
+CORE_API double core_document_get_unit_scale(const core_document* doc) {
+    if (!doc) return 1.0;
+    return doc->impl.settings().unit_scale;
+}
+
+CORE_API int core_document_set_unit_scale(core_document* doc, double unit_scale) {
+    if (!doc) return 0;
+    doc->impl.settings().unit_scale = unit_scale;
+    return 1;
+}
+
 } // extern C
 
 extern "C" {
@@ -475,6 +486,14 @@ CADGF_API int cadgf_document_set_entity_group_id(cadgf_document* doc, cadgf_enti
 
 CADGF_API int cadgf_document_alloc_group_id(cadgf_document* doc) {
     return core_document_alloc_group_id(doc);
+}
+
+CADGF_API double cadgf_document_get_unit_scale(const cadgf_document* doc) {
+    return core_document_get_unit_scale(doc);
+}
+
+CADGF_API int cadgf_document_set_unit_scale(cadgf_document* doc, double unit_scale) {
+    return core_document_set_unit_scale(doc, unit_scale);
 }
 
 CADGF_API int cadgf_triangulate_polygon(const cadgf_vec2* pts, int n,

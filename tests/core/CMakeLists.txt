@@ -56,6 +56,11 @@ if(TARGET core)
     add_executable(core_tests_document_group_id test_document_group_id.cpp)
     target_include_directories(core_tests_document_group_id PRIVATE ../../core/include)
     target_link_libraries(core_tests_document_group_id PRIVATE core)
+
+    # Document unit scale settings smoke test
+    add_executable(core_tests_document_unit_scale test_document_unit_scale.cpp)
+    target_include_directories(core_tests_document_unit_scale PRIVATE ../../core/include)
+    target_link_libraries(core_tests_document_unit_scale PRIVATE core)
 else()
     message(WARNING "Core library not found, skipping complex tests")
 endif()

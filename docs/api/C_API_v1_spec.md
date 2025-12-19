@@ -31,6 +31,8 @@
 
 - `cadgf_document* cadgf_document_create(void);`
 - `void cadgf_document_destroy(cadgf_document* doc);`
+- `double cadgf_document_get_unit_scale(const cadgf_document* doc);`
+- `int cadgf_document_set_unit_scale(cadgf_document* doc, double unit_scale);`
 - `cadgf_entity_id cadgf_document_add_polyline(_ex)(...);`
 - `int cadgf_document_remove_entity(...);`
 - `int cadgf_document_alloc_group_id(cadgf_document* doc);` (>=1, -1 on failure)

@@ -143,6 +143,9 @@ CORE_API int core_document_set_entity_color(core_document* doc, core_entity_id i
 CORE_API int core_document_set_entity_group_id(core_document* doc, core_entity_id id, int group_id);
 // Allocate a new group id (>=1). Returns -1 on failure.
 CORE_API int core_document_alloc_group_id(core_document* doc);
+// Document settings
+CORE_API double core_document_get_unit_scale(const core_document* doc);
+CORE_API int core_document_set_unit_scale(core_document* doc, double unit_scale);
 
 CADGF_API int cadgf_document_get_layer_count(const cadgf_document* doc, int* out_count);
 CADGF_API int cadgf_document_get_layer_id_at(const cadgf_document* doc, int index, int* out_layer_id);
@@ -172,6 +175,9 @@ CADGF_API int cadgf_document_set_entity_color(cadgf_document* doc, cadgf_entity_
 CADGF_API int cadgf_document_set_entity_group_id(cadgf_document* doc, cadgf_entity_id id, int group_id);
 // Allocate a new group id (>=1). Returns -1 on failure.
 CADGF_API int cadgf_document_alloc_group_id(cadgf_document* doc);
+// Document settings
+CADGF_API double cadgf_document_get_unit_scale(const cadgf_document* doc);
+CADGF_API int cadgf_document_set_unit_scale(cadgf_document* doc, double unit_scale);
 
 // Triangulation C API (stateless)
 // Two-call pattern:
