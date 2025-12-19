@@ -10,10 +10,13 @@
 #include <cmath>
 #include <limits>
 #include "core/core_c_api.h"
+
+#if defined(CADGF_HAS_TINYGLTF)
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <tiny_gltf.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -354,6 +357,19 @@ void writeJSON(const std::string& filepath, const SceneData& scene, double unitS
 // EXP_FEATURES: signature extended with ExportOptions for experimental flags (normals/uvs/materials)
 void writeGLTF(const std::string& gltfPath, const std::string& binPath, 
                const SceneData& scene, bool outerOnlyFan, const ExportOptions& opts) {
+#if !defined(CADGF_HAS_TINYGLTF)
+    (void)gltfPath;
+    (void)binPath;
+    (void)scene;
+    (void)outerOnlyFan;
+    (void)opts;
+    static bool warnedOnce = false;
+    if (!warnedOnce) {
+        std::cerr << "[WARN] TinyGLTF not available; skipping glTF export. (Build with vcpkg tinygltf to enable)\n";
+        warnedOnce = true;
+    }
+    return;
+#else
     tinygltf::Model gltfModel;
     tinygltf::Scene gltfScene;
     tinygltf::Mesh gltfMesh;
@@ -609,6 +625,7 @@ void writeGLTF(const std::string& gltfPath, const std::string& binPath,
     if (!ret) {
         std::cerr << "Failed to write glTF file: " << gltfPath << "\n";
     }
+#endif
 }
 
 void exportScene(const std::string& outputDir, const std::string& sceneName,

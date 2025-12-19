@@ -8,8 +8,9 @@ find_path(TINYGLTF_INCLUDE_DIR NAMES tiny_gltf.h)
 if(TINYGLTF_INCLUDE_DIR)
     message(STATUS "TinyGLTF found for tools: ${TINYGLTF_INCLUDE_DIR}")
     target_include_directories(export_cli PRIVATE ${TINYGLTF_INCLUDE_DIR})
+    target_compile_definitions(export_cli PRIVATE CADGF_HAS_TINYGLTF)
 else()
-    message(WARNING "TinyGLTF not found for tools")
+    message(WARNING "TinyGLTF not found for tools - export_cli will be built without glTF export")
 endif()
 
 # Link with core library
