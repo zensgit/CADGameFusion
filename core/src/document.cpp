@@ -55,4 +55,39 @@ bool Document::remove_entity(EntityId id) {
     return false;
 }
 
+Entity* Document::get_entity(EntityId id) {
+    for (auto& e : entities_) {
+        if (e.id == id) return &e;
+    }
+    return nullptr;
+}
+
+const Entity* Document::get_entity(EntityId id) const {
+    for (const auto& e : entities_) {
+        if (e.id == id) return &e;
+    }
+    return nullptr;
+}
+
+bool Document::set_entity_visible(EntityId id, bool visible) {
+    auto* e = get_entity(id);
+    if (!e) return false;
+    e->visible = visible;
+    return true;
+}
+
+bool Document::set_entity_color(EntityId id, uint32_t color) {
+    auto* e = get_entity(id);
+    if (!e) return false;
+    e->color = color;
+    return true;
+}
+
+bool Document::set_entity_group_id(EntityId id, int groupId) {
+    auto* e = get_entity(id);
+    if (!e) return false;
+    e->groupId = groupId;
+    return true;
+}
+
 } // namespace core
