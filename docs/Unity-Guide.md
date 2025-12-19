@@ -35,6 +35,9 @@ public class Example : UnityEngine.MonoBehaviour {
     var doc = CoreBindings.CreateDocument();
     var pts = new CoreBindings.Vec2[]{ new(){x=0,y=0}, new(){x=1,y=0}, new(){x=1,y=1}, new(){x=0,y=0} };
     var id = CoreBindings.cadgf_document_add_polyline(doc.Ptr, pts, pts.Length);
+    CoreBindings.cadgf_document_set_unit_scale(doc.Ptr, 1000.0);
+    var scale = CoreBindings.cadgf_document_get_unit_scale(doc.Ptr);
+    UnityEngine.Debug.Log($"unit_scale={scale}");
     UnityEngine.Debug.Log($"Added polyline id={id}");
     CoreBindings.Destroy(doc);
   }

@@ -35,6 +35,12 @@ namespace CADGameFusion.UnityAdapter {
         [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
         public static extern int cadgf_document_alloc_group_id(IntPtr doc);
 
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern double cadgf_document_get_unit_scale(IntPtr doc);
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int cadgf_document_set_unit_scale(IntPtr doc, double unit_scale);
+
         // Convenience wrappers
         public static Document CreateDocument() => new Document { Ptr = cadgf_document_create() };
         public static void Destroy(Document d) { if (d.Ptr != IntPtr.Zero) cadgf_document_destroy(d.Ptr); }
@@ -125,6 +131,13 @@ namespace CADGameFusion.UnityAdapter {
 
         [Obsolete("Use cadgf_document_alloc_group_id")]
         public static int core_document_alloc_group_id(IntPtr doc) => cadgf_document_alloc_group_id(doc);
+
+        [Obsolete("Use cadgf_document_get_unit_scale")]
+        public static double core_document_get_unit_scale(IntPtr doc) => cadgf_document_get_unit_scale(doc);
+
+        [Obsolete("Use cadgf_document_set_unit_scale")]
+        public static int core_document_set_unit_scale(IntPtr doc, double unit_scale)
+            => cadgf_document_set_unit_scale(doc, unit_scale);
 
         [Obsolete("Use cadgf_triangulate_polygon")]
         public static int core_triangulate_polygon(Vec2[] pts, int n, IntPtr indices, ref int index_count)

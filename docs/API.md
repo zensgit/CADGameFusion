@@ -21,6 +21,8 @@ Types
 Document lifecycle
 - `cadgf_document* cadgf_document_create();`
 - `void cadgf_document_destroy(cadgf_document* doc);`
+ - `double cadgf_document_get_unit_scale(const cadgf_document* doc);`
+ - `int cadgf_document_set_unit_scale(cadgf_document* doc, double unit_scale);`
 
 Entities (demo scope)
 - `cadgf_entity_id cadgf_document_add_polyline(cadgf_document* doc, const cadgf_vec2* pts, int n);`
