@@ -10,6 +10,7 @@ extern "C" {
 int main() {
     cadgf_document* doc = cadgf_document_create();
     assert(doc);
+    int ok = CADGF_SUCCESS;
 
     // Document settings: unit scale
     double unit_scale = cadgf_document_get_unit_scale(doc);
@@ -28,7 +29,7 @@ int main() {
     // Layer: add + enumerate + UTF-8 name query
     const char* layer_name = u8"图层_中文_Alpha";
     int layer_id = -1;
-    int ok = cadgf_document_add_layer(doc, layer_name, 0x112233u, &layer_id);
+    ok = cadgf_document_add_layer(doc, layer_name, 0x112233u, &layer_id);
     assert(ok == CADGF_SUCCESS);
     assert(layer_id > 0);
 
