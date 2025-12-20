@@ -8,6 +8,16 @@
 
 ## 准备工作
 
+### 自动化回归（Qt）
+用于本地或 CI 的 Qt 自动化回归测试。
+
+#### 构建并运行 Qt 回归
+```bash
+cmake -S . -B build -DBUILD_EDITOR_QT=ON -DCMAKE_PREFIX_PATH=/path/to/Qt/6.x/<platform>
+cmake --build build --parallel 4
+QT_QPA_PLATFORM=offscreen ctest --test-dir build -R '^qt_' -V
+```
+
 ### 启动应用
 ```bash
 cd /Users/huazhou/Insync/hua.chau@outlook.com/OneDrive/应用/GitHub/CADGameFusion
