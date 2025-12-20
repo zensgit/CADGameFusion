@@ -20,14 +20,9 @@ on:
 
 jobs:
   qt-tests-ubuntu:
-    name: Qt Exporter Meta Tests (Ubuntu)
+    name: Qt Tests (Ubuntu)
     runs-on: ubuntu-latest
     continue-on-error: true
-    # Run when manually dispatched, scheduled, or when PR has label `qt-tests`.
-    if: |
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'schedule' ||
-      (github.event_name == 'pull_request' && contains(toJson(github.event.pull_request.labels), 'qt-tests'))
 
     steps:
       - name: Checkout
@@ -65,6 +60,21 @@ jobs:
           version: '6.6.2'
           cache: true
 
+      - name: Configure Qt runtime
+        shell: bash
+        run: |
+          set -e
+          if [ -z "${Qt6_DIR:-}" ]; then
+            echo "Qt6_DIR not set; cannot configure Qt runtime" >&2
+            exit 1
+          fi
+          QT_PREFIX="$Qt6_DIR"
+          QT_PLUGIN_DIR="$QT_PREFIX/plugins"
+          echo "QT_QPA_PLATFORM=offscreen" >> $GITHUB_ENV
+          echo "QT_PLUGIN_PATH=$QT_PLUGIN_DIR" >> $GITHUB_ENV
+          echo "QT_QPA_PLATFORM_PLUGIN_PATH=$QT_PLUGIN_DIR/platforms" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$QT_PREFIX/lib:${LD_LIBRARY_PATH:-}" >> $GITHUB_ENV
+
       - name: Configure (BUILD_EDITOR_QT=ON)
         shell: bash
         run: |
@@ -77,21 +87,9 @@ jobs:
 
       - name: Build Qt tests
         run: |
-          cmake --build build --config Release --target test_qt_export_meta --parallel 2 || true
+          cmake --build build --config Release --target test_qt_export_meta test_qt_document_commands --parallel 2
 
-      - name: Run test_qt_export_meta
+      - name: Run Qt tests
         shell: bash
         run: |
-          set -e
-          CAND=(
-            "build/tests/test_qt_export_meta"
-            "build/tests/qt/test_qt_export_meta"
-            "build/tests/Release/test_qt_export_meta"
-          )
-          for p in "${CAND[@]}"; do
-            if [ -f "$p" ]; then
-              echo "Running $p"; "$p"; exit 0;
-            fi
-          done
-          echo "test_qt_export_meta binary not found; skipping"
-          exit 0
+          ctest --test-dir build -R '^qt_' -V
