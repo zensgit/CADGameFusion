@@ -39,9 +39,19 @@ public:
         QRectF aabb;
     };
 
+    struct PolylineState {
+        EntityId entityId{0};
+        bool visible{true};
+        int groupId{-1};
+        int layerId{0};
+        QColor color;
+        int pointCount{0};
+    };
+
     explicit CanvasWidget(QWidget* parent = nullptr);
     void setDocument(core::Document* doc);
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
+    QVector<PolylineState> polylineStates() const;
 
     void clear();
     void addTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);

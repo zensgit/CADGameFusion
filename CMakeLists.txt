@@ -34,6 +34,7 @@ enable_testing()
 add_subdirectory(tests/core)
 add_subdirectory(tools)
 add_subdirectory(tests/tools)
+add_subdirectory(tests/qt)
 add_subdirectory(plugins)
 
 # Examples (C API minimal)

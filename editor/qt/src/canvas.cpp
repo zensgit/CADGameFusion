@@ -495,3 +495,19 @@ void CanvasWidget::reloadFromDocument() {
     update();
     emit selectionChanged({});
 }
+
+QVector<CanvasWidget::PolylineState> CanvasWidget::polylineStates() const {
+    QVector<PolylineState> states;
+    states.reserve(polylines_.size());
+    for (const auto& pv : polylines_) {
+        PolylineState state;
+        state.entityId = pv.entityId;
+        state.visible = pv.visible;
+        state.groupId = pv.groupId;
+        state.layerId = pv.layerId;
+        state.color = pv.color;
+        state.pointCount = pv.pts.size();
+        states.append(state);
+    }
+    return states;
+}
