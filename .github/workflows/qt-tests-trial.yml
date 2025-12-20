@@ -64,22 +64,12 @@ jobs:
         shell: bash
         run: |
           set -e
-          QT_PREFIX=""
-          QT_PLUGIN_DIR=""
-          if command -v qtpaths >/dev/null 2>&1; then
-            QT_PREFIX="$(qtpaths --qt-prefix)"
-            QT_PLUGIN_DIR="$(qtpaths --plugin-dir)"
-          elif command -v qtpaths6 >/dev/null 2>&1; then
-            QT_PREFIX="$(qtpaths6 --qt-prefix)"
-            QT_PLUGIN_DIR="$(qtpaths6 --plugin-dir)"
-          elif [ -n "${Qt6_DIR:-}" ]; then
-            QT_PREFIX="$(dirname "$(dirname "$(dirname "$Qt6_DIR")")")"
-            QT_PLUGIN_DIR="$QT_PREFIX/plugins"
-          fi
-          if [ -z "$QT_PREFIX" ] || [ -z "$QT_PLUGIN_DIR" ]; then
-            echo "Failed to resolve Qt paths" >&2
+          if [ -z "${Qt6_DIR:-}" ]; then
+            echo "Qt6_DIR not set; cannot configure Qt runtime" >&2
             exit 1
           fi
+          QT_PREFIX="$Qt6_DIR"
+          QT_PLUGIN_DIR="$QT_PREFIX/plugins"
           echo "QT_QPA_PLATFORM=offscreen" >> $GITHUB_ENV
           echo "QT_PLUGIN_PATH=$QT_PLUGIN_DIR" >> $GITHUB_ENV
           echo "QT_QPA_PLATFORM_PLUGIN_PATH=$QT_PLUGIN_DIR/platforms" >> $GITHUB_ENV
