@@ -114,26 +114,17 @@ CORE_API int core_document_add_layer(core_document* doc, const char* name_utf8, 
 
 CORE_API int core_document_set_layer_visible(core_document* doc, int layer_id, int visible) {
     if (!doc) return 0;
-    auto* layer = doc->impl.get_layer(layer_id);
-    if (!layer) return 0;
-    layer->visible = (visible != 0);
-    return 1;
+    return doc->impl.set_layer_visible(layer_id, visible != 0) ? 1 : 0;
 }
 
 CORE_API int core_document_set_layer_locked(core_document* doc, int layer_id, int locked) {
     if (!doc) return 0;
-    auto* layer = doc->impl.get_layer(layer_id);
-    if (!layer) return 0;
-    layer->locked = (locked != 0);
-    return 1;
+    return doc->impl.set_layer_locked(layer_id, locked != 0) ? 1 : 0;
 }
 
 CORE_API int core_document_set_layer_color(core_document* doc, int layer_id, unsigned int color) {
     if (!doc) return 0;
-    auto* layer = doc->impl.get_layer(layer_id);
-    if (!layer) return 0;
-    layer->color = static_cast<uint32_t>(color);
-    return 1;
+    return doc->impl.set_layer_color(layer_id, static_cast<uint32_t>(color)) ? 1 : 0;
 }
 
 CORE_API int core_document_get_entity_count(const core_document* doc, int* out_count) {

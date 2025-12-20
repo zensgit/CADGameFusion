@@ -32,6 +32,27 @@ const Layer* Document::get_layer(int id) const {
     return nullptr;
 }
 
+bool Document::set_layer_visible(int id, bool visible) {
+    auto* layer = get_layer(id);
+    if (!layer) return false;
+    layer->visible = visible;
+    return true;
+}
+
+bool Document::set_layer_locked(int id, bool locked) {
+    auto* layer = get_layer(id);
+    if (!layer) return false;
+    layer->locked = locked;
+    return true;
+}
+
+bool Document::set_layer_color(int id, uint32_t color) {
+    auto* layer = get_layer(id);
+    if (!layer) return false;
+    layer->color = color;
+    return true;
+}
+
 EntityId Document::add_polyline(const Polyline& pl, const std::string& name, int layerId) {
     Entity e;
     e.id = next_id_++;
