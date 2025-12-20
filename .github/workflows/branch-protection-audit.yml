@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  administration: read
 
 jobs:
   audit:
@@ -18,7 +17,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: Run audit
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_AUDIT_TOKEN || secrets.GITHUB_TOKEN }}
           GH_REPOSITORY: ${{ github.repository }}
         run: |
           bash scripts/audit_branch_protection.sh \
