@@ -185,7 +185,8 @@ jobs:
             TEST_DIR="build/tests/core"
             TEST_SUFFIX=""
           fi
-          for T in test_simple core_tests_triangulation core_tests_boolean_offset core_tests_complex_strict; do
+          for T in test_simple core_tests_triangulation core_tests_boolean_offset core_tests_complex_strict \
+                   core_tests_c_api_document_query core_tests_document_group_id core_tests_document_unit_scale; do
             if [ -f "$TEST_DIR/$T$TEST_SUFFIX" ]; then echo "Running $T"; "$TEST_DIR/$T$TEST_SUFFIX"; fi
           done
 
