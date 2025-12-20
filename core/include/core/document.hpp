@@ -49,6 +49,9 @@ public:
     Layer* get_layer(int id);
     const Layer* get_layer(int id) const;
     const std::vector<Layer>& layers() const { return layers_; }
+    bool set_layer_visible(int id, bool visible);
+    bool set_layer_locked(int id, bool locked);
+    bool set_layer_color(int id, uint32_t color);
 
     EntityId add_polyline(const Polyline& pl, const std::string& name = "", int layerId = 0);
     bool     remove_entity(EntityId id);

@@ -65,6 +65,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     addDockWidget(Qt::LeftDockWidgetArea, m_layerPanel);
     m_layerPanel->setDocument(&m_document);
 
+    connect(m_layerPanel, &LayerPanel::layerVisibilityChanged, this, [this, canvas](int layerId, bool visible){
+        if (!m_document.set_layer_visible(layerId, visible)) {
+            statusBar()->showMessage("Layer not found", 1500);
+            return;
+        }
+        if (canvas) canvas->reloadFromDocument();
+        if (m_layerPanel) m_layerPanel->refresh();
+        markDirty();
+    });
+    connect(m_layerPanel, &LayerPanel::layerAdded, this, [this, canvas](const QString& name){
+        int id = m_document.add_layer(name.toStdString());
+        if (canvas) canvas->reloadFromDocument();
+        if (m_layerPanel) m_layerPanel->refresh();
+        markDirty();
+        statusBar()->showMessage(QString("Added layer id=%1").arg(id), 1500);
+    });
+
     // Properties dock (initially shows empty selection)
     auto* prop = new PropertyPanel(this);
     addDockWidget(Qt::RightDockWidgetArea, prop);
@@ -350,6 +367,7 @@ void MainWindow::newFile() {
         canvas->clearTriMesh();
         m_undoStack->clear();  // Clear undo history
     }
+    if (m_layerPanel) m_layerPanel->refresh();
     setCurrentFile("untitled.cgf");
     m_undoStack->setClean();
     markClean();
@@ -362,6 +380,7 @@ void MainWindow::openFile() {
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
     if (m_project && m_project->load(path, m_document, canvas)) {
         m_undoStack->clear();
+        if (m_layerPanel) m_layerPanel->refresh();
         setCurrentFile(path);
         m_undoStack->setClean();
         markClean();
@@ -401,6 +420,7 @@ bool MainWindow::openProjectFile(const QString& path, bool fromRecent) {
     if (!m_project || !canvas) return false;
     if (m_project->load(path, m_document, canvas)) {
         m_undoStack->clear();
+        if (m_layerPanel) m_layerPanel->refresh();
         setCurrentFile(path);
         m_undoStack->setClean();
         markClean();
