@@ -27,9 +27,23 @@ static int write_json(const char* path, const cadgf_vec2* pts, const int* counts
 int main(int argc, char** argv) {
     const char* out = (argc > 1) ? argv[1] : "build/out_offset.json";
     printf("cadgf version: %s\n", cadgf_get_version());
+    const unsigned int feats = cadgf_get_feature_flags();
+    const int has_clipper2 = (feats & CADGF_FEATURE_CLIPPER2) != 0u;
 
     // Base polygon (CCW square)
     cadgf_vec2 sq[4] = { {0,0}, {1,0}, {1,1}, {0,1} };
+
+    if (!has_clipper2) {
+        fprintf(stderr, "CLIPPER2 not enabled; exporting base polygon without offset\n");
+        cadgf_vec2 fallback_pts[5] = { {0,0}, {1,0}, {1,1}, {0,1}, {0,0} };
+        int fallback_counts[1] = { 5 };
+        if (!write_json(out, fallback_pts, fallback_counts, 1)) {
+            fprintf(stderr, "write failed: %s\n", out);
+            return 1;
+        }
+        printf("wrote %s (polygons=%d, points=%d)\n", out, 1, 5);
+        return 0;
+    }
 
     // Query sizes for offset results
     int poly_count = 0, total_pts = 0;
