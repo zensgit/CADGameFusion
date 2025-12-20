@@ -29,6 +29,8 @@ if(CADGF_SORT_RINGS)
     add_compile_definitions(CADGF_SORT_RINGS)
 endif()
 
+enable_testing()
+
 add_subdirectory(tests/core)
 add_subdirectory(tools)
 add_subdirectory(tests/tools)
@@ -53,7 +55,6 @@ target_include_directories(cpp_core_minimal PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(cpp_core_minimal PRIVATE core)
 
 # Tests (smoke) for examples
-enable_testing()
 add_test(NAME c_api_minimal_run COMMAND c_api_minimal)
 add_test(NAME c_core_minimal_run COMMAND c_core_minimal)
 add_test(NAME cpp_core_minimal_run COMMAND cpp_core_minimal)
