@@ -5,6 +5,14 @@ add_executable(test_simple test_simple.cpp)
 
 # Only build complex tests if core library is available
 if(TARGET core)
+    function(cadgf_register_core_test target_name)
+        add_test(NAME ${target_name} COMMAND $<TARGET_FILE:${target_name}>)
+        if(WIN32)
+            set_tests_properties(${target_name} PROPERTIES
+                ENVIRONMENT "PATH=$<TARGET_FILE_DIR:core>\;$<TARGET_FILE_DIR:core_c>\;$ENV{PATH}")
+        endif()
+    endfunction()
+
     add_executable(core_tests_triangulation test_triangulation.cpp)
     target_include_directories(core_tests_triangulation PRIVATE ../../core/include)
     target_link_libraries(core_tests_triangulation PRIVATE core)
@@ -61,6 +69,10 @@ if(TARGET core)
     add_executable(core_tests_document_unit_scale test_document_unit_scale.cpp)
     target_include_directories(core_tests_document_unit_scale PRIVATE ../../core/include)
     target_link_libraries(core_tests_document_unit_scale PRIVATE core)
+
+    cadgf_register_core_test(core_tests_c_api_document_query)
+    cadgf_register_core_test(core_tests_document_group_id)
+    cadgf_register_core_test(core_tests_document_unit_scale)
 else()
     message(WARNING "Core library not found, skipping complex tests")
 endif()
