@@ -70,6 +70,26 @@ expected_strict=$(jq -r '.strict // false' "$EXPECTED")
 mapfile -t expected_ctx < <(jq -r '.contexts[]? // empty' "$EXPECTED" | sort -u)
 
 resp=$(api_get "branches/$BRANCH/protection/required_status_checks" || true)
+if echo "$resp" | jq -e 'has("message")' >/dev/null 2>&1; then
+  msg=$(echo "$resp" | jq -r '.message')
+  doc_url=$(echo "$resp" | jq -r '.documentation_url // empty')
+  {
+    echo "# Branch Protection Audit"
+    echo
+    echo "- Repository: $GH_REPO"
+    echo "- Branch: $BRANCH"
+    echo "- Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+    echo
+    echo "## Error"
+    echo "- API returned error: $msg"
+    if [[ -n "$doc_url" ]]; then
+      echo "- Docs: $doc_url"
+    fi
+    echo "- Hint: set BRANCH_PROTECTION_AUDIT_TOKEN secret with repo admin access"
+  } > "$OUT"
+  echo "Report written: $OUT"
+  exit 0
+fi
 if echo "$resp" | jq -e . >/dev/null 2>&1; then
   current_strict=$(echo "$resp" | jq -r '.strict // false')
   mapfile -t current_ctx < <(echo "$resp" | jq -r '.contexts[]? // empty' | sort -u)
@@ -143,4 +163,3 @@ if $FAIL_ON_DRIFT; then
   fi
 fi
 exit 0
-
