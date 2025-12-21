@@ -1,6 +1,7 @@
 #include "canvas.hpp"
 #include "core/document.hpp"
 #include "core/geometry2d.hpp"
+#include "snap/snap_settings.hpp"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -34,6 +35,10 @@ void CanvasWidget::resizeEvent(QResizeEvent* event) {
 void CanvasWidget::setDocument(core::Document* doc) {
     m_doc = doc;
     update();
+}
+
+void CanvasWidget::setSnapSettings(SnapSettings* settings) {
+    snap_settings_ = settings;
 }
 
 const core::Entity* CanvasWidget::entityFor(EntityId id) const {
@@ -399,6 +404,15 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
         // Snap logic
         QPointF mouseScreen = e->position();
         QPointF mouseWorld = screenToWorld(mouseScreen);
+        if (snap_settings_) {
+            snap_manager_.setSnapEndpoints(snap_settings_->snapEndpoints());
+            snap_manager_.setSnapMidpoints(snap_settings_->snapMidpoints());
+            snap_manager_.setSnapGrid(snap_settings_->snapGrid());
+        } else {
+            snap_manager_.setSnapEndpoints(true);
+            snap_manager_.setSnapMidpoints(true);
+            snap_manager_.setSnapGrid(false);
+        }
         snap_inputs_.clear();
         snap_inputs_.reserve(polylines_.size());
         for (const auto& pv : polylines_) {

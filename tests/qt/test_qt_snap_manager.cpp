@@ -37,7 +37,21 @@ int main() {
     assert(res.type == SnapManager::SnapType::Midpoint);
     assert(nearPoint(res.pos, QPointF(0.5, 0.0), 1e-3));
 
+    manager.setSnapEndpoints(false);
+    manager.setSnapMidpoints(true);
+    res = manager.findSnap(polylines, 100.0, QPointF(0.02, 0.01));
+    assert(!res.active);
+    res = manager.findSnap(polylines, 100.0, QPointF(0.55, 0.02));
+    assert(res.active);
+    assert(res.type == SnapManager::SnapType::Midpoint);
+
+    manager.setSnapMidpoints(false);
+    res = manager.findSnap(polylines, 100.0, QPointF(0.55, 0.02));
+    assert(!res.active);
+
     polylines[0].visible = false;
+    manager.setSnapEndpoints(true);
+    manager.setSnapMidpoints(true);
     res = manager.findSnap(polylines, 100.0, QPointF(0.02, 0.01));
     assert(!res.active);
 

@@ -119,6 +119,7 @@ if(BUILD_EDITOR_QT)
   )
   target_include_directories(test_qt_canvas_box_select PRIVATE
     ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
     ${CMAKE_SOURCE_DIR}/core/include
   )
   target_link_libraries(test_qt_canvas_box_select PRIVATE Qt6::Widgets core)
@@ -143,6 +144,22 @@ if(BUILD_EDITOR_QT)
     AUTOMOC OFF
   )
   add_test(NAME qt_snap_manager_run COMMAND test_qt_snap_manager)
+
+  add_executable(test_qt_snap_settings
+    test_qt_snap_settings.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap/snap_settings.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/snap/snap_settings.hpp
+  )
+  target_include_directories(test_qt_snap_settings PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+  )
+  target_link_libraries(test_qt_snap_settings PRIVATE Qt6::Core)
+  set_target_properties(test_qt_snap_settings PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_snap_settings_run COMMAND test_qt_snap_settings)
 
   add_executable(test_qt_selection_model
     test_qt_selection_model.cpp

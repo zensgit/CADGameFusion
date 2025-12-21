@@ -6,12 +6,14 @@
 #include <QUndoStack>
 
 #include "selection/selection_model.hpp"
+#include "snap/snap_settings.hpp"
 #include "core/document.hpp"
 class CommandManager;
 class QMenu;
 class QAction;
 class Project;
 class LayerPanel;
+class SnapPanel;
 
 class QListWidget;
 
@@ -62,6 +64,8 @@ private:
 
     QListWidget* list_{};
     LayerPanel* m_layerPanel{nullptr};
+    SnapPanel* m_snapPanel{nullptr};
+    SnapSettings* m_snapSettings{nullptr};
     // Persistent document context (for settings like unit scale)
     core::Document m_document;
     SelectionModel* m_selectionModel{nullptr};
