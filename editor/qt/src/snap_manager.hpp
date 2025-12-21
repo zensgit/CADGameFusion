@@ -23,6 +23,12 @@ public:
 
     void setSnapRadiusPixels(double px) { snapRadiusPx_ = px; }
     double snapRadiusPixels() const { return snapRadiusPx_; }
+    void setSnapEndpoints(bool enabled) { snapEndpoints_ = enabled; }
+    void setSnapMidpoints(bool enabled) { snapMidpoints_ = enabled; }
+    void setSnapGrid(bool enabled) { snapGrid_ = enabled; }
+    bool snapEndpoints() const { return snapEndpoints_; }
+    bool snapMidpoints() const { return snapMidpoints_; }
+    bool snapGrid() const { return snapGrid_; }
 
     SnapResult findSnap(const QVector<PolylineView>& polylines,
                         double scale,
@@ -30,4 +36,7 @@ public:
 
 private:
     double snapRadiusPx_{12.0};
+    bool snapEndpoints_{true};
+    bool snapMidpoints_{true};
+    bool snapGrid_{false};
 };

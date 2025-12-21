@@ -37,6 +37,7 @@
 #include "command/command_manager.hpp"
 #include "panels/property_panel.hpp"
 #include "panels/layer_panel.hpp"
+#include "panels/snap_panel.hpp"
 #include "project/project.hpp"
 
 #include "plugin_registry.hpp"
@@ -84,6 +85,12 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
 
     m_selectionModel = new SelectionModel(this);
+    m_snapSettings = new SnapSettings(this);
+    canvas->setSnapSettings(m_snapSettings);
+
+    m_snapPanel = new SnapPanel(this);
+    addDockWidget(Qt::RightDockWidgetArea, m_snapPanel);
+    m_snapPanel->setSettings(m_snapSettings);
 
     // Properties dock (initially shows empty selection)
     auto* prop = new PropertyPanel(this);

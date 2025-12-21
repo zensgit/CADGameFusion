@@ -14,6 +14,7 @@
 
 class QPainterPath;
 class QRectF;
+class SnapSettings;
 
 namespace core {
 class Document;
@@ -45,6 +46,7 @@ public:
 
     explicit CanvasWidget(QWidget* parent = nullptr);
     void setDocument(core::Document* doc);
+    void setSnapSettings(SnapSettings* settings);
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
     QVector<PolylineState> polylineStates() const;
 
@@ -100,4 +102,5 @@ private:
     QPointF selection_start_screen_;
     QPointF selection_current_screen_;
     core::Document* m_doc{nullptr};
+    SnapSettings* snap_settings_{nullptr};
 };

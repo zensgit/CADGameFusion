@@ -40,6 +40,12 @@ add_executable(editor_qt
     # Layer panel
     include/panels/layer_panel.hpp
     src/panels/layer_panel.cpp
+    # Snap panel
+    include/panels/snap_panel.hpp
+    src/panels/snap_panel.cpp
+    # Snap settings
+    include/snap/snap_settings.hpp
+    src/snap/snap_settings.cpp
     # Selection model
     include/selection/selection_model.hpp
     src/selection/selection_model.cpp

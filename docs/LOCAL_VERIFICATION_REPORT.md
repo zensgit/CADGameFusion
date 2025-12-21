@@ -3,10 +3,11 @@
 ## Summary
 - All requested local builds and tests completed successfully.
 - Core/tools test suite: 11 tests passed.
-- Qt full suite: 20 tests passed.
+- Qt full suite: 21 tests passed.
 - Qt helper test: 1 test passed.
 - Qt box select test: 1 test passed.
 - Qt snap manager test: 1 test passed.
+- Qt snap settings test: 1 test passed.
 - Qt selection model test: 1 test passed.
 
 ## Commands Executed
@@ -19,7 +20,7 @@
 4. `ctest --test-dir build_vcpkg -R qt_export_helpers_run -V`
    - Result: PASS (1/1 test)
 5. `ctest --test-dir build_vcpkg -V`
-   - Result: PASS (20/20 tests)
+   - Result: PASS (21/21 tests)
 6. `cmake --build build_vcpkg -j --target test_qt_canvas_box_select`
    - Result: PASS (build completed)
 7. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
@@ -31,6 +32,10 @@
 10. `cmake --build build_vcpkg -j --target test_qt_selection_model`
     - Result: PASS (build completed)
 11. `ctest --test-dir build_vcpkg -R qt_selection_model_run -V`
+    - Result: PASS (1/1 test)
+12. `cmake --build build_vcpkg -j --target test_qt_snap_settings`
+    - Result: PASS (build completed)
+13. `ctest --test-dir build_vcpkg -R qt_snap_settings_run -V`
     - Result: PASS (1/1 test)
 
 ## Notes
