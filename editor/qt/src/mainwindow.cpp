@@ -83,19 +83,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         statusBar()->showMessage(QString("Added layer id=%1").arg(id), 1500);
     });
 
+    m_selectionModel = new SelectionModel(this);
+
     // Properties dock (initially shows empty selection)
     auto* prop = new PropertyPanel(this);
     addDockWidget(Qt::RightDockWidgetArea, prop);
     prop->updateFromSelection({});
     
     // ... (existing code) ...
-    connect(canvas, &CanvasWidget::selectionChanged, this, [this, prop, canvas](const QList<qulonglong>& entityIds){
-        m_selection = entityIds;
-        prop->updateFromSelection(m_selection);
+    connect(canvas, &CanvasWidget::selectionChanged, this, [this](const QList<qulonglong>& entityIds){
+        if (m_selectionModel) m_selectionModel->setSelection(entityIds);
+    });
+    connect(m_selectionModel, &SelectionModel::selectionChanged, this, [this, prop, canvas](const QList<qulonglong>& entityIds){
+        prop->updateFromSelection(entityIds);
         // Compute visibility state for current selection from Document
-        if (!m_selection.isEmpty()) {
+        if (!entityIds.isEmpty()) {
             bool anyTrue=false, anyFalse=false, hasAny=false;
-            for (qulonglong id : m_selection) {
+            for (qulonglong id : entityIds) {
                 auto* entity = m_document.get_entity(static_cast<EntityId>(id));
                 if (!entity) continue;
                 hasAny = true;
@@ -104,7 +108,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             }
             Qt::CheckState cs = Qt::PartiallyChecked;
             if (hasAny) {
-                if (m_selection.size() == 1) {
+                if (entityIds.size() == 1) {
                     cs = anyTrue ? Qt::Checked : Qt::Unchecked;
                 } else {
                     if (anyTrue && !anyFalse) cs = Qt::Checked;
@@ -113,10 +117,11 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             }
             prop->setVisibleCheckState(cs, /*silent*/true);
         }
-        if (canvas) canvas->setSelection(m_selection);
+        if (canvas) canvas->setSelection(entityIds);
     });
     connect(canvas, &CanvasWidget::deleteRequested, this, [this, canvas](bool allSimilar){
-        const QVector<core::EntityId> ids = buildRemovalSet(m_document, m_selection, allSimilar);
+        const QList<qulonglong> selection = m_selectionModel ? m_selectionModel->selection() : QList<qulonglong>{};
+        const QVector<core::EntityId> ids = buildRemovalSet(m_document, selection, allSimilar);
         if (ids.isEmpty()) return;
         struct RemoveEntitiesCommand : Command {
             core::Document* doc;
@@ -719,7 +724,8 @@ void MainWindow::exportWithOptions() {
     // Simple inline dialog (future: move to its own class/UI)
     // Use ExportDialog for options
     ExportDialog::ExportOptions opts;
-    int selGid = export_helpers::selectionGroupId(m_document, m_selection);
+    const QList<qulonglong> selection = m_selectionModel ? m_selectionModel->selection() : QList<qulonglong>{};
+    int selGid = export_helpers::selectionGroupId(m_document, selection);
     if (!ExportDialog::getExportOptions(this, nullptr, selGid, opts)) return;
 
     int kinds = 0;

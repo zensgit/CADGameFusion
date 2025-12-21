@@ -4,6 +4,8 @@
 
 #include <QMainWindow>
 #include <QUndoStack>
+
+#include "selection/selection_model.hpp"
 #include "core/document.hpp"
 class CommandManager;
 class QMenu;
@@ -62,7 +64,7 @@ private:
     LayerPanel* m_layerPanel{nullptr};
     // Persistent document context (for settings like unit scale)
     core::Document m_document;
-    QList<qulonglong> m_selection;
+    SelectionModel* m_selectionModel{nullptr};
     QUndoStack* m_undoStack{nullptr};
     CommandManager* m_cmdMgr{nullptr};
 
