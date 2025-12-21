@@ -93,6 +93,8 @@ void CanvasWidget::clear() {
     triIndices_.clear();
     selected_entities_.clear();
     triSelected_ = false;
+    selection_active_ = false;
+    selection_dragging_ = false;
     m_currentSnap.active = false;
     update();
 }
@@ -104,7 +106,37 @@ void CanvasWidget::setSelection(const QList<qulonglong>& entityIds) {
             selected_entities_.insert(static_cast<EntityId>(id));
         }
     }
+    triSelected_ = false;
     update();
+}
+
+QList<qulonglong> CanvasWidget::selectEntitiesInWorldRect(const QRectF& rect, bool crossing) {
+    QList<qulonglong> ids;
+    selected_entities_.clear();
+    triSelected_ = false;
+
+    QRectF norm = rect.normalized();
+    if (!norm.isValid()) {
+        update();
+        emit selectionChanged(ids);
+        return ids;
+    }
+
+    for (const auto& pv : polylines_) {
+        const auto* entity = entityFor(pv.entityId);
+        if (!entity) continue;
+        if (!isEntityVisible(*entity)) continue;
+
+        const bool hit = crossing ? norm.intersects(pv.aabb) : norm.contains(pv.aabb);
+        if (!hit) continue;
+
+        selected_entities_.insert(pv.entityId);
+        ids.append(static_cast<qulonglong>(pv.entityId));
+    }
+
+    update();
+    emit selectionChanged(ids);
+    return ids;
 }
 
 QPointF CanvasWidget::worldToScreen(const QPointF& p) const {
@@ -161,6 +193,79 @@ CanvasWidget::SnapResult CanvasWidget::findSnapPoint(const QPointF& queryPosWorl
         }
     }
     return best;
+}
+
+void CanvasWidget::selectAtPoint(const QPointF& mouseWorld) {
+    triSelected_ = false;
+    selected_entities_.clear();
+
+    const double thPx = 12.0;
+    const double thWorld = thPx / scale_;
+    const double thWorldSq = thWorld * thWorld;
+    EntityId hitId = 0;
+
+    for (int pi = polylines_.size() - 1; pi >= 0; --pi) {
+        const auto& pv = polylines_[pi];
+        const auto* entity = entityFor(pv.entityId);
+        if (!entity) continue;
+        if (!isEntityVisible(*entity)) continue;
+
+        if (!pv.aabb.adjusted(-thWorld, -thWorld, thWorld, thWorld).contains(mouseWorld)) {
+            continue;
+        }
+
+        const auto& poly = pv.pts;
+        for (int i = 0; i + 1 < poly.size(); ++i) {
+            const QPointF& a = poly[i];
+            const QPointF& b = poly[i + 1];
+            QPointF ab = b - a;
+            QPointF ap = mouseWorld - a;
+            double lenSq = ab.x() * ab.x() + ab.y() * ab.y();
+            double t = (lenSq < 1e-9) ? 0.0 : qBound(0.0, (ab.x() * ap.x() + ab.y() * ap.y()) / lenSq, 1.0);
+            QPointF h = a + t * ab;
+            double distSq = (h.x() - mouseWorld.x()) * (h.x() - mouseWorld.x()) +
+                            (h.y() - mouseWorld.y()) * (h.y() - mouseWorld.y());
+
+            if (distSq < thWorldSq) {
+                hitId = pv.entityId;
+                break;
+            }
+        }
+        if (hitId != 0) break;
+    }
+
+    if (hitId != 0) {
+        selected_entities_.insert(hitId);
+        update();
+        emit selectionChanged({static_cast<qulonglong>(hitId)});
+        return;
+    }
+
+    if (!triVerts_.isEmpty() && !triIndices_.isEmpty()) {
+        auto testEdge = [&](const QPointF& u, const QPointF& v, const QPointF& p){
+            QPointF uv = v - u, up = p - u;
+            double lenSq = uv.x() * uv.x() + uv.y() * uv.y();
+            double t = (lenSq < 1e-9) ? 0.0 : qBound(0.0, (uv.x() * up.x() + uv.y() * up.y()) / lenSq, 1.0);
+            QPointF h = u + t * uv;
+            double distSq = (h.x() - p.x()) * (h.x() - p.x()) + (h.y() - p.y()) * (h.y() - p.y());
+            return distSq < thWorldSq;
+        };
+
+        for (int i = 0; i + 2 < triIndices_.size(); i += 3) {
+            QPointF a = triVerts_[triIndices_[i + 0]];
+            QPointF b = triVerts_[triIndices_[i + 1]];
+            QPointF c = triVerts_[triIndices_[i + 2]];
+            if (testEdge(a, b, mouseWorld) || testEdge(b, c, mouseWorld) || testEdge(c, a, mouseWorld)) {
+                triSelected_ = true;
+                update();
+                emit selectionChanged({});
+                return;
+            }
+        }
+    }
+
+    update();
+    emit selectionChanged({});
 }
 
 void CanvasWidget::paintEvent(QPaintEvent*) {
@@ -244,7 +349,22 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
     
     pr.restore();
 
-    // 4. Draw Snap Marker (in screen space)
+    // 4. Draw Selection Rectangle (screen space)
+    if (selection_dragging_) {
+        QRectF rect(selection_start_screen_, selection_current_screen_);
+        rect = rect.normalized();
+        const bool crossing = selection_current_screen_.x() < selection_start_screen_.x();
+        QColor border = crossing ? QColor(80, 200, 120) : QColor(80, 160, 255);
+        QColor fill = border;
+        fill.setAlpha(40);
+        QPen selPen(border, 1.0, Qt::DashLine);
+        selPen.setCosmetic(true);
+        pr.setPen(selPen);
+        pr.setBrush(fill);
+        pr.drawRect(rect);
+    }
+
+    // 5. Draw Snap Marker (in screen space)
     if (m_currentSnap.active) {
         QPointF sPos = worldToScreen(m_currentSnap.pos);
         QPen sPen(QColor(255, 255, 0), 2); // Yellow
@@ -283,83 +403,25 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
         lastPos_ = e->pos();
     }
     
-    QPointF mouseScreen = e->position();
-    QPointF mouseWorld = screenToWorld(mouseScreen);
+    const QPointF mouseScreen = e->position();
 
     if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::AltModifier)) {
         triSelected_ = false;
+        selection_active_ = false;
+        selection_dragging_ = false;
+        m_currentSnap.active = false;
         selectGroup(e->pos());
         return;
     }
-    
+
     if (e->button() == Qt::LeftButton && !(e->modifiers() & (Qt::AltModifier | Qt::ShiftModifier))) {
-        triSelected_ = false;
-        
-        const double thPx = 12.0; 
-        const double thWorld = thPx / scale_;
-        const double thWorldSq = thWorld * thWorld;
-        EntityId hitId = 0;
-
-        for (int pi = polylines_.size() - 1; pi >= 0; --pi) {
-            const auto& pv = polylines_[pi];
-            const auto* entity = entityFor(pv.entityId);
-            if (!entity) continue;
-            if (!isEntityVisible(*entity)) continue;
-            
-            if (!pv.aabb.adjusted(-thWorld, -thWorld, thWorld, thWorld).contains(mouseWorld)) {
-                continue;
-            }
-
-            const auto& poly = pv.pts;
-            bool found = false;
-            for (int i = 0; i + 1 < poly.size(); ++i) {
-                const QPointF& a = poly[i];
-                const QPointF& b = poly[i+1];
-                QPointF ab = b - a;
-                QPointF ap = mouseWorld - a;
-                double lenSq = ab.x()*ab.x() + ab.y()*ab.y();
-                double t = (lenSq < 1e-9) ? 0.0 : qBound(0.0, (ab.x()*ap.x() + ab.y()*ap.y()) / lenSq, 1.0);
-                QPointF h = a + t * ab;
-                double distSq = (h.x()-mouseWorld.x())*(h.x()-mouseWorld.x()) + (h.y()-mouseWorld.y())*(h.y()-mouseWorld.y());
-                
-                if (distSq < thWorldSq) {
-                    hitId = pv.entityId;
-                    found = (hitId != 0);
-                    break;
-                }
-            }
-            if (found) {
-                update();
-                emit selectionChanged({static_cast<qulonglong>(hitId)});
-                return;
-            }
-        }
-
-        if (!triVerts_.isEmpty() && !triIndices_.isEmpty()) {
-             auto testEdge = [&](const QPointF& u, const QPointF& v, const QPointF& p){
-                QPointF uv = v-u, up = p-u;
-                double lenSq = uv.x()*uv.x() + uv.y()*uv.y();
-                double t = (lenSq < 1e-9) ? 0.0 : qBound(0.0, (uv.x()*up.x() + uv.y()*up.y()) / lenSq, 1.0);
-                QPointF h = u + t*uv;
-                double distSq = (h.x()-p.x())*(h.x()-p.x()) + (h.y()-p.y())*(h.y()-p.y());
-                return distSq < thWorldSq;
-            };
-            
-            for (int i=0; i+2<triIndices_.size(); i+=3) {
-                QPointF a = triVerts_[triIndices_[i+0]];
-                QPointF b = triVerts_[triIndices_[i+1]];
-                QPointF c = triVerts_[triIndices_[i+2]];
-                if (testEdge(a,b,mouseWorld) || testEdge(b,c,mouseWorld) || testEdge(c,a,mouseWorld)) { 
-                    triSelected_ = true; 
-                    update(); 
-                    emit selectionChanged({});
-                    return; 
-                }
-            }
-        }
-
+        selection_active_ = true;
+        selection_dragging_ = false;
+        selection_start_screen_ = mouseScreen;
+        selection_current_screen_ = mouseScreen;
+        m_currentSnap.active = false;
         update();
-        emit selectionChanged({});
+        return;
     }
 }
 
@@ -369,6 +431,18 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
         pan_ += QPointF(d.x(), d.y());
         lastPos_ = e->pos();
         update();
+    } else if (selection_active_ && (e->buttons() & Qt::LeftButton) &&
+               !(e->modifiers() & (Qt::AltModifier | Qt::ShiftModifier))) {
+        selection_current_screen_ = e->position();
+        if (!selection_dragging_) {
+            const QPointF delta = selection_current_screen_ - selection_start_screen_;
+            if (std::abs(delta.x()) > 4.0 || std::abs(delta.y()) > 4.0) {
+                selection_dragging_ = true;
+            }
+        }
+        if (selection_dragging_) {
+            update();
+        }
     } else {
         // Snap logic
         QPointF mouseScreen = e->position();
@@ -383,6 +457,27 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
         
         if (changed) update();
     }
+}
+
+void CanvasWidget::mouseReleaseEvent(QMouseEvent* e) {
+    if (e->button() == Qt::LeftButton && selection_active_) {
+        selection_current_screen_ = e->position();
+        if (selection_dragging_) {
+            QPointF startWorld = screenToWorld(selection_start_screen_);
+            QPointF endWorld = screenToWorld(selection_current_screen_);
+            QRectF worldRect(startWorld, endWorld);
+            const bool crossing = selection_current_screen_.x() < selection_start_screen_.x();
+            selectEntitiesInWorldRect(worldRect, crossing);
+        } else {
+            const QPointF mouseWorld = screenToWorld(selection_current_screen_);
+            selectAtPoint(mouseWorld);
+        }
+        selection_active_ = false;
+        selection_dragging_ = false;
+        update();
+        return;
+    }
+    QWidget::mouseReleaseEvent(e);
 }
 
 void CanvasWidget::keyPressEvent(QKeyEvent* e) {
@@ -462,12 +557,18 @@ void CanvasWidget::selectGroup(const QPoint& pos) {
                 } else if (hitEntity->id != 0) {
                     ids.append(static_cast<qulonglong>(hitEntity->id));
                 }
+                selected_entities_.clear();
+                for (qulonglong id : ids) {
+                    selected_entities_.insert(static_cast<EntityId>(id));
+                }
                 update();
                 emit selectionChanged(ids);
                 return;
             }
         }
     }
+    selected_entities_.clear();
+    update();
     emit selectionChanged({});
 }
 
