@@ -44,6 +44,19 @@ set_target_properties(plugin_host_demo PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
+add_dependencies(plugin_host_demo cadgf_sample_plugin)
+
+set(_plugin_test_output "${CMAKE_BINARY_DIR}/test_artifacts/plugin_host_output.json")
+add_test(NAME plugin_host_demo_smoke
+    COMMAND plugin_host_demo $<TARGET_FILE:cadgf_sample_plugin> ${_plugin_test_output})
+if(WIN32)
+    set(_plugin_env "PATH=$<TARGET_FILE_DIR:core>;$<TARGET_FILE_DIR:core_c>;$ENV{PATH}")
+elseif(APPLE)
+    set(_plugin_env "DYLD_LIBRARY_PATH=$<TARGET_FILE_DIR:core>:$<TARGET_FILE_DIR:core_c>:$ENV{DYLD_LIBRARY_PATH}")
+else()
+    set(_plugin_env "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:core>:$<TARGET_FILE_DIR:core_c>:$ENV{LD_LIBRARY_PATH}")
+endif()
+set_tests_properties(plugin_host_demo_smoke PROPERTIES ENVIRONMENT "${_plugin_env}")
 
 # Solver demo (PoC): parse minimal project JSON and run solver
 add_executable(solve_demo solve_demo.cpp)

@@ -91,3 +91,18 @@ Notes
 - Ensure rings are valid for boolean/offset; winding rules may apply.
 - Thread-safety: not guaranteed; use per-thread docs or synchronize.
 - Use `cadgf_get_abi_version()` for runtime ABI checks.
+
+Host bootstrap snippet:
+
+```c
+int abi = cadgf_get_abi_version();
+if (abi != CADGF_ABI_VERSION) {
+    fprintf(stderr, "cadgf ABI mismatch (expected %d, got %d)\n", CADGF_ABI_VERSION, abi);
+    return EXIT_FAILURE;
+}
+printf("cadgf version: %s\n", cadgf_get_version());
+unsigned int feats = cadgf_get_feature_flags();
+printf("features: earcut=%s clipper2=%s\n",
+       (feats & CADGF_FEATURE_EARCUT)?"on":"off",
+       (feats & CADGF_FEATURE_CLIPPER2)?"on":"off");
+```

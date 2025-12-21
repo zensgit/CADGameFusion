@@ -206,12 +206,32 @@ Recommended:
 - Keep Qt out of core. If editor wants to use `QPluginLoader`, do it in `editor/qt` only.
 
 Host flow:
-1. `dlopen`/`LoadLibrary`
-2. resolve `cadgf_plugin_get_api_v1`
-3. validate `api->abi_version/size`
-4. call `api->initialize()`
-5. register exporters/importers into host registry
-6. on shutdown: `api->shutdown()` then unload library
+1. Call `cadgf_get_abi_version()` (from `core_c`) once at startup and compare against `CADGF_ABI_VERSION`. Refuse to load plugins if your host binary was built against another core version.
+2. `dlopen`/`LoadLibrary`
+3. Resolve `cadgf_plugin_get_api_v1`
+4. Validate `api != NULL`, `api->abi_version == CADGF_PLUGIN_ABI_V1`, `api->size >= sizeof(cadgf_plugin_api_v1_min)`
+5. Optionally validate `describe()`, `exporter_count()`, `get_exporter()`, etc. are non-null before proceeding.
+6. Call `api->initialize()`
+7. Register exporters/importers into host registry
+8. On shutdown: `api->shutdown()` then unload library
+
+Reference implementation: `tools/plugin_registry.hpp` (loader) + `tools/plugin_host_demo.cpp` (CLI host) in this repo.
+
+### Host-side validation snippet
+
+```c
+const cadgf_plugin_api_v1* api = get_api();
+if (!api) fail("cadgf_plugin_get_api_v1 returned NULL");
+if (api->abi_version != CADGF_PLUGIN_ABI_V1) fail("unsupported plugin ABI");
+if (api->size < (int32_t)sizeof(cadgf_plugin_api_v1_min)) fail("plugin api table too small");
+
+cadgf_plugin_desc_v1 desc = api->describe();
+if (desc.size < (int32_t)sizeof(cadgf_plugin_desc_v1)) fail("plugin desc truncated");
+
+if (!api->initialize()) fail("plugin initialize failed");
+```
+
+Remember: exporters/importers returned by the plugin remain owned by the plugin and must not be modified or freed by the host.
 
 ---
 
@@ -270,6 +290,23 @@ static const cadgf_plugin_api_v1 g_api = {
 };
 
 const cadgf_plugin_api_v1* cadgf_plugin_get_api_v1(void){ return &g_api; }
+```
+
+### Authoring checklist (quick start)
+
+- Build a shared library and link against `core_c`; include `core/include` for the ABI headers.
+- Export `cadgf_plugin_get_api_v1` with `CADGF_PLUGIN_EXPORT`.
+- Keep all returned strings in static storage (do not allocate/free across the boundary).
+- Use only the C API (`cadgf_*`) to read/write documents; do not expose C++ types.
+- Implement `exporter_count/importer_count` and `get_exporter/get_importer` to return stable, static tables.
+
+CMake example:
+
+```cmake
+add_library(my_exporter_plugin SHARED my_exporter_plugin.cpp)
+target_link_libraries(my_exporter_plugin PRIVATE core_c)
+target_include_directories(my_exporter_plugin PRIVATE ${CMAKE_SOURCE_DIR}/core/include)
+set_target_properties(my_exporter_plugin PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 ```
 
 This repo includes a working minimal example:
