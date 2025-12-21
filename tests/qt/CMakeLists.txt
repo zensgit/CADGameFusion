@@ -143,4 +143,20 @@ if(BUILD_EDITOR_QT)
     AUTOMOC OFF
   )
   add_test(NAME qt_snap_manager_run COMMAND test_qt_snap_manager)
+
+  add_executable(test_qt_selection_model
+    test_qt_selection_model.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/selection/selection_model.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/selection/selection_model.hpp
+  )
+  target_include_directories(test_qt_selection_model PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+  )
+  target_link_libraries(test_qt_selection_model PRIVATE Qt6::Core)
+  set_target_properties(test_qt_selection_model PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_selection_model_run COMMAND test_qt_selection_model)
 endif()

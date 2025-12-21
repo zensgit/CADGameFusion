@@ -40,6 +40,9 @@ add_executable(editor_qt
     # Layer panel
     include/panels/layer_panel.hpp
     src/panels/layer_panel.cpp
+    # Selection model
+    include/selection/selection_model.hpp
+    src/selection/selection_model.cpp
     # Project management
     include/project/project.hpp
     src/project/project.cpp
