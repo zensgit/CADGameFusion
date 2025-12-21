@@ -37,6 +37,7 @@ if(BUILD_EDITOR_QT)
 
   add_executable(test_qt_layer_panel
     test_qt_layer_panel.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/panels/layer_panel.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/panels/layer_panel.cpp
   )
   target_include_directories(test_qt_layer_panel PRIVATE
