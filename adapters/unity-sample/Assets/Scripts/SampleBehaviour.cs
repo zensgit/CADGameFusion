@@ -6,10 +6,11 @@ public class SampleBehaviour : MonoBehaviour {
     void Start() {
         // Log version & features
         int abi = CoreBindings.cadgf_get_abi_version();
+        bool abiOk = (abi == CoreBindings.CADGF_ABI_VERSION);
         var verPtr = CoreBindings.cadgf_get_version();
         string ver = Marshal.PtrToStringAnsi(verPtr) ?? "unknown";
         uint feats = CoreBindings.cadgf_get_feature_flags();
-        Debug.Log($"core_c (cadgf) abi={abi} version={ver} features=[EARCUT={(feats & 1u)!=0}, CLIPPER2={(feats & 2u)!=0}]");
+        Debug.Log($"core_c (cadgf) abi={abi} (expected {CoreBindings.CADGF_ABI_VERSION}, ok={abiOk}) version={ver} features=[EARCUT={(feats & 1u)!=0}, CLIPPER2={(feats & 2u)!=0}]");
 
         var doc = CoreBindings.CreateDocument();
         var pts = new CoreBindings.Vec2[]{ new(){x=0,y=0}, new(){x=1,y=0}, new(){x=1,y=1} };
