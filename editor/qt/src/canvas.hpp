@@ -61,6 +61,7 @@ public:
     void setTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);
     void clearTriMesh();
     void setSelection(const QList<qulonglong>& entityIds);
+    QList<qulonglong> selectEntitiesInWorldRect(const QRectF& rect, bool crossing);
 
 signals:
     void selectionChanged(const QList<qulonglong>& entityIds);
@@ -71,6 +72,7 @@ protected:
     void wheelEvent(QWheelEvent*) override;
     void mousePressEvent(QMouseEvent*) override;
     void mouseMoveEvent(QMouseEvent*) override;
+    void mouseReleaseEvent(QMouseEvent*) override;
     void keyPressEvent(QKeyEvent*) override;
     void showEvent(QShowEvent*) override;
     void resizeEvent(QResizeEvent*) override;
@@ -81,6 +83,7 @@ private:
     void updatePolyCache(PolyVis& pv);
     SnapResult findSnapPoint(const QPointF& queryPosWorld);
     void selectGroup(const QPoint& pos);  // Alt+Click to select entire group
+    void selectAtPoint(const QPointF& worldPos);
     const core::Entity* entityFor(EntityId id) const;
     const core::Layer* layerFor(int layerId) const;
     bool isEntityVisible(const core::Entity& entity) const;
@@ -96,5 +99,9 @@ private:
     bool triSelected_ { false };
     QVector<QPointF> triVerts_;
     QVector<unsigned int> triIndices_;
+    bool selection_active_ { false };
+    bool selection_dragging_ { false };
+    QPointF selection_start_screen_;
+    QPointF selection_current_screen_;
     core::Document* m_doc{nullptr};
 };

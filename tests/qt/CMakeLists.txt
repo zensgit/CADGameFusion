@@ -108,4 +108,21 @@ if(BUILD_EDITOR_QT)
     AUTOMOC OFF
   )
   add_test(NAME qt_export_helpers_run COMMAND test_qt_export_helpers)
+
+  add_executable(test_qt_canvas_box_select
+    test_qt_canvas_box_select.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+  )
+  target_include_directories(test_qt_canvas_box_select PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_canvas_box_select PRIVATE Qt6::Widgets core)
+  set_target_properties(test_qt_canvas_box_select PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_canvas_box_select_run COMMAND test_qt_canvas_box_select)
 endif()

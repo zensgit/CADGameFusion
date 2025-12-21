@@ -3,7 +3,9 @@
 ## Summary
 - All requested local builds and tests completed successfully.
 - Core/tools test suite: 11 tests passed.
+- Qt full suite: 18 tests passed.
 - Qt helper test: 1 test passed.
+- Qt box select test: 1 test passed.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -15,7 +17,11 @@
 4. `ctest --test-dir build_vcpkg -R qt_export_helpers_run -V`
    - Result: PASS (1/1 test)
 5. `ctest --test-dir build_vcpkg -V`
-   - Result: PASS (17/17 tests)
+   - Result: PASS (18/18 tests)
+6. `cmake --build build_vcpkg -j --target test_qt_canvas_box_select`
+   - Result: PASS (build completed)
+7. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
+   - Result: PASS (1/1 test)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.
