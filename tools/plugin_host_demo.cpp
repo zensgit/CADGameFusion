@@ -4,6 +4,8 @@
 
 #include "plugin_registry.hpp"
 
+#include "core/core_c_api.h"
+
 namespace fs = std::filesystem;
 
 static std::string to_string(cadgf_string_view v) {
@@ -16,6 +18,20 @@ static void usage(const char* argv0) {
 }
 
 int main(int argc, char** argv) {
+    const int abi = cadgf_get_abi_version();
+    if (abi != CADGF_ABI_VERSION) {
+        std::cerr << "[ERROR] CADGF core ABI mismatch. Expected " << CADGF_ABI_VERSION
+                  << ", got " << abi << ". Rebuild plugin_host_demo against matching core." << std::endl;
+        return 42;
+    }
+    const char* version = cadgf_get_version();
+    const unsigned int feats = cadgf_get_feature_flags();
+    std::cout << "[core] version=" << (version ? version : "unknown")
+              << " abi=" << abi
+              << " features=[EARCUT=" << ((feats & CADGF_FEATURE_EARCUT) ? "ON" : "OFF")
+              << ", CLIPPER2=" << ((feats & CADGF_FEATURE_CLIPPER2) ? "ON" : "OFF")
+              << "]" << std::endl;
+
     if (argc < 2) {
         usage(argv[0]);
         return 1;
@@ -35,6 +51,8 @@ int main(int argc, char** argv) {
     const auto& plugins = registry.plugins();
     const cadgf_plugin_desc_v1 desc = plugins.front().desc;
     std::cout << "Loaded plugin: " << pluginPath << "\n";
+    std::cout << "  ABI: " << plugins.front().api->abi_version
+              << " (table size=" << plugins.front().api->size << ")\n";
     std::cout << "  Name: " << to_string(desc.name) << "\n";
     std::cout << "  Version: " << to_string(desc.version) << "\n";
     std::cout << "  Description: " << to_string(desc.description) << "\n";

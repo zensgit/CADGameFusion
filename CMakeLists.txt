@@ -68,6 +68,13 @@ add_test(NAME doc_export_example_run
     -Dout="${DOC_EXPORT_OUT}"
     -P "${CMAKE_SOURCE_DIR}/cmake/RunDocExportExample.cmake")
 
+set(EXPORT_CLI_OUT_DIR "${CMAKE_BINARY_DIR}/exports_cli_smoke")
+add_test(NAME export_cli_sample_run
+  COMMAND ${CMAKE_COMMAND}
+    -Dexe="$<TARGET_FILE:export_cli>"
+    -Doutdir="${EXPORT_CLI_OUT_DIR}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunExportCli.cmake")
+
 set(PLUGIN_DEMO_OUT "${CMAKE_BINARY_DIR}/out_plugin_export.json")
 add_test(NAME plugin_host_demo_run
   COMMAND ${CMAKE_COMMAND}

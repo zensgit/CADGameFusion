@@ -31,6 +31,7 @@
 #include "core/version.hpp"
 #include "core/core_c_api.h"
 #include "canvas.hpp"
+#include "editor/qt/include/export/export_helpers.hpp"
 #include "exporter.hpp"
 #include "export_dialog.hpp"
 #include "command/command_manager.hpp"
@@ -628,47 +629,10 @@ void MainWindow::showAboutCore() {
     QMessageBox::about(this, "About Core", msg);
 }
 
-static void appendExportEntity(const core::Document& doc, const core::Entity& e, QMap<int, ExportItem>& groupMap) {
-    if (e.type != core::EntityType::Polyline || !e.payload) return;
-    const auto* pl = static_cast<const core::Polyline*>(e.payload.get());
-    if (!pl || pl->points.size() < 2) return;
-
-    ExportItem& item = groupMap[e.groupId];
-    item.groupId = e.groupId;
-
-    QVector<QPointF> ring;
-    ring.reserve(static_cast<int>(pl->points.size()));
-    for (const auto& pt : pl->points) ring.push_back(QPointF(pt.x, pt.y));
-    item.rings.push_back(ring);
-
-    if (item.layerName.isEmpty()) {
-        auto* layer = doc.get_layer(e.layerId);
-        if (layer) {
-            item.layerName = QString::fromStdString(layer->name);
-            item.layerColor = layer->color;
-        } else {
-            item.layerName = "0";
-            item.layerColor = 0xFFFFFF;
-        }
-    }
-}
-
 static uint32_t effectiveEntityColor(const core::Document& doc, const core::Entity& e) {
     if (e.color != 0) return e.color;
     const auto* layer = doc.get_layer(e.layerId);
     return layer ? layer->color : 0xDCDCE6;
-}
-
-static int selectionGroupId(const core::Document& doc, const QList<qulonglong>& selection) {
-    if (selection.isEmpty()) return -1;
-    const core::Entity* first = doc.get_entity(static_cast<core::EntityId>(selection.front()));
-    if (!first || first->groupId == -1) return -1;
-    const int gid = first->groupId;
-    for (int i = 1; i < selection.size(); ++i) {
-        const auto* e = doc.get_entity(static_cast<core::EntityId>(selection[i]));
-        if (!e || e->groupId != gid) return -1;
-    }
-    return gid;
 }
 
 static QVector<core::EntityId> buildRemovalSet(const core::Document& doc,
@@ -720,15 +684,7 @@ void MainWindow::exportSceneAction() {
 void MainWindow::exportSceneActionImpl(int kinds) {
     QString base = QFileDialog::getExistingDirectory(this, "Select export base directory");
     if (base.isEmpty()) return;
-    // Group polylines by groupId
-    QMap<int, ExportItem> groupMap;
-    for (const auto& e : m_document.entities()) {
-        appendExportEntity(m_document, e, groupMap);
-    }
-    QVector<ExportItem> items;
-    for (auto it = groupMap.begin(); it != groupMap.end(); ++it) {
-        items.push_back(it.value());
-    }
+    QVector<ExportItem> items = export_helpers::collectExportItems(m_document);
     // Use document unit scale by default for quick export
     double unitScale = m_document.settings().unit_scale;
     ExportResult r = exportScene(items, QDir(base), kinds, unitScale, QJsonObject(), true, /*includeHolesGLTF=*/true);
@@ -763,7 +719,7 @@ void MainWindow::exportWithOptions() {
     // Simple inline dialog (future: move to its own class/UI)
     // Use ExportDialog for options
     ExportDialog::ExportOptions opts;
-    int selGid = selectionGroupId(m_document, m_selection);
+    int selGid = export_helpers::selectionGroupId(m_document, m_selection);
     if (!ExportDialog::getExportOptions(this, nullptr, selGid, opts)) return;
 
     int kinds = 0;
@@ -774,16 +730,8 @@ void MainWindow::exportWithOptions() {
     // Collect and export
     QString base = QFileDialog::getExistingDirectory(this, "Select export base directory"); 
     if (base.isEmpty()) return;
-    QMap<int, ExportItem> groupMap;
     const bool onlySelected = (opts.range == ExportDialog::SelectedGroupOnly && selGid!=-1);
-    for (const auto& e : m_document.entities()) {
-        if (onlySelected && e.groupId != selGid) continue;
-        appendExportEntity(m_document, e, groupMap);
-    }
-    QVector<ExportItem> items; 
-    for (auto it = groupMap.begin(); it != groupMap.end(); ++it) { 
-        items.push_back(it.value());
-    } 
+    QVector<ExportItem> items = export_helpers::collectExportItems(m_document, onlySelected ? selGid : -1);
     // Determine unit scale (use document settings or custom value)
     double unitScale = opts.useDocUnit ? m_document.settings().unit_scale : opts.unitScale;
     if (!opts.useDocUnit) unitScale = opts.unitScale;

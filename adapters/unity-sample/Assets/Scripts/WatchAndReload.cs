@@ -3,7 +3,9 @@ using System.IO;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using CADGameFusion;
+using CADGameFusion.UnityAdapter;
 
 public class WatchAndReload : MonoBehaviour {
     public string exportBasePath;
@@ -13,11 +15,27 @@ public class WatchAndReload : MonoBehaviour {
     string lastSceneDir = null;
     float timer = 0f;
 
+    void Start() {
+        LogAbiStatus();
+    }
+
     void Update() {
         timer += Time.deltaTime;
         if (timer < pollInterval) return;
         timer = 0f;
         TryReloadLatestScene();
+    }
+
+    static void LogAbiStatus() {
+        int abi = CoreBindings.cadgf_get_abi_version();
+        bool ok = (abi == CoreBindings.CADGF_ABI_VERSION);
+        var verPtr = CoreBindings.cadgf_get_version();
+        string version = Marshal.PtrToStringAnsi(verPtr) ?? "unknown";
+        uint feats = CoreBindings.cadgf_get_feature_flags();
+        Debug.Log($"[WatchAndReload] cadgf abi={abi} (expected {CoreBindings.CADGF_ABI_VERSION}, ok={ok}) version={version} features=[EARCUT={(feats & 1u)!=0}, CLIPPER2={(feats & 2u)!=0}]");
+        if (!ok) {
+            Debug.LogError("CADGameFusion core ABI mismatch detected; exporter/importer artifacts may be incompatible.");
+        }
     }
 
     void TryReloadLatestScene() {

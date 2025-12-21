@@ -778,6 +778,21 @@ void parseArgs(int argc, char* argv[], ExportOptions& opts) {
 }
 
 int main(int argc, char* argv[]) {
+    const int abi = cadgf_get_abi_version();
+    if (abi != CADGF_ABI_VERSION) {
+        std::cerr << "[ERROR] CADGameFusion core ABI mismatch. Expected "
+                  << CADGF_ABI_VERSION << ", got " << abi
+                  << ". Please rebuild tools/export_cli against the current core." << std::endl;
+        return 42;
+    }
+    const char* version = cadgf_get_version();
+    const unsigned int featureFlags = cadgf_get_feature_flags();
+    std::cout << "[INFO] CADGF core version=" << (version ? version : "unknown")
+              << " abi=" << abi
+              << " features=[EARCUT=" << ((featureFlags & CADGF_FEATURE_EARCUT) ? "ON" : "OFF")
+              << ", CLIPPER2=" << ((featureFlags & CADGF_FEATURE_CLIPPER2) ? "ON" : "OFF")
+              << "]" << std::endl;
+
     ExportOptions opts;
     parseArgs(argc, argv, opts);
     

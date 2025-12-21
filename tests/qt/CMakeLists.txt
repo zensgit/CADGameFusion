@@ -90,4 +90,22 @@ if(BUILD_EDITOR_QT)
     AUTOMOC ON
   )
   add_test(NAME qt_project_roundtrip_run COMMAND test_qt_project_roundtrip)
+
+  add_executable(test_qt_export_helpers
+    test_qt_export_helpers.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/export/export_helpers.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/exporter.cpp
+  )
+  target_include_directories(test_qt_export_helpers PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_export_helpers PRIVATE Qt6::Core Qt6::Gui core)
+  set_target_properties(test_qt_export_helpers PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC OFF
+  )
+  add_test(NAME qt_export_helpers_run COMMAND test_qt_export_helpers)
 endif()
