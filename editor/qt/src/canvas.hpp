@@ -10,6 +10,8 @@
 #include <QRectF>
 #include <cstdint>
 
+#include "snap_manager.hpp"
+
 class QPainterPath;
 class QRectF;
 
@@ -24,13 +26,6 @@ using EntityId = uint64_t; // Mirror core::EntityId
 class CanvasWidget : public QWidget {
     Q_OBJECT
 public:
-    enum class SnapType { None, Endpoint, Midpoint };
-    struct SnapResult {
-        bool active{false};
-        QPointF pos;
-        SnapType type{SnapType::None};
-    };
-
     struct PolyVis {
         QVector<QPointF> pts;
         EntityId entityId{0}; // PR5: 0 = not bound to Document entity
@@ -81,7 +76,6 @@ private:
     QPointF worldToScreen(const QPointF& p) const;
     QPointF screenToWorld(const QPointF& p) const;
     void updatePolyCache(PolyVis& pv);
-    SnapResult findSnapPoint(const QPointF& queryPosWorld);
     void selectGroup(const QPoint& pos);  // Alt+Click to select entire group
     void selectAtPoint(const QPointF& worldPos);
     const core::Entity* entityFor(EntityId id) const;
@@ -92,9 +86,11 @@ private:
     double scale_ { 1.0 }; // pixels per world unit
     QPointF pan_ { 0.0, 0.0 }; // in pixels
     QPoint lastPos_ {};
-    SnapResult m_currentSnap;
+    SnapManager snap_manager_;
+    SnapManager::SnapResult m_currentSnap;
     // storage for polylines
     QVector<PolyVis> polylines_;
+    QVector<SnapManager::PolylineView> snap_inputs_;
     QSet<EntityId> selected_entities_;
     bool triSelected_ { false };
     QVector<QPointF> triVerts_;

@@ -147,54 +147,6 @@ QPointF CanvasWidget::screenToWorld(const QPointF& p) const {
     return QPointF((p.x() - pan_.x()) / scale_, (p.y() - pan_.y()) / scale_);
 }
 
-CanvasWidget::SnapResult CanvasWidget::findSnapPoint(const QPointF& queryPosWorld) {
-    SnapResult best;
-    best.active = false;
-    
-    // Snap radius in screen pixels
-    const double snapPx = 12.0;
-    double snapWorld = snapPx / scale_;
-    double minDSq = snapWorld * snapWorld;
-    
-    QRectF queryRect(queryPosWorld.x()-snapWorld, queryPosWorld.y()-snapWorld, snapWorld*2, snapWorld*2);
-
-    for (const auto& pv : polylines_) {
-        const auto* entity = entityFor(pv.entityId);
-        if (!entity) continue;
-        if (!isEntityVisible(*entity)) continue;
-        
-        if (!pv.aabb.intersects(queryRect)) continue;
-
-        // Check vertices (Endpoints)
-        for (const auto& pt : pv.pts) {
-            double dx = pt.x() - queryPosWorld.x();
-            double dy = pt.y() - queryPosWorld.y();
-            double dSq = dx*dx + dy*dy;
-            if (dSq < minDSq) {
-                minDSq = dSq;
-                best.active = true;
-                best.pos = pt;
-                best.type = SnapType::Endpoint;
-            }
-        }
-        
-        // Check midpoints
-        for (int i=0; i<pv.pts.size()-1; ++i) {
-            QPointF mid = (pv.pts[i] + pv.pts[i+1]) * 0.5;
-            double dx = mid.x() - queryPosWorld.x();
-            double dy = mid.y() - queryPosWorld.y();
-            double dSq = dx*dx + dy*dy;
-            if (dSq < minDSq) {
-                minDSq = dSq;
-                best.active = true;
-                best.pos = mid;
-                best.type = SnapType::Midpoint;
-            }
-        }
-    }
-    return best;
-}
-
 void CanvasWidget::selectAtPoint(const QPointF& mouseWorld) {
     triSelected_ = false;
     selected_entities_.clear();
@@ -372,10 +324,10 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
         pr.setBrush(Qt::NoBrush);
         
         const double sz = 10.0;
-        if (m_currentSnap.type == SnapType::Endpoint) {
+        if (m_currentSnap.type == SnapManager::SnapType::Endpoint) {
             // Square
             pr.drawRect(QRectF(sPos.x()-sz/2, sPos.y()-sz/2, sz, sz));
-        } else if (m_currentSnap.type == SnapType::Midpoint) {
+        } else if (m_currentSnap.type == SnapManager::SnapType::Midpoint) {
             // Triangle
             QPolygonF tri;
             tri << QPointF(sPos.x(), sPos.y() - sz/2 - 2)
@@ -447,7 +399,19 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
         // Snap logic
         QPointF mouseScreen = e->position();
         QPointF mouseWorld = screenToWorld(mouseScreen);
-        SnapResult res = findSnapPoint(mouseWorld);
+        snap_inputs_.clear();
+        snap_inputs_.reserve(polylines_.size());
+        for (const auto& pv : polylines_) {
+            const auto* entity = entityFor(pv.entityId);
+            const bool visible = entity && isEntityVisible(*entity);
+            SnapManager::PolylineView view;
+            view.points = &pv.pts;
+            view.aabb = &pv.aabb;
+            view.entityId = pv.entityId;
+            view.visible = visible;
+            snap_inputs_.append(view);
+        }
+        SnapManager::SnapResult res = snap_manager_.findSnap(snap_inputs_, scale_, mouseWorld);
         
         bool changed = (res.active != m_currentSnap.active);
         if (res.active) {

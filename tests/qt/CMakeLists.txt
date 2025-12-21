@@ -19,6 +19,7 @@ if(BUILD_EDITOR_QT)
     test_qt_document_commands.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/include/command/command_manager.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/command/command_manager.cpp
   )
@@ -76,6 +77,7 @@ if(BUILD_EDITOR_QT)
     ${CMAKE_SOURCE_DIR}/editor/qt/src/project/project.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
   )
   target_include_directories(test_qt_project_roundtrip PRIVATE
     ${CMAKE_SOURCE_DIR}
@@ -113,6 +115,7 @@ if(BUILD_EDITOR_QT)
     test_qt_canvas_box_select.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
   )
   target_include_directories(test_qt_canvas_box_select PRIVATE
     ${CMAKE_SOURCE_DIR}/editor/qt/src
@@ -125,4 +128,19 @@ if(BUILD_EDITOR_QT)
     AUTOMOC ON
   )
   add_test(NAME qt_canvas_box_select_run COMMAND test_qt_canvas_box_select)
+
+  add_executable(test_qt_snap_manager
+    test_qt_snap_manager.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
+  )
+  target_include_directories(test_qt_snap_manager PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+  )
+  target_link_libraries(test_qt_snap_manager PRIVATE Qt6::Core)
+  set_target_properties(test_qt_snap_manager PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC OFF
+  )
+  add_test(NAME qt_snap_manager_run COMMAND test_qt_snap_manager)
 endif()
