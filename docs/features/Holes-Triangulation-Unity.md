@@ -20,7 +20,7 @@
 
 3. 方案概述
 - 数据流：Canvas 多环折线 → Exporter 生成 flat_pts/ring_counts/ring_roles 与 glTF（通过 C API rings 三角化） → Unity WatchAndReload 监控目录，优先 glTF 加载；否则 JSON + CoreBindings.TriangulateRings → Mesh。
-- 版本/特性：cadgf_get_version()/cadgf_get_feature_flags() 支持运行时判定 EARCUT/CLIPPER2。
+- 版本/特性：cadgf_get_abi_version()/cadgf_get_version()/cadgf_get_feature_flags() 支持运行时判定 ABI 与 EARCUT/CLIPPER2。
 
 4. 详细设计
 - 数据结构/文件格式

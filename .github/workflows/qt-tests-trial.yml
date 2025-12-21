@@ -87,7 +87,7 @@ jobs:
 
       - name: Build Qt tests
         run: |
-          cmake --build build --config Release --target test_qt_export_meta test_qt_document_commands test_qt_layer_panel --parallel 2
+          cmake --build build --config Release --target test_qt_export_meta test_qt_document_commands test_qt_layer_panel test_qt_property_panel test_qt_project_roundtrip --parallel 2
 
       - name: Run Qt tests
         shell: bash

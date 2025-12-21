@@ -70,7 +70,7 @@ Common build/run issues and fixes.
 
 ## Symbol not found or ABI mismatch
 - Ensure `CoreBindings.cs` uses `CallingConvention.Cdecl` and correct struct layout.
-- Keep `core_c` and `CoreBindings.cs` versions in sync; use `cadgf_get_version()` (or legacy `core_get_version()`) for runtime checks.
+- Keep `core_c` and `CoreBindings.cs` versions in sync; use `cadgf_get_abi_version()` for ABI checks and `cadgf_get_version()` (or legacy `core_get_version()`) for release string checks.
 
 ## Selection feels hard
 - Adjust hit threshold (pixels) in `editor/qt/src/canvas.cpp` (default 12 px).

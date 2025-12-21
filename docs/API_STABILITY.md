@@ -23,7 +23,13 @@ and do not export them as a public SDK.
 
 - The C API is **append-only** within a major ABI version.
 - Breaking changes, if unavoidable, require a new ABI version or a major release bump.
-- Use `cadgf_get_version()` and `cadgf_get_feature_flags()` for runtime compatibility checks.
+- Use `cadgf_get_abi_version()` for ABI-level compatibility checks.
+- Use `cadgf_get_version()` for release/version reporting.
+- Use `cadgf_get_feature_flags()` for compile-time capability checks.
+
+Current feature flags:
+- `CADGF_FEATURE_EARCUT` (bit 0)
+- `CADGF_FEATURE_CLIPPER2` (bit 1)
 
 ## 4. Plugin ABI
 

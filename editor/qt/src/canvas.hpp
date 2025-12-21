@@ -13,7 +13,11 @@
 class QPainterPath;
 class QRectF;
 
-namespace core { class Document; }
+namespace core {
+class Document;
+struct Entity;
+struct Layer;
+}
 
 using EntityId = uint64_t; // Mirror core::EntityId
 
@@ -29,10 +33,6 @@ public:
 
     struct PolyVis {
         QVector<QPointF> pts;
-        QColor color;
-        int groupId;
-        bool visible{true};
-        int layerId{0}; // Layer association
         EntityId entityId{0}; // PR5: 0 = not bound to Document entity
         // Cache
         QPainterPath cachePath;
@@ -81,6 +81,10 @@ private:
     void updatePolyCache(PolyVis& pv);
     SnapResult findSnapPoint(const QPointF& queryPosWorld);
     void selectGroup(const QPoint& pos);  // Alt+Click to select entire group
+    const core::Entity* entityFor(EntityId id) const;
+    const core::Layer* layerFor(int layerId) const;
+    bool isEntityVisible(const core::Entity& entity) const;
+    QColor resolveEntityColor(const core::Entity& entity) const;
 
     double scale_ { 1.0 }; // pixels per world unit
     QPointF pan_ { 0.0, 0.0 }; // in pixels

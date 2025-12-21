@@ -84,9 +84,10 @@ if (CADGameFusion.UnityAdapter.CoreBindings.cadgf_triangulate_polygon(pts, n, In
 
 Notes
 - Versioning & features
+  - `int cadgf_get_abi_version();` returns ABI level (compare against `CADGF_ABI_VERSION`).
   - `const char* cadgf_get_version();` returns semantic version string (e.g., "0.1.0").
   - `unsigned int cadgf_get_feature_flags();` bit 0 = USE_EARCUT, bit 1 = USE_CLIPPER2.
 - Validate sizes before allocation; check return codes.
 - Ensure rings are valid for boolean/offset; winding rules may apply.
 - Thread-safety: not guaranteed; use per-thread docs or synchronize.
-- Use `cadgf_get_version()` for runtime ABI checks.
+- Use `cadgf_get_abi_version()` for runtime ABI checks.

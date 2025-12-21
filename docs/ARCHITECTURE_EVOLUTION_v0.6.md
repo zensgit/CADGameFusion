@@ -9,6 +9,7 @@
   - `core/include/core/core_c_api.h`（`cadgf_*` C API；`cadgf_document*` 为不透明句柄）
   - `core/include/core/plugin_abi_c_v1.h`（插件 ABI：C 函数表 `cadgf_plugin_api_v1`）
 - `core/include/core/document.hpp` 的 `core::Document` 属于 **内部 C++ API**：不承诺跨 DLL/跨编译器 ABI 稳定；若未来要作为对外 C++ SDK，再评估 Pimpl/导出策略。
+- 运行时兼容性：使用 `cadgf_get_abi_version()` 校验 ABI 级别，使用 `cadgf_get_feature_flags()` 判断编译特性。
 
 ---
 

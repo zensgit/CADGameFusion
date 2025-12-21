@@ -36,6 +36,36 @@ void CanvasWidget::setDocument(core::Document* doc) {
     update();
 }
 
+const core::Entity* CanvasWidget::entityFor(EntityId id) const {
+    if (!m_doc || id == 0) return nullptr;
+    return m_doc->get_entity(id);
+}
+
+const core::Layer* CanvasWidget::layerFor(int layerId) const {
+    if (!m_doc) return nullptr;
+    return m_doc->get_layer(layerId);
+}
+
+bool CanvasWidget::isEntityVisible(const core::Entity& entity) const {
+    if (!entity.visible) return false;
+    const auto* layer = layerFor(entity.layerId);
+    if (layer && !layer->visible) return false;
+    return true;
+}
+
+QColor CanvasWidget::resolveEntityColor(const core::Entity& entity) const {
+    uint32_t color = entity.color;
+    if (color == 0) {
+        const auto* layer = layerFor(entity.layerId);
+        if (layer) {
+            color = layer->color;
+        } else {
+            color = 0xDCDCE6u;
+        }
+    }
+    return QColor((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
+}
+
 void CanvasWidget::updatePolyCache(PolyVis& pv) {
     pv.cachePath = QPainterPath();
     if (pv.pts.size() < 2) {
@@ -97,11 +127,9 @@ CanvasWidget::SnapResult CanvasWidget::findSnapPoint(const QPointF& queryPosWorl
     QRectF queryRect(queryPosWorld.x()-snapWorld, queryPosWorld.y()-snapWorld, snapWorld*2, snapWorld*2);
 
     for (const auto& pv : polylines_) {
-        if (!pv.visible) continue;
-        if (m_doc) {
-            auto* l = m_doc->get_layer(pv.layerId);
-            if (l && !l->visible) continue;
-        }
+        const auto* entity = entityFor(pv.entityId);
+        if (!entity) continue;
+        if (!isEntityVisible(*entity)) continue;
         
         if (!pv.aabb.intersects(queryRect)) continue;
 
@@ -181,13 +209,11 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
     pr.setRenderHint(QPainter::Antialiasing, true);
     for (int i=0; i<polylines_.size(); ++i) {
         const auto& pv = polylines_[i];
-        if (!pv.visible) continue;
-        if (m_doc) {
-            auto* layer = m_doc->get_layer(pv.layerId);
-            if (layer && !layer->visible) continue;
-        }
+        const auto* entity = entityFor(pv.entityId);
+        if (!entity) continue;
+        if (!isEntityVisible(*entity)) continue;
 
-        QPen pen(pv.color, 2); 
+        QPen pen(resolveEntityColor(*entity), 2);
         pen.setCosmetic(true);
         if (selected_entities_.contains(pv.entityId)) {
             pen.setColor(QColor(255,220,100));
@@ -276,11 +302,9 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
 
         for (int pi = polylines_.size() - 1; pi >= 0; --pi) {
             const auto& pv = polylines_[pi];
-            if (!pv.visible) continue;
-            if (m_doc) {
-                auto* l = m_doc->get_layer(pv.layerId);
-                if (l && !l->visible) continue;
-            }
+            const auto* entity = entityFor(pv.entityId);
+            if (!entity) continue;
+            if (!isEntityVisible(*entity)) continue;
             
             if (!pv.aabb.adjusted(-thWorld, -thWorld, thWorld, thWorld).contains(mouseWorld)) {
                 continue;
@@ -412,6 +436,9 @@ void CanvasWidget::selectGroup(const QPoint& pos) {
         const auto& pv = polylines_[pi];
         if (!pv.aabb.adjusted(-thWorld, -thWorld, thWorld, thWorld).contains(mouseWorld)) continue;
 
+        const auto* hitEntity = entityFor(pv.entityId);
+        if (!hitEntity) continue;
+
         const auto& poly = pv.pts;
         for (int i=0;i+1<poly.size();++i) {
             const QPointF& a = poly[i];
@@ -424,15 +451,16 @@ void CanvasWidget::selectGroup(const QPoint& pos) {
             
             if (distSq < thWorldSq) {
                 QList<qulonglong> ids;
-                const int gid = polylines_[pi].groupId;
+                const int gid = hitEntity->groupId;
                 if (gid != -1) {
-                    for (const auto& pv : polylines_) {
-                        if (pv.groupId == gid && pv.entityId != 0) {
-                            ids.append(static_cast<qulonglong>(pv.entityId));
+                    for (const auto& other : polylines_) {
+                        const auto* entity = entityFor(other.entityId);
+                        if (entity && entity->groupId == gid) {
+                            ids.append(static_cast<qulonglong>(entity->id));
                         }
                     }
-                } else if (polylines_[pi].entityId != 0) {
-                    ids.append(static_cast<qulonglong>(polylines_[pi].entityId));
+                } else if (hitEntity->id != 0) {
+                    ids.append(static_cast<qulonglong>(hitEntity->id));
                 }
                 update();
                 emit selectionChanged(ids);
@@ -464,29 +492,7 @@ void CanvasWidget::reloadFromDocument() {
             pv.pts.append(QPointF(pt.x, pt.y));
         }
 
-        // Use entity metadata from PR4
-        pv.visible = e.visible;
-        pv.groupId = e.groupId;
-        pv.layerId = e.layerId;
         pv.entityId = e.id;
-
-        // Color: use entity color if set, otherwise inherit from layer
-        if (e.color != 0) {
-            // Entity has its own color (0xRRGGBB)
-            pv.color = QColor((e.color >> 16) & 0xFF,
-                              (e.color >> 8) & 0xFF,
-                              e.color & 0xFF);
-        } else {
-            // Inherit from layer
-            const auto* layer = m_doc->get_layer(e.layerId);
-            if (layer) {
-                pv.color = QColor((layer->color >> 16) & 0xFF,
-                                  (layer->color >> 8) & 0xFF,
-                                  layer->color & 0xFF);
-            } else {
-                pv.color = QColor(220, 220, 230); // Default gray
-            }
-        }
 
         updatePolyCache(pv);
         polylines_.append(pv);
@@ -502,10 +508,18 @@ QVector<CanvasWidget::PolylineState> CanvasWidget::polylineStates() const {
     for (const auto& pv : polylines_) {
         PolylineState state;
         state.entityId = pv.entityId;
-        state.visible = pv.visible;
-        state.groupId = pv.groupId;
-        state.layerId = pv.layerId;
-        state.color = pv.color;
+        const auto* entity = entityFor(pv.entityId);
+        if (entity) {
+            state.visible = entity->visible;
+            state.groupId = entity->groupId;
+            state.layerId = entity->layerId;
+            state.color = resolveEntityColor(*entity);
+        } else {
+            state.visible = false;
+            state.groupId = -1;
+            state.layerId = 0;
+            state.color = QColor(220, 220, 230);
+        }
         state.pointCount = pv.pts.size();
         states.append(state);
     }

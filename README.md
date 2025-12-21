@@ -23,6 +23,19 @@ ctest --test-dir build -V
 ## Editor (Qt)
 Enable with `-DBUILD_EDITOR_QT=ON` and build target `editor_qt`.
 
+## API Stability (C ABI)
+- Stable binary boundary: C ABI in `core_c` (`cadgf_*` symbols in `core/include/core/core_c_api.h`).
+- Plugin ABI: `core/include/core/plugin_abi_c_v1.h` (C function table).
+- `core::Document` and other C++ headers are internal and not ABI-stable across DLL/DSO boundaries.
+- Runtime checks:
+  - `cadgf_get_abi_version()` for ABI level
+  - `cadgf_get_version()` for release string
+  - `cadgf_get_feature_flags()` for compile-time feature flags
+
+## Optional Dependencies
+- Qt: required for the editor (`-DBUILD_EDITOR_QT=ON`).
+- TinyGLTF: optional; when missing, glTF export is disabled (JSON/DXF still work).
+
 ## One-Command Health Check
 ```bash
 # Offline quick subset + health check (allow offline)
