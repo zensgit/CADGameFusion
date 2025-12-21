@@ -24,6 +24,8 @@ add_executable(editor_qt
     src/mainwindow.hpp
     src/canvas.cpp
     src/canvas.hpp
+    src/snap_manager.cpp
+    src/snap_manager.hpp
     src/exporter.cpp
     src/exporter.hpp
     src/export_dialog.cpp
