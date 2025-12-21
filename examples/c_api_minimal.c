@@ -4,6 +4,7 @@
 #include "core/core_c_api.h"
 
 int main(void) {
+    printf("cadgf abi: %d\n", cadgf_get_abi_version());
     printf("cadgf version: %s\n", cadgf_get_version());
     unsigned int feats = cadgf_get_feature_flags();
     printf("features: EARCUT=%s CLIPPER2=%s\n", (feats & 1u)?"on":"off", (feats & 2u)?"on":"off");

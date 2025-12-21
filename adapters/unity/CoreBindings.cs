@@ -12,6 +12,9 @@ namespace CADGameFusion.UnityAdapter {
 
         // Preferred C API prefix (stable ABI): cadgf_*
         [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int cadgf_get_abi_version();
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr cadgf_get_version();
 
         [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
@@ -107,6 +110,9 @@ namespace CADGameFusion.UnityAdapter {
         }
 
         // Legacy managed aliases (core_*), preserved for older Unity scripts.
+        [Obsolete("Use cadgf_get_abi_version")]
+        public static int core_get_abi_version() => cadgf_get_abi_version();
+
         [Obsolete("Use cadgf_get_version")]
         public static IntPtr core_get_version() => cadgf_get_version();
 

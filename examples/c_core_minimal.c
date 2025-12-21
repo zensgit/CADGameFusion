@@ -3,6 +3,7 @@
 #include "core/core_c_api.h"
 
 int main(void) {
+  printf("cadgf abi: %d\n", cadgf_get_abi_version());
   printf("cadgf version: %s\n", cadgf_get_version());
   cadgf_document* doc = cadgf_document_create();
   // A simple triangle (closed when consumed by ops)

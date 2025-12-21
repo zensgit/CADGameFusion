@@ -26,6 +26,7 @@ static int write_json(const char* path, const cadgf_vec2* pts, const int* counts
 
 int main(int argc, char** argv) {
     const char* out = (argc > 1) ? argv[1] : "build/out_offset.json";
+    printf("cadgf abi: %d\n", cadgf_get_abi_version());
     printf("cadgf version: %s\n", cadgf_get_version());
     const unsigned int feats = cadgf_get_feature_flags();
     const int has_clipper2 = (feats & CADGF_FEATURE_CLIPPER2) != 0u;
