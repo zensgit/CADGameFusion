@@ -94,7 +94,7 @@ Aim for these boundaries:
 - Earcut only in triangulation module
 - Clipper2 only in boolean/offset module
 - Eigen only in solver module
-- TinyGLTF only in exporter module
+- TinyGLTF only in exporter module (optional; when missing, glTF export is disabled but build remains green)
 
 This helps build-time and future extraction.
 

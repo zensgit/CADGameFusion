@@ -52,4 +52,42 @@ if(BUILD_EDITOR_QT)
     AUTOMOC ON
   )
   add_test(NAME qt_layer_panel_run COMMAND test_qt_layer_panel)
+
+  add_executable(test_qt_property_panel
+    test_qt_property_panel.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/panels/property_panel.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/panels/property_panel.cpp
+  )
+  target_include_directories(test_qt_property_panel PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+  )
+  target_link_libraries(test_qt_property_panel PRIVATE Qt6::Widgets)
+  set_target_properties(test_qt_property_panel PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_property_panel_run COMMAND test_qt_property_panel)
+
+  add_executable(test_qt_project_roundtrip
+    test_qt_project_roundtrip.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/project/project.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/project/project.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+  )
+  target_include_directories(test_qt_project_roundtrip PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_project_roundtrip PRIVATE Qt6::Widgets core)
+  set_target_properties(test_qt_project_roundtrip PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_project_roundtrip_run COMMAND test_qt_project_roundtrip)
 endif()

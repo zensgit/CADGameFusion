@@ -12,6 +12,11 @@ int main() {
     assert(doc);
     int ok = CADGF_SUCCESS;
 
+    assert(cadgf_get_abi_version() == CADGF_ABI_VERSION);
+    const char* version = cadgf_get_version();
+    assert(version && version[0] != '\0');
+    (void)cadgf_get_feature_flags();
+
     // Document settings: unit scale
     double unit_scale = cadgf_document_get_unit_scale(doc);
     assert(unit_scale == 1.0);

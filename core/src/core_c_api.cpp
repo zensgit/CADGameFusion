@@ -13,6 +13,10 @@ struct core_document { Document impl; };
 
 extern "C" {
 
+CORE_API int core_get_abi_version() {
+    return CADGF_ABI_VERSION;
+}
+
 CORE_API const char* core_get_version() {
     return core::version_string();
 }
@@ -384,6 +388,7 @@ extern "C" {
 
 CADGF_API const char* cadgf_get_version() { return core_get_version(); }
 CADGF_API unsigned int cadgf_get_feature_flags() { return core_get_feature_flags(); }
+CADGF_API int cadgf_get_abi_version() { return core_get_abi_version(); }
 
 CADGF_API cadgf_document* cadgf_document_create() { return core_document_create(); }
 CADGF_API void cadgf_document_destroy(cadgf_document* doc) { core_document_destroy(doc); }

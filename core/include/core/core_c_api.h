@@ -23,7 +23,7 @@ extern "C" {
 // ABI stability boundary:
 // - cadgf_* C API exported from core_c is the stable external surface.
 // - C++ APIs (core::Document, etc.) are internal and not ABI-stable across DLL/DSO.
-// - ABI evolution is append-only within a major version; use cadgf_get_version().
+// - ABI evolution is append-only within a major version; use cadgf_get_abi_version().
 typedef uint64_t core_entity_id;
 
 typedef struct core_vec2 { double x; double y; } core_vec2;
@@ -75,6 +75,11 @@ typedef core_entity_info_v2 cadgf_entity_info_v2;
 #define CADGF_FAILURE CORE_FAILURE
 
 // Version & feature flags
+// ABI level (increment on breaking changes)
+#define CORE_ABI_VERSION 1
+#define CADGF_ABI_VERSION CORE_ABI_VERSION
+CORE_API int core_get_abi_version();
+CADGF_API int cadgf_get_abi_version();
 // Returns semantic version string, e.g., "0.1.0" (static storage)
 CORE_API const char* core_get_version();
 // Bitflags describing compiled features (earcut/clipper2, etc.)

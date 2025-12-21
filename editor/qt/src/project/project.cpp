@@ -120,9 +120,9 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
                 auto* layer0 = doc.get_layer(0);
                 if (layer0) {
                     layer0->name = name.toStdString();
-                    layer0->color = color;
-                    layer0->visible = visible;
-                    layer0->locked = locked;
+                    doc.set_layer_color(0, color);
+                    doc.set_layer_visible(0, visible);
+                    doc.set_layer_locked(0, locked);
                 }
                 layerIdMap.insert(0, 0);
                 continue;
@@ -130,11 +130,8 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
 
             int newId = doc.add_layer(name.toStdString(), color);
             layerIdMap.insert(srcId, newId);
-            auto* layer = doc.get_layer(newId);
-            if (layer) {
-                layer->visible = visible;
-                layer->locked = locked;
-            }
+            doc.set_layer_visible(newId, visible);
+            doc.set_layer_locked(newId, locked);
         }
     }
 

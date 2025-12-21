@@ -24,6 +24,7 @@
 
 ### Version & features
 
+- `int cadgf_get_abi_version(void);` (ABI level, current `CADGF_ABI_VERSION`)
 - `const char* cadgf_get_version(void);`
 - `unsigned int cadgf_get_feature_flags(void);` (`CADGF_FEATURE_EARCUT`, `CADGF_FEATURE_CLIPPER2`)
 
@@ -51,3 +52,15 @@
 
 - ABI evolution: keep v1 **append-only**; add new functions/types instead of changing existing layouts.
 - If a backend is not compiled in (earcut/Clipper2), related functions may fail and feature flags must be checked at runtime.
+
+## Runtime compatibility example
+
+```c
+if (cadgf_get_abi_version() != CADGF_ABI_VERSION) {
+    /* refuse to load: ABI mismatch */
+}
+unsigned int flags = cadgf_get_feature_flags();
+if ((flags & CADGF_FEATURE_EARCUT) == 0) {
+    /* triangulation via earcut is unavailable */
+}
+```
