@@ -119,6 +119,7 @@ if(BUILD_EDITOR_QT)
   )
   target_include_directories(test_qt_canvas_box_select PRIVATE
     ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
     ${CMAKE_SOURCE_DIR}/core/include
   )
   target_link_libraries(test_qt_canvas_box_select PRIVATE Qt6::Widgets core)
