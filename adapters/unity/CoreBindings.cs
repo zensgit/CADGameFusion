@@ -4,6 +4,8 @@ using System.Runtime.InteropServices;
 namespace CADGameFusion.UnityAdapter {
     public static class CoreBindings {
         const string DLL = "core_c"; // core_c.dll (Win) / libcore_c.dylib (macOS) / libcore_c.so (Linux)
+        // Keep in sync with core/include/core/core_c_api.h (CADGF_ABI_VERSION).
+        public const int CADGF_ABI_VERSION = 1;
 
         [StructLayout(LayoutKind.Sequential)]
         public struct Vec2 { public double x, y; }
