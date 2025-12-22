@@ -47,6 +47,7 @@ public:
     explicit CanvasWidget(QWidget* parent = nullptr);
     void setDocument(core::Document* doc);
     void setSnapSettings(SnapSettings* settings);
+    SnapSettings* snapSettings() const { return snap_settings_; }
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
     QVector<PolylineState> polylineStates() const;
     QPointF snapWorldPosition(const QPointF& worldPos, bool* snapped = nullptr);

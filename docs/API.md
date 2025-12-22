@@ -27,6 +27,8 @@ Document lifecycle
 Entities (demo scope)
 - `cadgf_entity_id cadgf_document_add_polyline(cadgf_document* doc, const cadgf_vec2* pts, int n);`
   - Adds a polyline entity; n points. Returns entity id (>0) or 0 on failure.
+- `int cadgf_document_set_polyline_points(cadgf_document* doc, cadgf_entity_id id, const cadgf_vec2* pts, int n);`
+  - Replaces polyline geometry in-place for an existing entity. Returns 1 on success.
 - `int cadgf_document_remove_entity(cadgf_document* doc, cadgf_entity_id id);`
   - Removes entity by id. Returns 1 on success.
 - `int cadgf_document_alloc_group_id(cadgf_document* doc);`

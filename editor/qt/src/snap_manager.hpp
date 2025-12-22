@@ -26,9 +26,11 @@ public:
     void setSnapEndpoints(bool enabled) { snapEndpoints_ = enabled; }
     void setSnapMidpoints(bool enabled) { snapMidpoints_ = enabled; }
     void setSnapGrid(bool enabled) { snapGrid_ = enabled; }
+    void setGridPixelSpacing(double px) { gridPixelSpacingPx_ = px; }
     bool snapEndpoints() const { return snapEndpoints_; }
     bool snapMidpoints() const { return snapMidpoints_; }
     bool snapGrid() const { return snapGrid_; }
+    double gridPixelSpacing() const { return gridPixelSpacingPx_; }
 
     static double gridStepForScale(double scale, double targetPixelSpacing = 50.0);
 
@@ -41,4 +43,5 @@ private:
     bool snapEndpoints_{true};
     bool snapMidpoints_{true};
     bool snapGrid_{false};
+    double gridPixelSpacingPx_{50.0};
 };

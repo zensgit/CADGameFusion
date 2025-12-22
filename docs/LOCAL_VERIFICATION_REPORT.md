@@ -13,6 +13,7 @@
 - Step 12 snap apply verification: canvas box select + full Qt suite re-run.
 - Step 13 polyline update API verification: core document + C API tests.
 - Step 14 snap move verification: canvas box select + full Qt suite re-run.
+- Step 15 snap settings persistence: snap settings + project roundtrip + full Qt suite.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -62,6 +63,14 @@
 23. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
     - Result: PASS (Step 14 canvas selection test)
 24. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (21/21 tests)
+25. `cmake --build build_vcpkg -j --target test_qt_snap_settings test_qt_project_roundtrip`
+    - Result: PASS (Step 15 build)
+26. `ctest --test-dir build_vcpkg -R qt_snap_settings_run -V`
+    - Result: PASS (Step 15 snap settings test)
+27. `ctest --test-dir build_vcpkg -R qt_project_roundtrip_run -V`
+    - Result: PASS (Step 15 project roundtrip test)
+28. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (21/21 tests)
 
 ## Notes

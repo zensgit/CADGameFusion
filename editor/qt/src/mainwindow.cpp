@@ -87,6 +87,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_selectionModel = new SelectionModel(this);
     m_snapSettings = new SnapSettings(this);
     canvas->setSnapSettings(m_snapSettings);
+    connect(m_snapSettings, &SnapSettings::settingsChanged, this, [canvas](){
+        if (canvas) canvas->update();
+    });
 
     m_snapPanel = new SnapPanel(this);
     addDockWidget(Qt::RightDockWidgetArea, m_snapPanel);

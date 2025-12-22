@@ -157,10 +157,14 @@ SnapManager::SnapResult CanvasWidget::computeSnapAt(const QPointF& worldPos, boo
         snap_manager_.setSnapEndpoints(snap_settings_->snapEndpoints());
         snap_manager_.setSnapMidpoints(snap_settings_->snapMidpoints());
         snap_manager_.setSnapGrid(snap_settings_->snapGrid());
+        snap_manager_.setSnapRadiusPixels(snap_settings_->snapRadiusPixels());
+        snap_manager_.setGridPixelSpacing(snap_settings_->gridPixelSpacing());
     } else {
         snap_manager_.setSnapEndpoints(true);
         snap_manager_.setSnapMidpoints(true);
         snap_manager_.setSnapGrid(false);
+        snap_manager_.setSnapRadiusPixels(12.0);
+        snap_manager_.setGridPixelSpacing(50.0);
     }
     snap_inputs_.clear();
     snap_inputs_.reserve(polylines_.size());
@@ -287,7 +291,8 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
     transform.scale(scale_, scale_);
     
     // 1. Draw Grid
-    const double step = SnapManager::gridStepForScale(scale_);
+    const double targetSpacing = snap_settings_ ? snap_settings_->gridPixelSpacing() : 50.0;
+    const double step = SnapManager::gridStepForScale(scale_, targetSpacing);
     
     pr.save();
     pr.setTransform(transform);
