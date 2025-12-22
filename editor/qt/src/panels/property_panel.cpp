@@ -93,9 +93,8 @@ void PropertyPanel::updateFromSelection(const QList<qulonglong>& entityIds) {
     qDebug() << "PropertyPanel::updateFromSelection - entityIds:" << entityIds;
     m_currentSelection = entityIds;
 
-    // Clean up checkbox before clearing tree to prevent dangling connections
+    // Clean up checkbox before clearing tree to prevent dangling connections.
     if (m_visibleCheck) {
-        m_visibleCheck->disconnect();  // Disconnect all signals
         delete m_visibleCheck;
         m_visibleCheck = nullptr;
     }

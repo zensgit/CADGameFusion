@@ -22,6 +22,7 @@
 - Step 21 canvas update coalescing: document commands + full Qt suite re-run.
 - Step 22 document notify no-op guards: document commands + full Qt suite re-run.
 - Step 23 document notify guard tests: new core test + full Qt suite re-run.
+- Step 24 property panel disconnect fix: property panel + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -133,6 +134,12 @@
 54. `ctest --test-dir build_vcpkg -R core_tests_document_notifications -V`
     - Result: PASS (Step 23 notification test)
 55. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (22/22 tests)
+56. `cmake --build build_vcpkg -j --target test_qt_property_panel`
+    - Result: PASS (Step 24 build)
+57. `ctest --test-dir build_vcpkg -R qt_property_panel_run -V`
+    - Result: PASS (Step 24 property panel test)
+58. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (22/22 tests)
 
 ## Notes
