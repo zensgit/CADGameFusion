@@ -3,10 +3,12 @@
 #include <QtCore/QList>
 
 #include <cassert>
+#include <cmath>
 
 #include "canvas.hpp"
 #include "core/document.hpp"
 #include "core/geometry2d.hpp"
+#include "snap/snap_settings.hpp"
 
 static core::Polyline makeRect(double x0, double y0, double x1, double y1) {
     core::Polyline pl;
@@ -18,6 +20,10 @@ static core::Polyline makeRect(double x0, double y0, double x1, double y1) {
         {x0, y0}
     };
     return pl;
+}
+
+static bool nearPoint(const QPointF& a, const QPointF& b, double eps = 1e-6) {
+    return std::abs(a.x() - b.x()) < eps && std::abs(a.y() - b.y()) < eps;
 }
 
 int main(int argc, char** argv) {
@@ -47,6 +53,27 @@ int main(int argc, char** argv) {
     ids = canvas.selectEntitiesInWorldRect(crossRect, true);
     assert(ids.size() == 1);
     assert(ids.contains(static_cast<qulonglong>(id2)));
+
+    SnapSettings settings;
+    settings.setSnapEndpoints(true);
+    settings.setSnapMidpoints(false);
+    settings.setSnapGrid(false);
+    canvas.setSnapSettings(&settings);
+    bool snapped = false;
+    QPointF snapPos = canvas.snapWorldPosition(QPointF(0.02, 0.01), &snapped);
+    assert(snapped);
+    assert(nearPoint(snapPos, QPointF(0.0, 0.0), 1e-3));
+
+    settings.setSnapEndpoints(false);
+    settings.setSnapMidpoints(false);
+    settings.setSnapGrid(true);
+    const double step = SnapManager::gridStepForScale(1.0);
+    const QPointF gridQuery(step - 2.0, 9.0);
+    const QPointF expected(std::round(gridQuery.x() / step) * step,
+                           std::round(gridQuery.y() / step) * step);
+    snapPos = canvas.snapWorldPosition(gridQuery, &snapped);
+    assert(snapped);
+    assert(nearPoint(snapPos, expected, 1e-3));
 
     assert(doc.set_entity_visible(id1, false));
     canvas.reloadFromDocument();

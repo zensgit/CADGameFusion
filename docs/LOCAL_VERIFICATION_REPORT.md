@@ -10,6 +10,7 @@
 - Qt snap settings test: 1 test passed.
 - Qt selection model test: 1 test passed.
 - Step 11 grid snap verification: snap manager + full Qt suite re-run.
+- Step 12 snap apply verification: canvas box select + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -43,6 +44,12 @@
 15. `ctest --test-dir build_vcpkg -R qt_snap_manager_run -V`
     - Result: PASS (Step 11 grid snap test)
 16. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (21/21 tests)
+17. `cmake --build build_vcpkg -j --target test_qt_canvas_box_select`
+    - Result: PASS (Step 12 build)
+18. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
+    - Result: PASS (Step 12 snap apply test)
+19. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (21/21 tests)
 
 ## Notes
