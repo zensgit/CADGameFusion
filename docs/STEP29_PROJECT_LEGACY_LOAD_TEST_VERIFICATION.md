@@ -7,3 +7,6 @@
 
 ## Result
 - PASS
+
+## Notes
+- CI uses `.github/workflows/qt-tests-trial.yml`; build targets updated to include `test_qt_project_legacy_load`.
