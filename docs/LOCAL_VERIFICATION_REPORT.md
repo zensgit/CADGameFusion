@@ -17,6 +17,7 @@
 - Step 16 snap hysteresis: canvas box select (move drag) + full Qt suite re-run.
 - Step 17 document observer: build + full Qt suite re-run.
 - Step 18 layer panel observer: build + full Qt suite re-run.
+- Step 19 selection auto-sync: document commands + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -100,6 +101,12 @@
 40. `cmake --build build_vcpkg -j`
     - Result: PASS (Step 18 build)
 41. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (21/21 tests)
+42. `cmake --build build_vcpkg -j --target test_qt_document_commands`
+    - Result: PASS (Step 19 build)
+43. `ctest --test-dir build_vcpkg -R qt_document_commands_run -V`
+    - Result: PASS (Step 19 document commands test)
+44. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (21/21 tests)
 
 ## Notes
