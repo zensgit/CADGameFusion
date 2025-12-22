@@ -26,6 +26,7 @@
 - Step 25 canvas mutation audit: full build + full Qt suite re-run.
 - Step 26 project roundtrip metadata coverage: project roundtrip + full Qt suite re-run.
 - Step 27 C API metadata setters coverage: C API test + full Qt suite re-run.
+- Step 28 document change batch coverage: core test + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -160,6 +161,12 @@
     - Result: PASS (Step 27 C API test)
 66. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (22/22 tests)
+67. `cmake --build build_vcpkg -j --target core_tests_document_change_batch`
+    - Result: PASS (Step 28 build)
+68. `ctest --test-dir build_vcpkg -R core_tests_document_change_batch -V`
+    - Result: PASS (Step 28 change batch test)
+69. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (23/23 tests)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.
