@@ -1,7 +1,7 @@
 # CADGameFusion 架构演进设计文档 v0.6.0+
 
-> 版本: 1.2 (Reality-aligned)
-> 日期: 2025-12-19
+> 版本: 1.3 (Reality-aligned)
+> 日期: 2025-12-22
 > 状态: 修订草案（对齐仓库现状）
 
 **重要声明（稳定边界 / Stability Boundary）**：
@@ -77,8 +77,8 @@ CADGameFusion/
 │
 ├── editor/qt/            # Qt 编辑器
 │   ├── src/
-│   │   ├── mainwindow.cpp    # 主窗口（紧耦合 Document）
-│   │   ├── canvas.cpp        # 画布（已有 Snap）
+│   │   ├── mainwindow.cpp    # 主窗口（直接持有 Document）
+│   │   ├── canvas.cpp        # 画布（Document 观察 + Snap）
 │   │   └── ...
 │   └── include/
 │
@@ -91,9 +91,9 @@ CADGameFusion/
 | 问题 | 影响 | 严重度 |
 |------|------|--------|
 | `core::Document` 暴露 STL | **仅当**把 C++ API 当成跨 DLL/跨编译器边界时才危险；当前策略是把稳定边界收敛到 C API | 中 |
-| MainWindow 紧耦合 Document | 难以复用 Document | 中 |
+| MainWindow 直接持有 Document | UI 层耦合存在，但通过观察者降低手动同步成本 | 低 |
 | 文档误导：插件=虚函数 | 与仓库现状不符；当前已有 `plugin_abi_c_v1`（C ABI 函数表） | 中 |
-| Editor 数据模型“双轨制” | **已显著收敛**：编辑/删除/导出均落到 Document；Canvas 仅保留投影缓存与命中测试 | 低 |
+| Editor 数据模型“双轨制” | **已解决**：Document 观察者驱动 Canvas/LayerPanel 自动同步，手动 reload 已移除 | 低 |
 | API 命名通用性 | 已引入 cadgf_ 作为推荐前缀，core_ 仅兼容 | 低 |
 
 ### 2.3 依赖关系图（当前）
@@ -367,9 +367,11 @@ extern "C" CADGF_PLUGIN_EXPORT const cadgf_plugin_api_v1* cadgf_plugin_get_api_v
 现状进展（v0.6.0+）：
 - **编辑/删除/导出均基于 Document**（含插件导出），Canvas 仅作为渲染投影。
 - Canvas 保留命中测试与渲染缓存，选择状态已上收到 MainWindow 层统一维护。
+- **Document 观察者已落地**：Canvas/LayerPanel 订阅变更并自动同步，支持批处理重建。
+- 选择删除时的自动收敛已有测试覆盖（Qt document commands）。
 
 建议方向：
-- **Document 作为 Single Source of Truth**：所有编辑操作先落到 Document（或命令系统），再通知 Canvas 更新渲染投影。
+- **Document 作为 Single Source of Truth**：所有编辑操作先落到 Document（或命令系统），通过观察者更新投影。
 - Canvas 只做：
   - 视口/坐标变换
   - 命中测试（可缓存加速）
@@ -377,7 +379,7 @@ extern "C" CADGF_PLUGIN_EXPORT const cadgf_plugin_api_v1* cadgf_plugin_get_api_v
 
 渐进迁移建议：
 1. 新功能（约束、撤销）全部基于 Document 实现，不再扩展 Canvas 的持久状态。
-2. 将 Canvas 的持久数据逐步替换为从 Document 派生的缓存/投影（允许一段时间“双写”，但要集中到单个同步层）。
+2. 将 Canvas 的持久数据逐步替换为从 Document 派生的缓存/投影（已由 DocumentObserver 统一同步）。
 3. 最终删除 Canvas 的业务持久容器，仅保留渲染缓存。
 
 ## 9. 约束系统增强 (内容同前，略)
