@@ -3,7 +3,7 @@
 ## Summary
 - All requested local builds and tests completed successfully.
 - Core/tools test suite: 11 tests passed.
-- Qt full suite: 21 tests passed.
+- Qt full suite: 22 tests passed.
 - Qt helper test: 1 test passed.
 - Qt box select test: 1 test passed.
 - Qt snap manager test: 1 test passed.
@@ -21,6 +21,7 @@
 - Step 20 property panel observer: property panel + full Qt suite re-run.
 - Step 21 canvas update coalescing: document commands + full Qt suite re-run.
 - Step 22 document notify no-op guards: document commands + full Qt suite re-run.
+- Step 23 document notify guard tests: new core test + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -127,6 +128,12 @@
     - Result: PASS (Step 22 document commands test)
 52. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (21/21 tests)
+53. `cmake --build build_vcpkg -j --target core_tests_document_notifications`
+    - Result: PASS (Step 23 build)
+54. `ctest --test-dir build_vcpkg -R core_tests_document_notifications -V`
+    - Result: PASS (Step 23 notification test)
+55. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (22/22 tests)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.
