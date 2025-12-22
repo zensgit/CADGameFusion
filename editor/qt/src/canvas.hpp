@@ -82,6 +82,8 @@ private:
         QVector<QPointF> points;
     };
 
+    void scheduleUpdate();
+    void scheduleSelectionChanged();
     QPointF worldToScreen(const QPointF& p) const;
     QPointF screenToWorld(const QPointF& p) const;
     SnapManager::SnapResult computeSnapAt(const QPointF& worldPos, bool excludeSelection);
@@ -126,6 +128,8 @@ private:
     QPointF move_anchor_world_;
     QPointF move_last_delta_;
     QVector<MoveEntity> move_entities_;
+    bool update_pending_{false};
+    bool selection_change_pending_{false};
     core::Document* m_doc{nullptr};
     SnapSettings* snap_settings_{nullptr};
 };
