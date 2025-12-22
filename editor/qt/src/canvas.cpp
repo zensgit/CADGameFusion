@@ -152,7 +152,7 @@ QPointF CanvasWidget::screenToWorld(const QPointF& p) const {
     return QPointF((p.x() - pan_.x()) / scale_, (p.y() - pan_.y()) / scale_);
 }
 
-SnapManager::SnapResult CanvasWidget::computeSnapAt(const QPointF& worldPos) {
+SnapManager::SnapResult CanvasWidget::computeSnapAt(const QPointF& worldPos, bool excludeSelection) {
     if (snap_settings_) {
         snap_manager_.setSnapEndpoints(snap_settings_->snapEndpoints());
         snap_manager_.setSnapMidpoints(snap_settings_->snapMidpoints());
@@ -165,6 +165,7 @@ SnapManager::SnapResult CanvasWidget::computeSnapAt(const QPointF& worldPos) {
     snap_inputs_.clear();
     snap_inputs_.reserve(polylines_.size());
     for (const auto& pv : polylines_) {
+        if (excludeSelection && selected_entities_.contains(pv.entityId)) continue;
         const auto* entity = entityFor(pv.entityId);
         const bool visible = entity && isEntityVisible(*entity);
         SnapManager::PolylineView view;
@@ -178,19 +179,29 @@ SnapManager::SnapResult CanvasWidget::computeSnapAt(const QPointF& worldPos) {
 }
 
 QPointF CanvasWidget::snapWorldPosition(const QPointF& worldPos, bool* snapped) {
-    const SnapManager::SnapResult res = computeSnapAt(worldPos);
+    return snapWorldPositionInternal(worldPos, snapped, false);
+}
+
+QPointF CanvasWidget::snapWorldPositionInternal(const QPointF& worldPos, bool* snapped, bool excludeSelection) {
+    const SnapManager::SnapResult res = computeSnapAt(worldPos, excludeSelection);
     if (snapped) *snapped = res.active;
     return res.active ? res.pos : worldPos;
 }
 
-void CanvasWidget::selectAtPoint(const QPointF& mouseWorld) {
-    triSelected_ = false;
-    selected_entities_.clear();
+void CanvasWidget::updatePolylinePoints(EntityId id, const QVector<QPointF>& pts) {
+    for (auto& pv : polylines_) {
+        if (pv.entityId != id) continue;
+        pv.pts = pts;
+        updatePolyCache(pv);
+        update();
+        return;
+    }
+}
 
+EntityId CanvasWidget::hitEntityAtWorld(const QPointF& worldPos) const {
     const double thPx = 12.0;
     const double thWorld = thPx / scale_;
     const double thWorldSq = thWorld * thWorld;
-    EntityId hitId = 0;
 
     for (int pi = polylines_.size() - 1; pi >= 0; --pi) {
         const auto& pv = polylines_[pi];
@@ -198,7 +209,7 @@ void CanvasWidget::selectAtPoint(const QPointF& mouseWorld) {
         if (!entity) continue;
         if (!isEntityVisible(*entity)) continue;
 
-        if (!pv.aabb.adjusted(-thWorld, -thWorld, thWorld, thWorld).contains(mouseWorld)) {
+        if (!pv.aabb.adjusted(-thWorld, -thWorld, thWorld, thWorld).contains(worldPos)) {
             continue;
         }
 
@@ -207,20 +218,27 @@ void CanvasWidget::selectAtPoint(const QPointF& mouseWorld) {
             const QPointF& a = poly[i];
             const QPointF& b = poly[i + 1];
             QPointF ab = b - a;
-            QPointF ap = mouseWorld - a;
+            QPointF ap = worldPos - a;
             double lenSq = ab.x() * ab.x() + ab.y() * ab.y();
             double t = (lenSq < 1e-9) ? 0.0 : qBound(0.0, (ab.x() * ap.x() + ab.y() * ap.y()) / lenSq, 1.0);
             QPointF h = a + t * ab;
-            double distSq = (h.x() - mouseWorld.x()) * (h.x() - mouseWorld.x()) +
-                            (h.y() - mouseWorld.y()) * (h.y() - mouseWorld.y());
+            double distSq = (h.x() - worldPos.x()) * (h.x() - worldPos.x()) +
+                            (h.y() - worldPos.y()) * (h.y() - worldPos.y());
 
             if (distSq < thWorldSq) {
-                hitId = pv.entityId;
-                break;
+                return pv.entityId;
             }
         }
-        if (hitId != 0) break;
     }
+
+    return 0;
+}
+
+void CanvasWidget::selectAtPoint(const QPointF& mouseWorld) {
+    triSelected_ = false;
+    selected_entities_.clear();
+
+    EntityId hitId = hitEntityAtWorld(mouseWorld);
 
     if (hitId != 0) {
         selected_entities_.insert(hitId);
@@ -228,6 +246,10 @@ void CanvasWidget::selectAtPoint(const QPointF& mouseWorld) {
         emit selectionChanged({static_cast<qulonglong>(hitId)});
         return;
     }
+
+    const double thPx = 12.0;
+    const double thWorld = thPx / scale_;
+    const double thWorldSq = thWorld * thWorld;
 
     if (!triVerts_.isEmpty() && !triIndices_.isEmpty()) {
         auto testEdge = [&](const QPointF& u, const QPointF& v, const QPointF& p){
@@ -401,6 +423,31 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
     }
 
     if (e->button() == Qt::LeftButton && !(e->modifiers() & (Qt::AltModifier | Qt::ShiftModifier))) {
+        if (!selected_entities_.isEmpty()) {
+            const QPointF mouseWorld = screenToWorld(mouseScreen);
+            const EntityId hitId = hitEntityAtWorld(mouseWorld);
+            if (hitId != 0 && selected_entities_.contains(hitId)) {
+                move_active_ = true;
+                move_dragging_ = false;
+                move_start_screen_ = mouseScreen;
+                move_start_world_ = mouseWorld;
+                move_anchor_world_ = mouseWorld;
+                move_last_delta_ = QPointF(0, 0);
+                move_entities_.clear();
+                for (const auto& pv : polylines_) {
+                    if (!selected_entities_.contains(pv.entityId)) continue;
+                    MoveEntity me;
+                    me.id = pv.entityId;
+                    me.points = pv.pts;
+                    move_entities_.append(me);
+                }
+                selection_active_ = false;
+                selection_dragging_ = false;
+                m_currentSnap.active = false;
+                update();
+                return;
+            }
+        }
         selection_active_ = true;
         selection_dragging_ = false;
         selection_start_screen_ = mouseScreen;
@@ -417,6 +464,48 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
         pan_ += QPointF(d.x(), d.y());
         lastPos_ = e->pos();
         update();
+    } else if (move_active_ && (e->buttons() & Qt::LeftButton)) {
+        const QPointF mouseScreen = e->position();
+        const QPointF deltaScreen = mouseScreen - move_start_screen_;
+        if (!move_dragging_) {
+            if (std::abs(deltaScreen.x()) > 4.0 || std::abs(deltaScreen.y()) > 4.0) {
+                move_dragging_ = true;
+                move_anchor_world_ = snapWorldPositionInternal(move_start_world_, nullptr, true);
+            } else {
+                return;
+            }
+        }
+        const QPointF mouseWorld = screenToWorld(mouseScreen);
+        SnapManager::SnapResult res = computeSnapAt(mouseWorld, true);
+        const QPointF targetWorld = res.active ? res.pos : mouseWorld;
+        const QPointF deltaWorld = targetWorld - move_anchor_world_;
+
+        if (deltaWorld != move_last_delta_) {
+            move_last_delta_ = deltaWorld;
+            if (m_doc) {
+                for (const auto& me : move_entities_) {
+                    QVector<QPointF> moved;
+                    moved.reserve(me.points.size());
+                    for (const auto& pt : me.points) {
+                        moved.append(pt + deltaWorld);
+                    }
+                    core::Polyline pl;
+                    pl.points.reserve(static_cast<size_t>(moved.size()));
+                    for (const auto& pt : moved) {
+                        pl.points.push_back(core::Vec2{pt.x(), pt.y()});
+                    }
+                    m_doc->set_polyline_points(me.id, pl);
+                    updatePolylinePoints(me.id, moved);
+                }
+            }
+        }
+
+        bool changed = (res.active != m_currentSnap.active);
+        if (res.active) {
+            if (res.pos != m_currentSnap.pos || res.type != m_currentSnap.type) changed = true;
+        }
+        m_currentSnap = res;
+        if (changed) update();
     } else if (selection_active_ && (e->buttons() & Qt::LeftButton) &&
                !(e->modifiers() & (Qt::AltModifier | Qt::ShiftModifier))) {
         selection_current_screen_ = e->position();
@@ -433,7 +522,7 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
         // Snap logic
         QPointF mouseScreen = e->position();
         QPointF mouseWorld = screenToWorld(mouseScreen);
-        SnapManager::SnapResult res = computeSnapAt(mouseWorld);
+        SnapManager::SnapResult res = computeSnapAt(mouseWorld, false);
         
         bool changed = (res.active != m_currentSnap.active);
         if (res.active) {
@@ -446,6 +535,32 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
 }
 
 void CanvasWidget::mouseReleaseEvent(QMouseEvent* e) {
+    if (e->button() == Qt::LeftButton && move_active_) {
+        if (move_dragging_) {
+            const QPointF mouseWorld = screenToWorld(e->position());
+            SnapManager::SnapResult res = computeSnapAt(mouseWorld, true);
+            const QPointF targetWorld = res.active ? res.pos : mouseWorld;
+            const QPointF deltaWorld = targetWorld - move_anchor_world_;
+            const bool hasDelta = std::abs(deltaWorld.x()) > 1e-9 || std::abs(deltaWorld.y()) > 1e-9;
+            if (!move_entities_.isEmpty() && hasDelta) {
+                QList<qulonglong> ids;
+                QVector<QVector<QPointF>> beforePoints;
+                ids.reserve(move_entities_.size());
+                beforePoints.reserve(move_entities_.size());
+                for (const auto& me : move_entities_) {
+                    ids.append(static_cast<qulonglong>(me.id));
+                    beforePoints.append(me.points);
+                }
+                emit moveEntitiesRequested(ids, beforePoints, deltaWorld);
+            }
+        }
+        move_active_ = false;
+        move_dragging_ = false;
+        move_entities_.clear();
+        m_currentSnap.active = false;
+        update();
+        return;
+    }
     if (e->button() == Qt::LeftButton && selection_active_) {
         selection_current_screen_ = e->position();
         if (selection_dragging_) {

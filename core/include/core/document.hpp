@@ -54,6 +54,7 @@ public:
     bool set_layer_color(int id, uint32_t color);
 
     EntityId add_polyline(const Polyline& pl, const std::string& name = "", int layerId = 0);
+    bool set_polyline_points(EntityId id, const Polyline& pl);
     bool     remove_entity(EntityId id);
     void     clear();
 

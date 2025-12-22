@@ -206,6 +206,17 @@ CORE_API int core_document_get_polyline_points(const core_document* doc, core_en
     return 1;
 }
 
+CORE_API int core_document_set_polyline_points(core_document* doc, core_entity_id id,
+                                               const core_vec2* pts, int n) {
+    if (!doc || !pts || n <= 1) return 0;
+    Polyline pl;
+    pl.points.reserve(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        pl.points.push_back(Vec2{pts[i].x, pts[i].y});
+    }
+    return doc->impl.set_polyline_points(static_cast<EntityId>(id), pl) ? 1 : 0;
+}
+
 CORE_API int core_document_set_entity_visible(core_document* doc, core_entity_id id, int visible) {
     if (!doc) return 0;
     return doc->impl.set_entity_visible(static_cast<EntityId>(id), visible != 0) ? 1 : 0;
@@ -466,6 +477,11 @@ CADGF_API int cadgf_document_get_polyline_points(const cadgf_document* doc, cadg
                                                  cadgf_vec2* out_pts, int out_pts_capacity,
                                                  int* out_required_points) {
     return core_document_get_polyline_points(doc, id, out_pts, out_pts_capacity, out_required_points);
+}
+
+CADGF_API int cadgf_document_set_polyline_points(cadgf_document* doc, cadgf_entity_id id,
+                                                 const cadgf_vec2* pts, int n) {
+    return core_document_set_polyline_points(doc, id, pts, n);
 }
 
 CADGF_API int cadgf_document_set_entity_visible(cadgf_document* doc, cadgf_entity_id id, int visible) {

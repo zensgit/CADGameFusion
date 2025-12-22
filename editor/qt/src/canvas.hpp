@@ -50,6 +50,7 @@ public:
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
     QVector<PolylineState> polylineStates() const;
     QPointF snapWorldPosition(const QPointF& worldPos, bool* snapped = nullptr);
+    void updatePolylinePoints(EntityId id, const QVector<QPointF>& pts);
 
     void clear();
     void addTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);
@@ -64,6 +65,9 @@ public:
 signals:
     void selectionChanged(const QList<qulonglong>& entityIds);
     void deleteRequested(bool allSimilar);
+    void moveEntitiesRequested(const QList<qulonglong>& entityIds,
+                               const QVector<QVector<QPointF>>& beforePoints,
+                               const QPointF& delta);
 
 protected:
     void paintEvent(QPaintEvent*) override;
@@ -76,12 +80,19 @@ protected:
     void resizeEvent(QResizeEvent*) override;
 
 private:
+    struct MoveEntity {
+        EntityId id{0};
+        QVector<QPointF> points;
+    };
+
     QPointF worldToScreen(const QPointF& p) const;
     QPointF screenToWorld(const QPointF& p) const;
-    SnapManager::SnapResult computeSnapAt(const QPointF& worldPos);
+    SnapManager::SnapResult computeSnapAt(const QPointF& worldPos, bool excludeSelection);
+    QPointF snapWorldPositionInternal(const QPointF& worldPos, bool* snapped, bool excludeSelection);
     void updatePolyCache(PolyVis& pv);
     void selectGroupAtWorld(const QPointF& worldPos);  // Alt+Click to select entire group
     void selectAtPoint(const QPointF& worldPos);
+    EntityId hitEntityAtWorld(const QPointF& worldPos) const;
     const core::Entity* entityFor(EntityId id) const;
     const core::Layer* layerFor(int layerId) const;
     bool isEntityVisible(const core::Entity& entity) const;
@@ -103,6 +114,13 @@ private:
     bool selection_dragging_ { false };
     QPointF selection_start_screen_;
     QPointF selection_current_screen_;
+    bool move_active_{false};
+    bool move_dragging_{false};
+    QPointF move_start_screen_;
+    QPointF move_start_world_;
+    QPointF move_anchor_world_;
+    QPointF move_last_delta_;
+    QVector<MoveEntity> move_entities_;
     core::Document* m_doc{nullptr};
     SnapSettings* snap_settings_{nullptr};
 };
