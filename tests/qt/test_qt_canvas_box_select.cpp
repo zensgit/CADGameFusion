@@ -1,6 +1,7 @@
 #include <QtWidgets/QApplication>
 #include <QtCore/QByteArray>
 #include <QtCore/QList>
+#include <QtGui/QMouseEvent>
 
 #include <cassert>
 #include <cmath>
@@ -26,12 +27,32 @@ static bool nearPoint(const QPointF& a, const QPointF& b, double eps = 1e-6) {
     return std::abs(a.x() - b.x()) < eps && std::abs(a.y() - b.y()) < eps;
 }
 
+static QMouseEvent makeMouseEvent(QEvent::Type type,
+                                  const QPointF& pos,
+                                  Qt::MouseButton button,
+                                  Qt::MouseButtons buttons,
+                                  Qt::KeyboardModifiers modifiers) {
+    return QMouseEvent(type, pos, pos, pos, button, buttons, modifiers);
+}
+
+struct TestCanvas : public CanvasWidget {
+    using CanvasWidget::mousePressEvent;
+    using CanvasWidget::mouseMoveEvent;
+    using CanvasWidget::mouseReleaseEvent;
+};
+
+static const core::Polyline* polylineFor(const core::Document& doc, core::EntityId id) {
+    const auto* e = doc.get_entity(id);
+    if (!e || !e->payload) return nullptr;
+    return static_cast<const core::Polyline*>(e->payload.get());
+}
+
 int main(int argc, char** argv) {
     qputenv("QT_QPA_PLATFORM", QByteArray("offscreen"));
     QApplication app(argc, argv);
 
     core::Document doc;
-    CanvasWidget canvas;
+    TestCanvas canvas;
     canvas.setDocument(&doc);
 
     auto id1 = doc.add_polyline(makeRect(0, 0, 1, 1), "one");
@@ -74,6 +95,48 @@ int main(int argc, char** argv) {
     snapPos = canvas.snapWorldPosition(gridQuery, &snapped);
     assert(snapped);
     assert(nearPoint(snapPos, expected, 1e-3));
+
+    auto moveId = doc.add_polyline(makeRect(0, 0, 1, 1), "move");
+    auto snapId = doc.add_polyline(makeRect(10, 0, 11, 1), "snap");
+    assert(moveId > 0);
+    assert(snapId > 0);
+
+    canvas.reloadFromDocument();
+    canvas.setSelection({static_cast<qulonglong>(moveId)});
+
+    settings.setSnapEndpoints(true);
+    settings.setSnapMidpoints(false);
+    settings.setSnapGrid(false);
+    settings.setSnapRadiusPixels(10.0);
+
+    QMouseEvent press = makeMouseEvent(QEvent::MouseButtonPress, QPointF(0.0, 0.0),
+                                       Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    canvas.mousePressEvent(&press);
+
+    QMouseEvent move1 = makeMouseEvent(QEvent::MouseMove, QPointF(9.5, 0.0),
+                                       Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    canvas.mouseMoveEvent(&move1);
+    const auto* moved1 = polylineFor(doc, moveId);
+    assert(moved1);
+    assert(std::abs(moved1->points[0].x - 10.0) < 1e-6);
+
+    QMouseEvent move2 = makeMouseEvent(QEvent::MouseMove, QPointF(20.0, 0.0),
+                                       Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    canvas.mouseMoveEvent(&move2);
+    const auto* moved2 = polylineFor(doc, moveId);
+    assert(moved2);
+    assert(std::abs(moved2->points[0].x - 10.0) < 1e-6);
+
+    QMouseEvent move3 = makeMouseEvent(QEvent::MouseMove, QPointF(30.0, 0.0),
+                                       Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+    canvas.mouseMoveEvent(&move3);
+    const auto* moved3 = polylineFor(doc, moveId);
+    assert(moved3);
+    assert(std::abs(moved3->points[0].x - 30.0) < 1e-6);
+
+    QMouseEvent release = makeMouseEvent(QEvent::MouseButtonRelease, QPointF(30.0, 0.0),
+                                         Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    canvas.mouseReleaseEvent(&release);
 
     assert(doc.set_entity_visible(id1, false));
     canvas.reloadFromDocument();
