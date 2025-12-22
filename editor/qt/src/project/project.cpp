@@ -111,6 +111,7 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
     m_meta.modifiedAt = meta.value("modifiedAt").toString();
 
     // Reset document only after successful parse
+    core::DocumentChangeGuard guard(doc);
     doc.clear();
 
     // Check version for format compatibility
@@ -221,7 +222,6 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
     // PR5: Project Document state to Canvas
     if (canvas) {
         canvas->setDocument(&doc);
-        canvas->reloadFromDocument();
     }
 
     if (canvas) {
