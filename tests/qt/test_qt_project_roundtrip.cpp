@@ -50,6 +50,12 @@ int main(int argc, char** argv) {
     SnapSettings snap;
     canvas.setSnapSettings(&snap);
     canvas.setDocument(&doc);
+    auto* defaultLayer = doc.get_layer(0);
+    assert(defaultLayer);
+    defaultLayer->name = "Default";
+    doc.set_layer_color(0, 0x445566u);
+    doc.set_layer_visible(0, false);
+    doc.set_layer_locked(0, true);
     int layerId = doc.add_layer("Layer1", 0x112233u);
     doc.set_layer_visible(layerId, false);
     doc.set_layer_locked(layerId, true);
@@ -65,6 +71,10 @@ int main(int argc, char** argv) {
     doc.set_entity_group_id(id1, groupId);
     doc.set_entity_visible(id1, false);
     doc.set_entity_color(id1, 0xABCDEFu);
+    int groupId2 = doc.alloc_group_id();
+    doc.set_entity_group_id(id2, groupId2);
+    doc.set_entity_visible(id2, true);
+    doc.set_entity_color(id2, 0x102030u);
 
     snap.setSnapEndpoints(false);
     snap.setSnapMidpoints(true);
@@ -89,7 +99,10 @@ int main(int argc, char** argv) {
 
     assert(!loaded.layers().empty());
     assert(loaded.layers()[0].id == 0);
-    assert(loaded.layers()[0].name == "0");
+    assert(loaded.layers()[0].name == "Default");
+    assert(loaded.layers()[0].color == 0x445566u);
+    assert(!loaded.layers()[0].visible);
+    assert(loaded.layers()[0].locked);
 
     int loadedLayerId = findLayerIdByName(loaded, "Layer1");
     assert(loadedLayerId > 0);
@@ -110,7 +123,8 @@ int main(int argc, char** argv) {
     assert(e2);
     assert(e2->layerId == 0);
     assert(e2->visible);
-    assert(e2->groupId == -1);
+    assert(e2->groupId == groupId2);
+    assert(e2->color == 0x102030u);
 
     assert(!snap2.snapEndpoints());
     assert(snap2.snapMidpoints());
