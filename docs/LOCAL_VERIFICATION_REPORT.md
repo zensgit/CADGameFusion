@@ -11,6 +11,8 @@
 - Qt selection model test: 1 test passed.
 - Step 11 grid snap verification: snap manager + full Qt suite re-run.
 - Step 12 snap apply verification: canvas box select + full Qt suite re-run.
+- Step 13 polyline update API verification: core document + C API tests.
+- Step 14 snap move verification: canvas box select + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -50,6 +52,16 @@
 18. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
     - Result: PASS (Step 12 snap apply test)
 19. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (21/21 tests)
+20. `cmake --build build_vcpkg -j --target core_tests_document_entities core_tests_c_api_document_query test_qt_canvas_box_select`
+    - Result: PASS (Step 13/14 build)
+21. `ctest --test-dir build_vcpkg -R core_tests_document_entities -V`
+    - Result: PASS (Step 13 C++ Document test)
+22. `ctest --test-dir build_vcpkg -R core_tests_c_api_document_query -V`
+    - Result: PASS (Step 13 C API Document test)
+23. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
+    - Result: PASS (Step 14 canvas selection test)
+24. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (21/21 tests)
 
 ## Notes

@@ -101,6 +101,61 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(canvas, &CanvasWidget::selectionChanged, this, [this](const QList<qulonglong>& entityIds){
         if (m_selectionModel) m_selectionModel->setSelection(entityIds);
     });
+    connect(canvas, &CanvasWidget::moveEntitiesRequested, this, [this, canvas](const QList<qulonglong>& entityIds,
+                                                                              const QVector<QVector<QPointF>>& beforePoints,
+                                                                              const QPointF& delta){
+        if (!canvas || entityIds.isEmpty() || beforePoints.size() != entityIds.size()) return;
+        struct MoveEntitiesCommand : Command {
+            core::Document* doc;
+            CanvasWidget* canvas;
+            QVector<EntityId> ids;
+            QVector<QVector<QPointF>> before;
+            QPointF delta;
+            MoveEntitiesCommand(core::Document* d, CanvasWidget* c,
+                                const QList<qulonglong>& inIds,
+                                const QVector<QVector<QPointF>>& inBefore,
+                                const QPointF& dlt)
+                : doc(d), canvas(c), before(inBefore), delta(dlt) {
+                ids.reserve(inIds.size());
+                for (qulonglong id : inIds) {
+                    ids.push_back(static_cast<EntityId>(id));
+                }
+            }
+            void applyPoints(EntityId id, const QVector<QPointF>& pts) {
+                if (!doc) return;
+                core::Polyline pl;
+                pl.points.reserve(static_cast<size_t>(pts.size()));
+                for (const auto& pt : pts) {
+                    pl.points.push_back(core::Vec2{pt.x(), pt.y()});
+                }
+                doc->set_polyline_points(id, pl);
+                if (canvas) canvas->updatePolylinePoints(id, pts);
+            }
+            void execute() override {
+                if (before.size() != ids.size()) return;
+                for (int i = 0; i < ids.size(); ++i) {
+                    QVector<QPointF> moved;
+                    moved.reserve(before[i].size());
+                    for (const auto& pt : before[i]) {
+                        moved.append(pt + delta);
+                    }
+                    applyPoints(ids[i], moved);
+                }
+                if (canvas) canvas->update();
+            }
+            void undo() override {
+                if (before.size() != ids.size()) return;
+                for (int i = 0; i < ids.size(); ++i) {
+                    applyPoints(ids[i], before[i]);
+                }
+                if (canvas) canvas->update();
+            }
+            QString name() const override { return "Move Entities"; }
+        };
+        auto cmd = std::make_unique<MoveEntitiesCommand>(&m_document, canvas, entityIds, beforePoints, delta);
+        m_cmdMgr->push(std::move(cmd));
+        markDirty();
+    });
     connect(m_selectionModel, &SelectionModel::selectionChanged, this, [this, prop, canvas](const QList<qulonglong>& entityIds){
         prop->updateFromSelection(entityIds);
         // Compute visibility state for current selection from Document

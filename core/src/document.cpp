@@ -64,6 +64,15 @@ EntityId Document::add_polyline(const Polyline& pl, const std::string& name, int
     return e.id;
 }
 
+bool Document::set_polyline_points(EntityId id, const Polyline& pl) {
+    auto* e = get_entity(id);
+    if (!e || e->type != EntityType::Polyline || !e->payload) return false;
+    auto* existing = static_cast<Polyline*>(e->payload.get());
+    if (!existing) return false;
+    *existing = pl;
+    return true;
+}
+
 bool Document::remove_entity(EntityId id) {
     for (auto it = entities_.begin(); it != entities_.end(); ++it) {
         if (it->id == id) { entities_.erase(it); return true; }

@@ -126,6 +126,22 @@ int main() {
     assert(out_pts[1].x == 1.0 && out_pts[1].y == 0.0);
     assert(out_pts[2].x == 1.0 && out_pts[2].y == 1.0);
 
+    cadgf_vec2 new_pts[3] = {{2, 2}, {3, 2}, {3, 3}};
+    ok = cadgf_document_set_polyline_points(doc, eid, new_pts, 3);
+    assert(ok == CADGF_SUCCESS);
+
+    int required_points3 = 0;
+    ok = cadgf_document_get_polyline_points(doc, eid, nullptr, 0, &required_points3);
+    assert(ok == CADGF_SUCCESS);
+    assert(required_points3 == 3);
+    std::vector<cadgf_vec2> out_pts2(static_cast<size_t>(required_points3));
+    int required_points4 = 0;
+    ok = cadgf_document_get_polyline_points(doc, eid, out_pts2.data(), static_cast<int>(out_pts2.size()), &required_points4);
+    assert(ok == CADGF_SUCCESS);
+    assert(out_pts2[0].x == 2.0 && out_pts2[0].y == 2.0);
+    assert(out_pts2[1].x == 3.0 && out_pts2[1].y == 2.0);
+    assert(out_pts2[2].x == 3.0 && out_pts2[2].y == 3.0);
+
     cadgf_document_destroy(doc);
     return 0;
 }

@@ -141,6 +141,9 @@ CORE_API int core_document_get_entity_name(const core_document* doc, core_entity
 CORE_API int core_document_get_polyline_points(const core_document* doc, core_entity_id id,
                                                core_vec2* out_pts, int out_pts_capacity,
                                                int* out_required_points);
+// Updates a polyline's points; returns 1 on success, 0 on failure.
+CORE_API int core_document_set_polyline_points(core_document* doc, core_entity_id id,
+                                               const core_vec2* pts, int n);
 
 // Entity property setters (PR4: single source of truth)
 CORE_API int core_document_set_entity_visible(core_document* doc, core_entity_id id, int visible);
@@ -173,6 +176,8 @@ CADGF_API int cadgf_document_get_entity_name(const cadgf_document* doc, cadgf_en
 CADGF_API int cadgf_document_get_polyline_points(const cadgf_document* doc, cadgf_entity_id id,
                                                  cadgf_vec2* out_pts, int out_pts_capacity,
                                                  int* out_required_points);
+CADGF_API int cadgf_document_set_polyline_points(cadgf_document* doc, cadgf_entity_id id,
+                                                 const cadgf_vec2* pts, int n);
 
 // Entity property setters (PR4: single source of truth)
 CADGF_API int cadgf_document_set_entity_visible(cadgf_document* doc, cadgf_entity_id id, int visible);

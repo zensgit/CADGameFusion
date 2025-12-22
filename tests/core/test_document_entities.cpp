@@ -49,6 +49,20 @@ int main() {
     assert(e2->groupId == -1);
     assert(e2->color == 0);
 
+    core::Polyline moved;
+    moved.points = {{2, 2}, {3, 2}, {3, 3}, {2, 2}};
+    ok = doc.set_polyline_points(id2, moved);
+    assert(ok);
+    const auto* e2_moved = doc.get_entity(id2);
+    assert(e2_moved && e2_moved->payload);
+    const auto* moved_pl = static_cast<const core::Polyline*>(e2_moved->payload.get());
+    assert(moved_pl);
+    assert(moved_pl->points.size() == moved.points.size());
+    assert(moved_pl->points[0].x == 2.0 && moved_pl->points[0].y == 2.0);
+    assert(moved_pl->points[1].x == 3.0 && moved_pl->points[1].y == 2.0);
+    assert(moved_pl->points[2].x == 3.0 && moved_pl->points[2].y == 3.0);
+    assert(moved_pl->points[3].x == 2.0 && moved_pl->points[3].y == 2.0);
+
     auto id3 = doc.add_polyline(pl, "third");
     assert(id3 == id2 + 1);
     assert(doc.entities().size() == 2);
