@@ -70,6 +70,11 @@ if(TARGET core)
     target_include_directories(core_tests_document_entities PRIVATE ../../core/include)
     target_link_libraries(core_tests_document_entities PRIVATE core)
 
+    # Document notification guard tests
+    add_executable(core_tests_document_notifications test_document_notifications.cpp)
+    target_include_directories(core_tests_document_notifications PRIVATE ../../core/include)
+    target_link_libraries(core_tests_document_notifications PRIVATE core)
+
     # Document unit scale settings smoke test
     add_executable(core_tests_document_unit_scale test_document_unit_scale.cpp)
     target_include_directories(core_tests_document_unit_scale PRIVATE ../../core/include)
@@ -78,6 +83,7 @@ if(TARGET core)
     cadgf_register_core_test(core_tests_c_api_document_query)
     cadgf_register_core_test(core_tests_document_group_id)
     cadgf_register_core_test(core_tests_document_entities)
+    cadgf_register_core_test(core_tests_document_notifications)
     cadgf_register_core_test(core_tests_document_unit_scale)
 else()
     message(WARNING "Core library not found, skipping complex tests")
