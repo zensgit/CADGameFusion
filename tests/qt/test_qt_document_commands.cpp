@@ -1,6 +1,7 @@
 #include <QtWidgets/QApplication>
 #include <QtCore/QByteArray>
 #include <QtCore/QList>
+#include <QtCore/QObject>
 #include <QtCore/QSet>
 #include <QtCore/QVector>
 
@@ -281,6 +282,16 @@ int main(int argc, char** argv) {
     assert(doc.get_entity(id1)->visible);
     assert(doc.get_entity(id2)->visible);
 
+    QList<qulonglong> lastSelection;
+    int selectionSignals = 0;
+    QObject::connect(&canvas, &CanvasWidget::selectionChanged,
+                     [&lastSelection, &selectionSignals](const QList<qulonglong>& ids){
+                         lastSelection = ids;
+                         ++selectionSignals;
+                     });
+    canvas.setSelection({static_cast<qulonglong>(id1), static_cast<qulonglong>(id2)});
+    assert(selectionSignals == 0);
+
     QVector<core::EntityId> removeIds;
     removeIds.push_back(id1);
     removeIds.push_back(id3);
@@ -292,6 +303,10 @@ int main(int argc, char** argv) {
     states = canvas.polylineStates();
     assert(states.size() == 1);
     assert(states[0].entityId == id2);
+    assert(selectionSignals >= 1);
+    assert(!lastSelection.contains(static_cast<qulonglong>(id1)));
+    assert(lastSelection.contains(static_cast<qulonglong>(id2)));
+    assert(lastSelection.size() == 1);
 
     removeStack.undo();
     assert(doc.entities().size() == 3);
