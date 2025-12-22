@@ -90,6 +90,7 @@ private:
     QPointF screenToWorld(const QPointF& p) const;
     SnapManager::SnapResult computeSnapAt(const QPointF& worldPos, bool excludeSelection);
     QPointF snapWorldPositionInternal(const QPointF& worldPos, bool* snapped, bool excludeSelection);
+    QPointF moveTargetWorldWithSnap(const QPointF& mouseWorld, SnapManager::SnapResult* outSnap);
     void updatePolyCache(PolyVis& pv);
     void selectGroupAtWorld(const QPointF& worldPos);  // Alt+Click to select entire group
     void selectAtPoint(const QPointF& worldPos);
@@ -117,6 +118,9 @@ private:
     QPointF selection_current_screen_;
     bool move_active_{false};
     bool move_dragging_{false};
+    bool move_snap_locked_{false};
+    QPointF move_snap_locked_pos_;
+    SnapManager::SnapType move_snap_locked_type_{SnapManager::SnapType::None};
     QPointF move_start_screen_;
     QPointF move_start_world_;
     QPointF move_anchor_world_;

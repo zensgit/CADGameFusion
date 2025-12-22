@@ -182,6 +182,42 @@ SnapManager::SnapResult CanvasWidget::computeSnapAt(const QPointF& worldPos, boo
     return snap_manager_.findSnap(snap_inputs_, scale_, worldPos);
 }
 
+QPointF CanvasWidget::moveTargetWorldWithSnap(const QPointF& mouseWorld, SnapManager::SnapResult* outSnap) {
+    const double snapPx = snap_settings_ ? snap_settings_->snapRadiusPixels() : 12.0;
+    const double scale = (scale_ <= 0.0) ? 1.0 : scale_;
+    const double releaseWorld = (snapPx * 1.5) / scale;
+    const double releaseWorldSq = releaseWorld * releaseWorld;
+
+    SnapManager::SnapResult res = computeSnapAt(mouseWorld, true);
+
+    if (move_snap_locked_) {
+        const double dx = mouseWorld.x() - move_snap_locked_pos_.x();
+        const double dy = mouseWorld.y() - move_snap_locked_pos_.y();
+        const double dSq = dx * dx + dy * dy;
+        if (dSq > releaseWorldSq) {
+            move_snap_locked_ = false;
+        }
+    }
+
+    if (!move_snap_locked_ && res.active) {
+        move_snap_locked_ = true;
+        move_snap_locked_pos_ = res.pos;
+        move_snap_locked_type_ = res.type;
+    }
+
+    if (move_snap_locked_) {
+        SnapManager::SnapResult locked;
+        locked.active = true;
+        locked.pos = move_snap_locked_pos_;
+        locked.type = move_snap_locked_type_;
+        if (outSnap) *outSnap = locked;
+        return move_snap_locked_pos_;
+    }
+
+    if (outSnap) *outSnap = res;
+    return res.active ? res.pos : mouseWorld;
+}
+
 QPointF CanvasWidget::snapWorldPosition(const QPointF& worldPos, bool* snapped) {
     return snapWorldPositionInternal(worldPos, snapped, false);
 }
@@ -434,6 +470,9 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
             if (hitId != 0 && selected_entities_.contains(hitId)) {
                 move_active_ = true;
                 move_dragging_ = false;
+                move_snap_locked_ = false;
+                move_snap_locked_pos_ = QPointF();
+                move_snap_locked_type_ = SnapManager::SnapType::None;
                 move_start_screen_ = mouseScreen;
                 move_start_world_ = mouseWorld;
                 move_anchor_world_ = mouseWorld;
@@ -481,8 +520,8 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
             }
         }
         const QPointF mouseWorld = screenToWorld(mouseScreen);
-        SnapManager::SnapResult res = computeSnapAt(mouseWorld, true);
-        const QPointF targetWorld = res.active ? res.pos : mouseWorld;
+        SnapManager::SnapResult res;
+        const QPointF targetWorld = moveTargetWorldWithSnap(mouseWorld, &res);
         const QPointF deltaWorld = targetWorld - move_anchor_world_;
 
         if (deltaWorld != move_last_delta_) {
@@ -543,8 +582,8 @@ void CanvasWidget::mouseReleaseEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton && move_active_) {
         if (move_dragging_) {
             const QPointF mouseWorld = screenToWorld(e->position());
-            SnapManager::SnapResult res = computeSnapAt(mouseWorld, true);
-            const QPointF targetWorld = res.active ? res.pos : mouseWorld;
+            SnapManager::SnapResult res;
+            const QPointF targetWorld = moveTargetWorldWithSnap(mouseWorld, &res);
             const QPointF deltaWorld = targetWorld - move_anchor_world_;
             const bool hasDelta = std::abs(deltaWorld.x()) > 1e-9 || std::abs(deltaWorld.y()) > 1e-9;
             if (!move_entities_.isEmpty() && hasDelta) {
@@ -561,6 +600,7 @@ void CanvasWidget::mouseReleaseEvent(QMouseEvent* e) {
         }
         move_active_ = false;
         move_dragging_ = false;
+        move_snap_locked_ = false;
         move_entities_.clear();
         m_currentSnap.active = false;
         update();
