@@ -49,9 +49,20 @@ int main() {
     res = manager.findSnap(polylines, 100.0, QPointF(0.55, 0.02));
     assert(!res.active);
 
+    manager.setSnapGrid(true);
+    const QPointF gridQuery(0.46, 0.52);
+    const double gridStep = SnapManager::gridStepForScale(100.0);
+    const QPointF expectedGrid(std::round(gridQuery.x() / gridStep) * gridStep,
+                               std::round(gridQuery.y() / gridStep) * gridStep);
+    res = manager.findSnap(polylines, 100.0, gridQuery);
+    assert(res.active);
+    assert(res.type == SnapManager::SnapType::Grid);
+    assert(nearPoint(res.pos, expectedGrid, 1e-3));
+
     polylines[0].visible = false;
     manager.setSnapEndpoints(true);
     manager.setSnapMidpoints(true);
+    manager.setSnapGrid(false);
     res = manager.findSnap(polylines, 100.0, QPointF(0.02, 0.01));
     assert(!res.active);
 

@@ -7,7 +7,7 @@
 
 class SnapManager {
 public:
-    enum class SnapType { None, Endpoint, Midpoint };
+    enum class SnapType { None, Endpoint, Midpoint, Grid };
     struct SnapResult {
         bool active{false};
         QPointF pos;
@@ -29,6 +29,8 @@ public:
     bool snapEndpoints() const { return snapEndpoints_; }
     bool snapMidpoints() const { return snapMidpoints_; }
     bool snapGrid() const { return snapGrid_; }
+
+    static double gridStepForScale(double scale, double targetPixelSpacing = 50.0);
 
     SnapResult findSnap(const QVector<PolylineView>& polylines,
                         double scale,

@@ -14,7 +14,7 @@ SnapPanel::SnapPanel(QWidget* parent) : QDockWidget(parent) {
 
     endpoints_ = new QCheckBox("Endpoints", w);
     midpoints_ = new QCheckBox("Midpoints", w);
-    grid_ = new QCheckBox("Grid (preview)", w);
+    grid_ = new QCheckBox("Grid", w);
 
     lay->addWidget(endpoints_);
     lay->addWidget(midpoints_);
