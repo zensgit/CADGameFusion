@@ -20,6 +20,7 @@
 - Step 19 selection auto-sync: document commands + full Qt suite re-run.
 - Step 20 property panel observer: property panel + full Qt suite re-run.
 - Step 21 canvas update coalescing: document commands + full Qt suite re-run.
+- Step 22 document notify no-op guards: document commands + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -121,6 +122,10 @@
 49. `ctest --test-dir build_vcpkg -R qt_document_commands_run -V`
     - Result: PASS (Step 21 document commands test)
 50. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (21/21 tests)
+51. `ctest --test-dir build_vcpkg -R qt_document_commands_run -V`
+    - Result: PASS (Step 22 document commands test)
+52. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (21/21 tests)
 
 ## Notes

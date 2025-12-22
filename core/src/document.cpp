@@ -78,6 +78,7 @@ const Layer* Document::get_layer(int id) const {
 bool Document::set_layer_visible(int id, bool visible) {
     auto* layer = get_layer(id);
     if (!layer) return false;
+    if (layer->visible == visible) return true;
     layer->visible = visible;
     notify(DocumentChangeType::LayerChanged, 0, id);
     return true;
@@ -86,6 +87,7 @@ bool Document::set_layer_visible(int id, bool visible) {
 bool Document::set_layer_locked(int id, bool locked) {
     auto* layer = get_layer(id);
     if (!layer) return false;
+    if (layer->locked == locked) return true;
     layer->locked = locked;
     notify(DocumentChangeType::LayerChanged, 0, id);
     return true;
@@ -94,6 +96,7 @@ bool Document::set_layer_locked(int id, bool locked) {
 bool Document::set_layer_color(int id, uint32_t color) {
     auto* layer = get_layer(id);
     if (!layer) return false;
+    if (layer->color == color) return true;
     layer->color = color;
     notify(DocumentChangeType::LayerChanged, 0, id);
     return true;
@@ -116,6 +119,17 @@ bool Document::set_polyline_points(EntityId id, const Polyline& pl) {
     if (!e || e->type != EntityType::Polyline || !e->payload) return false;
     auto* existing = static_cast<Polyline*>(e->payload.get());
     if (!existing) return false;
+    if (existing->points.size() == pl.points.size()) {
+        bool identical = true;
+        for (size_t i = 0; i < pl.points.size(); ++i) {
+            if (existing->points[i].x != pl.points[i].x ||
+                existing->points[i].y != pl.points[i].y) {
+                identical = false;
+                break;
+            }
+        }
+        if (identical) return true;
+    }
     *existing = pl;
     notify(DocumentChangeType::EntityGeometryChanged, id);
     return true;
@@ -167,6 +181,7 @@ const Entity* Document::get_entity(EntityId id) const {
 bool Document::set_entity_visible(EntityId id, bool visible) {
     auto* e = get_entity(id);
     if (!e) return false;
+    if (e->visible == visible) return true;
     e->visible = visible;
     notify(DocumentChangeType::EntityMetaChanged, id);
     return true;
@@ -175,6 +190,7 @@ bool Document::set_entity_visible(EntityId id, bool visible) {
 bool Document::set_entity_color(EntityId id, uint32_t color) {
     auto* e = get_entity(id);
     if (!e) return false;
+    if (e->color == color) return true;
     e->color = color;
     notify(DocumentChangeType::EntityMetaChanged, id);
     return true;
@@ -183,6 +199,7 @@ bool Document::set_entity_color(EntityId id, uint32_t color) {
 bool Document::set_entity_group_id(EntityId id, int groupId) {
     auto* e = get_entity(id);
     if (!e) return false;
+    if (e->groupId == groupId) return true;
     e->groupId = groupId;
     if (groupId >= 0 && groupId >= next_group_id_) {
         next_group_id_ = groupId + 1;
