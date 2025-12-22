@@ -9,6 +9,7 @@
 - Qt snap manager test: 1 test passed.
 - Qt snap settings test: 1 test passed.
 - Qt selection model test: 1 test passed.
+- Step 11 grid snap verification: snap manager + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -37,6 +38,12 @@
     - Result: PASS (build completed)
 13. `ctest --test-dir build_vcpkg -R qt_snap_settings_run -V`
     - Result: PASS (1/1 test)
+14. `cmake --build build_vcpkg -j --target test_qt_snap_manager`
+    - Result: PASS (Step 11 build)
+15. `ctest --test-dir build_vcpkg -R qt_snap_manager_run -V`
+    - Result: PASS (Step 11 grid snap test)
+16. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (21/21 tests)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.

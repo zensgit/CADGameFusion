@@ -234,15 +234,7 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
     transform.scale(scale_, scale_);
     
     // 1. Draw Grid
-    double targetPixelSpacing = 50.0;
-    double rawStep = targetPixelSpacing / scale_;
-    double logStep = std::log10(rawStep);
-    double floorLog = std::floor(logStep);
-    double base = std::pow(10.0, floorLog);
-    double step = base;
-    double residue = rawStep / base;
-    if (residue >= 5.0) step *= 5.0;
-    else if (residue >= 2.0) step *= 2.0;
+    const double step = SnapManager::gridStepForScale(scale_);
     
     pr.save();
     pr.setTransform(transform);
@@ -339,6 +331,10 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
                 << QPointF(sPos.x() - sz/2, sPos.y() + sz/2 + 2)
                 << QPointF(sPos.x() + sz/2, sPos.y() + sz/2 + 2);
             pr.drawPolygon(tri);
+        } else if (m_currentSnap.type == SnapManager::SnapType::Grid) {
+            const double half = sz * 0.5;
+            pr.drawLine(QPointF(sPos.x() - half, sPos.y()), QPointF(sPos.x() + half, sPos.y()));
+            pr.drawLine(QPointF(sPos.x(), sPos.y() - half), QPointF(sPos.x(), sPos.y() + half));
         }
     }
 }
