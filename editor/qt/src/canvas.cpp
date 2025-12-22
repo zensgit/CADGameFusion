@@ -9,6 +9,7 @@
 #include <QWheelEvent>
 #include <QKeyEvent>
 #include <QDebug>
+#include <QMetaObject>
 #include <cmath>
 
 CanvasWidget::CanvasWidget(QWidget* parent) : QWidget(parent) {
@@ -249,9 +250,27 @@ void CanvasWidget::updatePolylinePoints(EntityId id, const QVector<QPointF>& pts
         if (pv.entityId != id) continue;
         pv.pts = pts;
         updatePolyCache(pv);
-        update();
+        scheduleUpdate();
         return;
     }
+}
+
+void CanvasWidget::scheduleUpdate() {
+    if (update_pending_) return;
+    update_pending_ = true;
+    QMetaObject::invokeMethod(this, [this]() {
+        update_pending_ = false;
+        update();
+    }, Qt::QueuedConnection);
+}
+
+void CanvasWidget::scheduleSelectionChanged() {
+    if (selection_change_pending_) return;
+    selection_change_pending_ = true;
+    QMetaObject::invokeMethod(this, [this]() {
+        selection_change_pending_ = false;
+        emit selectionChanged(selectionList());
+    }, Qt::QueuedConnection);
 }
 
 bool CanvasWidget::syncPolylineFromDocument(EntityId id) {
@@ -275,7 +294,7 @@ bool CanvasWidget::syncPolylineFromDocument(EntityId id) {
         if (pv.entityId != id) continue;
         pv.pts = pts;
         updatePolyCache(pv);
-        update();
+        scheduleUpdate();
         return true;
     }
 
@@ -284,7 +303,7 @@ bool CanvasWidget::syncPolylineFromDocument(EntityId id) {
     pv.pts = pts;
     updatePolyCache(pv);
     polylines_.append(pv);
-    update();
+    scheduleUpdate();
     return true;
 }
 
@@ -298,8 +317,8 @@ bool CanvasWidget::removePolyline(EntityId id) {
         }
     }
     const bool selectionUpdated = selected_entities_.remove(id) > 0;
-    if (removed || selectionUpdated) update();
-    if (selectionUpdated) emit selectionChanged(selectionList());
+    if (removed || selectionUpdated) scheduleUpdate();
+    if (selectionUpdated) scheduleSelectionChanged();
     return removed || selectionUpdated;
 }
 
@@ -332,7 +351,7 @@ void CanvasWidget::on_document_changed(const core::Document& doc, const core::Do
             break;
         case core::DocumentChangeType::EntityMetaChanged:
         case core::DocumentChangeType::LayerChanged:
-            update();
+            scheduleUpdate();
             break;
         case core::DocumentChangeType::Cleared:
         case core::DocumentChangeType::Reset:
