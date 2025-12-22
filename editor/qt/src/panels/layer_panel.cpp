@@ -1,11 +1,11 @@
 #include "editor/qt/include/panels/layer_panel.hpp"
-#include "core/document.hpp"
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <QPushButton>
 #include <QHeaderView>
 #include <QCheckBox>
 #include <QtGlobal>
+#include <QMetaObject>
 
 LayerPanel::LayerPanel(QWidget* parent) : QDockWidget(parent) {
     setWindowTitle("Layers");
@@ -28,9 +28,41 @@ LayerPanel::LayerPanel(QWidget* parent) : QDockWidget(parent) {
     setWidget(w);
 }
 
+LayerPanel::~LayerPanel() {
+    if (m_doc) m_doc->remove_observer(this);
+}
+
 void LayerPanel::setDocument(core::Document* doc) {
+    if (m_doc == doc) {
+        refresh();
+        return;
+    }
+    if (m_doc) m_doc->remove_observer(this);
     m_doc = doc;
+    if (m_doc) m_doc->add_observer(this);
     refresh();
+}
+
+void LayerPanel::scheduleRefresh() {
+    if (refresh_pending_) return;
+    refresh_pending_ = true;
+    QMetaObject::invokeMethod(this, [this]() {
+        refresh_pending_ = false;
+        refresh();
+    }, Qt::QueuedConnection);
+}
+
+void LayerPanel::on_document_changed(const core::Document& doc, const core::DocumentChangeEvent& event) {
+    if (&doc != m_doc) return;
+    switch (event.type) {
+        case core::DocumentChangeType::LayerChanged:
+        case core::DocumentChangeType::Cleared:
+        case core::DocumentChangeType::Reset:
+            scheduleRefresh();
+            break;
+        default:
+            break;
+    }
 }
 
 void LayerPanel::refresh() {

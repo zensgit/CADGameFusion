@@ -1,15 +1,16 @@
 #pragma once
 #include <QDockWidget>
 
+#include "core/document.hpp"
+
 class QTreeWidget;
 class QTreeWidgetItem;
 
-namespace core { class Document; }
-
-class LayerPanel : public QDockWidget {
+class LayerPanel : public QDockWidget, public core::DocumentObserver {
     Q_OBJECT
 public:
     explicit LayerPanel(QWidget* parent = nullptr);
+    ~LayerPanel() override;
     void setDocument(core::Document* doc);
     void refresh();
 
@@ -21,7 +22,10 @@ signals:
 
 private:
     void onAddLayer();
+    void scheduleRefresh();
+    void on_document_changed(const core::Document& doc, const core::DocumentChangeEvent& event) override;
     
     QTreeWidget* m_tree{nullptr};
     core::Document* m_doc{nullptr};
+    bool refresh_pending_{false};
 };

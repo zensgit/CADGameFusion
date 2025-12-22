@@ -30,6 +30,8 @@ add_executable(editor_qt
     src/exporter.hpp
     src/export_dialog.cpp
     src/export_dialog.hpp
+    include/export/export_helpers.hpp
+    src/export/export_helpers.cpp
     # Command system
     include/command/command.hpp
     include/command/command_manager.hpp

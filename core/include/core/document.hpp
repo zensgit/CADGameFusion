@@ -39,6 +39,30 @@ struct DocumentSettings {
     double unit_scale{1.0};
 };
 
+class Document;
+
+enum class DocumentChangeType {
+    EntityAdded,
+    EntityRemoved,
+    EntityGeometryChanged,
+    EntityMetaChanged,
+    LayerChanged,
+    Cleared,
+    Reset
+};
+
+struct DocumentChangeEvent {
+    DocumentChangeType type{DocumentChangeType::Reset};
+    EntityId entityId{0};
+    int layerId{0};
+};
+
+class DocumentObserver {
+public:
+    virtual ~DocumentObserver() = default;
+    virtual void on_document_changed(const Document& doc, const DocumentChangeEvent& event) = 0;
+};
+
 class Document {
 public:
     Document();
@@ -66,17 +90,39 @@ public:
     bool set_entity_group_id(EntityId id, int groupId);
     int alloc_group_id();
 
+    void add_observer(DocumentObserver* observer);
+    void remove_observer(DocumentObserver* observer);
+    void begin_change_batch();
+    void end_change_batch();
+
     const std::vector<Entity>& entities() const { return entities_; }
     DocumentSettings& settings() { return settings_; }
     const DocumentSettings& settings() const { return settings_; }
 
 private:
+    void notify(DocumentChangeType type, EntityId entityId = 0, int layerId = 0);
+
     DocumentSettings settings_{};
     std::vector<Entity> entities_{};
     std::vector<Layer> layers_{};
     EntityId next_id_{1};
     int next_layer_id_{1};
     int next_group_id_{1};
+    std::vector<DocumentObserver*> observers_{};
+    int change_batch_depth_{0};
+    bool pending_reset_{false};
+};
+
+class DocumentChangeGuard {
+public:
+    explicit DocumentChangeGuard(Document& doc);
+    ~DocumentChangeGuard();
+
+    DocumentChangeGuard(const DocumentChangeGuard&) = delete;
+    DocumentChangeGuard& operator=(const DocumentChangeGuard&) = delete;
+
+private:
+    Document* doc_{nullptr};
 };
 
 } // namespace core

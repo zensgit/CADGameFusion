@@ -15,6 +15,8 @@
 - Step 14 snap move verification: canvas box select + full Qt suite re-run.
 - Step 15 snap settings persistence: snap settings + project roundtrip + full Qt suite.
 - Step 16 snap hysteresis: canvas box select (move drag) + full Qt suite re-run.
+- Step 17 document observer: build + full Qt suite re-run.
+- Step 18 layer panel observer: build + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -90,6 +92,14 @@
 36. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
     - Result: PASS (Step 16 drag hysteresis test)
 37. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (21/21 tests)
+38. `cmake --build build_vcpkg -j`
+    - Result: PASS (Step 17 build)
+39. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (21/21 tests)
+40. `cmake --build build_vcpkg -j`
+    - Result: PASS (Step 18 build)
+41. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (21/21 tests)
 
 ## Notes

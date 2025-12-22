@@ -11,20 +11,15 @@
 #include <cstdint>
 
 #include "snap_manager.hpp"
+#include "core/document.hpp"
 
 class QPainterPath;
 class QRectF;
 class SnapSettings;
 
-namespace core {
-class Document;
-struct Entity;
-struct Layer;
-}
-
 using EntityId = uint64_t; // Mirror core::EntityId
 
-class CanvasWidget : public QWidget {
+class CanvasWidget : public QWidget, public core::DocumentObserver {
     Q_OBJECT
 public:
     struct PolyVis {
@@ -45,6 +40,7 @@ public:
     };
 
     explicit CanvasWidget(QWidget* parent = nullptr);
+    ~CanvasWidget() override;
     void setDocument(core::Document* doc);
     void setSnapSettings(SnapSettings* settings);
     SnapSettings* snapSettings() const { return snap_settings_; }
@@ -92,6 +88,10 @@ private:
     QPointF snapWorldPositionInternal(const QPointF& worldPos, bool* snapped, bool excludeSelection);
     QPointF moveTargetWorldWithSnap(const QPointF& mouseWorld, SnapManager::SnapResult* outSnap);
     void updatePolyCache(PolyVis& pv);
+    bool syncPolylineFromDocument(EntityId id);
+    bool removePolyline(EntityId id);
+    QList<qulonglong> selectionList() const;
+    void on_document_changed(const core::Document& doc, const core::DocumentChangeEvent& event) override;
     void selectGroupAtWorld(const QPointF& worldPos);  // Alt+Click to select entire group
     void selectAtPoint(const QPointF& worldPos);
     EntityId hitEntityAtWorld(const QPointF& worldPos) const;

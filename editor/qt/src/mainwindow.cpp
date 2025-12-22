@@ -72,14 +72,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             statusBar()->showMessage("Layer not found", 1500);
             return;
         }
-        if (canvas) canvas->reloadFromDocument();
-        if (m_layerPanel) m_layerPanel->refresh();
         markDirty();
     });
     connect(m_layerPanel, &LayerPanel::layerAdded, this, [this, canvas](const QString& name){
         int id = m_document.add_layer(name.toStdString());
-        if (canvas) canvas->reloadFromDocument();
-        if (m_layerPanel) m_layerPanel->refresh();
         markDirty();
         statusBar()->showMessage(QString("Added layer id=%1").arg(id), 1500);
     });
@@ -132,7 +128,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                     pl.points.push_back(core::Vec2{pt.x(), pt.y()});
                 }
                 doc->set_polyline_points(id, pl);
-                if (canvas) canvas->updatePolylinePoints(id, pts);
             }
             void execute() override {
                 if (before.size() != ids.size()) return;
@@ -205,7 +200,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                         doc->remove_entity(id);
                     }
                 }
-                if (canvas) canvas->reloadFromDocument();
             }
             void undo() override {
                 if (!doc) return;
@@ -218,7 +212,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                     doc->set_entity_group_id(newId, e.groupId);
                     doc->set_entity_color(newId, e.color);
                 }
-                if (canvas) canvas->reloadFromDocument();
             }
             QString name() const override { return "Remove Entities"; }
         };
@@ -227,7 +220,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
     connect(prop, &PropertyPanel::propertyEdited, [this, canvas](qulonglong entityId, const QString& key, const QVariant& value){
         if (!canvas) return;
-        // PR7: Commands operate on Document, then reload Canvas
+        // PR7: Commands operate on Document; Canvas observes Document changes.
         if (key == "visible") {
             EntityId eid = static_cast<EntityId>(entityId);
             if (eid == 0 || !m_document.get_entity(eid)) {
@@ -245,11 +238,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                 }
                 void execute() override {
                     if (doc) doc->set_entity_visible(eid, newVal);
-                    if (canvas) canvas->reloadFromDocument();
                 }
                 void undo() override {
                     if (doc) doc->set_entity_visible(eid, oldVal);
-                    if (canvas) canvas->reloadFromDocument();
                 }
                 QString name() const override { return "Set Visible"; }
             };
@@ -258,7 +249,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
     connect(prop, &PropertyPanel::propertyEditedBatch, [this, canvas](const QList<qulonglong>& entityIds, const QString& key, const QVariant& value){
         if (!canvas || key != "visible" || entityIds.isEmpty()) return;
-        // PR7: Batch commands operate on Document, then reload Canvas
+        // PR7: Batch commands operate on Document; Canvas observes Document changes.
         struct BatchSetVisibleDoc : Command {
             core::Document* doc; CanvasWidget* canvas;
             QVector<EntityId> entityIds; QVector<bool> oldVals; bool newVal;
@@ -278,11 +269,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             }
             void execute() override {
                 for (EntityId eid : entityIds) doc->set_entity_visible(eid, newVal);
-                if (canvas) canvas->reloadFromDocument();
             }
             void undo() override {
                 for (int i = 0; i < entityIds.size(); ++i) doc->set_entity_visible(entityIds[i], oldVals[i]);
-                if (canvas) canvas->reloadFromDocument();
             }
             QString name() const override { return "Set Visible (Batch)"; }
         };
@@ -434,11 +423,9 @@ void MainWindow::newFile() {
     m_document.clear();
     if (canvas) {
         canvas->setDocument(&m_document);
-        canvas->reloadFromDocument();
         canvas->clearTriMesh();
         m_undoStack->clear();  // Clear undo history
     }
-    if (m_layerPanel) m_layerPanel->refresh();
     setCurrentFile("untitled.cgf");
     m_undoStack->setClean();
     markClean();
@@ -451,7 +438,6 @@ void MainWindow::openFile() {
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
     if (m_project && m_project->load(path, m_document, canvas)) {
         m_undoStack->clear();
-        if (m_layerPanel) m_layerPanel->refresh();
         setCurrentFile(path);
         m_undoStack->setClean();
         markClean();
@@ -491,7 +477,6 @@ bool MainWindow::openProjectFile(const QString& path, bool fromRecent) {
     if (!m_project || !canvas) return false;
     if (m_project->load(path, m_document, canvas)) {
         m_undoStack->clear();
-        if (m_layerPanel) m_layerPanel->refresh();
         setCurrentFile(path);
         m_undoStack->setClean();
         markClean();
@@ -558,7 +543,7 @@ void MainWindow::maybeAutoRestore() {
 }
 
 void MainWindow::addSamplePolyline() {
-    // PR7: Add to Document, then reload Canvas (single source of truth)
+    // PR7: Add to Document; Canvas observes Document changes (single source of truth).
     core::Vec2 pts[5] = {{0, 0}, {100, 0}, {100, 100}, {0, 100}, {0, 0}};  // closed square
     core::Polyline pl;
     pl.points.reserve(5);
@@ -568,7 +553,6 @@ void MainWindow::addSamplePolyline() {
     auto* canvas = qobject_cast<CanvasWidget*>(centralWidget());
     int gid = m_document.alloc_group_id();
     m_document.set_entity_group_id(id, gid);
-    if (canvas) canvas->reloadFromDocument();
     statusBar()->showMessage(QString("Added polyline id=%1").arg(static_cast<qulonglong>(id)), 2000);
 }
 
@@ -626,7 +610,7 @@ void MainWindow::triangulateSample() {
 }
 
 void MainWindow::demoBoolean() {
-    // PR7: Add result polylines to Document, then reload Canvas
+    // PR7: Add result polylines to Document; Canvas observes Document changes.
     // simple union of two overlapping boxes (闭合多边形)
     core::Polyline a;
     a.points = {{0, 0}, {100, 0}, {100, 100}, {0, 100}, {0, 0}};  // 正确闭合
@@ -650,13 +634,12 @@ void MainWindow::demoBoolean() {
         uint32_t col = (i % 2 == 0) ? 0x64C8FF : 0xFFB478;
         m_document.set_entity_color(id, col);
     }
-    canvas->reloadFromDocument();
     markDirty();
     statusBar()->showMessage(QString("Boolean union: %1 result(s)").arg(resPolys.size()), 2000);
 }
 
 void MainWindow::demoOffset() {
-    // PR7: Add result polylines to Document, then reload Canvas
+    // PR7: Add result polylines to Document; Canvas observes Document changes.
     core::Polyline a;
     a.points = {{0, 0}, {100, 0}, {100, 100}, {0, 100}, {0, 0}};  // 正确闭合的矩形
     std::vector<core::Polyline> resPolys = core::offset({a}, 10.0);
@@ -675,7 +658,6 @@ void MainWindow::demoOffset() {
         // Green color: 0xB4FF78
         m_document.set_entity_color(id, 0xB4FF78);
     }
-    canvas->reloadFromDocument();
     markDirty();
     statusBar()->showMessage(QString("Offset: %1 result(s)").arg(resPolys.size()), 2000);
 }

@@ -51,17 +51,11 @@ public:
         if (doc_) {
             doc_->set_entity_visible(id_, newVal_);
         }
-        if (canvas_) {
-            canvas_->reloadFromDocument();
-        }
     }
 
     void undo() override {
         if (doc_) {
             doc_->set_entity_visible(id_, oldVal_);
-        }
-        if (canvas_) {
-            canvas_->reloadFromDocument();
         }
     }
 
@@ -100,9 +94,6 @@ public:
                 doc_->set_entity_visible(eid, newVal_);
             }
         }
-        if (canvas_) {
-            canvas_->reloadFromDocument();
-        }
     }
 
     void undo() override {
@@ -110,9 +101,6 @@ public:
             for (int i = 0; i < entityIds_.size(); ++i) {
                 doc_->set_entity_visible(entityIds_[i], oldVals_[i]);
             }
-        }
-        if (canvas_) {
-            canvas_->reloadFromDocument();
         }
     }
 
@@ -143,9 +131,6 @@ public:
                 doc_->remove_entity(id);
             }
         }
-        if (canvas_) {
-            canvas_->reloadFromDocument();
-        }
     }
 
     void undo() override {
@@ -164,9 +149,6 @@ public:
             doc_->set_entity_visible(newId, entity.visible);
             doc_->set_entity_group_id(newId, entity.groupId);
             doc_->set_entity_color(newId, entity.color);
-        }
-        if (canvas_) {
-            canvas_->reloadFromDocument();
         }
     }
 
@@ -200,8 +182,6 @@ int main(int argc, char** argv) {
     assert(gid >= 1);
     assert(doc.set_entity_group_id(id1, gid));
     assert(doc.set_entity_color(id1, 0x112233u));
-
-    canvas.reloadFromDocument();
 
     auto states = canvas.polylineStates();
     assert(states.size() == 3);

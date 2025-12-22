@@ -16,6 +16,10 @@ CanvasWidget::CanvasWidget(QWidget* parent) : QWidget(parent) {
     setAutoFillBackground(true);
 }
 
+CanvasWidget::~CanvasWidget() {
+    if (m_doc) m_doc->remove_observer(this);
+}
+
 void CanvasWidget::showEvent(QShowEvent* event) {
     QWidget::showEvent(event);
     if (pan_ == QPointF(0, 0)) {
@@ -33,8 +37,20 @@ void CanvasWidget::resizeEvent(QResizeEvent* event) {
 }
 
 void CanvasWidget::setDocument(core::Document* doc) {
+    if (m_doc == doc) return;
+    if (m_doc) m_doc->remove_observer(this);
     m_doc = doc;
-    update();
+    if (m_doc) {
+        m_doc->add_observer(this);
+        reloadFromDocument();
+    } else {
+        polylines_.clear();
+        selected_entities_.clear();
+        triSelected_ = false;
+        m_currentSnap.active = false;
+        update();
+        emit selectionChanged({});
+    }
 }
 
 void CanvasWidget::setSnapSettings(SnapSettings* settings) {
@@ -235,6 +251,93 @@ void CanvasWidget::updatePolylinePoints(EntityId id, const QVector<QPointF>& pts
         updatePolyCache(pv);
         update();
         return;
+    }
+}
+
+bool CanvasWidget::syncPolylineFromDocument(EntityId id) {
+    if (!m_doc || id == 0) return false;
+    const auto* entity = m_doc->get_entity(id);
+    if (!entity || entity->type != core::EntityType::Polyline || !entity->payload) {
+        return removePolyline(id);
+    }
+    const auto* pl = static_cast<const core::Polyline*>(entity->payload.get());
+    if (!pl || pl->points.size() < 2) {
+        return removePolyline(id);
+    }
+
+    QVector<QPointF> pts;
+    pts.reserve(static_cast<int>(pl->points.size()));
+    for (const auto& pt : pl->points) {
+        pts.append(QPointF(pt.x, pt.y));
+    }
+
+    for (auto& pv : polylines_) {
+        if (pv.entityId != id) continue;
+        pv.pts = pts;
+        updatePolyCache(pv);
+        update();
+        return true;
+    }
+
+    PolyVis pv;
+    pv.entityId = id;
+    pv.pts = pts;
+    updatePolyCache(pv);
+    polylines_.append(pv);
+    update();
+    return true;
+}
+
+bool CanvasWidget::removePolyline(EntityId id) {
+    bool removed = false;
+    for (int i = 0; i < polylines_.size(); ++i) {
+        if (polylines_[i].entityId == id) {
+            polylines_.removeAt(i);
+            removed = true;
+            break;
+        }
+    }
+    const bool selectionUpdated = selected_entities_.remove(id) > 0;
+    if (removed || selectionUpdated) update();
+    if (selectionUpdated) emit selectionChanged(selectionList());
+    return removed || selectionUpdated;
+}
+
+QList<qulonglong> CanvasWidget::selectionList() const {
+    QList<qulonglong> ids;
+    ids.reserve(selected_entities_.size());
+    for (EntityId id : selected_entities_) {
+        ids.append(static_cast<qulonglong>(id));
+    }
+    return ids;
+}
+
+void CanvasWidget::on_document_changed(const core::Document& doc, const core::DocumentChangeEvent& event) {
+    if (&doc != m_doc) return;
+    switch (event.type) {
+        case core::DocumentChangeType::EntityAdded:
+        case core::DocumentChangeType::EntityGeometryChanged:
+            if (event.entityId == 0) {
+                reloadFromDocument();
+            } else {
+                syncPolylineFromDocument(event.entityId);
+            }
+            break;
+        case core::DocumentChangeType::EntityRemoved:
+            if (event.entityId == 0) {
+                reloadFromDocument();
+            } else {
+                removePolyline(event.entityId);
+            }
+            break;
+        case core::DocumentChangeType::EntityMetaChanged:
+        case core::DocumentChangeType::LayerChanged:
+            update();
+            break;
+        case core::DocumentChangeType::Cleared:
+        case core::DocumentChangeType::Reset:
+            reloadFromDocument();
+            break;
     }
 }
 
@@ -539,7 +642,6 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
                         pl.points.push_back(core::Vec2{pt.x(), pt.y()});
                     }
                     m_doc->set_polyline_points(me.id, pl);
-                    updatePolylinePoints(me.id, moved);
                 }
             }
         }
