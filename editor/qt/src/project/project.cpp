@@ -2,6 +2,7 @@
 #include "core/document.hpp"
 #include "core/geometry2d.hpp"
 #include "../canvas.hpp"
+#include "editor/qt/include/snap/snap_settings.hpp"
 #include <QFile>
 #include <QHash>
 #include <QJsonDocument>
@@ -9,7 +10,7 @@
 #include <QJsonArray>
 #include <QDateTime>
 
-bool Project::save(const QString& path, const core::Document& doc, CanvasWidget* /*canvas*/) {
+bool Project::save(const QString& path, const core::Document& doc, CanvasWidget* canvas) {
     // PR6: Serialize Document as single source of truth
     m_meta.version = "0.3"; // Bumped version for Document-centric format
     m_meta.appVersion = "1.0.0";
@@ -69,6 +70,21 @@ bool Project::save(const QString& path, const core::Document& doc, CanvasWidget*
     docJson.insert("entities", entitiesJson);
     docJson.insert("settings", settingsJson);
     root.insert("document", docJson);
+
+    if (canvas) {
+        auto* snap = canvas->snapSettings();
+        if (snap) {
+            QJsonObject snapJson;
+            snapJson.insert("endpoints", snap->snapEndpoints());
+            snapJson.insert("midpoints", snap->snapMidpoints());
+            snapJson.insert("grid", snap->snapGrid());
+            snapJson.insert("radiusPx", snap->snapRadiusPixels());
+            snapJson.insert("gridPixelSpacing", snap->gridPixelSpacing());
+            QJsonObject editorJson;
+            editorJson.insert("snap", snapJson);
+            root.insert("editor", editorJson);
+        }
+    }
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly)) return false;
@@ -206,6 +222,21 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
     if (canvas) {
         canvas->setDocument(&doc);
         canvas->reloadFromDocument();
+    }
+
+    if (canvas) {
+        auto* snap = canvas->snapSettings();
+        if (snap) {
+            const auto editorJson = root.value("editor").toObject();
+            const auto snapJson = editorJson.value("snap").toObject();
+            if (!snapJson.isEmpty()) {
+                snap->setSnapEndpoints(snapJson.value("endpoints").toBool(snap->snapEndpoints()));
+                snap->setSnapMidpoints(snapJson.value("midpoints").toBool(snap->snapMidpoints()));
+                snap->setSnapGrid(snapJson.value("grid").toBool(snap->snapGrid()));
+                snap->setSnapRadiusPixels(snapJson.value("radiusPx").toDouble(snap->snapRadiusPixels()));
+                snap->setGridPixelSpacing(snapJson.value("gridPixelSpacing").toDouble(snap->gridPixelSpacing()));
+            }
+        }
     }
 
     return true;

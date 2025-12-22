@@ -1,4 +1,5 @@
-#include <QtCore/QCoreApplication>
+#include <QtWidgets/QApplication>
+#include <QtCore/QByteArray>
 #include <QtCore/QTemporaryDir>
 #include <QtCore/QString>
 
@@ -8,7 +9,9 @@
 
 #include "core/document.hpp"
 #include "core/geometry2d.hpp"
+#include "canvas.hpp"
 #include "editor/qt/include/project/project.hpp"
+#include "snap/snap_settings.hpp"
 
 static core::Polyline makeSquare(double size) {
     core::Polyline pl;
@@ -35,13 +38,18 @@ static int findLayerIdByName(const core::Document& doc, const std::string& name)
 }
 
 int main(int argc, char** argv) {
-    QCoreApplication app(argc, argv);
+    qputenv("QT_QPA_PLATFORM", QByteArray("offscreen"));
+    QApplication app(argc, argv);
 
     QTemporaryDir dir;
     assert(dir.isValid());
     const QString path = dir.filePath("roundtrip.cgf");
 
     core::Document doc;
+    CanvasWidget canvas;
+    SnapSettings snap;
+    canvas.setSnapSettings(&snap);
+    canvas.setDocument(&doc);
     int layerId = doc.add_layer("Layer1", 0x112233u);
     doc.set_layer_visible(layerId, false);
     doc.set_layer_locked(layerId, true);
@@ -58,12 +66,22 @@ int main(int argc, char** argv) {
     doc.set_entity_visible(id1, false);
     doc.set_entity_color(id1, 0xABCDEFu);
 
+    snap.setSnapEndpoints(false);
+    snap.setSnapMidpoints(true);
+    snap.setSnapGrid(true);
+    snap.setSnapRadiusPixels(18.0);
+    snap.setGridPixelSpacing(40.0);
+
     Project project;
-    assert(project.save(path, doc, nullptr));
+    assert(project.save(path, doc, &canvas));
 
     core::Document loaded;
+    CanvasWidget canvas2;
+    SnapSettings snap2;
+    canvas2.setSnapSettings(&snap2);
+    canvas2.setDocument(&loaded);
     Project project2;
-    assert(project2.load(path, loaded, nullptr));
+    assert(project2.load(path, loaded, &canvas2));
 
     assert(loaded.entities().size() == doc.entities().size());
     assert(loaded.layers().size() == doc.layers().size());
@@ -93,6 +111,12 @@ int main(int argc, char** argv) {
     assert(e2->layerId == 0);
     assert(e2->visible);
     assert(e2->groupId == -1);
+
+    assert(!snap2.snapEndpoints());
+    assert(snap2.snapMidpoints());
+    assert(snap2.snapGrid());
+    assert(std::abs(snap2.snapRadiusPixels() - 18.0) < 1e-6);
+    assert(std::abs(snap2.gridPixelSpacing() - 40.0) < 1e-6);
 
     return 0;
 }

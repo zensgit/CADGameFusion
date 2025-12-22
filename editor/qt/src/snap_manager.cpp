@@ -77,7 +77,7 @@ SnapManager::SnapResult SnapManager::findSnap(const QVector<PolylineView>& polyl
     }
 
     if (snapGrid_) {
-        const double step = gridStepForScale(scale);
+        const double step = gridStepForScale(scale, gridPixelSpacingPx_);
         if (step > 0.0) {
             const double gx = std::round(queryPosWorld.x() / step) * step;
             const double gy = std::round(queryPosWorld.y() / step) * step;

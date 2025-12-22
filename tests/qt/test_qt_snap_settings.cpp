@@ -1,6 +1,7 @@
 #include <QtCore/QCoreApplication>
 
 #include <cassert>
+#include <cmath>
 
 #include "snap/snap_settings.hpp"
 
@@ -27,6 +28,14 @@ int main(int argc, char** argv) {
     settings.setSnapGrid(true);
     assert(count == 3);
     assert(settings.snapGrid());
+
+    settings.setSnapRadiusPixels(18.0);
+    assert(count == 4);
+    assert(std::abs(settings.snapRadiusPixels() - 18.0) < 1e-6);
+
+    settings.setGridPixelSpacing(40.0);
+    assert(count == 5);
+    assert(std::abs(settings.gridPixelSpacing() - 40.0) < 1e-6);
 
     return 0;
 }

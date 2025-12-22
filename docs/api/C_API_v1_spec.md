@@ -35,6 +35,7 @@
 - `double cadgf_document_get_unit_scale(const cadgf_document* doc);`
 - `int cadgf_document_set_unit_scale(cadgf_document* doc, double unit_scale);`
 - `cadgf_entity_id cadgf_document_add_polyline(_ex)(...);`
+- `int cadgf_document_set_polyline_points(cadgf_document* doc, cadgf_entity_id id, const cadgf_vec2* pts, int n);`
 - `int cadgf_document_remove_entity(...);`
 - `int cadgf_document_alloc_group_id(cadgf_document* doc);` (>=1, -1 on failure)
 - Query APIs: layer/entity enumeration + UTF-8 name two-call patterns
