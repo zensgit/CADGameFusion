@@ -49,6 +49,7 @@ public:
     void setSnapSettings(SnapSettings* settings);
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
     QVector<PolylineState> polylineStates() const;
+    QPointF snapWorldPosition(const QPointF& worldPos, bool* snapped = nullptr);
 
     void clear();
     void addTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);
@@ -77,8 +78,9 @@ protected:
 private:
     QPointF worldToScreen(const QPointF& p) const;
     QPointF screenToWorld(const QPointF& p) const;
+    SnapManager::SnapResult computeSnapAt(const QPointF& worldPos);
     void updatePolyCache(PolyVis& pv);
-    void selectGroup(const QPoint& pos);  // Alt+Click to select entire group
+    void selectGroupAtWorld(const QPointF& worldPos);  // Alt+Click to select entire group
     void selectAtPoint(const QPointF& worldPos);
     const core::Entity* entityFor(EntityId id) const;
     const core::Layer* layerFor(int layerId) const;

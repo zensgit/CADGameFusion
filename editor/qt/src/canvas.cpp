@@ -152,6 +152,37 @@ QPointF CanvasWidget::screenToWorld(const QPointF& p) const {
     return QPointF((p.x() - pan_.x()) / scale_, (p.y() - pan_.y()) / scale_);
 }
 
+SnapManager::SnapResult CanvasWidget::computeSnapAt(const QPointF& worldPos) {
+    if (snap_settings_) {
+        snap_manager_.setSnapEndpoints(snap_settings_->snapEndpoints());
+        snap_manager_.setSnapMidpoints(snap_settings_->snapMidpoints());
+        snap_manager_.setSnapGrid(snap_settings_->snapGrid());
+    } else {
+        snap_manager_.setSnapEndpoints(true);
+        snap_manager_.setSnapMidpoints(true);
+        snap_manager_.setSnapGrid(false);
+    }
+    snap_inputs_.clear();
+    snap_inputs_.reserve(polylines_.size());
+    for (const auto& pv : polylines_) {
+        const auto* entity = entityFor(pv.entityId);
+        const bool visible = entity && isEntityVisible(*entity);
+        SnapManager::PolylineView view;
+        view.points = &pv.pts;
+        view.aabb = &pv.aabb;
+        view.entityId = pv.entityId;
+        view.visible = visible;
+        snap_inputs_.append(view);
+    }
+    return snap_manager_.findSnap(snap_inputs_, scale_, worldPos);
+}
+
+QPointF CanvasWidget::snapWorldPosition(const QPointF& worldPos, bool* snapped) {
+    const SnapManager::SnapResult res = computeSnapAt(worldPos);
+    if (snapped) *snapped = res.active;
+    return res.active ? res.pos : worldPos;
+}
+
 void CanvasWidget::selectAtPoint(const QPointF& mouseWorld) {
     triSelected_ = false;
     selected_entities_.clear();
@@ -363,7 +394,9 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
         selection_active_ = false;
         selection_dragging_ = false;
         m_currentSnap.active = false;
-        selectGroup(e->pos());
+        const QPointF mouseWorld = screenToWorld(e->position());
+        const QPointF pickWorld = snapWorldPosition(mouseWorld);
+        selectGroupAtWorld(pickWorld);
         return;
     }
 
@@ -400,28 +433,7 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
         // Snap logic
         QPointF mouseScreen = e->position();
         QPointF mouseWorld = screenToWorld(mouseScreen);
-        if (snap_settings_) {
-            snap_manager_.setSnapEndpoints(snap_settings_->snapEndpoints());
-            snap_manager_.setSnapMidpoints(snap_settings_->snapMidpoints());
-            snap_manager_.setSnapGrid(snap_settings_->snapGrid());
-        } else {
-            snap_manager_.setSnapEndpoints(true);
-            snap_manager_.setSnapMidpoints(true);
-            snap_manager_.setSnapGrid(false);
-        }
-        snap_inputs_.clear();
-        snap_inputs_.reserve(polylines_.size());
-        for (const auto& pv : polylines_) {
-            const auto* entity = entityFor(pv.entityId);
-            const bool visible = entity && isEntityVisible(*entity);
-            SnapManager::PolylineView view;
-            view.points = &pv.pts;
-            view.aabb = &pv.aabb;
-            view.entityId = pv.entityId;
-            view.visible = visible;
-            snap_inputs_.append(view);
-        }
-        SnapManager::SnapResult res = snap_manager_.findSnap(snap_inputs_, scale_, mouseWorld);
+        SnapManager::SnapResult res = computeSnapAt(mouseWorld);
         
         bool changed = (res.active != m_currentSnap.active);
         if (res.active) {
@@ -444,7 +456,8 @@ void CanvasWidget::mouseReleaseEvent(QMouseEvent* e) {
             selectEntitiesInWorldRect(worldRect, crossing);
         } else {
             const QPointF mouseWorld = screenToWorld(selection_current_screen_);
-            selectAtPoint(mouseWorld);
+            const QPointF pickWorld = snapWorldPosition(mouseWorld);
+            selectAtPoint(pickWorld);
         }
         selection_active_ = false;
         selection_dragging_ = false;
@@ -495,11 +508,10 @@ void CanvasWidget::clearTriMesh() {
     emit selectionChanged({});
 }
 
-void CanvasWidget::selectGroup(const QPoint& pos) {
+void CanvasWidget::selectGroupAtWorld(const QPointF& mouseWorld) {
     const double thPx = 12.0;
     const double thWorld = thPx / scale_;
     const double thWorldSq = thWorld * thWorld;
-    QPointF mouseWorld = screenToWorld(pos);
 
     for (int pi=polylines_.size()-1; pi>=0; --pi) {
         const auto& pv = polylines_[pi];

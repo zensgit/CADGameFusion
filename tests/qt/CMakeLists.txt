@@ -116,6 +116,8 @@ if(BUILD_EDITOR_QT)
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap/snap_settings.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/snap/snap_settings.hpp
   )
   target_include_directories(test_qt_canvas_box_select PRIVATE
     ${CMAKE_SOURCE_DIR}/editor/qt/src
