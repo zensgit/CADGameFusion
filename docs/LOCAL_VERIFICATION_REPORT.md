@@ -25,6 +25,7 @@
 - Step 24 property panel disconnect fix: property panel + full Qt suite re-run.
 - Step 25 canvas mutation audit: full build + full Qt suite re-run.
 - Step 26 project roundtrip metadata coverage: project roundtrip + full Qt suite re-run.
+- Step 27 C API metadata setters coverage: C API test + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -152,6 +153,12 @@
 62. `ctest --test-dir build_vcpkg -R qt_project_roundtrip_run -V`
     - Result: PASS (Step 26 project roundtrip test)
 63. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (22/22 tests)
+64. `cmake --build build_vcpkg -j --target core_tests_c_api_document_query`
+    - Result: PASS (Step 27 build)
+65. `ctest --test-dir build_vcpkg -R core_tests_c_api_document_query -V`
+    - Result: PASS (Step 27 C API test)
+66. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (22/22 tests)
 
 ## Notes

@@ -56,6 +56,18 @@ int main() {
     assert(li.visible == 1);
     assert(li.locked == 0);
 
+    ok = cadgf_document_set_layer_visible(doc, layer_id, 0);
+    assert(ok == CADGF_SUCCESS);
+    ok = cadgf_document_set_layer_locked(doc, layer_id, 1);
+    assert(ok == CADGF_SUCCESS);
+    ok = cadgf_document_set_layer_color(doc, layer_id, 0x445566u);
+    assert(ok == CADGF_SUCCESS);
+    ok = cadgf_document_get_layer_info(doc, layer_id, &li);
+    assert(ok == CADGF_SUCCESS);
+    assert(li.visible == 0);
+    assert(li.locked == 1);
+    assert(li.color == 0x445566u);
+
     int required_name_bytes = 0;
     ok = cadgf_document_get_layer_name(doc, layer_id, nullptr, 0, &required_name_bytes);
     assert(ok == CADGF_SUCCESS);
@@ -93,12 +105,16 @@ int main() {
 
     ok = cadgf_document_set_entity_group_id(doc, eid, gid1);
     assert(ok == CADGF_SUCCESS);
+    ok = cadgf_document_set_entity_visible(doc, eid, 0);
+    assert(ok == CADGF_SUCCESS);
+    ok = cadgf_document_set_entity_color(doc, eid, 0x778899u);
+    assert(ok == CADGF_SUCCESS);
     cadgf_entity_info_v2 ei2{};
     ok = cadgf_document_get_entity_info_v2(doc, eid, &ei2);
     assert(ok == CADGF_SUCCESS);
     assert(ei2.group_id == gid1);
-    assert(ei2.visible == 1);
-    assert(ei2.color == 0);
+    assert(ei2.visible == 0);
+    assert(ei2.color == 0x778899u);
 
     int ent_required_bytes = 0;
     ok = cadgf_document_get_entity_name(doc, eid, nullptr, 0, &ent_required_bytes);
