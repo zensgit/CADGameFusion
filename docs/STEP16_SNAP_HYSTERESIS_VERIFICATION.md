@@ -9,4 +9,4 @@
 - PASS (Qt suite including canvas selection test)
 
 ## Notes
-- No automated drag test yet; behavior confirmed via shared snap code paths.
+- Added automated move drag coverage in `tests/qt/test_qt_canvas_box_select.cpp` for lock/release hysteresis.

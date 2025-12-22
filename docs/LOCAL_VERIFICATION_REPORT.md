@@ -14,7 +14,7 @@
 - Step 13 polyline update API verification: core document + C API tests.
 - Step 14 snap move verification: canvas box select + full Qt suite re-run.
 - Step 15 snap settings persistence: snap settings + project roundtrip + full Qt suite.
-- Step 16 snap hysteresis: canvas box select + full Qt suite re-run.
+- Step 16 snap hysteresis: canvas box select (move drag) + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -78,6 +78,18 @@
 30. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
     - Result: PASS (Step 16 canvas selection test)
 31. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (21/21 tests)
+32. `cmake --build build_vcpkg -j --target test_qt_canvas_box_select`
+    - Result: PASS (Step 16 drag hysteresis build)
+33. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
+    - Result: PASS (Step 16 drag hysteresis test)
+34. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (21/21 tests)
+35. `cmake --build build_vcpkg -j --target test_qt_canvas_box_select`
+    - Result: PASS (Step 16 drag hysteresis rebuild)
+36. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
+    - Result: PASS (Step 16 drag hysteresis test)
+37. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (21/21 tests)
 
 ## Notes
