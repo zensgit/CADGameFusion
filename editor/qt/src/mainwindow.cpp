@@ -94,6 +94,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // Properties dock (initially shows empty selection)
     auto* prop = new PropertyPanel(this);
     addDockWidget(Qt::RightDockWidgetArea, prop);
+    prop->setDocument(&m_document);
     prop->updateFromSelection({});
     
     // ... (existing code) ...
@@ -156,27 +157,6 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
     connect(m_selectionModel, &SelectionModel::selectionChanged, this, [this, prop, canvas](const QList<qulonglong>& entityIds){
         prop->updateFromSelection(entityIds);
-        // Compute visibility state for current selection from Document
-        if (!entityIds.isEmpty()) {
-            bool anyTrue=false, anyFalse=false, hasAny=false;
-            for (qulonglong id : entityIds) {
-                auto* entity = m_document.get_entity(static_cast<EntityId>(id));
-                if (!entity) continue;
-                hasAny = true;
-                anyTrue  = anyTrue  || entity->visible;
-                anyFalse = anyFalse || !entity->visible;
-            }
-            Qt::CheckState cs = Qt::PartiallyChecked;
-            if (hasAny) {
-                if (entityIds.size() == 1) {
-                    cs = anyTrue ? Qt::Checked : Qt::Unchecked;
-                } else {
-                    if (anyTrue && !anyFalse) cs = Qt::Checked;
-                    else if (!anyTrue && anyFalse) cs = Qt::Unchecked;
-                }
-            }
-            prop->setVisibleCheckState(cs, /*silent*/true);
-        }
         if (canvas) canvas->setSelection(entityIds);
     });
     connect(canvas, &CanvasWidget::deleteRequested, this, [this, canvas](bool allSimilar){

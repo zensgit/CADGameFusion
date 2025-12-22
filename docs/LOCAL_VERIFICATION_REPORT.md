@@ -18,6 +18,7 @@
 - Step 17 document observer: build + full Qt suite re-run.
 - Step 18 layer panel observer: build + full Qt suite re-run.
 - Step 19 selection auto-sync: document commands + full Qt suite re-run.
+- Step 20 property panel observer: property panel + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -107,6 +108,12 @@
 43. `ctest --test-dir build_vcpkg -R qt_document_commands_run -V`
     - Result: PASS (Step 19 document commands test)
 44. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (21/21 tests)
+45. `cmake --build build_vcpkg -j --target test_qt_property_panel`
+    - Result: PASS (Step 20 build)
+46. `ctest --test-dir build_vcpkg -R qt_property_panel_run -V`
+    - Result: PASS (Step 20 property panel test)
+47. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (21/21 tests)
 
 ## Notes
