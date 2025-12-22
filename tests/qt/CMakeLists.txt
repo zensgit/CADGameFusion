@@ -62,8 +62,9 @@ if(BUILD_EDITOR_QT)
   target_include_directories(test_qt_property_panel PRIVATE
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/core/include
   )
-  target_link_libraries(test_qt_property_panel PRIVATE Qt6::Widgets)
+  target_link_libraries(test_qt_property_panel PRIVATE Qt6::Widgets core)
   set_target_properties(test_qt_property_panel PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON

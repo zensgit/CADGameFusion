@@ -18,6 +18,7 @@ PropertyPanel::PropertyPanel(QWidget* parent) : QDockWidget(parent) {
 }
 
 PropertyPanel::~PropertyPanel() {
+    if (m_doc) m_doc->remove_observer(this);
     // Safely clean up to prevent crashes during shutdown
     // Since Qt manages widget hierarchy automatically, we don't need to
     // manually remove widgets from tree or delete them explicitly.
@@ -26,11 +27,66 @@ PropertyPanel::~PropertyPanel() {
     m_tree = nullptr;
 }
 
+void PropertyPanel::setDocument(core::Document* doc) {
+    if (m_doc == doc) return;
+    if (m_doc) m_doc->remove_observer(this);
+    m_doc = doc;
+    if (m_doc) m_doc->add_observer(this);
+    refreshVisibleCheckState();
+}
+
 void PropertyPanel::setVisibleCheckState(Qt::CheckState state, bool silent) {
     if (!m_visibleCheck) return;
     if (silent) m_internalChange = true;
     m_visibleCheck->setCheckState(state);
     if (silent) m_internalChange = false;
+}
+
+Qt::CheckState PropertyPanel::computeVisibleCheckState() const {
+    if (!m_doc || m_currentSelection.isEmpty()) return Qt::PartiallyChecked;
+    bool anyTrue = false;
+    bool anyFalse = false;
+    bool hasAny = false;
+    for (qulonglong id : m_currentSelection) {
+        const auto* entity = m_doc->get_entity(static_cast<core::EntityId>(id));
+        if (!entity) continue;
+        hasAny = true;
+        anyTrue = anyTrue || entity->visible;
+        anyFalse = anyFalse || !entity->visible;
+    }
+    if (!hasAny) return Qt::PartiallyChecked;
+    if (m_currentSelection.size() == 1) {
+        return anyTrue ? Qt::Checked : Qt::Unchecked;
+    }
+    if (anyTrue && !anyFalse) return Qt::Checked;
+    if (!anyTrue && anyFalse) return Qt::Unchecked;
+    return Qt::PartiallyChecked;
+}
+
+void PropertyPanel::refreshVisibleCheckState() {
+    if (!m_doc) return;
+    if (!m_visibleCheck) return;
+    Qt::CheckState state = computeVisibleCheckState();
+    if (!m_visibleCheck->isTristate() && state == Qt::PartiallyChecked) {
+        state = Qt::Unchecked;
+    }
+    setVisibleCheckState(state, true);
+}
+
+void PropertyPanel::on_document_changed(const core::Document& doc, const core::DocumentChangeEvent& event) {
+    if (&doc != m_doc) return;
+    if (m_currentSelection.isEmpty()) return;
+    if (event.type != core::DocumentChangeType::EntityMetaChanged) return;
+    if (event.entityId == 0) {
+        refreshVisibleCheckState();
+        return;
+    }
+    for (qulonglong id : m_currentSelection) {
+        if (static_cast<core::EntityId>(id) == event.entityId) {
+            refreshVisibleCheckState();
+            return;
+        }
+    }
 }
 
 void PropertyPanel::updateFromSelection(const QList<qulonglong>& entityIds) {
@@ -84,6 +140,7 @@ void PropertyPanel::updateFromSelection(const QList<qulonglong>& entityIds) {
         m_internalChange = true;
         m_visibleCheck->setChecked(true);
         m_internalChange = false;
+        refreshVisibleCheckState();
         m_tree->setItemWidget(visRow, 1, m_visibleCheck);
     } else if (entityIds.size() > 1) {
         for (qulonglong id : entityIds) root->addChild(new QTreeWidgetItem(QStringList{ "id", QString::number(id) }));
@@ -120,16 +177,11 @@ void PropertyPanel::updateFromSelection(const QList<qulonglong>& entityIds) {
             emit propertyEditedBatch(m_currentSelection, "visible", v);
         });
 #endif
-        // Compute tri-state from current selection visibility
-        bool anyChecked = false, anyUnchecked = false;
-        // We cannot access CanvasWidget here; rely on a temporary hint via tooltip if needed.
-        // The main window will emit an update with actual states when selection changes.
-        // Default to PartiallyChecked, but try to infer from existing item widgets if any.
-        // For now, leave as PartiallyChecked to avoid lying; MainWindow can refresh with exact state.
-        Qt::CheckState cs = Qt::PartiallyChecked;
+        // Default to PartiallyChecked for multi-selection until Document state is available.
         m_internalChange = true;
-        m_visibleCheck->setCheckState(cs);
+        m_visibleCheck->setCheckState(Qt::PartiallyChecked);
         m_internalChange = false;
+        refreshVisibleCheckState();
         m_tree->setItemWidget(visRow, 1, m_visibleCheck);
     }
     m_tree->expandAll();
