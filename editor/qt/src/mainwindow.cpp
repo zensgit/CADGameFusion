@@ -67,14 +67,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     addDockWidget(Qt::LeftDockWidgetArea, m_layerPanel);
     m_layerPanel->setDocument(&m_document);
 
-    connect(m_layerPanel, &LayerPanel::layerVisibilityChanged, this, [this, canvas](int layerId, bool visible){
+    connect(m_layerPanel, &LayerPanel::layerVisibilityChanged, this, [this](int layerId, bool visible){
         if (!m_document.set_layer_visible(layerId, visible)) {
             statusBar()->showMessage("Layer not found", 1500);
             return;
         }
         markDirty();
     });
-    connect(m_layerPanel, &LayerPanel::layerAdded, this, [this, canvas](const QString& name){
+    connect(m_layerPanel, &LayerPanel::layerAdded, this, [this](const QString& name){
         int id = m_document.add_layer(name.toStdString());
         markDirty();
         statusBar()->showMessage(QString("Added layer id=%1").arg(id), 1500);
@@ -101,21 +101,20 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(canvas, &CanvasWidget::selectionChanged, this, [this](const QList<qulonglong>& entityIds){
         if (m_selectionModel) m_selectionModel->setSelection(entityIds);
     });
-    connect(canvas, &CanvasWidget::moveEntitiesRequested, this, [this, canvas](const QList<qulonglong>& entityIds,
+    connect(canvas, &CanvasWidget::moveEntitiesRequested, this, [this](const QList<qulonglong>& entityIds,
                                                                               const QVector<QVector<QPointF>>& beforePoints,
                                                                               const QPointF& delta){
-        if (!canvas || entityIds.isEmpty() || beforePoints.size() != entityIds.size()) return;
+        if (entityIds.isEmpty() || beforePoints.size() != entityIds.size()) return;
         struct MoveEntitiesCommand : Command {
             core::Document* doc;
-            CanvasWidget* canvas;
             QVector<EntityId> ids;
             QVector<QVector<QPointF>> before;
             QPointF delta;
-            MoveEntitiesCommand(core::Document* d, CanvasWidget* c,
+            MoveEntitiesCommand(core::Document* d,
                                 const QList<qulonglong>& inIds,
                                 const QVector<QVector<QPointF>>& inBefore,
                                 const QPointF& dlt)
-                : doc(d), canvas(c), before(inBefore), delta(dlt) {
+                : doc(d), before(inBefore), delta(dlt) {
                 ids.reserve(inIds.size());
                 for (qulonglong id : inIds) {
                     ids.push_back(static_cast<EntityId>(id));
@@ -140,18 +139,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                     }
                     applyPoints(ids[i], moved);
                 }
-                if (canvas) canvas->update();
             }
             void undo() override {
                 if (before.size() != ids.size()) return;
                 for (int i = 0; i < ids.size(); ++i) {
                     applyPoints(ids[i], before[i]);
                 }
-                if (canvas) canvas->update();
             }
             QString name() const override { return "Move Entities"; }
         };
-        auto cmd = std::make_unique<MoveEntitiesCommand>(&m_document, canvas, entityIds, beforePoints, delta);
+        auto cmd = std::make_unique<MoveEntitiesCommand>(&m_document, entityIds, beforePoints, delta);
         m_cmdMgr->push(std::move(cmd));
         markDirty();
     });
@@ -159,17 +156,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         prop->updateFromSelection(entityIds);
         if (canvas) canvas->setSelection(entityIds);
     });
-    connect(canvas, &CanvasWidget::deleteRequested, this, [this, canvas](bool allSimilar){
+    connect(canvas, &CanvasWidget::deleteRequested, this, [this](bool allSimilar){
         const QList<qulonglong> selection = m_selectionModel ? m_selectionModel->selection() : QList<qulonglong>{};
         const QVector<core::EntityId> ids = buildRemovalSet(m_document, selection, allSimilar);
         if (ids.isEmpty()) return;
         struct RemoveEntitiesCommand : Command {
             core::Document* doc;
-            CanvasWidget* canvas;
             QVector<core::Entity> removed;
             QVector<core::EntityId> ids;
-            RemoveEntitiesCommand(core::Document* d, CanvasWidget* c, QVector<core::EntityId> removeIds)
-                : doc(d), canvas(c), ids(std::move(removeIds)) {}
+            RemoveEntitiesCommand(core::Document* d, QVector<core::EntityId> removeIds)
+                : doc(d), ids(std::move(removeIds)) {}
             void execute() override {
                 if (!doc) return;
                 removed.clear();
@@ -195,11 +191,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             }
             QString name() const override { return "Remove Entities"; }
         };
-        m_cmdMgr->push(std::make_unique<RemoveEntitiesCommand>(&m_document, canvas, ids));
+        m_cmdMgr->push(std::make_unique<RemoveEntitiesCommand>(&m_document, ids));
         markDirty();
     });
-    connect(prop, &PropertyPanel::propertyEdited, [this, canvas](qulonglong entityId, const QString& key, const QVariant& value){
-        if (!canvas) return;
+    connect(prop, &PropertyPanel::propertyEdited, [this](qulonglong entityId, const QString& key, const QVariant& value){
         // PR7: Commands operate on Document; Canvas observes Document changes.
         if (key == "visible") {
             EntityId eid = static_cast<EntityId>(entityId);
@@ -208,9 +203,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                 return;
             }
             struct SetVisibleCommand : Command {
-                core::Document* doc; CanvasWidget* canvas; EntityId eid; bool newVal; bool oldVal;
-                SetVisibleCommand(core::Document* d, CanvasWidget* c, EntityId e, bool nv)
-                    : doc(d), canvas(c), eid(e), newVal(nv), oldVal(true) {
+                core::Document* doc; EntityId eid; bool newVal; bool oldVal;
+                SetVisibleCommand(core::Document* d, EntityId e, bool nv)
+                    : doc(d), eid(e), newVal(nv), oldVal(true) {
                     if (doc) {
                         auto* entity = doc->get_entity(eid);
                         if (entity) oldVal = entity->visible;
@@ -224,17 +219,17 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                 }
                 QString name() const override { return "Set Visible"; }
             };
-            m_cmdMgr->push(std::make_unique<SetVisibleCommand>(&m_document, canvas, eid, value.toBool()));
+            m_cmdMgr->push(std::make_unique<SetVisibleCommand>(&m_document, eid, value.toBool()));
         }
     });
-    connect(prop, &PropertyPanel::propertyEditedBatch, [this, canvas](const QList<qulonglong>& entityIds, const QString& key, const QVariant& value){
-        if (!canvas || key != "visible" || entityIds.isEmpty()) return;
+    connect(prop, &PropertyPanel::propertyEditedBatch, [this](const QList<qulonglong>& entityIds, const QString& key, const QVariant& value){
+        if (key != "visible" || entityIds.isEmpty()) return;
         // PR7: Batch commands operate on Document; Canvas observes Document changes.
         struct BatchSetVisibleDoc : Command {
-            core::Document* doc; CanvasWidget* canvas;
+            core::Document* doc;
             QVector<EntityId> entityIds; QVector<bool> oldVals; bool newVal;
-            BatchSetVisibleDoc(core::Document* d, CanvasWidget* c, const QList<qulonglong>& ids, bool nv)
-                : doc(d), canvas(c), newVal(nv) {
+            BatchSetVisibleDoc(core::Document* d, const QList<qulonglong>& ids, bool nv)
+                : doc(d), newVal(nv) {
                 QSet<EntityId> seen;
                 for (qulonglong id : ids) {
                     EntityId eid = static_cast<EntityId>(id);
@@ -255,7 +250,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             }
             QString name() const override { return "Set Visible (Batch)"; }
         };
-        auto cmd = std::make_unique<BatchSetVisibleDoc>(&m_document, canvas, entityIds, value.toBool());
+        auto cmd = std::make_unique<BatchSetVisibleDoc>(&m_document, entityIds, value.toBool());
         if (cmd->entityIds.isEmpty()) {
             statusBar()->showMessage("No valid entities for visibility change", 1200);
             return;
