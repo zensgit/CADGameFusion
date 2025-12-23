@@ -38,6 +38,7 @@
 - Step 39 core_c linking cleanup: editor_qt build.
 - Step 40 core install/export targets: core_c build + install.
 - Step 41 package version config: core_c build + install.
+- Step 42 CMake package usage docs: no tests (doc-only).
 
 ## Commands Executed
 1. `cmake --build build -j`
