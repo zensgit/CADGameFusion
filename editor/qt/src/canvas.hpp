@@ -19,6 +19,10 @@ class SnapSettings;
 
 using EntityId = uint64_t; // Mirror core::EntityId
 
+#ifdef CADGF_QT_TEST_ACCESS
+struct CanvasTestAccess;
+#endif
+
 class CanvasWidget : public QWidget, public core::DocumentObserver {
     Q_OBJECT
 public:
@@ -45,7 +49,6 @@ public:
     void setSnapSettings(SnapSettings* settings);
     SnapSettings* snapSettings() const { return snap_settings_; }
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
-    QVector<PolylineState> polylineStates() const;
     QPointF snapWorldPosition(const QPointF& worldPos, bool* snapped = nullptr);
 
     void clear();
@@ -76,6 +79,9 @@ protected:
     void resizeEvent(QResizeEvent*) override;
 
 private:
+#ifdef CADGF_QT_TEST_ACCESS
+    friend struct CanvasTestAccess;
+#endif
     struct MoveEntity {
         EntityId id{0};
         QVector<QPointF> points;
@@ -100,6 +106,7 @@ private:
     const core::Layer* layerFor(int layerId) const;
     bool isEntityVisible(const core::Entity& entity) const;
     QColor resolveEntityColor(const core::Entity& entity) const;
+    QVector<PolylineState> polylineStates() const; // debug-only: derived from Document + cache
 
     double scale_ { 1.0 }; // pixels per world unit
     QPointF pan_ { 0.0, 0.0 }; // in pixels
@@ -132,3 +139,11 @@ private:
     core::Document* m_doc{nullptr};
     SnapSettings* snap_settings_{nullptr};
 };
+
+#ifdef CADGF_QT_TEST_ACCESS
+struct CanvasTestAccess {
+    static QVector<CanvasWidget::PolylineState> polylineStates(const CanvasWidget& canvas) {
+        return canvas.polylineStates();
+    }
+};
+#endif

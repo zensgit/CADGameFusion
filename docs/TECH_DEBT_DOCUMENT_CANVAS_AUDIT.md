@@ -19,6 +19,7 @@ Scope:
    - `CanvasWidget::updatePolylinePoints(...)` mutates `polylines_` directly.
    - No call sites today, but it enables future bypass of Document single source of truth.
    - Action: make private or remove; route edits through `core::Document::set_polyline_points`.
+   - Status: Completed (Step 33).
 
 ### P1 (Clarify ownership)
 2) Canvas exposes polyline states derived from its cache
@@ -26,6 +27,7 @@ Scope:
    - `CanvasWidget::polylineStates()` returns metadata from Document + cached points.
    - Risk: other UI code may read Canvas as a data source.
    - Action: treat as debug-only or remove from public API; prefer querying Document or SelectionModel.
+   - Status: Completed (Step 34).
 
 3) Selection is stored in both Canvas and SelectionModel
    - Location: `editor/qt/src/canvas.cpp`, `editor/qt/src/selection/selection_model.cpp`
@@ -52,8 +54,8 @@ Scope:
 - No cross-DLL C++ ABI usage found outside the editor.
 
 ## Suggested Immediate Cleanup (Low Risk)
-1) Remove or privatize `CanvasWidget::updatePolylinePoints(...)`.
-2) Add a short comment in `editor/qt/src/canvas.hpp` clarifying that Canvas caches are derived from Document only.
+1) Done: removed `CanvasWidget::updatePolylinePoints(...)`.
+2) Done: clarified Canvas cache ownership in `editor/qt/src/canvas.hpp`.
 
 ## Verification (If Changes Applied)
 - Build and run Qt tests (if any behavior changes in editor code).
