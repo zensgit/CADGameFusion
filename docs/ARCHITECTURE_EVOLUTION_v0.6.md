@@ -1,7 +1,7 @@
 # CADGameFusion 架构演进设计文档 v0.6.0+
 
-> 版本: 1.3 (Reality-aligned)
-> 日期: 2025-12-22
+> 版本: 1.4 (Reality-aligned)
+> 日期: 2025-12-23
 > 状态: 修订草案（对齐仓库现状）
 
 **重要声明（稳定边界 / Stability Boundary）**：
@@ -86,14 +86,14 @@ CADGameFusion/
     └── export_cli.cpp
 ```
 
-### 2.2 当前问题
+### 2.2 现状评估（含已解决项）
 
-| 问题 | 影响 | 严重度 |
+| 问题 | 影响 | 严重度/状态 |
 |------|------|--------|
 | `core::Document` 暴露 STL | **仅当**把 C++ API 当成跨 DLL/跨编译器边界时才危险；当前策略是把稳定边界收敛到 C API | 中 |
 | MainWindow 直接持有 Document | UI 层耦合存在，但通过观察者降低手动同步成本 | 低 |
-| 文档误导：插件=虚函数 | 与仓库现状不符；当前已有 `plugin_abi_c_v1`（C ABI 函数表） | 中 |
-| Editor 数据模型“双轨制” | **已解决**：Document 观察者驱动 Canvas/LayerPanel 自动同步，手动 reload 已移除 | 低 |
+| 旧文档误导：插件=虚函数 | 已修正：现有实现为 `plugin_abi_c_v1`（C ABI 函数表） | 已解决 |
+| Editor 数据模型“双轨制” | **基本解决**：Document 观察者驱动 Canvas/LayerPanel 自动同步，Canvas 仅保留渲染缓存 | 低 |
 | API 命名通用性 | 已引入 cadgf_ 作为推荐前缀，core_ 仅兼容 | 低 |
 
 ### 2.3 依赖关系图（当前）
