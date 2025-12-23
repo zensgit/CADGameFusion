@@ -68,7 +68,7 @@ if(CADGF_EDITOR_HAS_TINYGLTF)
     target_compile_definitions(editor_qt PRIVATE CADGF_HAS_TINYGLTF)
 endif()
 
-target_link_libraries(editor_qt PRIVATE Qt6::Widgets core core_c ${CMAKE_DL_LIBS})
+target_link_libraries(editor_qt PRIVATE Qt6::Widgets core_c ${CMAKE_DL_LIBS})
 
 if (WIN32)
   set_target_properties(editor_qt PROPERTIES WIN32_EXECUTABLE YES)
