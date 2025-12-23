@@ -287,6 +287,8 @@ jobs:
           set -e
           # Run c_api_minimal test
           ctest --test-dir build -R "c_api_minimal_run" --output-on-failure || true
+          # Run package consumer smoke test (CMake install + find_package)
+          ctest --test-dir build -R "package_consumer_smoke" --output-on-failure || true
 
           # Run doc_export_example directly (non-blocking)
           if [ -f build/doc_export_example ]; then
