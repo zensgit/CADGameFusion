@@ -7,6 +7,7 @@
 - API Stability: [API-Stability](API_STABILITY.md)
 - Unity Guide: [Unity-Guide](Unity-Guide.md)
 - Build From Source: [Build-From-Source](Build-From-Source.md)
+- CMake Package Usage: [CMake-Package-Usage](CMake-Package-Usage.md)
 - Troubleshooting: [Troubleshooting](Troubleshooting.md)
 - Contributing: [Contributing](Contributing.md)
 - Changelog: [Changelog](Changelog.md)
