@@ -4,6 +4,7 @@
 - Centralize selection state outside Canvas/MainWindow to reduce coupling.
 - Provide a single selection source for property panel, export, and delete flows.
 - Avoid selection feedback loops while keeping Canvas highlights in sync.
+- Treat Canvas selection as a view cache; write intent only into SelectionModel.
 
 ## Changes
 1. **SelectionModel** (`editor/qt/include/selection/selection_model.hpp`, `editor/qt/src/selection/selection_model.cpp`)

@@ -28,7 +28,8 @@
   - 最近文件列表（QSettings）。
 - Integration（集成）
   - 与现有 `MainWindow`、`Canvas` 和 `core::Document` 集成。
-  - 统一从 MainWindow 发出 `selectionChanged`，驱动面板刷新。
+  - SelectionModel 是选择唯一来源：Canvas 只负责发出用户选择意图并渲染高亮。
+  - MainWindow 将 Canvas 的选择信号写入 SelectionModel，再驱动面板刷新与 Canvas 同步。
 
 目录与文件（新增）
 - `editor/qt/include/command/command.hpp`
@@ -158,7 +159,7 @@ private:
   - 信号：`selectionChanged(QList<int> ids)` → PropertyPanel
   - 槽：PropertyPanel::propertyEdited → 构造命令
 - Canvas
-  - 保持现状渲染；选择变化通过 MainWindow 转发
+  - 保持现状渲染；选择变化通过 MainWindow → SelectionModel → Canvas 的单向流转
   - 未来：在命令执行后刷新视图（监听 commandExecuted）
 
 ## 7. 渐进式落地计划

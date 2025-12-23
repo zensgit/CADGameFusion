@@ -34,6 +34,7 @@
 - Step 35 selection model ownership: qt_document_commands + qt_canvas_box_select build + tests.
 - Step 36 tri mesh UI-only clarification: editor_qt build.
 - Step 37 reload preserve selection: qt_document_commands build + test.
+- Step 38 selection model semantics docs: no tests (doc/comment-only).
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -206,3 +207,4 @@
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.
 - Qt tests emitted font alias warnings (`Sans Serif` missing); tests still passed.
+- Step 38 was documentation-only; no additional commands executed.
