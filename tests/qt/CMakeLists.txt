@@ -96,6 +96,30 @@ if(BUILD_EDITOR_QT)
   )
   add_test(NAME qt_project_roundtrip_run COMMAND test_qt_project_roundtrip)
 
+  add_executable(test_qt_project_legacy_load
+    test_qt_project_legacy_load.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/project/project.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/project/project.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap/snap_settings.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/snap/snap_settings.hpp
+  )
+  target_include_directories(test_qt_project_legacy_load PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_project_legacy_load PRIVATE Qt6::Widgets core)
+  set_target_properties(test_qt_project_legacy_load PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_project_legacy_load_run COMMAND test_qt_project_legacy_load)
+
   add_executable(test_qt_export_helpers
     test_qt_export_helpers.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/export/export_helpers.cpp

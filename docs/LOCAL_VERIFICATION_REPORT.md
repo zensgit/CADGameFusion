@@ -3,7 +3,7 @@
 ## Summary
 - All requested local builds and tests completed successfully.
 - Core/tools test suite: 11 tests passed.
-- Qt full suite: 22 tests passed.
+- Qt full suite: 24 tests passed.
 - Qt helper test: 1 test passed.
 - Qt box select test: 1 test passed.
 - Qt snap manager test: 1 test passed.
@@ -27,6 +27,7 @@
 - Step 26 project roundtrip metadata coverage: project roundtrip + full Qt suite re-run.
 - Step 27 C API metadata setters coverage: C API test + full Qt suite re-run.
 - Step 28 document change batch coverage: core test + full Qt suite re-run.
+- Step 29 legacy project load coverage: legacy Qt test + full Qt suite re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -167,6 +168,12 @@
     - Result: PASS (Step 28 change batch test)
 69. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (23/23 tests)
+70. `cmake --build build_vcpkg -j --target test_qt_project_legacy_load`
+    - Result: PASS (Step 29 build)
+71. `ctest --test-dir build_vcpkg -R qt_project_legacy_load_run -V`
+    - Result: PASS (Step 29 legacy load test)
+72. `ctest --test-dir build_vcpkg -V`
+    - Result: PASS (24/24 tests)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.
