@@ -41,16 +41,41 @@ jobs:
       - name: Setup vcpkg
         shell: bash
         run: |
+          set -euo pipefail
           export VCPKG_DEFAULT_BINARY_CACHE="$HOME/.cache/vcpkg/archives"
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$VCPKG_DEFAULT_BINARY_CACHE" >> $GITHUB_ENV
           echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,readwrite" >> $GITHUB_ENV
 
-          if [ ! -d "vcpkg/.git" ]; then
+          VCPKG_COMMIT="a20d95d3c76906363896754eb1cc93db2a694f16"
+
+          retry() {
+            local attempt=1
+            local max=3
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+              if [ "$attempt" -ge "$max" ]; then
+                return 1
+              fi
+              sleep $((attempt * 5))
+              attempt=$((attempt + 1))
+            done
+          }
+
+          clone_vcpkg() {
             [ -d "vcpkg" ] && rm -rf vcpkg
-            git clone https://github.com/microsoft/vcpkg.git vcpkg
+            git clone --filter=blob:none --no-checkout https://github.com/microsoft/vcpkg.git vcpkg
+          }
+
+          if [ ! -d "vcpkg/.git" ]; then
+            retry clone_vcpkg
           fi
-          (cd vcpkg && git fetch --tags --force && git checkout a20d95d3c76906363896754eb1cc93db2a694f16 && ./bootstrap-vcpkg.sh)
+          (cd vcpkg && \
+            retry git fetch --tags --force --depth 1 origin "$VCPKG_COMMIT" && \
+            git checkout "$VCPKG_COMMIT" && \
+            ./bootstrap-vcpkg.sh)
           echo "VCPKG_ROOT=$(pwd)/vcpkg" >> $GITHUB_ENV
 
       - name: Install system dependencies
