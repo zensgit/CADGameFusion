@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(CADGameFusion)
+project(CADGameFusion VERSION 1.0.0)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)
@@ -100,7 +100,15 @@ configure_package_config_file(
     INSTALL_DESTINATION ${CADGF_INSTALL_CMAKEDIR}
 )
 
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/CADGameFusionConfig.cmake
+write_basic_package_version_file(
+    ${CMAKE_CURRENT_BINARY_DIR}/CADGameFusionConfigVersion.cmake
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(FILES
+    ${CMAKE_CURRENT_BINARY_DIR}/CADGameFusionConfig.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/CADGameFusionConfigVersion.cmake
     DESTINATION ${CADGF_INSTALL_CMAKEDIR}
 )
 
