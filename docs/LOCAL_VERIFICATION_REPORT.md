@@ -28,6 +28,7 @@
 - Step 27 C API metadata setters coverage: C API test + full Qt suite re-run.
 - Step 28 document change batch coverage: core test + full Qt suite re-run.
 - Step 29 legacy project load coverage: legacy Qt test + full Qt suite re-run.
+- Step 30 document layer behavior: core layer test.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -174,6 +175,10 @@
     - Result: PASS (Step 29 legacy load test)
 72. `ctest --test-dir build_vcpkg -V`
     - Result: PASS (24/24 tests)
+73. `cmake --build build_vcpkg -j --target core_tests_document_layers`
+    - Result: PASS (Step 30 build)
+74. `ctest --test-dir build_vcpkg -R core_tests_document_layers -V`
+    - Result: PASS (Step 30 document layers test)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.
