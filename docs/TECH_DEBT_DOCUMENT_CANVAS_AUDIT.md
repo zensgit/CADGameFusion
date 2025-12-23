@@ -34,6 +34,7 @@ Scope:
    - Canvas holds `selected_entities_`, SelectionModel holds `selection_`.
    - This is UI state (not core data), but dual ownership can drift if new code writes only one side.
    - Action: document ownership (SelectionModel as source; Canvas as view), or centralize updates.
+   - Status: Completed (Step 35).
 
 ### P2 (Clarify ephemeral data)
 4) Tri mesh data is Canvas-only

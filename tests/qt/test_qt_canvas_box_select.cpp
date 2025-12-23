@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
     assert(snapId > 0);
 
     canvas.reloadFromDocument();
-    canvas.setSelection({static_cast<qulonglong>(moveId)});
+    canvas.setSelectionFromModel({static_cast<qulonglong>(moveId)});
 
     settings.setSnapEndpoints(true);
     settings.setSnapMidpoints(false);
