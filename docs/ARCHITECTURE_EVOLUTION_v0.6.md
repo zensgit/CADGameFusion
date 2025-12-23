@@ -1,6 +1,6 @@
 # CADGameFusion 架构演进设计文档 v0.6.0+
 
-> 版本: 1.4 (Reality-aligned)
+> 版本: 1.5 (Reality-aligned)
 > 日期: 2025-12-23
 > 状态: 修订草案（对齐仓库现状）
 
@@ -301,6 +301,7 @@ Level 0: 头文件模块
 - `core`：C++ 实现库（SHARED）
 - `core_c`：C ABI wrapper（SHARED，链接到 `core`，避免同进程双份 core 实现）
 - 目标拆分的动机与推荐图谱：`docs/CMAKE_TARGET_SPLIT_v0.6.md`
+- 安装包校验：导出 `cadgf::core`/`cadgf::core_c`/`cadgf::core_headers`，安装 `CADGameFusionConfig.cmake` + `CADGameFusionConfigVersion.cmake`，并通过 `package_consumer_smoke`（`tests/package_consumer` + `cmake/RunPackageConsumer.cmake`）验证 `find_package(CADGameFusion CONFIG)` 可用
 - 依赖建议统一走 vcpkg manifest：`vcpkg.json`（Eigen3/Clipper2/TinyGLTF/Earcut）
 
 ### 6.3 Document Pimpl（后置）
