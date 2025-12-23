@@ -39,6 +39,7 @@
 - Step 40 core install/export targets: core_c build + install.
 - Step 41 package version config: core_c build + install.
 - Step 42 CMake package usage docs: no tests (doc-only).
+- Step 43 package consumer smoke test: core_c build + package consumer CTest.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -217,6 +218,10 @@
     - Result: PASS (Step 41 core_c build)
 88. `cmake --install build_vcpkg --prefix build_vcpkg/install`
     - Result: PASS (Step 41 install)
+89. `cmake --build build_vcpkg -j --target core_c`
+    - Result: PASS (Step 43 core_c build)
+90. `ctest --test-dir build_vcpkg -R package_consumer_smoke -V`
+    - Result: PASS (Step 43 package consumer test)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.

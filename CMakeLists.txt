@@ -86,6 +86,18 @@ add_test(NAME plugin_host_demo_run
     -Dout="${PLUGIN_DEMO_OUT}"
     -P "${CMAKE_SOURCE_DIR}/cmake/RunPluginHostDemo.cmake")
 
+set(PACKAGE_CONSUMER_DIR "${CMAKE_SOURCE_DIR}/tests/package_consumer")
+set(PACKAGE_CONSUMER_INSTALL_DIR "${CMAKE_BINARY_DIR}/_package_install")
+add_test(NAME package_consumer_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -Dbuild_dir="${CMAKE_BINARY_DIR}"
+    -Dconsumer_dir="${PACKAGE_CONSUMER_DIR}"
+    -Dinstall_dir="${PACKAGE_CONSUMER_INSTALL_DIR}"
+    -Dconfig=$<CONFIG>
+    -Dbuild_type=${CMAKE_BUILD_TYPE}
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunPackageConsumer.cmake")
+set_tests_properties(package_consumer_smoke PROPERTIES RESOURCE_LOCK cadgf_package_install)
+
 set(CADGF_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/CADGameFusion")
 
 install(EXPORT CADGameFusionTargets
