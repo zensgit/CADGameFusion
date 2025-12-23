@@ -147,5 +147,8 @@ struct CanvasTestAccess {
     static QVector<CanvasWidget::PolylineState> polylineStates(const CanvasWidget& canvas) {
         return canvas.polylineStates();
     }
+    static QList<qulonglong> selection(const CanvasWidget& canvas) {
+        return canvas.selectionList();
+    }
 };
 #endif
