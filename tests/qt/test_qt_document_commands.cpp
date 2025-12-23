@@ -290,7 +290,17 @@ int main(int argc, char** argv) {
                          ++selectionSignals;
                      });
     canvas.setSelectionFromModel({static_cast<qulonglong>(id1), static_cast<qulonglong>(id2)});
+    auto selectionBefore = CanvasTestAccess::selection(canvas);
+    assert(selectionBefore.size() == 2);
+    assert(selectionBefore.contains(static_cast<qulonglong>(id1)));
+    assert(selectionBefore.contains(static_cast<qulonglong>(id2)));
     assert(selectionSignals == 0);
+    canvas.reloadFromDocument();
+    assert(selectionSignals == 0);
+    auto selectionAfter = CanvasTestAccess::selection(canvas);
+    assert(selectionAfter.size() == 2);
+    assert(selectionAfter.contains(static_cast<qulonglong>(id1)));
+    assert(selectionAfter.contains(static_cast<qulonglong>(id2)));
 
     QVector<core::EntityId> removeIds;
     removeIds.push_back(id1);

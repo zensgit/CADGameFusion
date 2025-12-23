@@ -832,8 +832,10 @@ void CanvasWidget::selectGroupAtWorld(const QPointF& mouseWorld) {
 void CanvasWidget::reloadFromDocument() {
     if (!m_doc) return;
 
+    const QSet<EntityId> prevSelection = selected_entities_;
     polylines_.clear();
     selected_entities_.clear();
+    QSet<EntityId> validIds;
 
     // Iterate over all entities in Document and create PolyVis for each
     const auto& entities = m_doc->entities();
@@ -854,10 +856,16 @@ void CanvasWidget::reloadFromDocument() {
 
         updatePolyCache(pv);
         polylines_.append(pv);
+        validIds.insert(e.id);
     }
 
     update();
-    emit selectionChanged({});
+    for (EntityId id : prevSelection) {
+        if (validIds.contains(id)) selected_entities_.insert(id);
+    }
+    if (selected_entities_ != prevSelection) {
+        emit selectionChanged(selectionList());
+    }
 }
 
 QVector<CanvasWidget::PolylineState> CanvasWidget::polylineStates() const {

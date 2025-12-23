@@ -48,6 +48,7 @@ Scope:
    - Location: `editor/qt/src/canvas.cpp` (`reloadFromDocument`)
    - Selection is reset on reload, even if entity IDs still exist.
    - Action (optional): re-apply selection from SelectionModel after reload if IDs are valid.
+   - Status: Completed (Step 37).
 
 ## Stable Boundary Usage Review
 - C ABI is the stable boundary (`core/include/core/core_c_api.h`, `core/include/core/plugin_abi_c_v1.h`).
