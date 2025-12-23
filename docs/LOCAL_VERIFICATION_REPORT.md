@@ -41,7 +41,7 @@
 - Step 42 CMake package usage docs: no tests (doc-only).
 - Step 43 package consumer smoke test: core_c build + package consumer CTest.
 - Step 44 architecture evolution docs alignment: no tests (doc-only).
-- Step 45 package consumer CI smoke: no local tests (CI-only change).
+- Step 45 package consumer CI smoke: local package consumer smoke re-run.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -224,10 +224,14 @@
     - Result: PASS (Step 43 core_c build)
 90. `ctest --test-dir build_vcpkg -R package_consumer_smoke -V`
     - Result: PASS (Step 43 package consumer test)
+91. `cmake --build build_vcpkg -j --target core_c`
+    - Result: PASS (Step 45 local core_c build)
+92. `ctest --test-dir build_vcpkg -R package_consumer_smoke -V`
+    - Result: PASS (Step 45 local package consumer test)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.
 - Qt tests emitted font alias warnings (`Sans Serif` missing); tests still passed.
 - Step 38 was documentation-only; no additional commands executed.
 - Step 44 was documentation-only; no additional commands executed.
-- Step 45 was a CI-only change; no additional commands executed.
+- Step 45 added a CI check; local package consumer smoke was re-run for validation.
