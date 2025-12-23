@@ -30,6 +30,7 @@
 - Step 29 legacy project load coverage: legacy Qt test + full Qt suite re-run.
 - Step 30 document layer behavior: core layer test.
 - Step 33 canvas cache API cleanup: editor_qt build.
+- Step 34 canvas polylineStates scope: editor_qt build.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -182,6 +183,8 @@
     - Result: PASS (Step 30 document layers test)
 75. `cmake --build build_vcpkg -j --target editor_qt`
     - Result: PASS (Step 33 editor build)
+76. `cmake --build build_vcpkg -j --target editor_qt`
+    - Result: PASS (Step 34 editor build)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.
