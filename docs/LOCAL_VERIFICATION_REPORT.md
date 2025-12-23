@@ -42,6 +42,7 @@
 - Step 43 package consumer smoke test: core_c build + package consumer CTest.
 - Step 44 architecture evolution docs alignment: no tests (doc-only).
 - Step 45 package consumer CI smoke: local package consumer smoke re-run.
+- Step 46 CMake usage doc links: no tests (doc-only).
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -235,3 +236,4 @@
 - Step 38 was documentation-only; no additional commands executed.
 - Step 44 was documentation-only; no additional commands executed.
 - Step 45 added a CI check; local package consumer smoke was re-run for validation.
+- Step 46 was documentation-only; no additional commands executed.
