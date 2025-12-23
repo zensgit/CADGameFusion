@@ -11,6 +11,7 @@ High‑performance 2D CAD/geometry core with an optional Qt editor and export to
 - Manual test guide: [MANUAL_TEST_GUIDE.md](MANUAL_TEST_GUIDE.md)
 - Offline / Subset Validation Guide: [OFFLINE_MODE.md](OFFLINE_MODE.md)
 - One‑Command Quick Check: `tools/quick_check.sh` or `make quick` / `make strict`
+- CMake package usage: [docs/CMake-Package-Usage.md](docs/CMake-Package-Usage.md)
 - Release notes: [docs/Release-Notes-2025-09-30.md](docs/Release-Notes-2025-09-30.md)
 
 ## Build (Quick Start)
@@ -27,6 +28,7 @@ Enable with `-DBUILD_EDITOR_QT=ON` and build target `editor_qt`.
 - Stable binary boundary: C ABI in `core_c` (`cadgf_*` symbols in `core/include/core/core_c_api.h`).
 - Plugin ABI: `core/include/core/plugin_abi_c_v1.h` (C function table).
 - `core::Document` and other C++ headers are internal and not ABI-stable across DLL/DSO boundaries.
+- CMake package usage: `docs/CMake-Package-Usage.md` (find_package + `cadgf::core_c`).
 - Runtime checks:
   - `cadgf_get_abi_version()` for ABI level
   - `cadgf_get_version()` for release string

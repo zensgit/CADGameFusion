@@ -6,6 +6,7 @@ Headers and binaries
 - Header: `core/include/core/core_c_api.h`
 - Shared library target: `core_c` (Windows: core_c.dll; macOS: libcore_c.dylib; Linux: libcore_c.so)
 - Preferred exported symbol prefix: `cadgf_*` (`core_*` is kept as a compatibility alias)
+- CMake package usage: `docs/CMake-Package-Usage.md` (find_package + `cadgf::core_c`)
 
 Conventions
 - Memory: callers allocate buffers; use two-call query-then-fill where sizes are unknown.
