@@ -121,7 +121,7 @@ void CanvasWidget::clear() {
     update();
 }
 
-void CanvasWidget::setSelection(const QList<qulonglong>& entityIds) {
+void CanvasWidget::setSelectionFromModel(const QList<qulonglong>& entityIds) {
     selected_entities_.clear();
     for (qulonglong id : entityIds) {
         if (id != 0) {

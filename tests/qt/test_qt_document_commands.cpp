@@ -289,7 +289,7 @@ int main(int argc, char** argv) {
                          lastSelection = ids;
                          ++selectionSignals;
                      });
-    canvas.setSelection({static_cast<qulonglong>(id1), static_cast<qulonglong>(id2)});
+    canvas.setSelectionFromModel({static_cast<qulonglong>(id1), static_cast<qulonglong>(id2)});
     assert(selectionSignals == 0);
 
     QVector<core::EntityId> removeIds;

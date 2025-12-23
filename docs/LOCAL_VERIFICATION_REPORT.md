@@ -31,6 +31,7 @@
 - Step 30 document layer behavior: core layer test.
 - Step 33 canvas cache API cleanup: editor_qt build.
 - Step 34 canvas polylineStates scope: qt_document_commands build + test.
+- Step 35 selection model ownership: qt_document_commands + qt_canvas_box_select build + tests.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -187,6 +188,12 @@
     - Result: PASS (Step 34 qt document commands build)
 77. `ctest --test-dir build_vcpkg -R qt_document_commands_run -V`
     - Result: PASS (Step 34 qt document commands test)
+78. `cmake --build build_vcpkg -j --target test_qt_document_commands test_qt_canvas_box_select`
+    - Result: PASS (Step 35 qt document commands + canvas box select build)
+79. `ctest --test-dir build_vcpkg -R qt_document_commands_run -V`
+    - Result: PASS (Step 35 qt document commands test)
+80. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
+    - Result: PASS (Step 35 qt canvas box select test)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.

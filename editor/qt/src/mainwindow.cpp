@@ -154,7 +154,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     });
     connect(m_selectionModel, &SelectionModel::selectionChanged, this, [this, prop, canvas](const QList<qulonglong>& entityIds){
         prop->updateFromSelection(entityIds);
-        if (canvas) canvas->setSelection(entityIds);
+        if (canvas) canvas->setSelectionFromModel(entityIds);
     });
     connect(canvas, &CanvasWidget::deleteRequested, this, [this](bool allSimilar){
         const QList<qulonglong> selection = m_selectionModel ? m_selectionModel->selection() : QList<qulonglong>{};

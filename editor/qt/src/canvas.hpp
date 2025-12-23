@@ -58,10 +58,12 @@ public:
     const QVector<unsigned int>& triIndices() const { return triIndices_; }
     void setTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);
     void clearTriMesh();
-    void setSelection(const QList<qulonglong>& entityIds);
+    // Sync selection from SelectionModel; Canvas is a view cache, not the source of truth.
+    void setSelectionFromModel(const QList<qulonglong>& entityIds);
     QList<qulonglong> selectEntitiesInWorldRect(const QRectF& rect, bool crossing);
 
 signals:
+    // Emitted on user-driven selection changes; SelectionModel should be updated by the owner.
     void selectionChanged(const QList<qulonglong>& entityIds);
     void deleteRequested(bool allSimilar);
     void moveEntitiesRequested(const QList<qulonglong>& entityIds,
