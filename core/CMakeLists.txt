@@ -83,7 +83,7 @@ endif()
 
 # Core C API shared library
 add_library(core_c SHARED src/core_c_api.cpp)
-target_link_libraries(core_c PRIVATE core)
+target_link_libraries(core_c PUBLIC core)
 target_include_directories(core_c PUBLIC include)
 # Define CORE_BUILD when building the shared library (for Windows DLL exports)
 target_compile_definitions(core_c PRIVATE CORE_BUILD)

@@ -35,7 +35,7 @@ core_c (SHARED) <-- C ABI wrapper, links to core (no duplicated impl)
 
 ### Who links what
 
-- Qt editor: **link `core` only** (preferred), or link `core_c` only (if you want editor to use C API exclusively)
+- Qt editor: **link `core` only** if you do not call the C API; if you need both C++ and C ABI (plugin export), link `core_c` and let it pull `core` transitively (avoid listing both).
 - Unity/Python: link/load `core_c` and call `cadgf_*` functions
 - Plugins (core-level exporters/importers): link against `core_c` + plugin ABI
 
