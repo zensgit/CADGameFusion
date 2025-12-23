@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QList>
 
+// Owns UI selection state; Canvas derives its highlight from this model.
 class SelectionModel : public QObject {
     Q_OBJECT
 public:
