@@ -245,16 +245,6 @@ QPointF CanvasWidget::snapWorldPositionInternal(const QPointF& worldPos, bool* s
     return res.active ? res.pos : worldPos;
 }
 
-void CanvasWidget::updatePolylinePoints(EntityId id, const QVector<QPointF>& pts) {
-    for (auto& pv : polylines_) {
-        if (pv.entityId != id) continue;
-        pv.pts = pts;
-        updatePolyCache(pv);
-        scheduleUpdate();
-        return;
-    }
-}
-
 void CanvasWidget::scheduleUpdate() {
     if (update_pending_) return;
     update_pending_ = true;

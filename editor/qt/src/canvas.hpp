@@ -47,7 +47,6 @@ public:
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
     QVector<PolylineState> polylineStates() const;
     QPointF snapWorldPosition(const QPointF& worldPos, bool* snapped = nullptr);
-    void updatePolylinePoints(EntityId id, const QVector<QPointF>& pts);
 
     void clear();
     void addTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);
@@ -107,7 +106,7 @@ private:
     QPoint lastPos_ {};
     SnapManager snap_manager_;
     SnapManager::SnapResult m_currentSnap;
-    // storage for polylines
+    // Render cache derived from Document (do not mutate externally).
     QVector<PolyVis> polylines_;
     QVector<SnapManager::PolylineView> snap_inputs_;
     QSet<EntityId> selected_entities_;
