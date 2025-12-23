@@ -5,6 +5,9 @@ project(CADGameFusion)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
 if (MSVC)
   add_compile_definitions(WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
   add_compile_options(/EHsc /Zc:__cplusplus /permissive-)
@@ -82,3 +85,26 @@ add_test(NAME plugin_host_demo_run
     -Dplugin="$<TARGET_FILE:cadgf_sample_plugin>"
     -Dout="${PLUGIN_DEMO_OUT}"
     -P "${CMAKE_SOURCE_DIR}/cmake/RunPluginHostDemo.cmake")
+
+set(CADGF_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/CADGameFusion")
+
+install(EXPORT CADGameFusionTargets
+    FILE CADGameFusionTargets.cmake
+    NAMESPACE cadgf::
+    DESTINATION ${CADGF_INSTALL_CMAKEDIR}
+)
+
+configure_package_config_file(
+    ${CMAKE_SOURCE_DIR}/cmake/CADGameFusionConfig.cmake.in
+    ${CMAKE_CURRENT_BINARY_DIR}/CADGameFusionConfig.cmake
+    INSTALL_DESTINATION ${CADGF_INSTALL_CMAKEDIR}
+)
+
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/CADGameFusionConfig.cmake
+    DESTINATION ${CADGF_INSTALL_CMAKEDIR}
+)
+
+export(EXPORT CADGameFusionTargets
+    FILE ${CMAKE_CURRENT_BINARY_DIR}/CADGameFusionTargets.cmake
+    NAMESPACE cadgf::
+)

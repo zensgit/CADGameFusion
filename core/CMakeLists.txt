@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 
+# Public headers interface
+add_library(core_headers INTERFACE)
+target_include_directories(core_headers INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include>
+)
+target_compile_features(core_headers INTERFACE cxx_std_17)
+
 # Core library
 add_library(core SHARED
     src/geometry2d.cpp
@@ -9,7 +17,7 @@ add_library(core SHARED
     src/solver.cpp
 )
 
-target_include_directories(core PUBLIC include)
+target_link_libraries(core PUBLIC core_headers)
 target_compile_features(core PUBLIC cxx_std_17)
 
 # Export all symbols on Windows to keep C++ API usable without per-symbol declspec.
@@ -84,6 +92,22 @@ endif()
 # Core C API shared library
 add_library(core_c SHARED src/core_c_api.cpp)
 target_link_libraries(core_c PUBLIC core)
-target_include_directories(core_c PUBLIC include)
 # Define CORE_BUILD when building the shared library (for Windows DLL exports)
 target_compile_definitions(core_c PRIVATE CORE_BUILD)
+
+install(TARGETS core core_c
+    EXPORT CADGameFusionTargets
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(TARGETS core_headers
+    EXPORT CADGameFusionTargets
+    INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)

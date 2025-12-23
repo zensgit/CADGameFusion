@@ -43,6 +43,7 @@ core_c (SHARED) <-- C ABI wrapper, links to core (no duplicated impl)
 
 - ship both `core` + `core_c` together, OR
 - ship only `core_c` and ensure it brings `core` as a runtime dependency.
+- install/export targets provide `cadgf::core`, `cadgf::core_c`, and `cadgf::core_headers` for `find_package(CADGameFusion CONFIG)`.
 
 ---
 

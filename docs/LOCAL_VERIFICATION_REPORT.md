@@ -36,6 +36,7 @@
 - Step 37 reload preserve selection: qt_document_commands build + test.
 - Step 38 selection model semantics docs: no tests (doc/comment-only).
 - Step 39 core_c linking cleanup: editor_qt build.
+- Step 40 core install/export targets: core_c build + install.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -206,6 +207,10 @@
     - Result: PASS (Step 37 qt document commands test)
 84. `cmake --build build_vcpkg -j --target editor_qt`
     - Result: PASS (Step 39 editor build)
+85. `cmake --build build_vcpkg -j --target core_c`
+    - Result: PASS (Step 40 core_c build)
+86. `cmake --install build_vcpkg --prefix build_vcpkg/install`
+    - Result: PASS (Step 40 install)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.
