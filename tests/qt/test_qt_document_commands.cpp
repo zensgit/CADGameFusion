@@ -184,7 +184,7 @@ int main(int argc, char** argv) {
     assert(doc.set_entity_group_id(id1, gid));
     assert(doc.set_entity_color(id1, 0x112233u));
 
-    auto states = canvas.polylineStates();
+    auto states = CanvasTestAccess::polylineStates(canvas);
     assert(states.size() == 3);
     const auto* s1 = findState(states, id1);
     const auto* s2 = findState(states, id2);
@@ -224,7 +224,7 @@ int main(int argc, char** argv) {
     const auto* entity = doc.get_entity(id2);
     assert(entity);
     assert(!entity->visible);
-    states = canvas.polylineStates();
+    states = CanvasTestAccess::polylineStates(canvas);
     const auto* s2_after = findState(states, id2);
     assert(s2_after);
     assert(!s2_after->visible);
@@ -233,7 +233,7 @@ int main(int argc, char** argv) {
     entity = doc.get_entity(id2);
     assert(entity);
     assert(entity->visible);
-    states = canvas.polylineStates();
+    states = CanvasTestAccess::polylineStates(canvas);
     s2_after = findState(states, id2);
     assert(s2_after);
     assert(s2_after->visible);
@@ -242,7 +242,7 @@ int main(int argc, char** argv) {
     entity = doc.get_entity(id2);
     assert(entity);
     assert(!entity->visible);
-    states = canvas.polylineStates();
+    states = CanvasTestAccess::polylineStates(canvas);
     s2_after = findState(states, id2);
     assert(s2_after);
     assert(!s2_after->visible);
@@ -260,21 +260,21 @@ int main(int argc, char** argv) {
     batchMgr.push(std::make_unique<BatchSetVisibleCommand>(&doc, &canvas, batchIds, false));
     assert(!doc.get_entity(id1)->visible);
     assert(!doc.get_entity(id2)->visible);
-    states = canvas.polylineStates();
+    states = CanvasTestAccess::polylineStates(canvas);
     assert(!findState(states, id1)->visible);
     assert(!findState(states, id2)->visible);
 
     batchStack.undo();
     assert(doc.get_entity(id1)->visible);
     assert(doc.get_entity(id2)->visible);
-    states = canvas.polylineStates();
+    states = CanvasTestAccess::polylineStates(canvas);
     assert(findState(states, id1)->visible);
     assert(findState(states, id2)->visible);
 
     batchStack.redo();
     assert(!doc.get_entity(id1)->visible);
     assert(!doc.get_entity(id2)->visible);
-    states = canvas.polylineStates();
+    states = CanvasTestAccess::polylineStates(canvas);
     assert(!findState(states, id1)->visible);
     assert(!findState(states, id2)->visible);
 
@@ -300,7 +300,7 @@ int main(int argc, char** argv) {
     removeMgr.setUndoStack(&removeStack);
     removeMgr.push(std::make_unique<RemoveEntitiesCommand>(&doc, &canvas, removeIds));
     assert(doc.entities().size() == 1);
-    states = canvas.polylineStates();
+    states = CanvasTestAccess::polylineStates(canvas);
     assert(states.size() == 1);
     assert(states[0].entityId == id2);
     assert(selectionSignals >= 1);

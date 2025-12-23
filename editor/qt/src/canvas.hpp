@@ -19,6 +19,10 @@ class SnapSettings;
 
 using EntityId = uint64_t; // Mirror core::EntityId
 
+#ifdef CADGF_QT_TEST_ACCESS
+struct CanvasTestAccess;
+#endif
+
 class CanvasWidget : public QWidget, public core::DocumentObserver {
     Q_OBJECT
 public:
@@ -75,6 +79,9 @@ protected:
     void resizeEvent(QResizeEvent*) override;
 
 private:
+#ifdef CADGF_QT_TEST_ACCESS
+    friend struct CanvasTestAccess;
+#endif
     struct MoveEntity {
         EntityId id{0};
         QVector<QPointF> points;
@@ -132,3 +139,11 @@ private:
     core::Document* m_doc{nullptr};
     SnapSettings* snap_settings_{nullptr};
 };
+
+#ifdef CADGF_QT_TEST_ACCESS
+struct CanvasTestAccess {
+    static QVector<CanvasWidget::PolylineState> polylineStates(const CanvasWidget& canvas) {
+        return canvas.polylineStates();
+    }
+};
+#endif
