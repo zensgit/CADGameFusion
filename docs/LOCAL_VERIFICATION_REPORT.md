@@ -40,6 +40,7 @@
 - Step 41 package version config: core_c build + install.
 - Step 42 CMake package usage docs: no tests (doc-only).
 - Step 43 package consumer smoke test: core_c build + package consumer CTest.
+- Step 44 architecture evolution docs alignment: no tests (doc-only).
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -227,3 +228,4 @@
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.
 - Qt tests emitted font alias warnings (`Sans Serif` missing); tests still passed.
 - Step 38 was documentation-only; no additional commands executed.
+- Step 44 was documentation-only; no additional commands executed.
