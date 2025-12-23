@@ -53,7 +53,7 @@ public:
 
     void clear();
     void addTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);
-    // Tri mesh accessors (for undoable commands)
+    // Tri mesh is UI-only wireframe cache (not stored in Document or serialized).
     const QVector<QPointF>& triVerts() const { return triVerts_; }
     const QVector<unsigned int>& triIndices() const { return triIndices_; }
     void setTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);

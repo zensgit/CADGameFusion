@@ -32,6 +32,7 @@
 - Step 33 canvas cache API cleanup: editor_qt build.
 - Step 34 canvas polylineStates scope: qt_document_commands build + test.
 - Step 35 selection model ownership: qt_document_commands + qt_canvas_box_select build + tests.
+- Step 36 tri mesh UI-only clarification: editor_qt build.
 
 ## Commands Executed
 1. `cmake --build build -j`
@@ -194,6 +195,8 @@
     - Result: PASS (Step 35 qt document commands test)
 80. `ctest --test-dir build_vcpkg -R qt_canvas_box_select_run -V`
     - Result: PASS (Step 35 qt canvas box select test)
+81. `cmake --build build_vcpkg -j --target editor_qt`
+    - Result: PASS (Step 36 editor build)
 
 ## Notes
 - The Qt helper test is registered as `qt_export_helpers_run` in CTest.

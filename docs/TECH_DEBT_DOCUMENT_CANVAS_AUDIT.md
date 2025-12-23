@@ -42,6 +42,7 @@ Scope:
    - `triVerts_`/`triIndices_` are not in Document.
    - If triangulation results need undo/export, consider a Document entity or a cache keyed by Document revision.
    - If UI-only, document it as ephemeral.
+   - Status: Completed (Step 36).
 
 5) Full reload clears selection
    - Location: `editor/qt/src/canvas.cpp` (`reloadFromDocument`)
