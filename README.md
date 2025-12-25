@@ -65,6 +65,9 @@ make strict  # strict quick subset
 - Offline guide: `OFFLINE_MODE.md`
 - Qt UI Shell design: `docs/editor/Qt-UI-Shell-Design.md`
 - Exporter experimental flags: `docs/exporter/EXPERIMENTAL_FLAGS.md`
+- Reference comparison plan: `docs/REFERENCE_COMPARISON_PLAN.md`
+- Reference comparison report: `docs/REFERENCE_COMPARISON_REPORT.md`
+- Reference comparison actions: `docs/REFERENCE_COMPARISON_ACTIONS.md`
 - PLM conversion summary (external): `docs/PLM_CONVERSION_SUMMARY_EXTERNAL.md`
 - PLM conversion summary (internal): `docs/PLM_CONVERSION_SUMMARY_INTERNAL.md`
 - PLM conversion verification checklist: `docs/PLM_CONVERSION_VERIFICATION_CHECKLIST.md`
