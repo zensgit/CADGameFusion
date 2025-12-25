@@ -19,3 +19,6 @@
 ## Notes
 - Manifest validation and schema checks ran within the CTest scripts.
 - No warnings or failures were reported during the run.
+
+## Re-runs
+- 2025-12-25: `ctest --test-dir build_vcpkg -R plm_ -V` (all 5 tests passed)
