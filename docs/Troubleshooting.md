@@ -30,6 +30,14 @@ Common build/run issues and fixes.
   - or set `-DCMAKE_PREFIX_PATH=/path/to/Qt/6.x/<platform>`
 - The script also auto-detects common locations (`/Applications/Qt`, `~/Qt`).
 
+## Qt font alias warning
+- Symptom: `qt.qpa.fonts: Populating font family aliases... missing font family "Sans Serif"`
+- Impact: warning only; tests typically still pass.
+- Fix options:
+  - Install a font package that provides a "Sans Serif" alias on the test machine.
+  - Set `QT_QPA_FONTDIR` to a directory that includes the expected fonts.
+  - Update Qt initialization to set a concrete font family available on the host (e.g., "Helvetica" or "Arial").
+
 ## Clipper2/earcut not active
 - Symptom: Boolean/Offset/Triangulate return empty or fallback
 - Fix: build with vcpkg toolchain and manifest mode:

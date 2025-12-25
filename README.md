@@ -65,6 +65,11 @@ make strict  # strict quick subset
 - Offline guide: `OFFLINE_MODE.md`
 - Qt UI Shell design: `docs/editor/Qt-UI-Shell-Design.md`
 - Exporter experimental flags: `docs/exporter/EXPERIMENTAL_FLAGS.md`
+- PLM conversion summary (external): `docs/PLM_CONVERSION_SUMMARY_EXTERNAL.md`
+- PLM conversion summary (internal): `docs/PLM_CONVERSION_SUMMARY_INTERNAL.md`
+- PLM conversion verification checklist: `docs/PLM_CONVERSION_VERIFICATION_CHECKLIST.md`
+- PLM conversion local verification (2025-12-25): `docs/PLM_CONVERSION_LOCAL_VERIFICATION_REPORT_2025_12_25.md`
+- Local smoke verification (2025-12-25): `docs/LOCAL_SMOKE_VERIFICATION_REPORT_2025_12_25.md`
 
 ## Contributing
 - Start with `AGENTS.md` and `docs/Contributing.md` for style, PR, and test guidance.
