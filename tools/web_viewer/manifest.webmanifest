@@ -1,0 +1,16 @@
+{
+  "name": "CADGameFusion Web Preview",
+  "short_name": "CADGF Preview",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f2ea",
+  "theme_color": "#ff8b4a",
+  "icons": [
+    {
+      "src": "./assets/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
