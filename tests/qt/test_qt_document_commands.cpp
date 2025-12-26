@@ -139,10 +139,10 @@ public:
             return;
         }
         for (const auto& entity : removed_) {
-            if (entity.type != core::EntityType::Polyline || !entity.payload) {
+            if (entity.type != core::EntityType::Polyline) {
                 continue;
             }
-            const auto* pl = static_cast<const core::Polyline*>(entity.payload.get());
+            const auto* pl = std::get_if<core::Polyline>(&entity.payload);
             if (!pl) {
                 continue;
             }

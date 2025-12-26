@@ -180,8 +180,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             void undo() override {
                 if (!doc) return;
                 for (const auto& e : removed) {
-                    if (e.type != core::EntityType::Polyline || !e.payload) continue;
-                    const auto* pl = static_cast<const core::Polyline*>(e.payload.get());
+                    if (e.type != core::EntityType::Polyline) continue;
+                    const auto* pl = std::get_if<core::Polyline>(&e.payload);
                     if (!pl) continue;
                     core::EntityId newId = doc->add_polyline(*pl, e.name, e.layerId);
                     doc->set_entity_visible(newId, e.visible);
@@ -885,8 +885,8 @@ bool MainWindow::buildCadgfDocumentFromDocument(cadgf_document* doc, QString* er
 
     int polyIndex = 0;
     for (const auto& e : m_document.entities()) {
-        if (e.type != core::EntityType::Polyline || !e.payload) continue;
-        const auto* pl = static_cast<const core::Polyline*>(e.payload.get());
+        if (e.type != core::EntityType::Polyline) continue;
+        const auto* pl = std::get_if<core::Polyline>(&e.payload);
         if (!pl || pl->points.size() < 2) continue;
 
         int layerId = 0;

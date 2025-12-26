@@ -2,9 +2,13 @@
 #include <QtCore/QByteArray>
 #include <QtCore/QTemporaryDir>
 #include <QtCore/QString>
+#include <QtCore/QFile>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
 
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 #include "core/document.hpp"
@@ -83,7 +87,28 @@ int main(int argc, char** argv) {
     snap.setGridPixelSpacing(40.0);
 
     Project project;
-    assert(project.save(path, doc, &canvas));
+    if (!project.save(path, doc, &canvas)) {
+        std::fprintf(stderr, "Failed to save project to %s\n", path.toUtf8().constData());
+        return 1;
+    }
+
+    QFile saved(path);
+    if (!saved.open(QIODevice::ReadOnly)) {
+        std::fprintf(stderr, "Failed to open saved project %s\n", path.toUtf8().constData());
+        return 1;
+    }
+    const auto savedDoc = QJsonDocument::fromJson(saved.readAll());
+    saved.close();
+    if (!savedDoc.isObject()) {
+        std::fprintf(stderr, "Saved project JSON is not an object\n");
+        return 1;
+    }
+    const auto savedMeta = savedDoc.object().value("meta").toObject();
+    const int schemaVersion = savedMeta.value("schemaVersion").toInt(-1);
+    if (schemaVersion != Project::kSchemaVersion) {
+        std::fprintf(stderr, "Unexpected schemaVersion %d\n", schemaVersion);
+        return 1;
+    }
 
     core::Document loaded;
     CanvasWidget canvas2;
@@ -91,7 +116,10 @@ int main(int argc, char** argv) {
     canvas2.setSnapSettings(&snap2);
     canvas2.setDocument(&loaded);
     Project project2;
-    assert(project2.load(path, loaded, &canvas2));
+    if (!project2.load(path, loaded, &canvas2)) {
+        std::fprintf(stderr, "Failed to load project %s\n", path.toUtf8().constData());
+        return 1;
+    }
 
     assert(loaded.entities().size() == doc.entities().size());
     assert(loaded.layers().size() == doc.layers().size());

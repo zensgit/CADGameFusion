@@ -17,8 +17,8 @@ uint32_t effectiveEntityColor(const core::Document& doc, const core::Entity& e) 
 void appendExportEntity(const core::Document& doc,
                         const core::Entity& entity,
                         QMap<int, ExportItem>& groupMap) {
-    if (entity.type != core::EntityType::Polyline || !entity.payload) return;
-    const auto* pl = static_cast<const core::Polyline*>(entity.payload.get());
+    if (entity.type != core::EntityType::Polyline) return;
+    const auto* pl = std::get_if<core::Polyline>(&entity.payload);
     if (!pl || pl->points.size() < 2) return;
 
     ExportItem& item = groupMap[entity.groupId];
