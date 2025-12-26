@@ -3,9 +3,15 @@ import argparse
 import datetime as dt
 import json
 import os
+import queue
+import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+import threading
+import time
+import uuid
+from dataclasses import dataclass, field
+from typing import Dict, Optional
 from email.parser import BytesParser
 from email.policy import default
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -19,7 +25,179 @@ class ServerConfig:
     out_root: Path
     default_plugin: str
     default_convert_cli: str
-    public_host: str
+    base_url: str
+
+
+@dataclass
+class TaskConfig:
+    plugin: str
+    input_path: Path
+    output_dir: Path
+    emit: str
+    hash_names: bool
+    keep_legacy_names: bool
+    convert_cli: str
+
+
+@dataclass
+class TaskRecord:
+    task_id: str
+    config: TaskConfig
+    status: str = "queued"
+    created_at: str = ""
+    started_at: Optional[str] = None
+    finished_at: Optional[str] = None
+    error: Optional[str] = None
+    result: Optional[dict] = None
+    event: threading.Event = field(default_factory=threading.Event)
+
+
+class TaskManager:
+    def __init__(self, config: ServerConfig, max_workers: int, queue_size: int, ttl_seconds: int, cleanup_interval: int):
+        self._config = config
+        self._queue = queue.Queue(maxsize=max(queue_size, 0))
+        self._tasks: Dict[str, TaskRecord] = {}
+        self._lock = threading.Lock()
+        self._ttl_seconds = ttl_seconds
+        self._cleanup_interval = cleanup_interval
+        self._stop_event = threading.Event()
+        self._workers = []
+        for _ in range(max(1, max_workers)):
+            worker = threading.Thread(target=self._worker_loop, daemon=True)
+            worker.start()
+            self._workers.append(worker)
+        if ttl_seconds > 0 and cleanup_interval > 0:
+            cleaner = threading.Thread(target=self._cleanup_loop, daemon=True)
+            cleaner.start()
+
+    def submit(self, task: TaskRecord) -> bool:
+        with self._lock:
+            self._tasks[task.task_id] = task
+        try:
+            self._queue.put(task, block=False)
+            return True
+        except queue.Full:
+            with self._lock:
+                self._tasks.pop(task.task_id, None)
+            return False
+
+    def get(self, task_id: str) -> Optional[TaskRecord]:
+        with self._lock:
+            return self._tasks.get(task_id)
+
+    def wait(self, task_id: str, timeout: Optional[float]) -> Optional[TaskRecord]:
+        task = self.get(task_id)
+        if not task:
+            return None
+        task.event.wait(timeout=timeout)
+        return task
+
+    def status_url(self, task_id: str) -> str:
+        return f"{self._config.base_url}/status/{task_id}"
+
+    def _worker_loop(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                task = self._queue.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            self._run_task(task)
+            self._queue.task_done()
+
+    def _run_task(self, task: TaskRecord) -> None:
+        with self._lock:
+            task.status = "running"
+            task.started_at = now_iso()
+
+        try:
+            result = self._convert(task.config)
+        except Exception as exc:
+            result = {"ok": False, "error": str(exc)}
+
+        with self._lock:
+            if result.get("ok"):
+                task.status = "done"
+                task.result = result.get("payload", {})
+            else:
+                task.status = "error"
+                task.error = result.get("error", "conversion failed")
+            task.finished_at = now_iso()
+            task.event.set()
+
+    def _convert(self, config: TaskConfig) -> dict:
+        plm_convert = self._config.repo_root / "tools" / "plm_convert.py"
+        cmd = [
+            sys.executable,
+            str(plm_convert),
+            "--plugin",
+            config.plugin,
+            "--input",
+            str(config.input_path),
+            "--out",
+            str(config.output_dir),
+        ]
+        if config.emit:
+            cmd.extend(["--emit", config.emit])
+        if config.hash_names:
+            cmd.append("--hash-names")
+        if config.keep_legacy_names:
+            cmd.append("--keep-legacy-names")
+        if config.convert_cli:
+            cmd.extend(["--convert-cli", config.convert_cli])
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            return {"ok": False, "error": result.stderr.strip() or "conversion failed"}
+
+        manifest_path = config.output_dir / "manifest.json"
+        manifest = load_manifest(manifest_path)
+        if not manifest:
+            return {"ok": False, "error": "manifest.json missing or invalid"}
+
+        manifest_rel = os.path.relpath(manifest_path, self._config.repo_root)
+        manifest_url = quote(Path(manifest_rel).as_posix())
+        viewer_url = f"{self._config.base_url}/tools/web_viewer/index.html?manifest={manifest_url}"
+
+        artifact_urls = {}
+        for key, name in manifest.get("artifacts", {}).items():
+            artifact_path = config.output_dir / name
+            rel = os.path.relpath(artifact_path, self._config.repo_root)
+            artifact_urls[key] = f"{self._config.base_url}/{quote(Path(rel).as_posix())}"
+
+        payload = {
+            "manifest": manifest,
+            "manifest_path": str(manifest_path),
+            "viewer_url": viewer_url,
+            "artifact_urls": artifact_urls,
+            "output_dir": str(config.output_dir),
+        }
+        return {"ok": True, "payload": payload}
+
+    def _cleanup_loop(self) -> None:
+        while not self._stop_event.is_set():
+            self._cleanup_once()
+            self._stop_event.wait(self._cleanup_interval)
+
+    def _cleanup_once(self) -> None:
+        if self._ttl_seconds <= 0:
+            return
+        cutoff = time.time() - self._ttl_seconds
+        active_dirs = set()
+        with self._lock:
+            for task in self._tasks.values():
+                if task.status in {"queued", "running"}:
+                    active_dirs.add(str(task.config.output_dir))
+        for entry in self._config.out_root.iterdir():
+            if not entry.is_dir():
+                continue
+            if str(entry) in active_dirs:
+                continue
+            try:
+                mtime = entry.stat().st_mtime
+            except OSError:
+                continue
+            if mtime < cutoff:
+                shutil.rmtree(entry, ignore_errors=True)
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,10 +224,23 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Public host for viewer URL (defaults to bind host/localhost)",
     )
+    parser.add_argument("--max-workers", type=int, default=1, help="Max concurrent conversions")
+    parser.add_argument("--queue-size", type=int, default=8, help="Max queued jobs (0 = unbounded)")
+    parser.add_argument("--ttl-seconds", type=int, default=3600, help="TTL for output cleanup (0 disables)")
+    parser.add_argument(
+        "--cleanup-interval",
+        type=int,
+        default=300,
+        help="Cleanup interval seconds (0 disables)",
+    )
     return parser.parse_args()
 
 
-def parse_bool(value: str) -> bool:
+def now_iso() -> str:
+    return dt.datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+def parse_bool(value: Optional[str]) -> bool:
     if value is None:
         return False
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
@@ -119,7 +310,7 @@ def respond_json(handler, status: int, payload: dict) -> None:
     handler.wfile.write(body)
 
 
-def make_handler(config: ServerConfig):
+def make_handler(config: ServerConfig, manager: TaskManager):
     class RouterHandler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(config.repo_root), **kwargs)
@@ -131,6 +322,27 @@ def make_handler(config: ServerConfig):
             parsed = urlparse(self.path)
             if parsed.path == "/health":
                 respond_json(self, 200, {"status": "ok"})
+                return
+            if parsed.path.startswith("/status/"):
+                task_id = parsed.path.split("/status/", 1)[1]
+                task = manager.get(task_id)
+                if not task:
+                    respond_json(self, 404, {"status": "error", "message": "task not found"})
+                    return
+                payload = {
+                    "status": "ok",
+                    "task_id": task.task_id,
+                    "state": task.status,
+                    "created_at": task.created_at,
+                    "started_at": task.started_at,
+                    "finished_at": task.finished_at,
+                    "status_url": manager.status_url(task.task_id),
+                }
+                if task.status == "done" and task.result:
+                    payload.update(task.result)
+                if task.status == "error":
+                    payload["error"] = task.error
+                respond_json(self, 200, payload)
                 return
             super().do_GET()
 
@@ -173,96 +385,129 @@ def make_handler(config: ServerConfig):
                 return
 
             emit = fields.get("emit", "")
-            hash_names = parse_bool(fields.get("hash_names", ""))
-            keep_legacy = parse_bool(fields.get("keep_legacy_names", ""))
+            hash_names = parse_bool(fields.get("hash_names"))
+            keep_legacy = parse_bool(fields.get("keep_legacy_names"))
             convert_cli = fields.get("convert_cli") or config.default_convert_cli
+            if convert_cli and not Path(convert_cli).exists():
+                respond_json(self, 400, {"status": "error", "message": "convert_cli not found"})
+                return
 
-            plm_convert = config.repo_root / "tools" / "plm_convert.py"
-            cmd = [
-                sys.executable,
-                str(plm_convert),
-                "--plugin",
-                plugin,
-                "--input",
-                str(input_path),
-                "--out",
-                str(output_dir),
-            ]
-            if emit:
-                cmd.extend(["--emit", emit])
-            if hash_names:
-                cmd.append("--hash-names")
-            if keep_legacy:
-                cmd.append("--keep-legacy-names")
-            if convert_cli:
-                cmd.extend(["--convert-cli", convert_cli])
+            async_flag = parse_bool(fields.get("async"))
+            wait_flag = parse_bool(fields.get("wait")) if "wait" in fields else True
+            if async_flag:
+                wait_flag = False
+            wait_timeout = None
+            if "wait_timeout" in fields:
+                try:
+                    wait_timeout = float(fields.get("wait_timeout", "0") or 0)
+                except ValueError:
+                    wait_timeout = None
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
+            task_id = uuid.uuid4().hex
+            task_config = TaskConfig(
+                plugin=plugin,
+                input_path=input_path,
+                output_dir=output_dir,
+                emit=emit,
+                hash_names=hash_names,
+                keep_legacy_names=keep_legacy,
+                convert_cli=convert_cli,
+            )
+            task = TaskRecord(task_id=task_id, config=task_config, created_at=now_iso())
+            if not manager.submit(task):
+                respond_json(self, 429, {"status": "error", "message": "queue full"})
+                return
+
+            status_url = manager.status_url(task_id)
+            if not wait_flag:
+                respond_json(
+                    self,
+                    202,
+                    {
+                        "status": "ok",
+                        "task_id": task_id,
+                        "state": task.status,
+                        "status_url": status_url,
+                    },
+                )
+                return
+
+            task = manager.wait(task_id, timeout=wait_timeout)
+            if not task:
+                respond_json(self, 404, {"status": "error", "message": "task not found"})
+                return
+
+            if task.status == "done" and task.result:
+                payload = {
+                    "status": "ok",
+                    "task_id": task_id,
+                    "state": task.status,
+                    "status_url": status_url,
+                }
+                payload.update(task.result)
+                respond_json(self, 200, payload)
+                return
+            if task.status == "error":
                 respond_json(
                     self,
                     500,
                     {
                         "status": "error",
-                        "message": "conversion failed",
-                        "stderr": result.stderr.strip(),
+                        "task_id": task_id,
+                        "state": task.status,
+                        "status_url": status_url,
+                        "error": task.error,
                     },
                 )
                 return
 
-            manifest_path = output_dir / "manifest.json"
-            manifest = load_manifest(manifest_path)
-
-            host = config.public_host
-            if not host:
-                host = self.server.server_address[0]
-                if host in {"0.0.0.0", "::"}:
-                    host = "localhost"
-            port = self.server.server_address[1]
-
-            manifest_rel = os.path.relpath(manifest_path, config.repo_root)
-            manifest_url = quote(Path(manifest_rel).as_posix())
-            viewer_url = (
-                f"http://{host}:{port}/tools/web_viewer/index.html?manifest={manifest_url}"
-            )
-
-            artifact_urls = {}
-            for key, name in manifest.get("artifacts", {}).items():
-                artifact_path = output_dir / name
-                rel = os.path.relpath(artifact_path, config.repo_root)
-                artifact_urls[key] = f"http://{host}:{port}/{quote(Path(rel).as_posix())}"
-
             respond_json(
                 self,
-                200,
+                202,
                 {
                     "status": "ok",
-                    "manifest": manifest,
-                    "manifest_path": str(manifest_path),
-                    "viewer_url": viewer_url,
-                    "artifact_urls": artifact_urls,
-                    "output_dir": str(output_dir),
+                    "task_id": task_id,
+                    "state": task.status,
+                    "status_url": status_url,
                 },
             )
 
     return RouterHandler
 
 
+def build_base_url(host: str, port: int, public_host: str) -> str:
+    resolved = public_host
+    if not resolved:
+        resolved = host
+        if resolved in {"0.0.0.0", "::"}:
+            resolved = "localhost"
+    return f"http://{resolved}:{port}"
+
+
 def main() -> int:
     args = parse_args()
     repo_root = Path(__file__).resolve().parents[1]
     out_root = (repo_root / args.out_root).resolve()
+    base_url = build_base_url(args.host, args.port, args.public_host)
+
     config = ServerConfig(
         repo_root=repo_root,
         out_root=out_root,
         default_plugin=args.default_plugin,
         default_convert_cli=args.default_convert_cli,
-        public_host=args.public_host,
+        base_url=base_url,
     )
 
-    handler = make_handler(config)
+    manager = TaskManager(
+        config=config,
+        max_workers=args.max_workers,
+        queue_size=args.queue_size,
+        ttl_seconds=args.ttl_seconds,
+        cleanup_interval=args.cleanup_interval,
+    )
+    handler = make_handler(config, manager)
     server = ThreadingHTTPServer((args.host, args.port), handler)
-    print(f"Serving CADGameFusion at http://{args.host}:{args.port}")
+    print(f"Serving CADGameFusion at {base_url}")
     print("POST /convert (multipart form-data) with fields: file, plugin, emit, hash_names")
     print(f"Output root: {out_root}")
     try:
