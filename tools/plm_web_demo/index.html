@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CADGameFusion | PLM Upload Preview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="hero">
+        <div class="tag">PLM Integration</div>
+        <h1>Upload → Convert → Preview</h1>
+        <p>Minimal web bridge for the CADGameFusion router service.</p>
+      </header>
+
+      <div class="content">
+        <section class="card form-card">
+          <form id="upload-form">
+            <div class="section-title">Router Connection</div>
+            <label class="field">
+              <span>Router Base URL</span>
+              <input id="router-url" type="text" placeholder="http://localhost:9000" />
+            </label>
+
+            <div class="section-title">File Upload</div>
+            <label class="field">
+              <span>CAD/JSON File</span>
+              <input id="file-input" type="file" accept=".dxf,.json,.cad,.dwg" />
+            </label>
+
+            <label class="field">
+              <span>Importer Plugin (optional)</span>
+              <input id="plugin-input" type="text" placeholder="build_vcpkg/plugins/libcadgf_dxf_importer_plugin.dylib" />
+            </label>
+
+            <label class="field">
+              <span>convert_cli (optional)</span>
+              <input id="cli-input" type="text" placeholder="build_vcpkg/tools/convert_cli" />
+            </label>
+
+            <label class="field">
+              <span>Emit</span>
+              <select id="emit-select">
+                <option value="json,gltf,meta">json + gltf + meta</option>
+                <option value="json">json</option>
+                <option value="gltf">gltf</option>
+                <option value="meta">meta</option>
+              </select>
+            </label>
+
+            <div class="switches">
+              <label class="switch">
+                <input id="hash-toggle" type="checkbox" />
+                <span>Hash artifact names</span>
+              </label>
+              <label class="switch">
+                <input id="legacy-toggle" type="checkbox" />
+                <span>Keep legacy names</span>
+              </label>
+              <label class="switch">
+                <input id="async-toggle" type="checkbox" checked />
+                <span>Async queue mode</span>
+              </label>
+            </div>
+
+            <button id="submit-btn" class="btn" type="submit">Start Conversion</button>
+            <div class="status" id="status-pill">Idle</div>
+          </form>
+        </section>
+
+        <section class="card preview-card">
+          <div class="preview-header">
+            <div>
+              <div class="section-title">Preview</div>
+              <p class="subtle">Viewer loads once the router finishes conversion.</p>
+            </div>
+            <a id="viewer-link" class="link" href="#" target="_blank" rel="noreferrer">Open viewer</a>
+          </div>
+          <div class="preview-frame">
+            <div id="preview-placeholder" class="placeholder">Waiting for a preview URL...</div>
+            <iframe id="viewer-frame" title="CADGameFusion Preview"></iframe>
+          </div>
+
+          <div class="section-title">Response</div>
+          <pre id="response-json" class="response">Awaiting upload...</pre>
+        </section>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
