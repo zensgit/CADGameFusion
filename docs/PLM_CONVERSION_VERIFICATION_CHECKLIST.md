@@ -11,7 +11,7 @@
 - [ ] `ctest --test-dir build_vcpkg -R plm_emit_ -V`
 
 ## Manifest Validation
-- [ ] `python3 tools/validate_plm_manifest.py --check-hashes --check-names build_vcpkg/plm_convert_smoke/manifest.json`
+- [ ] `python3 tools/validate_plm_manifest.py --check-hashes --check-names --check-document build_vcpkg/plm_convert_smoke/manifest.json`
 
 ## Outputs Sanity
 - [ ] `build_vcpkg/plm_convert_smoke/manifest.json` contains:
