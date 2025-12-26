@@ -1,0 +1,300 @@
+import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+
+const canvas = document.getElementById("viewport");
+const statusEl = document.getElementById("status");
+const gltfUrlInput = document.getElementById("gltf-url");
+const loadBtn = document.getElementById("load-btn");
+const meshCountEl = document.getElementById("mesh-count");
+const vertexCountEl = document.getElementById("vertex-count");
+const triangleCountEl = document.getElementById("triangle-count");
+const selectionInfoEl = document.getElementById("selection-info");
+const annotationListEl = document.getElementById("annotation-list");
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, canvas.clientWidth / canvas.clientHeight, 0.1, 2000);
+camera.position.set(3, 3, 3);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.target.set(0, 0, 0);
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0x2b2d33, 0.9);
+scene.add(hemi);
+const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+dir.position.set(4, 6, 4);
+scene.add(dir);
+
+const grid = new THREE.GridHelper(10, 10, 0xe8dccf, 0xf1ede6);
+grid.material.opacity = 0.4;
+grid.material.transparent = true;
+scene.add(grid);
+
+const loader = new GLTFLoader();
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+let activeScene = null;
+let selectable = [];
+let selected = null;
+const annotationGroup = new THREE.Group();
+scene.add(annotationGroup);
+const annotations = [];
+
+function setStatus(text, isError = false) {
+  statusEl.textContent = text;
+  statusEl.style.color = isError ? "#c0392b" : "#5f6b73";
+}
+
+function resolveUrl(baseUrl, path) {
+  try {
+    return new URL(path, baseUrl).toString();
+  } catch {
+    return path;
+  }
+}
+
+async function loadFromManifest(manifestUrl) {
+  setStatus("Loading manifest...");
+  const response = await fetch(manifestUrl);
+  if (!response.ok) {
+    throw new Error(`Manifest request failed (${response.status}).`);
+  }
+  const manifest = await response.json();
+  const gltfName = manifest?.artifacts?.mesh_gltf;
+  if (!gltfName) {
+    throw new Error("Manifest missing artifacts.mesh_gltf.");
+  }
+  const resolved = resolveUrl(manifestUrl, gltfName);
+  gltfUrlInput.value = resolved;
+  loadScene(resolved);
+}
+
+function updateCounts() {
+  let meshCount = 0;
+  let vertexCount = 0;
+  let triCount = 0;
+  selectable.forEach((mesh) => {
+    meshCount += 1;
+    const geometry = mesh.geometry;
+    if (geometry?.attributes?.position) {
+      vertexCount += geometry.attributes.position.count;
+    }
+    if (geometry?.index) {
+      triCount += geometry.index.count / 3;
+    } else if (geometry?.attributes?.position) {
+      triCount += geometry.attributes.position.count / 3;
+    }
+  });
+  meshCountEl.textContent = meshCount.toString();
+  vertexCountEl.textContent = vertexCount.toString();
+  triangleCountEl.textContent = Math.round(triCount).toString();
+}
+
+function clearSelection() {
+  if (!selected) return;
+  if (selected.userData.originalMaterial) {
+    selected.material = selected.userData.originalMaterial;
+    selected.userData.originalMaterial = null;
+  }
+  selected = null;
+  selectionInfoEl.innerHTML = "<div class=\"selection__empty\">Click a surface to inspect.</div>";
+}
+
+function setSelection(mesh) {
+  clearSelection();
+  selected = mesh;
+  selected.userData.originalMaterial = mesh.material;
+  if (Array.isArray(mesh.material)) {
+    mesh.material = mesh.material.map((mat) => mat.clone());
+    mesh.material.forEach((mat) => mat.color?.set("#ff8b4a"));
+  } else if (mesh.material) {
+    mesh.material = mesh.material.clone();
+    if (mesh.material.color) {
+      mesh.material.color.set("#ff8b4a");
+    }
+  }
+
+  const geometry = mesh.geometry;
+  const verts = geometry?.attributes?.position?.count ?? 0;
+  const tris = geometry?.index ? geometry.index.count / 3 : verts / 3;
+  selectionInfoEl.innerHTML = `
+    <div class="selection__row"><span>Name</span><strong>${mesh.name || "Mesh"}</strong></div>
+    <div class="selection__row"><span>Vertices</span><strong>${verts}</strong></div>
+    <div class="selection__row"><span>Triangles</span><strong>${Math.round(tris)}</strong></div>
+  `;
+}
+
+function resetScene() {
+  if (activeScene) {
+    scene.remove(activeScene);
+    activeScene.traverse((child) => {
+      if (child.isMesh) {
+        child.geometry?.dispose();
+        if (Array.isArray(child.material)) {
+          child.material.forEach((m) => m.dispose());
+        } else {
+          child.material?.dispose();
+        }
+      }
+    });
+  }
+  annotationGroup.clear();
+  annotations.length = 0;
+  annotationListEl.innerHTML = "";
+  selectable = [];
+  activeScene = null;
+  clearSelection();
+  updateCounts();
+}
+
+function frameScene(object) {
+  const box = new THREE.Box3().setFromObject(object);
+  const size = box.getSize(new THREE.Vector3()).length();
+  const center = box.getCenter(new THREE.Vector3());
+  controls.reset();
+  controls.target.copy(center);
+  camera.position.copy(center).add(new THREE.Vector3(size * 0.6, size * 0.5, size * 0.7));
+  camera.near = Math.max(size / 100, 0.01);
+  camera.far = size * 10;
+  camera.updateProjectionMatrix();
+}
+
+function loadScene(url) {
+  setStatus("Loading scene...");
+  resetScene();
+  loader.load(
+    url,
+    (gltf) => {
+      activeScene = gltf.scene;
+      scene.add(activeScene);
+      selectable = [];
+      activeScene.traverse((child) => {
+        if (child.isMesh) {
+          selectable.push(child);
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+      frameScene(activeScene);
+      updateCounts();
+      setStatus("Loaded successfully.");
+    },
+    undefined,
+    (error) => {
+      console.error(error);
+      setStatus("Failed to load glTF.", true);
+    }
+  );
+}
+
+function addAnnotation(point) {
+  const marker = new THREE.Mesh(
+    new THREE.SphereGeometry(0.035, 16, 16),
+    new THREE.MeshStandardMaterial({ color: "#ff8b4a" })
+  );
+  marker.position.copy(point);
+  annotationGroup.add(marker);
+
+  const id = `A${annotations.length + 1}`;
+  annotations.push({ id, point, marker });
+  renderAnnotationList();
+}
+
+function renderAnnotationList() {
+  annotationListEl.innerHTML = "";
+  annotations.forEach((note, idx) => {
+    const item = document.createElement("li");
+    item.className = "annotation-item";
+    const coords = `${note.point.x.toFixed(2)}, ${note.point.y.toFixed(2)}, ${note.point.z.toFixed(2)}`;
+    item.innerHTML = `<span>${note.id} * ${coords}</span>`;
+    const btn = document.createElement("button");
+    btn.textContent = "Remove";
+    btn.addEventListener("click", () => {
+      annotationGroup.remove(note.marker);
+      annotations.splice(idx, 1);
+      renderAnnotationList();
+    });
+    item.appendChild(btn);
+    annotationListEl.appendChild(item);
+  });
+}
+
+function onPointerDown(event) {
+  const rect = canvas.getBoundingClientRect();
+  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+
+  const hits = raycaster.intersectObjects(selectable, true);
+  if (hits.length === 0) {
+    clearSelection();
+    return;
+  }
+
+  const hit = hits[0];
+  if (event.shiftKey) {
+    addAnnotation(hit.point);
+    return;
+  }
+  setSelection(hit.object);
+}
+
+function onResize() {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+  renderer.setSize(width, height, false);
+}
+
+function animate() {
+  controls.update();
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+
+loadBtn.addEventListener("click", () => {
+  const url = gltfUrlInput.value.trim();
+  if (!url) {
+    setStatus("Enter a glTF URL.", true);
+    return;
+  }
+  loadScene(url);
+});
+
+window.addEventListener("resize", onResize);
+canvas.addEventListener("pointerdown", onPointerDown);
+
+async function bootstrapScene() {
+  const params = new URLSearchParams(window.location.search);
+  const manifestParam = params.get("manifest");
+  const gltfParam = params.get("gltf");
+  if (manifestParam) {
+    try {
+      await loadFromManifest(manifestParam);
+      return;
+    } catch (error) {
+      console.error(error);
+      setStatus("Failed to load manifest.", true);
+    }
+  }
+  if (gltfParam) {
+    gltfUrlInput.value = gltfParam;
+    loadScene(gltfParam);
+    return;
+  }
+  const fallback = gltfUrlInput.value.trim();
+  if (fallback) {
+    loadScene(fallback);
+  }
+}
+
+bootstrapScene();
+animate();

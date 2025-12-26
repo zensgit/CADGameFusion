@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CADGameFusion | Web Preview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#ff8b4a" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <div class="app">
+      <aside class="panel">
+        <header class="panel__header">
+          <div>
+            <div class="eyebrow">CADGameFusion</div>
+            <h1>Web Preview Lab</h1>
+            <p class="subtitle">Headless conversion artifacts -> instant visual review.</p>
+          </div>
+        </header>
+
+        <section class="panel__section">
+          <div class="section__title">Load Asset</div>
+          <label class="field">
+            <span class="field__label">glTF URL</span>
+            <input id="gltf-url" type="text" value="../../sample_exports/scene_sample/mesh_group_0.gltf" />
+          </label>
+          <button id="load-btn" class="btn">Load Scene</button>
+          <div id="status" class="status">Ready.</div>
+        </section>
+
+        <section class="panel__section">
+          <div class="section__title">Scene Summary</div>
+          <div class="metric">
+            <span>Meshes</span>
+            <strong id="mesh-count">0</strong>
+          </div>
+          <div class="metric">
+            <span>Vertices</span>
+            <strong id="vertex-count">0</strong>
+          </div>
+          <div class="metric">
+            <span>Triangles</span>
+            <strong id="triangle-count">0</strong>
+          </div>
+        </section>
+
+        <section class="panel__section">
+          <div class="section__title">Selection</div>
+          <div class="selection" id="selection-info">
+            <div class="selection__empty">Click a surface to inspect.</div>
+          </div>
+        </section>
+
+        <section class="panel__section">
+          <div class="section__title">Annotations</div>
+          <div class="hint">Shift + click to drop a marker.</div>
+          <ul id="annotation-list" class="annotation-list"></ul>
+        </section>
+      </aside>
+
+      <main class="viewport">
+        <canvas id="viewport"></canvas>
+        <div class="hud">
+          <div class="hud__chip">Scroll: zoom * Drag: orbit * Shift+click: annotate</div>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="app.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,224 @@
+:root {
+  color-scheme: light;
+  --bg-start: #f6f2ea;
+  --bg-end: #dbe6f6;
+  --panel: rgba(255, 255, 255, 0.76);
+  --panel-border: rgba(255, 255, 255, 0.5);
+  --text-primary: #1e2329;
+  --text-muted: #5f6b73;
+  --accent: #ff8b4a;
+  --accent-deep: #d65f20;
+  --shadow: 0 20px 60px rgba(27, 33, 41, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+  background: radial-gradient(circle at top left, #ffffff 0%, var(--bg-start) 32%, var(--bg-end) 100%);
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) 1fr;
+  min-height: 100vh;
+}
+
+.panel {
+  padding: 28px 24px;
+  background: var(--panel);
+  border-right: 1px solid var(--panel-border);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow);
+}
+
+.panel__header h1 {
+  font-size: 1.8rem;
+  margin: 8px 0 6px;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  font-size: 0.65rem;
+  color: var(--accent-deep);
+}
+
+.panel__section {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.section__title {
+  font-weight: 600;
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+input[type="text"] {
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.btn {
+  margin-top: 12px;
+  background: var(--accent);
+  color: #231f1d;
+  border: none;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 12px 30px rgba(255, 139, 74, 0.35);
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 40px rgba(255, 139, 74, 0.4);
+}
+
+.status {
+  margin-top: 10px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 0.9rem;
+}
+
+.metric strong {
+  font-size: 1.05rem;
+}
+
+.selection {
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 14px;
+  padding: 12px;
+  min-height: 80px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  font-size: 0.85rem;
+}
+
+.selection__empty {
+  color: var(--text-muted);
+}
+
+.selection__row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.annotation-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.annotation-item {
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.annotation-item button {
+  border: none;
+  background: transparent;
+  color: var(--accent-deep);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.viewport {
+  position: relative;
+  min-height: 100vh;
+}
+
+#viewport {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.hud {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+}
+
+.hud__chip {
+  background: rgba(30, 35, 41, 0.72);
+  color: #f5f5f5;
+  padding: 10px 14px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .panel {
+    border-right: none;
+    border-bottom: 1px solid var(--panel-border);
+    max-height: 48vh;
+    overflow-y: auto;
+  }
+
+  .viewport {
+    min-height: 60vh;
+  }
+
+  .hud {
+    bottom: 16px;
+    right: 16px;
+  }
+}
