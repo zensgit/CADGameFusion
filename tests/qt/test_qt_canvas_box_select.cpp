@@ -43,8 +43,8 @@ struct TestCanvas : public CanvasWidget {
 
 static const core::Polyline* polylineFor(const core::Document& doc, core::EntityId id) {
     const auto* e = doc.get_entity(id);
-    if (!e || !e->payload) return nullptr;
-    return static_cast<const core::Polyline*>(e->payload.get());
+    if (!e) return nullptr;
+    return std::get_if<core::Polyline>(&e->payload);
 }
 
 int main(int argc, char** argv) {

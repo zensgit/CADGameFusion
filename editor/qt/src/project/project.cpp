@@ -10,16 +10,34 @@
 #include <QJsonArray>
 #include <QDateTime>
 
+namespace {
+int resolve_schema_version(int schema_version, const QString& version) {
+    if (schema_version >= 0) {
+        return schema_version;
+    }
+    bool ok = false;
+    const double parsed = version.toDouble(&ok);
+    if (ok && parsed >= 0.3) {
+        return Project::kSchemaVersion;
+    }
+    return 0;
+}
+} // namespace
+
 bool Project::save(const QString& path, const core::Document& doc, CanvasWidget* canvas) {
     // PR6: Serialize Document as single source of truth
-    m_meta.version = "0.3"; // Bumped version for Document-centric format
+    m_meta.version = "0.4"; // Bumped version for schemaVersion field
+    m_meta.schemaVersion = Project::kSchemaVersion;
     m_meta.appVersion = "1.0.0";
     m_meta.modifiedAt = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     if (m_meta.createdAt.isEmpty()) m_meta.createdAt = m_meta.modifiedAt;
 
     QJsonObject root;
-    QJsonObject meta{{"version", m_meta.version}, {"appVersion", m_meta.appVersion},
-                    {"createdAt", m_meta.createdAt}, {"modifiedAt", m_meta.modifiedAt}};
+    QJsonObject meta{{"version", m_meta.version},
+                     {"schemaVersion", m_meta.schemaVersion},
+                     {"appVersion", m_meta.appVersion},
+                     {"createdAt", m_meta.createdAt},
+                     {"modifiedAt", m_meta.modifiedAt}};
     root.insert("meta", meta);
 
     // Serialize layers
@@ -31,6 +49,9 @@ bool Project::save(const QString& path, const core::Document& doc, CanvasWidget*
         layerObj.insert("color", static_cast<qint64>(layer.color));
         layerObj.insert("visible", layer.visible);
         layerObj.insert("locked", layer.locked);
+        layerObj.insert("printable", layer.printable);
+        layerObj.insert("frozen", layer.frozen);
+        layerObj.insert("construction", layer.construction);
         layersJson.append(layerObj);
     }
 
@@ -38,9 +59,7 @@ bool Project::save(const QString& path, const core::Document& doc, CanvasWidget*
     QJsonArray entitiesJson;
     for (const auto& e : doc.entities()) {
         if (e.type != core::EntityType::Polyline) continue;
-        if (!e.payload) continue;
-
-        const auto* pl = static_cast<const core::Polyline*>(e.payload.get());
+        const auto* pl = std::get_if<core::Polyline>(&e.payload);
         if (!pl || pl->points.empty()) continue;
 
         QJsonObject entityObj;
@@ -65,10 +84,27 @@ bool Project::save(const QString& path, const core::Document& doc, CanvasWidget*
     QJsonObject settingsJson;
     settingsJson.insert("unitScale", doc.settings().unit_scale);
 
+    // Serialize document metadata
+    QJsonObject docMetaJson;
+    const auto& docMeta = doc.metadata();
+    docMetaJson.insert("label", QString::fromStdString(docMeta.label));
+    docMetaJson.insert("author", QString::fromStdString(docMeta.author));
+    docMetaJson.insert("company", QString::fromStdString(docMeta.company));
+    docMetaJson.insert("comment", QString::fromStdString(docMeta.comment));
+    docMetaJson.insert("createdAt", QString::fromStdString(docMeta.created_at));
+    docMetaJson.insert("modifiedAt", QString::fromStdString(docMeta.modified_at));
+    docMetaJson.insert("unitName", QString::fromStdString(docMeta.unit_name));
+    QJsonObject metaMap;
+    for (const auto& kv : docMeta.meta) {
+        metaMap.insert(QString::fromStdString(kv.first), QString::fromStdString(kv.second));
+    }
+    docMetaJson.insert("meta", metaMap);
+
     QJsonObject docJson;
     docJson.insert("layers", layersJson);
     docJson.insert("entities", entitiesJson);
     docJson.insert("settings", settingsJson);
+    docJson.insert("metadata", docMetaJson);
     root.insert("document", docJson);
 
     if (canvas) {
@@ -106,6 +142,7 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
     // Load metadata
     auto meta = root.value("meta").toObject();
     m_meta.version = meta.value("version").toString();
+    m_meta.schemaVersion = meta.value("schemaVersion").toInt(-1);
     m_meta.appVersion = meta.value("appVersion").toString();
     m_meta.createdAt = meta.value("createdAt").toString();
     m_meta.modifiedAt = meta.value("modifiedAt").toString();
@@ -115,14 +152,17 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
     doc.clear();
 
     // Check version for format compatibility
-    const QString version = m_meta.version;
+    const int schemaVersion = resolve_schema_version(m_meta.schemaVersion, m_meta.version);
+    if (schemaVersion > Project::kSchemaVersion) {
+        return false;
+    }
 
     auto docJson = root.value("document").toObject();
     QHash<int, int> layerIdMap;
     layerIdMap.insert(0, 0);
 
     // Load layers (v0.3+)
-    if (version >= "0.3") {
+    if (schemaVersion >= Project::kSchemaVersion) {
         auto layersJson = docJson.value("layers").toArray();
         for (const auto& val : layersJson) {
             auto layerObj = val.toObject();
@@ -132,6 +172,9 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
             uint32_t color = static_cast<uint32_t>(layerObj.value("color").toInteger(0xFFFFFF));
             bool visible = layerObj.value("visible").toBool(true);
             bool locked = layerObj.value("locked").toBool(false);
+            bool printable = layerObj.value("printable").toBool(true);
+            bool frozen = layerObj.value("frozen").toBool(false);
+            bool construction = layerObj.value("construction").toBool(false);
 
             if (srcId == 0) {
                 auto* layer0 = doc.get_layer(0);
@@ -140,6 +183,9 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
                     doc.set_layer_color(0, color);
                     doc.set_layer_visible(0, visible);
                     doc.set_layer_locked(0, locked);
+                    doc.set_layer_printable(0, printable);
+                    doc.set_layer_frozen(0, frozen);
+                    doc.set_layer_construction(0, construction);
                 }
                 layerIdMap.insert(0, 0);
                 continue;
@@ -149,11 +195,14 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
             layerIdMap.insert(srcId, newId);
             doc.set_layer_visible(newId, visible);
             doc.set_layer_locked(newId, locked);
+            doc.set_layer_printable(newId, printable);
+            doc.set_layer_frozen(newId, frozen);
+            doc.set_layer_construction(newId, construction);
         }
     }
 
     // Load entities (v0.3+ Document-centric format)
-    if (version >= "0.3") {
+    if (schemaVersion >= Project::kSchemaVersion) {
         auto entitiesJson = docJson.value("entities").toArray();
         for (const auto& val : entitiesJson) {
             auto entityObj = val.toObject();
@@ -187,7 +236,23 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
 
         // Load settings
         auto settingsJson = docJson.value("settings").toObject();
-        doc.settings().unit_scale = settingsJson.value("unitScale").toDouble(1.0);
+        doc.set_unit_scale(settingsJson.value("unitScale").toDouble(1.0));
+
+        // Load document metadata
+        auto docMetaJson = docJson.value("metadata").toObject();
+        if (!docMetaJson.isEmpty()) {
+            doc.set_label(docMetaJson.value("label").toString().toStdString());
+            doc.set_author(docMetaJson.value("author").toString().toStdString());
+            doc.set_company(docMetaJson.value("company").toString().toStdString());
+            doc.set_comment(docMetaJson.value("comment").toString().toStdString());
+            doc.set_created_at(docMetaJson.value("createdAt").toString().toStdString());
+            doc.set_modified_at(docMetaJson.value("modifiedAt").toString().toStdString());
+            doc.set_unit_name(docMetaJson.value("unitName").toString().toStdString());
+            auto metaMap = docMetaJson.value("meta").toObject();
+            for (auto it = metaMap.begin(); it != metaMap.end(); ++it) {
+                doc.set_meta_value(it.key().toStdString(), it.value().toString().toStdString());
+            }
+        }
     }
     // Legacy format (v0.2 and earlier): load from polylines array
     else {
