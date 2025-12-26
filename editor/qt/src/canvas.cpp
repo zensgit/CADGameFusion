@@ -266,10 +266,10 @@ void CanvasWidget::scheduleSelectionChanged() {
 bool CanvasWidget::syncPolylineFromDocument(EntityId id) {
     if (!m_doc || id == 0) return false;
     const auto* entity = m_doc->get_entity(id);
-    if (!entity || entity->type != core::EntityType::Polyline || !entity->payload) {
+    if (!entity || entity->type != core::EntityType::Polyline) {
         return removePolyline(id);
     }
-    const auto* pl = static_cast<const core::Polyline*>(entity->payload.get());
+    const auto* pl = std::get_if<core::Polyline>(&entity->payload);
     if (!pl || pl->points.size() < 2) {
         return removePolyline(id);
     }
@@ -341,6 +341,8 @@ void CanvasWidget::on_document_changed(const core::Document& doc, const core::Do
             break;
         case core::DocumentChangeType::EntityMetaChanged:
         case core::DocumentChangeType::LayerChanged:
+        case core::DocumentChangeType::DocumentMetaChanged:
+        case core::DocumentChangeType::SettingsChanged:
             scheduleUpdate();
             break;
         case core::DocumentChangeType::Cleared:
@@ -841,9 +843,7 @@ void CanvasWidget::reloadFromDocument() {
     const auto& entities = m_doc->entities();
     for (const auto& e : entities) {
         if (e.type != core::EntityType::Polyline) continue;
-        if (!e.payload) continue;
-
-        const auto* pl = static_cast<const core::Polyline*>(e.payload.get());
+        const auto* pl = std::get_if<core::Polyline>(&e.payload);
         if (!pl || pl->points.size() < 2) continue;
 
         PolyVis pv;
