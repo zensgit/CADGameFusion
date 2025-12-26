@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cadgamefusion.io/schemas/document.schema.json",
+  "title": "CADGameFusion Document JSON v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "cadgf_version",
+    "schema_version",
+    "feature_flags",
+    "metadata",
+    "settings",
+    "layers",
+    "entities"
+  ],
+  "properties": {
+    "cadgf_version": {"type": "string"},
+    "schema_version": {"type": "integer", "minimum": 1},
+    "feature_flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["earcut", "clipper2"],
+      "properties": {
+        "earcut": {"type": "boolean"},
+        "clipper2": {"type": "boolean"}
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "author",
+        "company",
+        "comment",
+        "created_at",
+        "modified_at",
+        "unit_name",
+        "meta"
+      ],
+      "properties": {
+        "label": {"type": "string"},
+        "author": {"type": "string"},
+        "company": {"type": "string"},
+        "comment": {"type": "string"},
+        "created_at": {"type": "string"},
+        "modified_at": {"type": "string"},
+        "unit_name": {"type": "string"},
+        "meta": {
+          "type": "object",
+          "additionalProperties": {"type": "string"}
+        }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit_scale"],
+      "properties": {
+        "unit_scale": {"type": "number"}
+      }
+    },
+    "layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "name",
+          "color",
+          "visible",
+          "locked",
+          "printable",
+          "frozen",
+          "construction"
+        ],
+        "properties": {
+          "id": {"type": "integer"},
+          "name": {"type": "string"},
+          "color": {"type": "integer", "minimum": 0, "maximum": 16777215},
+          "visible": {"$ref": "#/$defs/bool_int"},
+          "locked": {"$ref": "#/$defs/bool_int"},
+          "printable": {"$ref": "#/$defs/bool_int"},
+          "frozen": {"$ref": "#/$defs/bool_int"},
+          "construction": {"$ref": "#/$defs/bool_int"}
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["id", "type", "layer_id", "name"],
+        "properties": {
+          "id": {"type": "integer", "minimum": 0},
+          "type": {"type": "integer", "minimum": 0},
+          "layer_id": {"type": "integer"},
+          "name": {"type": "string"},
+          "line_type": {"type": "string"},
+          "line_weight": {"type": "number"},
+          "line_type_scale": {"type": "number"},
+          "polyline": {
+            "type": "array",
+            "items": {"$ref": "#/$defs/vec2"}
+          },
+          "point": {"$ref": "#/$defs/vec2"},
+          "line": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {"$ref": "#/$defs/vec2"}
+          },
+          "arc": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["c", "r", "a0", "a1", "cw"],
+            "properties": {
+              "c": {"$ref": "#/$defs/vec2"},
+              "r": {"type": "number"},
+              "a0": {"type": "number"},
+              "a1": {"type": "number"},
+              "cw": {"$ref": "#/$defs/bool_int"}
+            }
+          },
+          "circle": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["c", "r"],
+            "properties": {
+              "c": {"$ref": "#/$defs/vec2"},
+              "r": {"type": "number"}
+            }
+          },
+          "ellipse": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["c", "rx", "ry", "rot", "a0", "a1"],
+            "properties": {
+              "c": {"$ref": "#/$defs/vec2"},
+              "rx": {"type": "number"},
+              "ry": {"type": "number"},
+              "rot": {"type": "number"},
+              "a0": {"type": "number"},
+              "a1": {"type": "number"}
+            }
+          },
+          "spline": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["degree", "control", "knots"],
+            "properties": {
+              "degree": {"type": "integer"},
+              "control": {
+                "type": "array",
+                "items": {"$ref": "#/$defs/vec2"}
+              },
+              "knots": {
+                "type": "array",
+                "items": {"type": "number"}
+              }
+            }
+          },
+          "text": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["pos", "h", "rot", "value"],
+            "properties": {
+              "pos": {"$ref": "#/$defs/vec2"},
+              "h": {"type": "number"},
+              "rot": {"type": "number"},
+              "value": {"type": "string"}
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "vec2": {
+      "type": "array",
+      "items": {"type": "number"},
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "bool_int": {
+      "anyOf": [
+        {"type": "boolean"},
+        {"type": "integer", "enum": [0, 1]}
+      ]
+    }
+  }
+}
