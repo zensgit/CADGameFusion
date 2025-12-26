@@ -3,10 +3,55 @@
 
 #include <vector>
 #include <cstdint>
+#include <string>
 
 namespace core {
 
 struct Vec2 { double x{}, y{}; };
+
+struct Point {
+    Vec2 p{};
+};
+
+struct Line {
+    Vec2 a{};
+    Vec2 b{};
+};
+
+struct Arc {
+    Vec2 center{};
+    double radius{0.0};
+    double start_angle{0.0};
+    double end_angle{0.0};
+    int clockwise{0};
+};
+
+struct Circle {
+    Vec2 center{};
+    double radius{0.0};
+};
+
+struct Ellipse {
+    Vec2 center{};
+    double rx{0.0};
+    double ry{0.0};
+    double rotation{0.0};
+    double start_angle{0.0};
+    double end_angle{0.0};
+};
+
+struct Spline {
+    int degree{3};
+    std::vector<Vec2> control_points;
+    std::vector<double> knots;
+};
+
+struct Text {
+    Vec2 pos{};
+    double height{0.0};
+    double rotation{0.0};
+    std::string text;
+};
 
 struct Polyline {
     std::vector<Vec2> points; // closed if first==last
@@ -24,4 +69,3 @@ double length(const Vec2& a, const Vec2& b);
 TriMesh2D triangulate_convex(const Polyline& poly);
 
 } // namespace core
-
