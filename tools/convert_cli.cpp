@@ -20,6 +20,8 @@
 
 namespace fs = std::filesystem;
 
+static constexpr int kDocumentSchemaVersion = 1;
+
 struct ConvertOptions {
     std::string pluginPath;
     std::string inputPath;
@@ -183,6 +185,7 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
     std::fprintf(f, "  \"cadgf_version\": ");
     json_write_escaped(f, cadgf_get_version(), std::strlen(cadgf_get_version()));
     std::fprintf(f, ",\n");
+    std::fprintf(f, "  \"schema_version\": %d,\n", kDocumentSchemaVersion);
     std::fprintf(f, "  \"feature_flags\": {\"earcut\": %s, \"clipper2\": %s},\n",
                  (feats & CADGF_FEATURE_EARCUT) ? "true" : "false",
                  (feats & CADGF_FEATURE_CLIPPER2) ? "true" : "false");

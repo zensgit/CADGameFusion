@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cadgamefusion.io/schemas/plm_manifest.schema.json",
+  "title": "CADGameFusion PLM Conversion Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "input",
+    "input_size",
+    "input_mtime",
+    "source_hash",
+    "plugin",
+    "output_dir",
+    "output_layout",
+    "generated_at",
+    "cadgf_version",
+    "artifacts",
+    "content_hashes",
+    "artifact_sizes",
+    "tool_versions",
+    "outputs",
+    "warnings",
+    "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1"]
+    },
+    "input": {"type": "string"},
+    "input_size": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "input_mtime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "plugin": {"type": "string"},
+    "output_dir": {"type": "string"},
+    "output_layout": {
+      "type": "string",
+      "enum": ["legacy", "hashed", "both"]
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cadgf_version": {"type": "string"},
+    "document_schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "document_json": {"type": "string"},
+        "mesh_gltf": {"type": "string"},
+        "mesh_bin": {"type": "string"},
+        "mesh_metadata": {"type": "string"}
+      }
+    },
+    "content_hashes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "document_json": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "mesh_gltf": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "mesh_bin": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "mesh_metadata": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "artifact_sizes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "document_json": {"type": "integer", "minimum": 0},
+        "mesh_gltf": {"type": "integer", "minimum": 0},
+        "mesh_bin": {"type": "integer", "minimum": 0},
+        "mesh_metadata": {"type": "integer", "minimum": 0}
+      }
+    },
+    "tool_versions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["plm_convert", "cadgf", "convert_cli"],
+      "properties": {
+        "plm_convert": {"type": "string"},
+        "cadgf": {"type": "string"},
+        "convert_cli": {"type": "string"}
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {"type": "string", "enum": ["json", "gltf", "meta"]},
+      "uniqueItems": true
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message"],
+        "properties": {
+          "code": {"type": "string"},
+          "message": {"type": "string"}
+        }
+      }
+    },
+    "legacy_artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "document_json": {"type": "string"},
+        "mesh_gltf": {"type": "string"},
+        "mesh_bin": {"type": "string"},
+        "mesh_metadata": {"type": "string"}
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "partial"]
+    }
+  }
+}
