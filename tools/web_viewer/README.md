@@ -34,6 +34,12 @@ curl -s -X POST -F "file=@tests/plugin_data/importer_sample.dxf" http://localhos
 ```
 The JSON response includes `viewer_url` for the web preview.
 
+Async upload with status polling:
+```
+curl -s -X POST -F "file=@tests/plugin_data/importer_sample.dxf" -F "async=true" http://localhost:9000/convert
+curl -s http://localhost:9000/status/<task_id>
+```
+
 ## Notes
 - Default glTF path points to `sample_exports/scene_sample/mesh_group_0.gltf`.
 - Use the URL field to load artifacts produced by `convert_cli` (e.g., `build_vcpkg/convert_cli_smoke/mesh.gltf`).
