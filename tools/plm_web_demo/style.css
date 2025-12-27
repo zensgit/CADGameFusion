@@ -96,6 +96,7 @@ body::before {
 
 input[type="text"],
 input[type="file"],
+input[type="number"],
 select {
   border-radius: 12px;
   border: 1px solid rgba(20, 24, 32, 0.12);
