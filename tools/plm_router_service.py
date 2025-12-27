@@ -43,6 +43,8 @@ class TaskConfig:
     hash_names: bool
     keep_legacy_names: bool
     convert_cli: str
+    project_id: str = ""
+    document_label: str = ""
 
 
 @dataclass
@@ -125,6 +127,8 @@ class TaskManager:
             "finished_at": task.finished_at,
             "viewer_url": None,
             "error": task.error,
+            "project_id": task.config.project_id,
+            "document_label": task.config.document_label,
         }
         if task.status == "done" and task.result:
             entry["viewer_url"] = task.result.get("viewer_url")
@@ -635,6 +639,8 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             emit = fields.get("emit", "")
             hash_names = parse_bool(fields.get("hash_names"))
             keep_legacy = parse_bool(fields.get("keep_legacy_names"))
+            project_id = fields.get("project_id", "").strip()
+            document_label = fields.get("document_label", "").strip()
             convert_cli = fields.get("convert_cli") or config.default_convert_cli
             if convert_cli and not Path(convert_cli).exists():
                 respond_json(self, 400, {"status": "error", "message": "convert_cli not found"})
@@ -663,6 +669,8 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 hash_names=hash_names,
                 keep_legacy_names=keep_legacy,
                 convert_cli=convert_cli,
+                project_id=project_id,
+                document_label=document_label or filename,
             )
             task = TaskRecord(task_id=task_id, config=task_config, created_at=now_iso())
             if not manager.submit(task):

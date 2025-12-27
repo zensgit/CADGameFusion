@@ -250,6 +250,18 @@ select {
   font-weight: 600;
 }
 
+.history-group {
+  display: grid;
+  gap: 12px;
+}
+
+.history-group__title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--accent-deep);
+}
+
 .preview-header {
   display: flex;
   justify-content: space-between;

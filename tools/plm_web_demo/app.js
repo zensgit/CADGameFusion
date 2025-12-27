@@ -2,6 +2,8 @@ const form = document.getElementById("upload-form");
 const routerInput = document.getElementById("router-url");
 const tokenInput = document.getElementById("token-input");
 const fileInput = document.getElementById("file-input");
+const projectInput = document.getElementById("project-input");
+const documentInput = document.getElementById("document-input");
 const pluginInput = document.getElementById("plugin-input");
 const cliInput = document.getElementById("cli-input");
 const emitSelect = document.getElementById("emit-select");
@@ -118,40 +120,59 @@ function renderHistory(items) {
     historyList.innerHTML = "<div class=\"placeholder\">No tasks yet.</div>";
     return;
   }
+  const groups = new Map();
   items.forEach((item) => {
-    const card = document.createElement("div");
-    card.className = "history-item";
-    const statusClass = item.state === "done" ? "done" : item.state === "error" ? "error" : "";
-    card.innerHTML = `
-      <div class="history-item__row">
-        <span class="history-item__label">Task</span>
-        <span class="history-item__value">${item.task_id}</span>
-      </div>
-      <div class="history-item__row">
-        <span class="history-item__label">State</span>
-        <span class="history-item__status ${statusClass}">${item.state}</span>
-      </div>
-      <div class="history-item__row">
-        <span class="history-item__label">Created</span>
-        <span class="history-item__value">${item.created_at || "-"}</span>
-      </div>
-    `;
-    if (item.viewer_url) {
-      const link = document.createElement("a");
-      link.className = "history-item__link";
-      link.href = item.viewer_url;
-      link.target = "_blank";
-      link.rel = "noreferrer";
-      link.textContent = "Open preview";
-      card.appendChild(link);
+    const key = item.project_id || "unassigned";
+    if (!groups.has(key)) {
+      groups.set(key, []);
     }
-    if (item.error) {
-      const err = document.createElement("div");
-      err.className = "history-item__value";
-      err.textContent = item.error;
-      card.appendChild(err);
-    }
-    historyList.appendChild(card);
+    groups.get(key).push(item);
+  });
+  groups.forEach((entries, projectId) => {
+    const group = document.createElement("div");
+    group.className = "history-group";
+    const header = document.createElement("div");
+    header.className = "history-group__title";
+    header.textContent = projectId;
+    group.appendChild(header);
+
+    entries.forEach((item) => {
+      const card = document.createElement("div");
+      card.className = "history-item";
+      const statusClass = item.state === "done" ? "done" : item.state === "error" ? "error" : "";
+      const label = item.document_label || item.task_id;
+      card.innerHTML = `
+        <div class="history-item__row">
+          <span class="history-item__label">Document</span>
+          <span class="history-item__value">${label}</span>
+        </div>
+        <div class="history-item__row">
+          <span class="history-item__label">State</span>
+          <span class="history-item__status ${statusClass}">${item.state}</span>
+        </div>
+        <div class="history-item__row">
+          <span class="history-item__label">Created</span>
+          <span class="history-item__value">${item.created_at || "-"}</span>
+        </div>
+      `;
+      if (item.viewer_url) {
+        const link = document.createElement("a");
+        link.className = "history-item__link";
+        link.href = item.viewer_url;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.textContent = "Open preview";
+        card.appendChild(link);
+      }
+      if (item.error) {
+        const err = document.createElement("div");
+        err.className = "history-item__value";
+        err.textContent = item.error;
+        card.appendChild(err);
+      }
+      group.appendChild(card);
+    });
+    historyList.appendChild(group);
   });
 }
 
@@ -202,6 +223,16 @@ async function handleSubmit(event) {
 
   const formData = new FormData();
   formData.append("file", file);
+
+  const projectId = projectInput.value.trim();
+  if (projectId) {
+    formData.append("project_id", projectId);
+  }
+
+  const documentLabel = documentInput.value.trim();
+  if (documentLabel) {
+    formData.append("document_label", documentLabel);
+  }
 
   const plugin = pluginInput.value.trim();
   if (plugin) {
