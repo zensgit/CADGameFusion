@@ -391,6 +391,13 @@ def parse_csv(value: str) -> List[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def decode_query_value(raw: str) -> str:
+    try:
+        return unquote(raw)
+    except Exception:
+        return raw
+
+
 def parse_allowlist(value: str, repo_root: Path) -> List[Path]:
     entries = []
     for token in parse_csv(value):
@@ -867,8 +874,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-def decode_query_value(raw: str) -> str:
-    try:
-        return unquote(raw)
-    except Exception:
-        return raw
