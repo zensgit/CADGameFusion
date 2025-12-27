@@ -51,6 +51,9 @@ class TaskConfig:
     document_backup: bool = False
     validate_document: bool = False
     document_schema: str = ""
+    owner: str = ""
+    tags: List[str] = field(default_factory=list)
+    revision_note: str = ""
 
 
 @dataclass
@@ -135,9 +138,13 @@ class TaskManager:
             "error": task.error,
             "project_id": task.config.project_id,
             "document_label": task.config.document_label,
+            "owner": task.config.owner,
+            "tags": task.config.tags,
+            "revision_note": task.config.revision_note,
         }
         if task.status == "done" and task.result:
             entry["viewer_url"] = task.result.get("viewer_url")
+        normalize_history_entry(entry)
         with self._lock:
             self._history.insert(0, entry)
             if self._history_limit and len(self._history) > self._history_limit:
@@ -156,6 +163,7 @@ class TaskManager:
             entries = list(self._history)
 
         def matches(entry: dict) -> bool:
+            normalize_history_entry(entry)
             if project_id and entry.get("project_id") != project_id:
                 return False
             if state and entry.get("state") != state:
@@ -179,6 +187,7 @@ class TaskManager:
         projects: Dict[str, dict] = {}
         order: List[str] = []
         for entry in entries:
+            normalize_history_entry(entry)
             project_id = normalize_project_id(entry.get("project_id"))
             if project_id not in projects:
                 projects[project_id] = {
@@ -186,6 +195,9 @@ class TaskManager:
                     "latest_task_id": entry.get("task_id"),
                     "latest_state": entry.get("state"),
                     "last_activity": entry.get("created_at"),
+                    "owner": entry.get("owner", ""),
+                    "tags": entry.get("tags", []),
+                    "revision_note": entry.get("revision_note", ""),
                     "_docs": set(),
                 }
                 order.append(project_id)
@@ -208,6 +220,7 @@ class TaskManager:
         documents: Dict[str, dict] = {}
         order: List[str] = []
         for entry in entries:
+            normalize_history_entry(entry)
             if normalize_project_id(entry.get("project_id")) != project_id:
                 continue
             label = normalize_document_label(entry.get("document_label"))
@@ -221,6 +234,9 @@ class TaskManager:
                     "latest_state": entry.get("state"),
                     "last_activity": entry.get("created_at"),
                     "latest_viewer_url": entry.get("viewer_url"),
+                    "owner": entry.get("owner", ""),
+                    "tags": entry.get("tags", []),
+                    "revision_note": entry.get("revision_note", ""),
                     "version_count": 0,
                 }
                 order.append(document_id)
@@ -247,6 +263,7 @@ class TaskManager:
 
         payload = []
         for entry in entries:
+            normalize_history_entry(entry)
             if normalize_project_id(entry.get("project_id")) != project_id:
                 continue
             label = normalize_document_label(entry.get("document_label"))
@@ -290,6 +307,7 @@ class TaskManager:
                     except json.JSONDecodeError:
                         continue
                     if isinstance(entry, dict):
+                        normalize_history_entry(entry)
                         buffer.append(entry)
         except Exception as exc:
             sys.stderr.write(f"history load failed: {exc}\n")
@@ -499,6 +517,12 @@ def parse_csv(value: str) -> List[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def parse_tags(value: str) -> List[str]:
+    if not value:
+        return []
+    return parse_csv(value.replace(";", ","))
+
+
 def decode_query_value(raw: str) -> str:
     try:
         return unquote(raw)
@@ -529,6 +553,22 @@ def normalize_project_id(value: Optional[str]) -> str:
 
 def normalize_document_label(value: Optional[str]) -> str:
     return value if value else "untitled"
+
+
+def normalize_tags(value) -> List[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return parse_tags(value)
+    return []
+
+
+def normalize_history_entry(entry: dict) -> None:
+    if "owner" not in entry or not isinstance(entry.get("owner"), str):
+        entry["owner"] = ""
+    if "revision_note" not in entry or not isinstance(entry.get("revision_note"), str):
+        entry["revision_note"] = ""
+    entry["tags"] = normalize_tags(entry.get("tags"))
 
 
 def encode_document_id(project_id: str, document_label: str) -> str:
@@ -907,6 +947,9 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             keep_legacy = parse_bool(fields.get("keep_legacy_names"))
             project_id = fields.get("project_id", "").strip()
             document_label = fields.get("document_label", "").strip()
+            owner = fields.get("owner", "").strip()
+            tags = parse_tags(fields.get("tags", ""))
+            revision_note = fields.get("revision_note", "").strip()
             migrate_document = parse_bool(fields.get("migrate_document"))
             document_backup = parse_bool(fields.get("document_backup"))
             document_target = 0
@@ -970,6 +1013,9 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 document_backup=document_backup,
                 validate_document=validate_document,
                 document_schema=document_schema,
+                owner=owner,
+                tags=tags,
+                revision_note=revision_note,
             )
             task = TaskRecord(task_id=task_id, config=task_config, created_at=now_iso())
             if not manager.submit(task):
