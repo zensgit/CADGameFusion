@@ -4,6 +4,9 @@ const tokenInput = document.getElementById("token-input");
 const fileInput = document.getElementById("file-input");
 const projectInput = document.getElementById("project-input");
 const documentInput = document.getElementById("document-input");
+const ownerInput = document.getElementById("owner-input");
+const tagsInput = document.getElementById("tags-input");
+const revisionInput = document.getElementById("revision-input");
 const pluginInput = document.getElementById("plugin-input");
 const cliInput = document.getElementById("cli-input");
 const emitSelect = document.getElementById("emit-select");
@@ -191,6 +194,20 @@ function renderHistory(items) {
   });
 }
 
+function formatTags(tags) {
+  if (!tags) {
+    return "";
+  }
+  if (Array.isArray(tags)) {
+    return tags.map((tag) => String(tag).trim()).filter((tag) => tag).join(", ");
+  }
+  return String(tags).trim();
+}
+
+function buildDetailText(parts) {
+  return parts.filter((part) => part && part.trim()).join(" · ");
+}
+
 function renderIndexPlaceholder(target, message) {
   target.innerHTML = "";
   const item = document.createElement("div");
@@ -213,9 +230,14 @@ function renderProjectList(items) {
       button.classList.add("is-selected");
     }
     const docCount = typeof item.document_count === "number" ? item.document_count : 0;
+    const detail = buildDetailText([
+      item.owner ? `Owner: ${item.owner}` : "",
+      formatTags(item.tags) ? `Tags: ${formatTags(item.tags)}` : "",
+    ]);
     button.innerHTML = `
       <span class="index-item__label">${item.project_id}</span>
       <span class="index-item__meta">${docCount} docs</span>
+      ${detail ? `<span class="index-item__detail">${detail}</span>` : ""}
     `;
     button.addEventListener("click", () => {
       if (selectedProjectId === item.project_id) {
@@ -246,9 +268,15 @@ function renderDocumentList(items) {
       button.classList.add("is-selected");
     }
     const versionCount = typeof item.version_count === "number" ? item.version_count : 0;
+    const detail = buildDetailText([
+      item.owner ? `Owner: ${item.owner}` : "",
+      formatTags(item.tags) ? `Tags: ${formatTags(item.tags)}` : "",
+      item.revision_note ? `Revision: ${item.revision_note}` : "",
+    ]);
     button.innerHTML = `
       <span class="index-item__label">${item.document_label}</span>
       <span class="index-item__meta">${versionCount} versions</span>
+      ${detail ? `<span class="index-item__detail">${detail}</span>` : ""}
     `;
     button.addEventListener("click", () => {
       if (selectedDocumentId === item.document_id) {
@@ -272,16 +300,46 @@ function renderVersionList(items) {
     const card = document.createElement("div");
     card.className = "index-version";
     const statusClass = item.state === "done" ? "done" : item.state === "error" ? "error" : "";
-    card.innerHTML = `
+    const tagsText = formatTags(item.tags);
+    const rows = [
+      `
       <div class="index-version__row">
         <span class="index-version__label">Created</span>
         <span class="index-version__value">${item.created_at || "-"}</span>
       </div>
+      `,
+      `
       <div class="index-version__row">
         <span class="index-version__label">State</span>
         <span class="index-version__status ${statusClass}">${item.state}</span>
       </div>
-    `;
+      `,
+    ];
+    if (item.owner) {
+      rows.push(`
+        <div class="index-version__row">
+          <span class="index-version__label">Owner</span>
+          <span class="index-version__value">${item.owner}</span>
+        </div>
+      `);
+    }
+    if (tagsText) {
+      rows.push(`
+        <div class="index-version__row">
+          <span class="index-version__label">Tags</span>
+          <span class="index-version__value">${tagsText}</span>
+        </div>
+      `);
+    }
+    if (item.revision_note) {
+      rows.push(`
+        <div class="index-version__row">
+          <span class="index-version__label">Revision</span>
+          <span class="index-version__value">${item.revision_note}</span>
+        </div>
+      `);
+    }
+    card.innerHTML = rows.join("");
     if (item.viewer_url) {
       const link = document.createElement("a");
       link.className = "index-version__link";
@@ -431,6 +489,21 @@ async function handleSubmit(event) {
   const documentLabel = documentInput.value.trim();
   if (documentLabel) {
     formData.append("document_label", documentLabel);
+  }
+
+  const owner = ownerInput.value.trim();
+  if (owner) {
+    formData.append("owner", owner);
+  }
+
+  const tags = tagsInput.value.trim();
+  if (tags) {
+    formData.append("tags", tags);
+  }
+
+  const revisionNote = revisionInput.value.trim();
+  if (revisionNote) {
+    formData.append("revision_note", revisionNote);
   }
 
   const plugin = pluginInput.value.trim();
