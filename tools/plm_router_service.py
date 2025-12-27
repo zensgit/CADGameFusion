@@ -58,13 +58,23 @@ class TaskRecord:
 
 
 class TaskManager:
-    def __init__(self, config: ServerConfig, max_workers: int, queue_size: int, ttl_seconds: int, cleanup_interval: int):
+    def __init__(
+        self,
+        config: ServerConfig,
+        max_workers: int,
+        queue_size: int,
+        ttl_seconds: int,
+        cleanup_interval: int,
+        history_limit: int,
+    ):
         self._config = config
         self._queue = queue.Queue(maxsize=max(queue_size, 0))
         self._tasks: Dict[str, TaskRecord] = {}
         self._lock = threading.Lock()
         self._ttl_seconds = ttl_seconds
         self._cleanup_interval = cleanup_interval
+        self._history_limit = max(history_limit, 0)
+        self._history: List[dict] = []
         self._stop_event = threading.Event()
         self._workers = []
         for _ in range(max(1, max_workers)):
@@ -100,6 +110,29 @@ class TaskManager:
     def status_url(self, task_id: str) -> str:
         return f"{self._config.base_url}/status/{task_id}"
 
+    def record_history(self, task: TaskRecord) -> None:
+        entry = {
+            "task_id": task.task_id,
+            "state": task.status,
+            "created_at": task.created_at,
+            "started_at": task.started_at,
+            "finished_at": task.finished_at,
+            "viewer_url": None,
+            "error": task.error,
+        }
+        if task.status == "done" and task.result:
+            entry["viewer_url"] = task.result.get("viewer_url")
+        with self._lock:
+            self._history.insert(0, entry)
+            if self._history_limit and len(self._history) > self._history_limit:
+                self._history = self._history[: self._history_limit]
+
+    def list_history(self, limit: int) -> List[dict]:
+        with self._lock:
+            if limit <= 0:
+                return list(self._history)
+            return list(self._history[:limit])
+
     def _worker_loop(self) -> None:
         while not self._stop_event.is_set():
             try:
@@ -127,6 +160,7 @@ class TaskManager:
                 task.status = "error"
                 task.error = result.get("error", "conversion failed")
             task.finished_at = now_iso()
+            self.record_history(task)
             task.event.set()
 
     def _convert(self, config: TaskConfig) -> dict:
@@ -256,6 +290,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-workers", type=int, default=1, help="Max concurrent conversions")
     parser.add_argument("--queue-size", type=int, default=8, help="Max queued jobs (0 = unbounded)")
     parser.add_argument("--ttl-seconds", type=int, default=3600, help="TTL for output cleanup (0 disables)")
+    parser.add_argument("--history-limit", type=int, default=200, help="Max history entries (0 = unbounded)")
     parser.add_argument(
         "--cleanup-interval",
         type=int,
@@ -435,6 +470,27 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             parsed = urlparse(self.path)
             if parsed.path == "/health":
                 respond_json(self, 200, {"status": "ok"})
+                return
+            if parsed.path == "/history":
+                if not self._authorized():
+                    respond_json(
+                        self,
+                        401,
+                        {"status": "error", "message": "unauthorized"},
+                        {"WWW-Authenticate": "Bearer"},
+                    )
+                    return
+                query = parsed.query or ""
+                limit = 50
+                if "limit=" in query:
+                    try:
+                        limit = int(query.split("limit=", 1)[1].split("&", 1)[0])
+                    except ValueError:
+                        limit = 50
+                if limit < 0:
+                    limit = 0
+                entries = manager.list_history(limit)
+                respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
             if parsed.path.startswith("/status/"):
                 if not self._authorized():
@@ -675,6 +731,7 @@ def main() -> int:
         queue_size=args.queue_size,
         ttl_seconds=args.ttl_seconds,
         cleanup_interval=args.cleanup_interval,
+        history_limit=args.history_limit,
     )
     handler = make_handler(config, manager)
     server = ThreadingHTTPServer((args.host, args.port), handler)

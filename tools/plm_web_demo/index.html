@@ -95,6 +95,23 @@
           <div class="section-title">Response</div>
           <pre id="response-json" class="response">Awaiting upload...</pre>
         </section>
+
+        <section class="card history-card">
+          <div class="preview-header">
+            <div>
+              <div class="section-title">Task History</div>
+              <p class="subtle">Latest conversions (in-memory).</p>
+            </div>
+            <button id="refresh-history" class="link" type="button">Refresh</button>
+          </div>
+          <div class="history-toggle">
+            <label class="switch">
+              <input id="history-poll" type="checkbox" checked />
+              <span>Auto refresh</span>
+            </label>
+          </div>
+          <div id="history-list" class="history-list"></div>
+        </section>
       </div>
     </div>
 
