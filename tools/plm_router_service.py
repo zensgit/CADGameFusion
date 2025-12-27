@@ -143,6 +143,7 @@ class TaskManager:
             "tags": task.config.tags,
             "revision_note": task.config.revision_note,
             "annotations": task.config.annotations,
+            "event": "convert",
         }
         if task.status == "done" and task.result:
             entry["viewer_url"] = task.result.get("viewer_url")
@@ -700,6 +701,9 @@ def normalize_history_entry(entry: dict) -> None:
         entry["revision_note"] = ""
     entry["tags"] = normalize_tags(entry.get("tags"))
     entry["annotations"] = normalize_annotations(entry.get("annotations"), entry.get("created_at", ""))
+    event = entry.get("event")
+    if not isinstance(event, str) or not event:
+        entry["event"] = "convert"
 
 
 def matches_metadata(entry: dict, owner: str, tags: List[str], revision: str) -> bool:

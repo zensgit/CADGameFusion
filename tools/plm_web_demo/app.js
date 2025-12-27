@@ -166,6 +166,7 @@ function renderHistory(items) {
       const statusClass = item.state === "done" ? "done" : item.state === "error" ? "error" : "";
       const label = item.document_label || item.task_id;
       const tagsText = formatTags(item.tags);
+      const eventLabel = item.event || "convert";
       const rows = [
         `
         <div class="history-item__row">
@@ -177,6 +178,12 @@ function renderHistory(items) {
         <div class="history-item__row">
           <span class="history-item__label">State</span>
           <span class="history-item__status ${statusClass}">${item.state}</span>
+        </div>
+        `,
+        `
+        <div class="history-item__row">
+          <span class="history-item__label">Event</span>
+          <span class="history-item__value">${eventLabel}</span>
         </div>
         `,
         `
@@ -386,6 +393,7 @@ function renderVersionList(items) {
     card.className = "index-version";
     const statusClass = item.state === "done" ? "done" : item.state === "error" ? "error" : "";
     const tagsText = formatTags(item.tags);
+    const eventLabel = item.event || "convert";
     const rows = [
       `
       <div class="index-version__row">
@@ -397,6 +405,12 @@ function renderVersionList(items) {
       <div class="index-version__row">
         <span class="index-version__label">State</span>
         <span class="index-version__status ${statusClass}">${item.state}</span>
+      </div>
+      `,
+      `
+      <div class="index-version__row">
+        <span class="index-version__label">Event</span>
+        <span class="index-version__value">${eventLabel}</span>
       </div>
       `,
     ];
