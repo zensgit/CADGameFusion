@@ -187,6 +187,69 @@ select {
   gap: 16px;
 }
 
+.history-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.history-toggle {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.history-item {
+  border-radius: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(20, 24, 32, 0.08);
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 0.8rem;
+  display: grid;
+  gap: 6px;
+}
+
+.history-item__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.history-item__label {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.history-item__value {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.8rem;
+}
+
+.history-item__status {
+  font-weight: 600;
+  color: var(--accent-deep);
+}
+
+.history-item__status.done {
+  color: var(--success);
+}
+
+.history-item__status.error {
+  color: var(--danger);
+}
+
+.history-item__link {
+  text-decoration: none;
+  color: var(--accent-deep);
+  font-weight: 600;
+}
+
 .preview-header {
   display: flex;
   justify-content: space-between;

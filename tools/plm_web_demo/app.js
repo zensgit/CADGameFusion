@@ -14,9 +14,13 @@ const responseEl = document.getElementById("response-json");
 const viewerFrame = document.getElementById("viewer-frame");
 const viewerLink = document.getElementById("viewer-link");
 const placeholder = document.getElementById("preview-placeholder");
+const historyList = document.getElementById("history-list");
+const refreshHistoryBtn = document.getElementById("refresh-history");
+const historyPollToggle = document.getElementById("history-poll");
 
 let activeTaskId = null;
 let pollTimer = null;
+let historyTimer = null;
 
 function setStatus(label, state) {
   statusPill.textContent = label;
@@ -55,6 +59,13 @@ function stopPolling() {
   if (pollTimer) {
     clearTimeout(pollTimer);
     pollTimer = null;
+  }
+}
+
+function stopHistoryPolling() {
+  if (historyTimer) {
+    clearTimeout(historyTimer);
+    historyTimer = null;
   }
 }
 
@@ -99,6 +110,76 @@ async function pollStatus(url, taskId) {
   }
 
   pollTimer = setTimeout(() => pollStatus(url, taskId), 1200);
+}
+
+function renderHistory(items) {
+  historyList.innerHTML = "";
+  if (!items.length) {
+    historyList.innerHTML = "<div class=\"placeholder\">No tasks yet.</div>";
+    return;
+  }
+  items.forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "history-item";
+    const statusClass = item.state === "done" ? "done" : item.state === "error" ? "error" : "";
+    card.innerHTML = `
+      <div class="history-item__row">
+        <span class="history-item__label">Task</span>
+        <span class="history-item__value">${item.task_id}</span>
+      </div>
+      <div class="history-item__row">
+        <span class="history-item__label">State</span>
+        <span class="history-item__status ${statusClass}">${item.state}</span>
+      </div>
+      <div class="history-item__row">
+        <span class="history-item__label">Created</span>
+        <span class="history-item__value">${item.created_at || "-"}</span>
+      </div>
+    `;
+    if (item.viewer_url) {
+      const link = document.createElement("a");
+      link.className = "history-item__link";
+      link.href = item.viewer_url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = "Open preview";
+      card.appendChild(link);
+    }
+    if (item.error) {
+      const err = document.createElement("div");
+      err.className = "history-item__value";
+      err.textContent = item.error;
+      card.appendChild(err);
+    }
+    historyList.appendChild(card);
+  });
+}
+
+async function fetchHistory() {
+  const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
+  const url = `${baseUrl}/history?limit=20`;
+  try {
+    const response = await fetch(url, { headers: buildAuthHeaders() });
+    const payload = await response.json();
+    if (response.ok && payload.items) {
+      renderHistory(payload.items);
+    } else {
+      renderHistory([]);
+    }
+  } catch (err) {
+    historyList.innerHTML = `<div class="placeholder">History unavailable: ${err}</div>`;
+  }
+}
+
+function scheduleHistoryPoll() {
+  stopHistoryPolling();
+  if (!historyPollToggle.checked) {
+    return;
+  }
+  historyTimer = setTimeout(async () => {
+    await fetchHistory();
+    scheduleHistoryPoll();
+  }, 3000);
 }
 
 async function handleSubmit(event) {
@@ -172,6 +253,7 @@ async function handleSubmit(event) {
     const statusUrl = payload.status_url || `${baseUrl}/status/${taskId}`;
     setStatus(state, "busy");
     await pollStatus(statusUrl, taskId);
+    await fetchHistory();
   } catch (err) {
     setStatus("Error", "error");
     responseEl.textContent = `Request failed: ${err}`;
@@ -183,4 +265,8 @@ async function handleSubmit(event) {
 routerInput.value = normalizeBaseUrl(window.location.origin);
 setPreview("");
 setStatus("Idle", "idle");
+fetchHistory();
+scheduleHistoryPoll();
 form.addEventListener("submit", handleSubmit);
+refreshHistoryBtn.addEventListener("click", fetchHistory);
+historyPollToggle.addEventListener("change", scheduleHistoryPoll);
