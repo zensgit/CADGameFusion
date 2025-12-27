@@ -7,6 +7,8 @@ const documentInput = document.getElementById("document-input");
 const ownerInput = document.getElementById("owner-input");
 const tagsInput = document.getElementById("tags-input");
 const revisionInput = document.getElementById("revision-input");
+const annotationInput = document.getElementById("annotation-input");
+const annotationAuthorInput = document.getElementById("annotation-author");
 const pluginInput = document.getElementById("plugin-input");
 const cliInput = document.getElementById("cli-input");
 const emitSelect = document.getElementById("emit-select");
@@ -207,6 +209,22 @@ function renderHistory(items) {
           </div>
         `);
       }
+      const notes = normalizeAnnotations(item.annotations);
+      if (notes.length) {
+        const notesHtml = notes
+          .map((note) => {
+            const metaParts = [note.author || "", note.createdAt || ""].filter((val) => val);
+            const meta = metaParts.length ? ` (${metaParts.join(" · ")})` : "";
+            return `<div class="annotation-item"><span class="annotation-text">${note.message}</span><span class="annotation-meta">${meta}</span></div>`;
+          })
+          .join("");
+        rows.push(`
+          <div class="history-item__annotations">
+            <div class="history-item__label">Notes</div>
+            ${notesHtml}
+          </div>
+        `);
+      }
       card.innerHTML = rows.join("");
       if (item.viewer_url) {
         const link = document.createElement("a");
@@ -237,6 +255,20 @@ function formatTags(tags) {
     return tags.map((tag) => String(tag).trim()).filter((tag) => tag).join(", ");
   }
   return String(tags).trim();
+}
+
+function normalizeAnnotations(annotations) {
+  if (!Array.isArray(annotations)) {
+    return [];
+  }
+  return annotations
+    .map((note) => ({
+      message: String(note?.message || "").trim(),
+      author: String(note?.author || "").trim(),
+      createdAt: String(note?.created_at || note?.created || "").trim(),
+      kind: String(note?.kind || "").trim(),
+    }))
+    .filter((note) => note.message);
 }
 
 function buildDetailText(parts) {
@@ -274,9 +306,13 @@ function renderProjectList(items) {
       button.classList.add("is-selected");
     }
     const docCount = typeof item.document_count === "number" ? item.document_count : 0;
+    const annotationCount = typeof item.annotation_count === "number" ? item.annotation_count : 0;
+    const latestNote = item.latest_annotation?.message ? String(item.latest_annotation.message).trim() : "";
     const detail = buildDetailText([
       item.owner ? `Owner: ${item.owner}` : "",
       formatTags(item.tags) ? `Tags: ${formatTags(item.tags)}` : "",
+      annotationCount ? `Notes: ${annotationCount}` : "",
+      latestNote ? `Latest: ${latestNote}` : "",
     ]);
     button.innerHTML = `
       <span class="index-item__label">${item.project_id}</span>
@@ -312,10 +348,14 @@ function renderDocumentList(items) {
       button.classList.add("is-selected");
     }
     const versionCount = typeof item.version_count === "number" ? item.version_count : 0;
+    const annotationCount = typeof item.annotation_count === "number" ? item.annotation_count : 0;
+    const latestNote = item.latest_annotation?.message ? String(item.latest_annotation.message).trim() : "";
     const detail = buildDetailText([
       item.owner ? `Owner: ${item.owner}` : "",
       formatTags(item.tags) ? `Tags: ${formatTags(item.tags)}` : "",
       item.revision_note ? `Revision: ${item.revision_note}` : "",
+      annotationCount ? `Notes: ${annotationCount}` : "",
+      latestNote ? `Latest: ${latestNote}` : "",
     ]);
     button.innerHTML = `
       <span class="index-item__label">${item.document_label}</span>
@@ -380,6 +420,22 @@ function renderVersionList(items) {
         <div class="index-version__row">
           <span class="index-version__label">Revision</span>
           <span class="index-version__value">${item.revision_note}</span>
+        </div>
+      `);
+    }
+    const notes = normalizeAnnotations(item.annotations);
+    if (notes.length) {
+      const notesHtml = notes
+        .map((note) => {
+          const metaParts = [note.author || "", note.createdAt || ""].filter((val) => val);
+          const meta = metaParts.length ? ` (${metaParts.join(" · ")})` : "";
+          return `<div class="annotation-item"><span class="annotation-text">${note.message}</span><span class="annotation-meta">${meta}</span></div>`;
+        })
+        .join("");
+      rows.push(`
+        <div class="index-version__row index-version__notes">
+          <span class="index-version__label">Notes</span>
+          <div class="index-version__value">${notesHtml}</div>
         </div>
       `);
     }
@@ -571,6 +627,16 @@ async function handleSubmit(event) {
   const revisionNote = revisionInput.value.trim();
   if (revisionNote) {
     formData.append("revision_note", revisionNote);
+  }
+
+  const annotationText = annotationInput.value.trim();
+  if (annotationText) {
+    const author = annotationAuthorInput.value.trim() || owner;
+    formData.append("annotation_text", annotationText);
+    if (author) {
+      formData.append("annotation_author", author);
+    }
+    formData.append("annotation_kind", "comment");
   }
 
   const plugin = pluginInput.value.trim();

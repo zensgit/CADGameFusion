@@ -54,6 +54,7 @@ class TaskConfig:
     owner: str = ""
     tags: List[str] = field(default_factory=list)
     revision_note: str = ""
+    annotations: List[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -141,6 +142,7 @@ class TaskManager:
             "owner": task.config.owner,
             "tags": task.config.tags,
             "revision_note": task.config.revision_note,
+            "annotations": task.config.annotations,
         }
         if task.status == "done" and task.result:
             entry["viewer_url"] = task.result.get("viewer_url")
@@ -206,6 +208,7 @@ class TaskManager:
                 continue
             project_id = normalize_project_id(entry.get("project_id"))
             if project_id not in projects:
+                annotations = entry.get("annotations") or []
                 projects[project_id] = {
                     "project_id": project_id,
                     "latest_task_id": entry.get("task_id"),
@@ -214,6 +217,8 @@ class TaskManager:
                     "owner": entry.get("owner", ""),
                     "tags": entry.get("tags", []),
                     "revision_note": entry.get("revision_note", ""),
+                    "annotation_count": len(annotations),
+                    "latest_annotation": annotations[-1] if annotations else None,
                     "_docs": set(),
                 }
                 order.append(project_id)
@@ -252,6 +257,7 @@ class TaskManager:
             label = normalize_document_label(entry.get("document_label"))
             document_id = encode_document_id(project_id, label)
             if document_id not in documents:
+                annotations = entry.get("annotations") or []
                 documents[document_id] = {
                     "document_id": document_id,
                     "document_label": label,
@@ -263,6 +269,8 @@ class TaskManager:
                     "owner": entry.get("owner", ""),
                     "tags": entry.get("tags", []),
                     "revision_note": entry.get("revision_note", ""),
+                    "annotation_count": len(annotations),
+                    "latest_annotation": annotations[-1] if annotations else None,
                     "version_count": 0,
                 }
                 order.append(document_id)
@@ -595,12 +603,47 @@ def normalize_tags(value) -> List[str]:
     return []
 
 
+def normalize_annotations(value, fallback_time: str) -> List[dict]:
+    if not value:
+        return []
+    items = value if isinstance(value, list) else [value]
+    normalized = []
+    for item in items:
+        if isinstance(item, dict):
+            message = (
+                str(item.get("message") or item.get("text") or item.get("note") or "").strip()
+            )
+            author = str(item.get("author") or "").strip()
+            created_at = str(item.get("created_at") or item.get("created") or fallback_time or "").strip()
+            kind = str(item.get("kind") or "").strip()
+        else:
+            message = str(item).strip()
+            author = ""
+            created_at = fallback_time or ""
+            kind = ""
+        if not message:
+            continue
+        entry = {"message": message, "author": author, "created_at": created_at}
+        if kind:
+            entry["kind"] = kind
+        normalized.append(entry)
+    return normalized
+
+
+def build_annotation(message: str, author: str, created_at: str, kind: str = "") -> dict:
+    entry = {"message": message, "author": author, "created_at": created_at}
+    if kind:
+        entry["kind"] = kind
+    return entry
+
+
 def normalize_history_entry(entry: dict) -> None:
     if "owner" not in entry or not isinstance(entry.get("owner"), str):
         entry["owner"] = ""
     if "revision_note" not in entry or not isinstance(entry.get("revision_note"), str):
         entry["revision_note"] = ""
     entry["tags"] = normalize_tags(entry.get("tags"))
+    entry["annotations"] = normalize_annotations(entry.get("annotations"), entry.get("created_at", ""))
 
 
 def matches_metadata(entry: dict, owner: str, tags: List[str], revision: str) -> bool:
@@ -1027,6 +1070,21 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             owner = fields.get("owner", "").strip()
             tags = parse_tags(fields.get("tags", ""))
             revision_note = fields.get("revision_note", "").strip()
+            annotations = []
+            annotation_now = now_iso()
+            annotations_raw = fields.get("annotations", "").strip()
+            if annotations_raw:
+                try:
+                    parsed = json.loads(annotations_raw)
+                except json.JSONDecodeError:
+                    respond_json(self, 400, {"status": "error", "message": "invalid annotations json"})
+                    return
+                annotations = normalize_annotations(parsed, annotation_now)
+            annotation_text = fields.get("annotation_text", "").strip()
+            if annotation_text:
+                annotation_author = fields.get("annotation_author", "").strip()
+                annotation_kind = fields.get("annotation_kind", "").strip()
+                annotations.append(build_annotation(annotation_text, annotation_author, annotation_now, annotation_kind))
             migrate_document = parse_bool(fields.get("migrate_document"))
             document_backup = parse_bool(fields.get("document_backup"))
             document_target = 0
@@ -1093,6 +1151,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 owner=owner,
                 tags=tags,
                 revision_note=revision_note,
+                annotations=annotations,
             )
             task = TaskRecord(task_id=task_id, config=task_config, created_at=now_iso())
             if not manager.submit(task):

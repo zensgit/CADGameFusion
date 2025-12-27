@@ -97,6 +97,7 @@ body::before {
 input[type="text"],
 input[type="file"],
 input[type="number"],
+textarea,
 select {
   border-radius: 12px;
   border: 1px solid rgba(20, 24, 32, 0.12);
@@ -257,6 +258,30 @@ select {
   font-weight: 600;
 }
 
+.history-item__annotations {
+  display: grid;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.annotation-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.annotation-text {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  color: var(--text);
+}
+
+.annotation-meta {
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
 .history-group {
   display: grid;
   gap: 12px;
@@ -368,6 +393,10 @@ select {
 
 .index-version__status.error {
   color: var(--danger);
+}
+
+.index-version__notes {
+  align-items: flex-start;
 }
 
 .index-version__link {
