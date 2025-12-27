@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 from email.parser import BytesParser
@@ -66,6 +67,8 @@ class TaskManager:
         ttl_seconds: int,
         cleanup_interval: int,
         history_limit: int,
+        history_file: Optional[Path],
+        history_load: int,
     ):
         self._config = config
         self._queue = queue.Queue(maxsize=max(queue_size, 0))
@@ -75,8 +78,11 @@ class TaskManager:
         self._cleanup_interval = cleanup_interval
         self._history_limit = max(history_limit, 0)
         self._history: List[dict] = []
+        self._history_file = history_file
+        self._history_load = max(history_load, 0)
         self._stop_event = threading.Event()
         self._workers = []
+        self._load_history()
         for _ in range(max(1, max_workers)):
             worker = threading.Thread(target=self._worker_loop, daemon=True)
             worker.start()
@@ -126,12 +132,50 @@ class TaskManager:
             self._history.insert(0, entry)
             if self._history_limit and len(self._history) > self._history_limit:
                 self._history = self._history[: self._history_limit]
+            self._append_history(entry)
 
     def list_history(self, limit: int) -> List[dict]:
         with self._lock:
             if limit <= 0:
                 return list(self._history)
             return list(self._history[:limit])
+
+    def _append_history(self, entry: dict) -> None:
+        if not self._history_file:
+            return
+        try:
+            with self._history_file.open("a", encoding="utf-8") as fh:
+                json.dump(entry, fh)
+                fh.write("\n")
+        except Exception as exc:
+            sys.stderr.write(f"history write failed: {exc}\n")
+
+    def _load_history(self) -> None:
+        if not self._history_file or not self._history_file.exists():
+            return
+        max_entries = None if self._history_load == 0 else self._history_load
+        buffer = deque(maxlen=max_entries)
+        try:
+            with self._history_file.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(entry, dict):
+                        buffer.append(entry)
+        except Exception as exc:
+            sys.stderr.write(f"history load failed: {exc}\n")
+            return
+        entries = list(buffer)
+        entries.reverse()
+        if self._history_limit and len(entries) > self._history_limit:
+            entries = entries[: self._history_limit]
+        with self._lock:
+            self._history = entries
 
     def _worker_loop(self) -> None:
         while not self._stop_event.is_set():
@@ -291,6 +335,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--queue-size", type=int, default=8, help="Max queued jobs (0 = unbounded)")
     parser.add_argument("--ttl-seconds", type=int, default=3600, help="TTL for output cleanup (0 disables)")
     parser.add_argument("--history-limit", type=int, default=200, help="Max history entries (0 = unbounded)")
+    parser.add_argument("--history-file", default="", help="Append task history to JSONL file")
+    parser.add_argument(
+        "--history-load",
+        type=int,
+        default=200,
+        help="Max history entries to load on startup (0 = all)",
+    )
     parser.add_argument(
         "--cleanup-interval",
         type=int,
@@ -698,6 +749,14 @@ def main() -> int:
     cors_raw = env_or_arg(args.cors_origins, "CADGF_ROUTER_CORS_ORIGINS")
     plugin_allowlist_raw = env_or_arg(args.plugin_allowlist, "CADGF_ROUTER_PLUGIN_ALLOWLIST")
     cli_allowlist_raw = env_or_arg(args.cli_allowlist, "CADGF_ROUTER_CLI_ALLOWLIST")
+    history_file_raw = env_or_arg(args.history_file, "CADGF_ROUTER_HISTORY_FILE")
+    history_load = args.history_load
+    env_history_load = os.getenv("CADGF_ROUTER_HISTORY_LOAD")
+    if env_history_load and args.history_load == 200:
+        try:
+            history_load = int(env_history_load)
+        except ValueError:
+            history_load = args.history_load
     max_bytes = args.max_bytes
     env_max = os.getenv("CADGF_ROUTER_MAX_BYTES")
     if env_max and args.max_bytes == 50 * 1024 * 1024:
@@ -711,6 +770,13 @@ def main() -> int:
     cors_origins = parse_csv(cors_raw)
     plugin_allowlist = parse_allowlist(plugin_allowlist_raw, repo_root)
     cli_allowlist = parse_allowlist(cli_allowlist_raw, repo_root)
+    history_file = None
+    if history_file_raw:
+        history_path = Path(history_file_raw)
+        if not history_path.is_absolute():
+            history_path = repo_root / history_path
+        history_file = history_path.resolve()
+        history_file.parent.mkdir(parents=True, exist_ok=True)
 
     config = ServerConfig(
         repo_root=repo_root,
@@ -732,6 +798,8 @@ def main() -> int:
         ttl_seconds=args.ttl_seconds,
         cleanup_interval=args.cleanup_interval,
         history_limit=args.history_limit,
+        history_file=history_file,
+        history_load=history_load,
     )
     handler = make_handler(config, manager)
     server = ThreadingHTTPServer((args.host, args.port), handler)
@@ -744,6 +812,8 @@ def main() -> int:
         print(f"CORS allowlist: {', '.join(cors_origins)}")
     if max_bytes > 0:
         print(f"Max upload bytes: {max_bytes}")
+    if history_file:
+        print(f"History file: {history_file} (load {history_load or 'all'})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
