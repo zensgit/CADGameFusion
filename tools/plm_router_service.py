@@ -158,15 +158,22 @@ class TaskManager:
         state: str = "",
         from_ts: str = "",
         to_ts: str = "",
+        owner: str = "",
+        tags: Optional[List[str]] = None,
+        revision: str = "",
     ) -> List[dict]:
         with self._lock:
             entries = list(self._history)
+
+        tag_filter = tags or []
 
         def matches(entry: dict) -> bool:
             normalize_history_entry(entry)
             if project_id and entry.get("project_id") != project_id:
                 return False
             if state and entry.get("state") != state:
+                return False
+            if not matches_metadata(entry, owner, tag_filter, revision):
                 return False
             created = entry.get("created_at") or ""
             if from_ts and created and created < from_ts:
@@ -180,14 +187,23 @@ class TaskManager:
             return filtered
         return filtered[:limit]
 
-    def list_projects(self, limit: int) -> List[dict]:
+    def list_projects(
+        self,
+        limit: int,
+        owner: str = "",
+        tags: Optional[List[str]] = None,
+        revision: str = "",
+    ) -> List[dict]:
         with self._lock:
             entries = list(self._history)
 
+        tag_filter = tags or []
         projects: Dict[str, dict] = {}
         order: List[str] = []
         for entry in entries:
             normalize_history_entry(entry)
+            if not matches_metadata(entry, owner, tag_filter, revision):
+                continue
             project_id = normalize_project_id(entry.get("project_id"))
             if project_id not in projects:
                 projects[project_id] = {
@@ -213,14 +229,24 @@ class TaskManager:
                 break
         return payload
 
-    def list_documents(self, project_id: str, limit: int) -> List[dict]:
+    def list_documents(
+        self,
+        project_id: str,
+        limit: int,
+        owner: str = "",
+        tags: Optional[List[str]] = None,
+        revision: str = "",
+    ) -> List[dict]:
         with self._lock:
             entries = list(self._history)
 
+        tag_filter = tags or []
         documents: Dict[str, dict] = {}
         order: List[str] = []
         for entry in entries:
             normalize_history_entry(entry)
+            if not matches_metadata(entry, owner, tag_filter, revision):
+                continue
             if normalize_project_id(entry.get("project_id")) != project_id:
                 continue
             label = normalize_document_label(entry.get("document_label"))
@@ -257,13 +283,19 @@ class TaskManager:
         state: str = "",
         from_ts: str = "",
         to_ts: str = "",
+        owner: str = "",
+        tags: Optional[List[str]] = None,
+        revision: str = "",
     ) -> List[dict]:
         with self._lock:
             entries = list(self._history)
 
+        tag_filter = tags or []
         payload = []
         for entry in entries:
             normalize_history_entry(entry)
+            if not matches_metadata(entry, owner, tag_filter, revision):
+                continue
             if normalize_project_id(entry.get("project_id")) != project_id:
                 continue
             label = normalize_document_label(entry.get("document_label"))
@@ -571,6 +603,23 @@ def normalize_history_entry(entry: dict) -> None:
     entry["tags"] = normalize_tags(entry.get("tags"))
 
 
+def matches_metadata(entry: dict, owner: str, tags: List[str], revision: str) -> bool:
+    if owner:
+        entry_owner = entry.get("owner", "")
+        if entry_owner.lower() != owner.lower():
+            return False
+    if tags:
+        entry_tags = {tag.lower() for tag in normalize_tags(entry.get("tags"))}
+        required = {tag.lower() for tag in tags}
+        if not entry_tags.issuperset(required):
+            return False
+    if revision:
+        note = entry.get("revision_note", "")
+        if revision.lower() not in note.lower():
+            return False
+    return True
+
+
 def encode_document_id(project_id: str, document_label: str) -> str:
     raw = f"{project_id}\n{document_label}".encode("utf-8")
     token = base64.urlsafe_b64encode(raw).decode("ascii")
@@ -761,7 +810,11 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 limit = query_int(query, "limit", 50)
                 if limit < 0:
                     limit = 0
-                entries = manager.list_projects(limit)
+                owner = query_value(query, "owner")
+                tags_value = query_value(query, "tags") or query_value(query, "tag")
+                tags = parse_tags(tags_value)
+                revision = query_value(query, "revision") or query_value(query, "revision_note")
+                entries = manager.list_projects(limit, owner=owner, tags=tags, revision=revision)
                 respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
             if parsed.path.startswith("/projects/") and parsed.path.endswith("/documents"):
@@ -782,7 +835,11 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 limit = query_int(query, "limit", 50)
                 if limit < 0:
                     limit = 0
-                entries = manager.list_documents(project_id, limit)
+                owner = query_value(query, "owner")
+                tags_value = query_value(query, "tags") or query_value(query, "tag")
+                tags = parse_tags(tags_value)
+                revision = query_value(query, "revision") or query_value(query, "revision_note")
+                entries = manager.list_documents(project_id, limit, owner=owner, tags=tags, revision=revision)
                 respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
             if parsed.path.startswith("/documents/") and parsed.path.endswith("/versions"):
@@ -810,6 +867,10 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 state = query_value(query, "state")
                 from_ts = query_value(query, "from")
                 to_ts = query_value(query, "to")
+                owner = query_value(query, "owner")
+                tags_value = query_value(query, "tags") or query_value(query, "tag")
+                tags = parse_tags(tags_value)
+                revision = query_value(query, "revision") or query_value(query, "revision_note")
                 entries = manager.list_document_versions(
                     project_id,
                     document_label,
@@ -817,6 +878,9 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                     state=state,
                     from_ts=from_ts,
                     to_ts=to_ts,
+                    owner=owner,
+                    tags=tags,
+                    revision=revision,
                 )
                 respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
@@ -850,7 +914,20 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                     from_ts = decode_query_value(query.split("from=", 1)[1].split("&", 1)[0])
                 if "to=" in query:
                     to_ts = decode_query_value(query.split("to=", 1)[1].split("&", 1)[0])
-                entries = manager.list_history(limit, project_id=project_id, state=state, from_ts=from_ts, to_ts=to_ts)
+                owner = query_value(query, "owner")
+                tags_value = query_value(query, "tags") or query_value(query, "tag")
+                tags = parse_tags(tags_value)
+                revision = query_value(query, "revision") or query_value(query, "revision_note")
+                entries = manager.list_history(
+                    limit,
+                    project_id=project_id,
+                    state=state,
+                    from_ts=from_ts,
+                    to_ts=to_ts,
+                    owner=owner,
+                    tags=tags,
+                    revision=revision,
+                )
                 respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
             if parsed.path.startswith("/status/"):

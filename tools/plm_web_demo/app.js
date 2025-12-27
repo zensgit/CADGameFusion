@@ -28,7 +28,10 @@ const historyList = document.getElementById("history-list");
 const refreshHistoryBtn = document.getElementById("refresh-history");
 const historyPollToggle = document.getElementById("history-poll");
 const filterProject = document.getElementById("filter-project");
+const filterOwner = document.getElementById("filter-owner");
+const filterTags = document.getElementById("filter-tags");
 const filterState = document.getElementById("filter-state");
+const filterRevision = document.getElementById("filter-revision");
 const filterFrom = document.getElementById("filter-from");
 const filterTo = document.getElementById("filter-to");
 const refreshIndexBtn = document.getElementById("refresh-index");
@@ -159,20 +162,52 @@ function renderHistory(items) {
       card.className = "history-item";
       const statusClass = item.state === "done" ? "done" : item.state === "error" ? "error" : "";
       const label = item.document_label || item.task_id;
-      card.innerHTML = `
+      const tagsText = formatTags(item.tags);
+      const rows = [
+        `
         <div class="history-item__row">
           <span class="history-item__label">Document</span>
           <span class="history-item__value">${label}</span>
         </div>
+        `,
+        `
         <div class="history-item__row">
           <span class="history-item__label">State</span>
           <span class="history-item__status ${statusClass}">${item.state}</span>
         </div>
+        `,
+        `
         <div class="history-item__row">
           <span class="history-item__label">Created</span>
           <span class="history-item__value">${item.created_at || "-"}</span>
         </div>
-      `;
+        `,
+      ];
+      if (item.owner) {
+        rows.push(`
+          <div class="history-item__row">
+            <span class="history-item__label">Owner</span>
+            <span class="history-item__value">${item.owner}</span>
+          </div>
+        `);
+      }
+      if (tagsText) {
+        rows.push(`
+          <div class="history-item__row">
+            <span class="history-item__label">Tags</span>
+            <span class="history-item__value">${tagsText}</span>
+          </div>
+        `);
+      }
+      if (item.revision_note) {
+        rows.push(`
+          <div class="history-item__row">
+            <span class="history-item__label">Revision</span>
+            <span class="history-item__value">${item.revision_note}</span>
+          </div>
+        `);
+      }
+      card.innerHTML = rows.join("");
       if (item.viewer_url) {
         const link = document.createElement("a");
         link.className = "history-item__link";
@@ -206,6 +241,15 @@ function formatTags(tags) {
 
 function buildDetailText(parts) {
   return parts.filter((part) => part && part.trim()).join(" · ");
+}
+
+function applyMetadataFilters(params) {
+  const ownerValue = filterOwner.value.trim();
+  const tagsValue = filterTags.value.trim();
+  const revisionValue = filterRevision.value.trim();
+  if (ownerValue) params.set("owner", ownerValue);
+  if (tagsValue) params.set("tags", tagsValue);
+  if (revisionValue) params.set("revision", revisionValue);
 }
 
 function renderIndexPlaceholder(target, message) {
@@ -357,11 +401,17 @@ async function fetchHistory() {
   const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
   const params = new URLSearchParams({ limit: "50" });
   const projectValue = filterProject.value.trim();
+  const ownerValue = filterOwner.value.trim();
+  const tagsValue = filterTags.value.trim();
   const stateValue = filterState.value;
+  const revisionValue = filterRevision.value.trim();
   const fromValue = filterFrom.value.trim();
   const toValue = filterTo.value.trim();
   if (projectValue) params.set("project_id", projectValue);
+  if (ownerValue) params.set("owner", ownerValue);
+  if (tagsValue) params.set("tags", tagsValue);
   if (stateValue) params.set("state", stateValue);
+  if (revisionValue) params.set("revision", revisionValue);
   if (fromValue) params.set("from", fromValue);
   if (toValue) params.set("to", toValue);
   const url = `${baseUrl}/history?${params.toString()}`;
@@ -380,7 +430,9 @@ async function fetchHistory() {
 
 async function fetchProjects() {
   const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
-  const url = `${baseUrl}/projects?limit=50`;
+  const params = new URLSearchParams({ limit: "50" });
+  applyMetadataFilters(params);
+  const url = `${baseUrl}/projects?${params.toString()}`;
   try {
     const response = await fetch(url, { headers: buildAuthHeaders() });
     const payload = await response.json();
@@ -411,7 +463,9 @@ async function fetchDocuments(projectId) {
     return;
   }
   const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
-  const url = `${baseUrl}/projects/${encodeURIComponent(projectId)}/documents?limit=50`;
+  const params = new URLSearchParams({ limit: "50" });
+  applyMetadataFilters(params);
+  const url = `${baseUrl}/projects/${encodeURIComponent(projectId)}/documents?${params.toString()}`;
   try {
     const response = await fetch(url, { headers: buildAuthHeaders() });
     const payload = await response.json();
@@ -438,7 +492,15 @@ async function fetchVersions(documentId) {
     return;
   }
   const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
-  const url = `${baseUrl}/documents/${encodeURIComponent(documentId)}/versions?limit=25`;
+  const params = new URLSearchParams({ limit: "25" });
+  applyMetadataFilters(params);
+  const stateValue = filterState.value;
+  const fromValue = filterFrom.value.trim();
+  const toValue = filterTo.value.trim();
+  if (stateValue) params.set("state", stateValue);
+  if (fromValue) params.set("from", fromValue);
+  if (toValue) params.set("to", toValue);
+  const url = `${baseUrl}/documents/${encodeURIComponent(documentId)}/versions?${params.toString()}`;
   try {
     const response = await fetch(url, { headers: buildAuthHeaders() });
     const payload = await response.json();
@@ -458,6 +520,11 @@ function scheduleHistoryPoll() {
     await fetchHistory();
     scheduleHistoryPoll();
   }, 3000);
+}
+
+function refreshFilters() {
+  fetchHistory();
+  fetchProjects();
 }
 
 async function handleSubmit(event) {
@@ -592,8 +659,11 @@ scheduleHistoryPoll();
 form.addEventListener("submit", handleSubmit);
 refreshHistoryBtn.addEventListener("click", fetchHistory);
 historyPollToggle.addEventListener("change", scheduleHistoryPoll);
-filterProject.addEventListener("input", fetchHistory);
-filterState.addEventListener("change", fetchHistory);
-filterFrom.addEventListener("input", fetchHistory);
-filterTo.addEventListener("input", fetchHistory);
+filterProject.addEventListener("input", refreshFilters);
+filterOwner.addEventListener("input", refreshFilters);
+filterTags.addEventListener("input", refreshFilters);
+filterState.addEventListener("change", refreshFilters);
+filterRevision.addEventListener("input", refreshFilters);
+filterFrom.addEventListener("input", refreshFilters);
+filterTo.addEventListener("input", refreshFilters);
 refreshIndexBtn.addEventListener("click", fetchProjects);
