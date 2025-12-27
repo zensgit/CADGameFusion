@@ -40,6 +40,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--migrate-document", action="store_true", help="Run document_migrate on document.json")
     parser.add_argument("--document-target", type=int, default=2, help="Target document schema version")
     parser.add_argument("--document-backup", action="store_true", help="Create .bak when migrating in place")
+    parser.add_argument("--validate-document", action="store_true", help="Validate document.json against schema")
+    parser.add_argument(
+        "--document-schema",
+        default=str(Path("schemas") / "document.schema.json"),
+        help="Path to document.json schema",
+    )
     return parser.parse_args()
 
 
@@ -166,6 +172,40 @@ def run_document_migrate(doc_path: Path, target: int, backup: bool) -> str:
     return ""
 
 
+def validate_document_schema(doc_path: Path, schema_path: Path) -> str:
+    try:
+        import jsonschema
+        from jsonschema import Draft202012Validator
+    except ImportError:
+        return "jsonschema module not found. Install with: pip install jsonschema"
+
+    try:
+        with schema_path.open("r", encoding="utf-8") as fh:
+            schema = json.load(fh)
+    except Exception as exc:
+        return f"failed to read schema: {exc}"
+
+    try:
+        with doc_path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception as exc:
+        return f"failed to read document.json: {exc}"
+
+    validator = Draft202012Validator(schema)
+    errors = sorted(validator.iter_errors(data), key=lambda e: e.path)
+    if not errors:
+        return ""
+
+    messages = []
+    for err in errors[:5]:
+        loc = "$" + ("/" + "/".join(str(p) for p in err.path) if err.path else "")
+        messages.append(f"{loc}: {err.message}")
+    extra = ""
+    if len(errors) > 5:
+        extra = f" (+{len(errors) - 5} more)"
+    return "; ".join(messages) + extra
+
+
 def main() -> int:
     args = parse_args()
     repo_root = Path(__file__).resolve().parents[1]
@@ -221,8 +261,8 @@ def main() -> int:
     elif args.hash_names:
         output_layout = "hashed"
 
-    if args.migrate_document and not emit_json:
-        print("Document migration requires json output (use --emit json or --json).", file=sys.stderr)
+    if (args.migrate_document or args.validate_document) and not emit_json:
+        print("Document migration/validation requires json output (use --emit json or --json).", file=sys.stderr)
         return 2
 
     plm_convert_version = "1"
@@ -261,6 +301,18 @@ def main() -> int:
             if message:
                 print(f"document_migrate failed: {message}", file=sys.stderr)
                 return 4
+        if args.validate_document:
+            schema_path = Path(args.document_schema)
+            if not schema_path.is_absolute():
+                schema_path = repo_root / schema_path
+            schema_path = schema_path.resolve()
+            if not schema_path.exists():
+                print(f"document schema not found: {schema_path}", file=sys.stderr)
+                return 4
+            message = validate_document_schema(doc_path, schema_path)
+            if message:
+                print(f"document schema validation failed: {message}", file=sys.stderr)
+                return 4
         doc_version = read_cadgf_version(doc_path)
         doc_schema_version = read_document_schema_version(doc_path)
         doc_hash = compute_sha256(doc_path)
@@ -287,8 +339,8 @@ def main() -> int:
         outputs.append("json")
     else:
         if emit_json:
-            if args.migrate_document:
-                print("document.json missing; migration requested.", file=sys.stderr)
+            if args.migrate_document or args.validate_document:
+                print("document.json missing; migration/validation requested.", file=sys.stderr)
                 return 4
             manifest["status"] = "partial"
             missing.append(str(doc_path.name))

@@ -49,6 +49,8 @@ class TaskConfig:
     migrate_document: bool = False
     document_target: int = 0
     document_backup: bool = False
+    validate_document: bool = False
+    document_schema: str = ""
 
 
 @dataclass
@@ -355,6 +357,10 @@ class TaskManager:
                 cmd.extend(["--document-target", str(config.document_target)])
             if config.document_backup:
                 cmd.append("--document-backup")
+        if config.validate_document:
+            cmd.append("--validate-document")
+            if config.document_schema:
+                cmd.extend(["--document-schema", config.document_schema])
 
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
@@ -913,6 +919,22 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 if document_target < 0:
                     respond_json(self, 400, {"status": "error", "message": "invalid document_target"})
                     return
+            validate_document = parse_bool(fields.get("validate_document"))
+            document_schema = fields.get("document_schema", "").strip()
+            if document_schema:
+                schema_path = Path(document_schema)
+                if not schema_path.is_absolute():
+                    schema_path = config.repo_root / schema_path
+                schema_path = schema_path.resolve()
+                try:
+                    schema_path.relative_to(config.repo_root)
+                except ValueError:
+                    respond_json(self, 403, {"status": "error", "message": "document_schema not allowed"})
+                    return
+                if not schema_path.exists():
+                    respond_json(self, 400, {"status": "error", "message": "document_schema not found"})
+                    return
+                document_schema = str(schema_path)
             convert_cli = fields.get("convert_cli") or config.default_convert_cli
             if convert_cli and not Path(convert_cli).exists():
                 respond_json(self, 400, {"status": "error", "message": "convert_cli not found"})
@@ -946,6 +968,8 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 migrate_document=migrate_document,
                 document_target=document_target,
                 document_backup=document_backup,
+                validate_document=validate_document,
+                document_schema=document_schema,
             )
             task = TaskRecord(task_id=task_id, config=task_config, created_at=now_iso())
             if not manager.submit(task):
