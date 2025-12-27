@@ -288,9 +288,11 @@ function applyMetadataFilters(params) {
   const ownerValue = filterOwner.value.trim();
   const tagsValue = filterTags.value.trim();
   const revisionValue = filterRevision.value.trim();
+  const eventValue = filterEvent.value;
   if (ownerValue) params.set("owner", ownerValue);
   if (tagsValue) params.set("tags", tagsValue);
   if (revisionValue) params.set("revision", revisionValue);
+  if (eventValue) params.set("event", eventValue);
 }
 
 function renderIndexPlaceholder(target, message) {
