@@ -181,6 +181,8 @@ class TaskManager:
     def _cleanup_once(self) -> None:
         if self._ttl_seconds <= 0:
             return
+        if not self._config.out_root.exists():
+            return
         cutoff = time.time() - self._ttl_seconds
         active_dirs = set()
         with self._lock:
