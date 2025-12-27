@@ -145,6 +145,16 @@ select {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.btn.btn-secondary {
+  background: rgba(255, 138, 74, 0.18);
+  color: var(--accent-deep);
+  box-shadow: none;
+}
+
+.btn.btn-secondary:hover {
+  box-shadow: none;
+}
+
 .btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 22px 48px rgba(255, 138, 74, 0.45);
@@ -176,6 +186,12 @@ select {
 .status[data-state="done"] {
   background: rgba(43, 138, 62, 0.2);
   color: var(--success);
+}
+
+.annotation-actions {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 .status[data-state="error"] {

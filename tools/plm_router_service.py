@@ -18,7 +18,7 @@ from email.parser import BytesParser
 from email.policy import default
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 
 @dataclass
@@ -358,6 +358,62 @@ class TaskManager:
             entries = entries[: self._history_limit]
         with self._lock:
             self._history = entries
+
+    def add_annotation(
+        self,
+        project_id: str,
+        document_label: str,
+        annotations: List[dict],
+        owner: Optional[str] = None,
+        tags: Optional[List[str]] = None,
+        revision_note: Optional[str] = None,
+    ) -> Optional[dict]:
+        if not annotations:
+            return None
+        project_id = normalize_project_id(project_id)
+        document_label = normalize_document_label(document_label)
+
+        with self._lock:
+            base = None
+            for entry in self._history:
+                normalize_history_entry(entry)
+                if (
+                    normalize_project_id(entry.get("project_id")) == project_id
+                    and normalize_document_label(entry.get("document_label")) == document_label
+                ):
+                    base = entry
+                    break
+            if not base:
+                return None
+
+            now = now_iso()
+            merged = list(base.get("annotations") or []) + annotations
+            entry_owner = owner if owner else base.get("owner", "")
+            entry_tags = tags if tags else base.get("tags", [])
+            entry_revision = revision_note if revision_note else base.get("revision_note", "")
+
+            new_entry = {
+                "task_id": uuid.uuid4().hex,
+                "state": base.get("state", "done"),
+                "created_at": now,
+                "started_at": now,
+                "finished_at": now,
+                "viewer_url": base.get("viewer_url"),
+                "error": base.get("error"),
+                "project_id": project_id,
+                "document_label": document_label,
+                "owner": entry_owner,
+                "tags": entry_tags,
+                "revision_note": entry_revision,
+                "annotations": merged,
+                "event": "annotation",
+            }
+            normalize_history_entry(new_entry)
+            self._history.insert(0, new_entry)
+            if self._history_limit and len(self._history) > self._history_limit:
+                self._history = self._history[: self._history_limit]
+            self._append_history(new_entry)
+            return new_entry
 
     def _worker_loop(self) -> None:
         while not self._stop_event.is_set():
@@ -756,6 +812,26 @@ def parse_multipart(body: bytes, content_type: str):
     return fields, files
 
 
+def parse_simple_body(body: bytes, content_type: str) -> dict:
+    if not content_type:
+        return {}
+    if "application/json" in content_type:
+        try:
+            return json.loads(body.decode("utf-8"))
+        except json.JSONDecodeError:
+            return {}
+    if "application/x-www-form-urlencoded" in content_type:
+        try:
+            parsed = parse_qs(body.decode("utf-8"), keep_blank_values=True)
+        except Exception:
+            return {}
+        return {key: values[0] if values else "" for key, values in parsed.items()}
+    if "multipart/form-data" in content_type:
+        fields, _ = parse_multipart(body, content_type)
+        return fields
+    return {}
+
+
 def sanitize_filename(name: str) -> str:
     base = os.path.basename(name or "")
     return base or "upload.bin"
@@ -1007,7 +1083,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
 
         def do_POST(self):
             parsed = urlparse(self.path)
-            if parsed.path != "/convert":
+            if parsed.path not in {"/convert", "/annotate"}:
                 respond_json(self, 404, {"status": "error", "message": "unknown endpoint"})
                 return
 
@@ -1034,6 +1110,78 @@ def make_handler(config: ServerConfig, manager: TaskManager):
 
             content_type = self.headers.get("Content-Type", "")
             body = self.rfile.read(length)
+            if parsed.path == "/annotate":
+                fields = parse_simple_body(body, content_type)
+                if not isinstance(fields, dict) or not fields:
+                    respond_json(self, 400, {"status": "error", "message": "invalid request body"})
+                    return
+                document_id = str(fields.get("document_id", "")).strip()
+                if document_id:
+                    decoded = decode_document_id(document_id)
+                    if not decoded:
+                        respond_json(self, 400, {"status": "error", "message": "invalid document id"})
+                        return
+                    project_id, document_label = decoded
+                else:
+                    project_id = str(fields.get("project_id", "")).strip()
+                    document_label = str(fields.get("document_label", "")).strip()
+                if not project_id or not document_label:
+                    respond_json(self, 400, {"status": "error", "message": "missing document identity"})
+                    return
+                project_id = normalize_project_id(project_id)
+                document_label = normalize_document_label(document_label)
+
+                owner = str(fields.get("owner", "")).strip()
+                tags = normalize_tags(fields.get("tags"))
+                revision_note = str(fields.get("revision_note", "")).strip()
+
+                annotations = []
+                annotation_now = now_iso()
+                annotations_raw = fields.get("annotations")
+                if annotations_raw:
+                    if isinstance(annotations_raw, str):
+                        try:
+                            parsed_annotations = json.loads(annotations_raw)
+                        except json.JSONDecodeError:
+                            respond_json(self, 400, {"status": "error", "message": "invalid annotations json"})
+                            return
+                    else:
+                        parsed_annotations = annotations_raw
+                    annotations = normalize_annotations(parsed_annotations, annotation_now)
+                annotation_text = str(fields.get("annotation_text", "")).strip()
+                if annotation_text:
+                    annotation_author = str(fields.get("annotation_author", "")).strip()
+                    annotation_kind = str(fields.get("annotation_kind", "")).strip()
+                    annotations.append(
+                        build_annotation(annotation_text, annotation_author, annotation_now, annotation_kind)
+                    )
+                if not annotations:
+                    respond_json(self, 400, {"status": "error", "message": "missing annotations"})
+                    return
+
+                entry = manager.add_annotation(
+                    project_id,
+                    document_label,
+                    annotations,
+                    owner=owner or None,
+                    tags=tags or None,
+                    revision_note=revision_note or None,
+                )
+                if not entry:
+                    respond_json(self, 404, {"status": "error", "message": "document not found"})
+                    return
+
+                respond_json(
+                    self,
+                    200,
+                    {
+                        "status": "ok",
+                        "document_id": encode_document_id(project_id, document_label),
+                        "entry": entry,
+                    },
+                )
+                self.log_message("POST /annotate %s/%s -> ok", project_id, document_label)
+                return
             fields, files = parse_multipart(body, content_type)
             if not files:
                 respond_json(self, 400, {"status": "error", "message": "missing file"})
@@ -1294,6 +1442,7 @@ def main() -> int:
     server = ThreadingHTTPServer((args.host, args.port), handler)
     print(f"Serving CADGameFusion at {base_url}")
     print("POST /convert (multipart form-data) with fields: file, plugin, emit, hash_names")
+    print("POST /annotate (json/form) with fields: document_id or project_id+document_label, annotation_text")
     print(f"Output root: {out_root}")
     if auth_token:
         print("Auth: enabled (Bearer token)")
