@@ -1,5 +1,6 @@
 const form = document.getElementById("upload-form");
 const routerInput = document.getElementById("router-url");
+const tokenInput = document.getElementById("token-input");
 const fileInput = document.getElementById("file-input");
 const pluginInput = document.getElementById("plugin-input");
 const cliInput = document.getElementById("cli-input");
@@ -57,12 +58,20 @@ function stopPolling() {
   }
 }
 
+function buildAuthHeaders() {
+  const token = tokenInput.value.trim();
+  if (!token) {
+    return {};
+  }
+  return { Authorization: `Bearer ${token}` };
+}
+
 async function pollStatus(url, taskId) {
   stopPolling();
   activeTaskId = taskId;
 
   try {
-    const response = await fetch(url);
+    const response = await fetch(url, { headers: buildAuthHeaders() });
     const payload = await response.json();
     renderResponse(payload);
 
@@ -108,6 +117,7 @@ async function handleSubmit(event) {
 
   const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
   const endpoint = `${baseUrl}/convert`;
+  const headers = buildAuthHeaders();
 
   const formData = new FormData();
   formData.append("file", file);
@@ -141,6 +151,7 @@ async function handleSubmit(event) {
     const response = await fetch(endpoint, {
       method: "POST",
       body: formData,
+      headers,
     });
     const payload = await response.json();
     renderResponse(payload);

@@ -11,7 +11,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 from email.parser import BytesParser
 from email.policy import default
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -26,6 +26,11 @@ class ServerConfig:
     default_plugin: str
     default_convert_cli: str
     base_url: str
+    auth_token: str
+    cors_origins: List[str]
+    max_bytes: int
+    plugin_allowlist: List[Path]
+    cli_allowlist: List[Path]
 
 
 @dataclass
@@ -226,6 +231,28 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Public host for viewer URL (defaults to bind host/localhost)",
     )
+    parser.add_argument("--auth-token", default="", help="Bearer token for /convert and /status")
+    parser.add_argument(
+        "--cors-origins",
+        default="",
+        help="Comma-separated allowlist of origins (use * to allow all)",
+    )
+    parser.add_argument(
+        "--max-bytes",
+        type=int,
+        default=50 * 1024 * 1024,
+        help="Max upload size in bytes (0 disables)",
+    )
+    parser.add_argument(
+        "--plugin-allowlist",
+        default="",
+        help="Comma-separated allowed plugin paths or directories",
+    )
+    parser.add_argument(
+        "--cli-allowlist",
+        default="",
+        help="Comma-separated allowed convert_cli paths or directories",
+    )
     parser.add_argument("--max-workers", type=int, default=1, help="Max concurrent conversions")
     parser.add_argument("--queue-size", type=int, default=8, help="Max queued jobs (0 = unbounded)")
     parser.add_argument("--ttl-seconds", type=int, default=3600, help="TTL for output cleanup (0 disables)")
@@ -246,6 +273,54 @@ def parse_bool(value: Optional[str]) -> bool:
     if value is None:
         return False
     return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def parse_csv(value: str) -> List[str]:
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def parse_allowlist(value: str, repo_root: Path) -> List[Path]:
+    entries = []
+    for token in parse_csv(value):
+        path = Path(token)
+        if not path.is_absolute():
+            path = repo_root / path
+        entries.append(path.resolve())
+    return entries
+
+
+def is_path_allowed(path_value: str, allowlist: List[Path]) -> bool:
+    if not allowlist:
+        return True
+    try:
+        resolved = Path(path_value).resolve()
+    except Exception:
+        return False
+    for allowed in allowlist:
+        if resolved == allowed:
+            return True
+        try:
+            resolved.relative_to(allowed)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def env_or_arg(value: str, key: str) -> str:
+    return value if value else os.getenv(key, "")
+
+
+def env_or_int(value: int, key: str) -> int:
+    if value:
+        return value
+    env_value = os.getenv(key)
+    if not env_value:
+        return value
+    try:
+        return int(env_value)
+    except ValueError:
+        return value
 
 
 def parse_multipart(body: bytes, content_type: str):
@@ -303,11 +378,14 @@ def load_manifest(path: Path) -> dict:
         return {}
 
 
-def respond_json(handler, status: int, payload: dict) -> None:
+def respond_json(handler, status: int, payload: dict, extra_headers: Optional[Dict[str, str]] = None) -> None:
     body = json.dumps(payload, indent=2).encode("utf-8")
     handler.send_response(status)
     handler.send_header("Content-Type", "application/json")
     handler.send_header("Content-Length", str(len(body)))
+    if extra_headers:
+        for key, value in extra_headers.items():
+            handler.send_header(key, value)
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -320,12 +398,53 @@ def make_handler(config: ServerConfig, manager: TaskManager):
         def log_message(self, format, *args):
             sys.stderr.write("%s - %s\n" % (self.address_string(), format % args))
 
+        def _get_cors_origin(self) -> Optional[str]:
+            origin = self.headers.get("Origin")
+            if not origin or not config.cors_origins:
+                return None
+            if "*" in config.cors_origins:
+                return "*"
+            if origin in config.cors_origins:
+                return origin
+            return None
+
+        def end_headers(self):
+            origin = self._get_cors_origin()
+            if origin:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+                self.send_header("Access-Control-Max-Age", "86400")
+            super().end_headers()
+
+        def do_OPTIONS(self):
+            self.send_response(204)
+            self.end_headers()
+
+        def _authorized(self) -> bool:
+            if not config.auth_token:
+                return True
+            header = self.headers.get("Authorization", "")
+            if not header.startswith("Bearer "):
+                return False
+            token = header[len("Bearer ") :].strip()
+            return token == config.auth_token
+
         def do_GET(self):
             parsed = urlparse(self.path)
             if parsed.path == "/health":
                 respond_json(self, 200, {"status": "ok"})
                 return
             if parsed.path.startswith("/status/"):
+                if not self._authorized():
+                    respond_json(
+                        self,
+                        401,
+                        {"status": "error", "message": "unauthorized"},
+                        {"WWW-Authenticate": "Bearer"},
+                    )
+                    return
                 task_id = parsed.path.split("/status/", 1)[1]
                 task = manager.get(task_id)
                 if not task:
@@ -345,6 +464,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 if task.status == "error":
                     payload["error"] = task.error
                 respond_json(self, 200, payload)
+                self.log_message("GET /status/%s -> %s", task_id, task.status)
                 return
             super().do_GET()
 
@@ -354,9 +474,25 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 respond_json(self, 404, {"status": "error", "message": "unknown endpoint"})
                 return
 
-            length = int(self.headers.get("Content-Length", "0"))
+            if not self._authorized():
+                respond_json(
+                    self,
+                    401,
+                    {"status": "error", "message": "unauthorized"},
+                    {"WWW-Authenticate": "Bearer"},
+                )
+                return
+
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                respond_json(self, 400, {"status": "error", "message": "invalid content length"})
+                return
             if length <= 0:
                 respond_json(self, 400, {"status": "error", "message": "empty request"})
+                return
+            if config.max_bytes > 0 and length > config.max_bytes:
+                respond_json(self, 413, {"status": "error", "message": "payload too large"})
                 return
 
             content_type = self.headers.get("Content-Type", "")
@@ -385,6 +521,9 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             if not Path(plugin).exists():
                 respond_json(self, 400, {"status": "error", "message": "plugin not found"})
                 return
+            if not is_path_allowed(plugin, config.plugin_allowlist):
+                respond_json(self, 403, {"status": "error", "message": "plugin not allowed"})
+                return
 
             emit = fields.get("emit", "")
             hash_names = parse_bool(fields.get("hash_names"))
@@ -392,6 +531,9 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             convert_cli = fields.get("convert_cli") or config.default_convert_cli
             if convert_cli and not Path(convert_cli).exists():
                 respond_json(self, 400, {"status": "error", "message": "convert_cli not found"})
+                return
+            if convert_cli and not is_path_allowed(convert_cli, config.cli_allowlist):
+                respond_json(self, 403, {"status": "error", "message": "convert_cli not allowed"})
                 return
 
             async_flag = parse_bool(fields.get("async"))
@@ -432,6 +574,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                         "status_url": status_url,
                     },
                 )
+                self.log_message("POST /convert queued task_id=%s", task_id)
                 return
 
             task = manager.wait(task_id, timeout=wait_timeout)
@@ -448,6 +591,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 }
                 payload.update(task.result)
                 respond_json(self, 200, payload)
+                self.log_message("POST /convert done task_id=%s", task_id)
                 return
             if task.status == "error":
                 respond_json(
@@ -461,6 +605,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                         "error": task.error,
                     },
                 )
+                self.log_message("POST /convert error task_id=%s", task_id)
                 return
 
             respond_json(
@@ -473,6 +618,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                     "status_url": status_url,
                 },
             )
+            self.log_message("POST /convert pending task_id=%s", task_id)
 
     return RouterHandler
 
@@ -492,12 +638,35 @@ def main() -> int:
     out_root = (repo_root / args.out_root).resolve()
     base_url = build_base_url(args.host, args.port, args.public_host)
 
+    auth_token = env_or_arg(args.auth_token, "CADGF_ROUTER_AUTH_TOKEN")
+    cors_raw = env_or_arg(args.cors_origins, "CADGF_ROUTER_CORS_ORIGINS")
+    plugin_allowlist_raw = env_or_arg(args.plugin_allowlist, "CADGF_ROUTER_PLUGIN_ALLOWLIST")
+    cli_allowlist_raw = env_or_arg(args.cli_allowlist, "CADGF_ROUTER_CLI_ALLOWLIST")
+    max_bytes = args.max_bytes
+    env_max = os.getenv("CADGF_ROUTER_MAX_BYTES")
+    if env_max and args.max_bytes == 50 * 1024 * 1024:
+        try:
+            max_bytes = int(env_max)
+        except ValueError:
+            max_bytes = args.max_bytes
+    if max_bytes < 0:
+        max_bytes = 0
+
+    cors_origins = parse_csv(cors_raw)
+    plugin_allowlist = parse_allowlist(plugin_allowlist_raw, repo_root)
+    cli_allowlist = parse_allowlist(cli_allowlist_raw, repo_root)
+
     config = ServerConfig(
         repo_root=repo_root,
         out_root=out_root,
         default_plugin=args.default_plugin,
         default_convert_cli=args.default_convert_cli,
         base_url=base_url,
+        auth_token=auth_token,
+        cors_origins=cors_origins,
+        max_bytes=max_bytes,
+        plugin_allowlist=plugin_allowlist,
+        cli_allowlist=cli_allowlist,
     )
 
     manager = TaskManager(
@@ -512,6 +681,12 @@ def main() -> int:
     print(f"Serving CADGameFusion at {base_url}")
     print("POST /convert (multipart form-data) with fields: file, plugin, emit, hash_names")
     print(f"Output root: {out_root}")
+    if auth_token:
+        print("Auth: enabled (Bearer token)")
+    if cors_origins:
+        print(f"CORS allowlist: {', '.join(cors_origins)}")
+    if max_bytes > 0:
+        print(f"Max upload bytes: {max_bytes}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
