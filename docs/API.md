@@ -136,6 +136,7 @@ Endpoints
 Notes
 - `document_id` is URL-safe base64 of `{project_id}\n{document_label}` (no padding).
 - History entries include `annotations` and `event` fields.
+- See `docs/Tools.md` for CLI helpers.
 
 Example: post annotation
 ```bash
@@ -147,4 +148,15 @@ curl -s -X POST "http://localhost:9000/annotate" \
 Example: filter history by event
 ```bash
 curl -s "http://localhost:9000/history?project_id=demo&event=annotation"
+```
+
+Example: filter projects/documents by event
+```bash
+curl -s "http://localhost:9000/projects?event=annotation"
+curl -s "http://localhost:9000/projects/demo/documents?event=annotation"
+```
+
+Example: filter versions by event
+```bash
+curl -s "http://localhost:9000/documents/DOCUMENT_ID/versions?event=annotation"
 ```
