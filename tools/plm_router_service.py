@@ -17,7 +17,7 @@ from email.parser import BytesParser
 from email.policy import default
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import quote, unquote, urlparse
 
 
 @dataclass
@@ -138,11 +138,33 @@ class TaskManager:
                 self._history = self._history[: self._history_limit]
             self._append_history(entry)
 
-    def list_history(self, limit: int) -> List[dict]:
+    def list_history(
+        self,
+        limit: int,
+        project_id: str = "",
+        state: str = "",
+        from_ts: str = "",
+        to_ts: str = "",
+    ) -> List[dict]:
         with self._lock:
-            if limit <= 0:
-                return list(self._history)
-            return list(self._history[:limit])
+            entries = list(self._history)
+
+        def matches(entry: dict) -> bool:
+            if project_id and entry.get("project_id") != project_id:
+                return False
+            if state and entry.get("state") != state:
+                return False
+            created = entry.get("created_at") or ""
+            if from_ts and created and created < from_ts:
+                return False
+            if to_ts and created and created > to_ts:
+                return False
+            return True
+
+        filtered = [entry for entry in entries if matches(entry)]
+        if limit <= 0:
+            return filtered
+        return filtered[:limit]
 
     def _append_history(self, entry: dict) -> None:
         if not self._history_file:
@@ -544,7 +566,19 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                         limit = 50
                 if limit < 0:
                     limit = 0
-                entries = manager.list_history(limit)
+                project_id = ""
+                state = ""
+                from_ts = ""
+                to_ts = ""
+                if "project_id=" in query:
+                    project_id = decode_query_value(query.split("project_id=", 1)[1].split("&", 1)[0])
+                if "state=" in query:
+                    state = decode_query_value(query.split("state=", 1)[1].split("&", 1)[0])
+                if "from=" in query:
+                    from_ts = decode_query_value(query.split("from=", 1)[1].split("&", 1)[0])
+                if "to=" in query:
+                    to_ts = decode_query_value(query.split("to=", 1)[1].split("&", 1)[0])
+                entries = manager.list_history(limit, project_id=project_id, state=state, from_ts=from_ts, to_ts=to_ts)
                 respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
             if parsed.path.startswith("/status/"):
@@ -833,3 +867,8 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+def decode_query_value(raw: str) -> str:
+    try:
+        return unquote(raw)
+    except Exception:
+        return raw

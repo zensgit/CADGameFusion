@@ -19,6 +19,10 @@ const placeholder = document.getElementById("preview-placeholder");
 const historyList = document.getElementById("history-list");
 const refreshHistoryBtn = document.getElementById("refresh-history");
 const historyPollToggle = document.getElementById("history-poll");
+const filterProject = document.getElementById("filter-project");
+const filterState = document.getElementById("filter-state");
+const filterFrom = document.getElementById("filter-from");
+const filterTo = document.getElementById("filter-to");
 
 let activeTaskId = null;
 let pollTimer = null;
@@ -178,7 +182,16 @@ function renderHistory(items) {
 
 async function fetchHistory() {
   const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
-  const url = `${baseUrl}/history?limit=20`;
+  const params = new URLSearchParams({ limit: "50" });
+  const projectValue = filterProject.value.trim();
+  const stateValue = filterState.value;
+  const fromValue = filterFrom.value.trim();
+  const toValue = filterTo.value.trim();
+  if (projectValue) params.set("project_id", projectValue);
+  if (stateValue) params.set("state", stateValue);
+  if (fromValue) params.set("from", fromValue);
+  if (toValue) params.set("to", toValue);
+  const url = `${baseUrl}/history?${params.toString()}`;
   try {
     const response = await fetch(url, { headers: buildAuthHeaders() });
     const payload = await response.json();
@@ -301,3 +314,7 @@ scheduleHistoryPoll();
 form.addEventListener("submit", handleSubmit);
 refreshHistoryBtn.addEventListener("click", fetchHistory);
 historyPollToggle.addEventListener("change", scheduleHistoryPoll);
+filterProject.addEventListener("input", fetchHistory);
+filterState.addEventListener("change", fetchHistory);
+filterFrom.addEventListener("input", fetchHistory);
+filterTo.addEventListener("input", fetchHistory);
