@@ -9,6 +9,7 @@ const tagsInput = document.getElementById("tags-input");
 const revisionInput = document.getElementById("revision-input");
 const annotationInput = document.getElementById("annotation-input");
 const annotationAuthorInput = document.getElementById("annotation-author");
+const annotateBtn = document.getElementById("annotation-btn");
 const pluginInput = document.getElementById("plugin-input");
 const cliInput = document.getElementById("cli-input");
 const emitSelect = document.getElementById("emit-select");
@@ -583,6 +584,86 @@ function refreshFilters() {
   fetchProjects();
 }
 
+async function handleAnnotationPost() {
+  const annotationText = annotationInput.value.trim();
+  if (!annotationText) {
+    setStatus("Add annotation text", "error");
+    return;
+  }
+
+  const payload = {
+    annotation_text: annotationText,
+    annotation_kind: "comment",
+  };
+  const author = annotationAuthorInput.value.trim() || ownerInput.value.trim();
+  if (author) {
+    payload.annotation_author = author;
+  }
+
+  const projectId = projectInput.value.trim();
+  const documentLabel = documentInput.value.trim();
+  if (projectId && documentLabel) {
+    payload.project_id = projectId;
+    payload.document_label = documentLabel;
+  } else if (selectedDocumentId) {
+    payload.document_id = selectedDocumentId;
+  }
+
+  if (!payload.document_id && (!payload.project_id || !payload.document_label)) {
+    setStatus("Select a document", "error");
+    return;
+  }
+
+  const owner = ownerInput.value.trim();
+  if (owner) {
+    payload.owner = owner;
+  }
+  const tags = tagsInput.value.trim();
+  if (tags) {
+    payload.tags = tags;
+  }
+  const revisionNote = revisionInput.value.trim();
+  if (revisionNote) {
+    payload.revision_note = revisionNote;
+  }
+
+  const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
+  const endpoint = `${baseUrl}/annotate`;
+  const headers = {
+    ...buildAuthHeaders(),
+    "Content-Type": "application/json",
+  };
+
+  annotateBtn.disabled = true;
+  setStatus("Annotating", "busy");
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    renderResponse(result);
+
+    if (!response.ok) {
+      setStatus("Error", "error");
+      return;
+    }
+
+    setStatus("Annotated", "done");
+    await fetchHistory();
+    await fetchProjects();
+    if (selectedDocumentId) {
+      await fetchVersions(selectedDocumentId);
+    }
+  } catch (err) {
+    setStatus("Error", "error");
+    responseEl.textContent = `Request failed: ${err}`;
+  } finally {
+    annotateBtn.disabled = false;
+  }
+}
+
 async function handleSubmit(event) {
   event.preventDefault();
   stopPolling();
@@ -733,3 +814,4 @@ filterRevision.addEventListener("input", refreshFilters);
 filterFrom.addEventListener("input", refreshFilters);
 filterTo.addEventListener("input", refreshFilters);
 refreshIndexBtn.addEventListener("click", fetchProjects);
+annotateBtn.addEventListener("click", handleAnnotationPost);
