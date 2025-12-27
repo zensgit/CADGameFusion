@@ -164,11 +164,13 @@ class TaskManager:
         owner: str = "",
         tags: Optional[List[str]] = None,
         revision: str = "",
+        event: str = "",
     ) -> List[dict]:
         with self._lock:
             entries = list(self._history)
 
         tag_filter = tags or []
+        event_filter = event.strip().lower()
 
         def matches(entry: dict) -> bool:
             normalize_history_entry(entry)
@@ -176,6 +178,10 @@ class TaskManager:
                 return False
             if state and entry.get("state") != state:
                 return False
+            if event_filter:
+                entry_event = str(entry.get("event") or "").lower()
+                if entry_event != event_filter:
+                    return False
             if not matches_metadata(entry, owner, tag_filter, revision):
                 return False
             created = entry.get("created_at") or ""
@@ -1027,12 +1033,15 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                     limit = 0
                 project_id = ""
                 state = ""
+                event = ""
                 from_ts = ""
                 to_ts = ""
                 if "project_id=" in query:
                     project_id = decode_query_value(query.split("project_id=", 1)[1].split("&", 1)[0])
                 if "state=" in query:
                     state = decode_query_value(query.split("state=", 1)[1].split("&", 1)[0])
+                if "event=" in query:
+                    event = decode_query_value(query.split("event=", 1)[1].split("&", 1)[0])
                 if "from=" in query:
                     from_ts = decode_query_value(query.split("from=", 1)[1].split("&", 1)[0])
                 if "to=" in query:
@@ -1050,6 +1059,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                     owner=owner,
                     tags=tags,
                     revision=revision,
+                    event=event,
                 )
                 respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
