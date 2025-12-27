@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import base64
 import datetime as dt
 import json
 import os
@@ -165,6 +166,98 @@ class TaskManager:
         if limit <= 0:
             return filtered
         return filtered[:limit]
+
+    def list_projects(self, limit: int) -> List[dict]:
+        with self._lock:
+            entries = list(self._history)
+
+        projects: Dict[str, dict] = {}
+        order: List[str] = []
+        for entry in entries:
+            project_id = normalize_project_id(entry.get("project_id"))
+            if project_id not in projects:
+                projects[project_id] = {
+                    "project_id": project_id,
+                    "latest_task_id": entry.get("task_id"),
+                    "latest_state": entry.get("state"),
+                    "last_activity": entry.get("created_at"),
+                    "_docs": set(),
+                }
+                order.append(project_id)
+            label = normalize_document_label(entry.get("document_label"))
+            projects[project_id]["_docs"].add(label)
+
+        payload = []
+        for project_id in order:
+            data = projects[project_id]
+            data["document_count"] = len(data.pop("_docs", set()))
+            payload.append(data)
+            if limit > 0 and len(payload) >= limit:
+                break
+        return payload
+
+    def list_documents(self, project_id: str, limit: int) -> List[dict]:
+        with self._lock:
+            entries = list(self._history)
+
+        documents: Dict[str, dict] = {}
+        order: List[str] = []
+        for entry in entries:
+            if normalize_project_id(entry.get("project_id")) != project_id:
+                continue
+            label = normalize_document_label(entry.get("document_label"))
+            document_id = encode_document_id(project_id, label)
+            if document_id not in documents:
+                documents[document_id] = {
+                    "document_id": document_id,
+                    "document_label": label,
+                    "project_id": project_id,
+                    "latest_task_id": entry.get("task_id"),
+                    "latest_state": entry.get("state"),
+                    "last_activity": entry.get("created_at"),
+                    "latest_viewer_url": entry.get("viewer_url"),
+                    "version_count": 0,
+                }
+                order.append(document_id)
+            documents[document_id]["version_count"] += 1
+
+        payload = []
+        for document_id in order:
+            payload.append(documents[document_id])
+            if limit > 0 and len(payload) >= limit:
+                break
+        return payload
+
+    def list_document_versions(
+        self,
+        project_id: str,
+        document_label: str,
+        limit: int,
+        state: str = "",
+        from_ts: str = "",
+        to_ts: str = "",
+    ) -> List[dict]:
+        with self._lock:
+            entries = list(self._history)
+
+        payload = []
+        for entry in entries:
+            if normalize_project_id(entry.get("project_id")) != project_id:
+                continue
+            label = normalize_document_label(entry.get("document_label"))
+            if label != document_label:
+                continue
+            if state and entry.get("state") != state:
+                continue
+            created = entry.get("created_at") or ""
+            if from_ts and created and created < from_ts:
+                continue
+            if to_ts and created and created > to_ts:
+                continue
+            payload.append(entry)
+            if limit > 0 and len(payload) >= limit:
+                break
+        return payload
 
     def _append_history(self, entry: dict) -> None:
         if not self._history_file:
@@ -398,6 +491,51 @@ def decode_query_value(raw: str) -> str:
         return raw
 
 
+def query_value(query: str, key: str) -> str:
+    token = f"{key}="
+    if token not in query:
+        return ""
+    return decode_query_value(query.split(token, 1)[1].split("&", 1)[0])
+
+
+def query_int(query: str, key: str, default: int) -> int:
+    raw = query_value(query, key)
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def normalize_project_id(value: Optional[str]) -> str:
+    return value if value else "unassigned"
+
+
+def normalize_document_label(value: Optional[str]) -> str:
+    return value if value else "untitled"
+
+
+def encode_document_id(project_id: str, document_label: str) -> str:
+    raw = f"{project_id}\n{document_label}".encode("utf-8")
+    token = base64.urlsafe_b64encode(raw).decode("ascii")
+    return token.rstrip("=")
+
+
+def decode_document_id(token: str) -> Optional[tuple]:
+    if not token:
+        return None
+    padding = "=" * (-len(token) % 4)
+    try:
+        raw = base64.urlsafe_b64decode((token + padding).encode("ascii")).decode("utf-8")
+    except Exception:
+        return None
+    if "\n" not in raw:
+        return None
+    project_id, document_label = raw.split("\n", 1)
+    return project_id, document_label
+
+
 def parse_allowlist(value: str, repo_root: Path) -> List[Path]:
     entries = []
     for token in parse_csv(value):
@@ -554,6 +692,78 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             parsed = urlparse(self.path)
             if parsed.path == "/health":
                 respond_json(self, 200, {"status": "ok"})
+                return
+            if parsed.path == "/projects":
+                if not self._authorized():
+                    respond_json(
+                        self,
+                        401,
+                        {"status": "error", "message": "unauthorized"},
+                        {"WWW-Authenticate": "Bearer"},
+                    )
+                    return
+                query = parsed.query or ""
+                limit = query_int(query, "limit", 50)
+                if limit < 0:
+                    limit = 0
+                entries = manager.list_projects(limit)
+                respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
+                return
+            if parsed.path.startswith("/projects/") and parsed.path.endswith("/documents"):
+                if not self._authorized():
+                    respond_json(
+                        self,
+                        401,
+                        {"status": "error", "message": "unauthorized"},
+                        {"WWW-Authenticate": "Bearer"},
+                    )
+                    return
+                project_token = parsed.path[len("/projects/") : -len("/documents")].strip("/")
+                if not project_token:
+                    respond_json(self, 400, {"status": "error", "message": "missing project id"})
+                    return
+                project_id = normalize_project_id(decode_query_value(project_token))
+                query = parsed.query or ""
+                limit = query_int(query, "limit", 50)
+                if limit < 0:
+                    limit = 0
+                entries = manager.list_documents(project_id, limit)
+                respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
+                return
+            if parsed.path.startswith("/documents/") and parsed.path.endswith("/versions"):
+                if not self._authorized():
+                    respond_json(
+                        self,
+                        401,
+                        {"status": "error", "message": "unauthorized"},
+                        {"WWW-Authenticate": "Bearer"},
+                    )
+                    return
+                doc_token = parsed.path[len("/documents/") : -len("/versions")].strip("/")
+                document_id = decode_query_value(doc_token)
+                decoded = decode_document_id(document_id)
+                if not decoded:
+                    respond_json(self, 400, {"status": "error", "message": "invalid document id"})
+                    return
+                project_id, document_label = decoded
+                project_id = normalize_project_id(project_id)
+                document_label = normalize_document_label(document_label)
+                query = parsed.query or ""
+                limit = query_int(query, "limit", 50)
+                if limit < 0:
+                    limit = 0
+                state = query_value(query, "state")
+                from_ts = query_value(query, "from")
+                to_ts = query_value(query, "to")
+                entries = manager.list_document_versions(
+                    project_id,
+                    document_label,
+                    limit,
+                    state=state,
+                    from_ts=from_ts,
+                    to_ts=to_ts,
+                )
+                respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
             if parsed.path == "/history":
                 if not self._authorized():

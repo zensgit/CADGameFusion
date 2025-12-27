@@ -23,10 +23,16 @@ const filterProject = document.getElementById("filter-project");
 const filterState = document.getElementById("filter-state");
 const filterFrom = document.getElementById("filter-from");
 const filterTo = document.getElementById("filter-to");
+const refreshIndexBtn = document.getElementById("refresh-index");
+const projectList = document.getElementById("project-list");
+const documentList = document.getElementById("document-list");
+const versionList = document.getElementById("version-list");
 
 let activeTaskId = null;
 let pollTimer = null;
 let historyTimer = null;
+let selectedProjectId = "";
+let selectedDocumentId = "";
 
 function setStatus(label, state) {
   statusPill.textContent = label;
@@ -180,6 +186,110 @@ function renderHistory(items) {
   });
 }
 
+function renderIndexPlaceholder(target, message) {
+  target.innerHTML = "";
+  const item = document.createElement("div");
+  item.className = "index-placeholder";
+  item.textContent = message;
+  target.appendChild(item);
+}
+
+function renderProjectList(items) {
+  projectList.innerHTML = "";
+  if (!items.length) {
+    renderIndexPlaceholder(projectList, "No projects yet.");
+    return;
+  }
+  items.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "index-item";
+    if (item.project_id === selectedProjectId) {
+      button.classList.add("is-selected");
+    }
+    const docCount = typeof item.document_count === "number" ? item.document_count : 0;
+    button.innerHTML = `
+      <span class="index-item__label">${item.project_id}</span>
+      <span class="index-item__meta">${docCount} docs</span>
+    `;
+    button.addEventListener("click", () => {
+      if (selectedProjectId === item.project_id) {
+        return;
+      }
+      selectedProjectId = item.project_id;
+      selectedDocumentId = "";
+      renderProjectList(items);
+      renderDocumentList([]);
+      renderVersionList([]);
+      fetchDocuments(item.project_id);
+    });
+    projectList.appendChild(button);
+  });
+}
+
+function renderDocumentList(items) {
+  documentList.innerHTML = "";
+  if (!items.length) {
+    renderIndexPlaceholder(documentList, selectedProjectId ? "No documents yet." : "Select a project.");
+    return;
+  }
+  items.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "index-item";
+    if (item.document_id === selectedDocumentId) {
+      button.classList.add("is-selected");
+    }
+    const versionCount = typeof item.version_count === "number" ? item.version_count : 0;
+    button.innerHTML = `
+      <span class="index-item__label">${item.document_label}</span>
+      <span class="index-item__meta">${versionCount} versions</span>
+    `;
+    button.addEventListener("click", () => {
+      if (selectedDocumentId === item.document_id) {
+        return;
+      }
+      selectedDocumentId = item.document_id;
+      renderDocumentList(items);
+      fetchVersions(item.document_id);
+    });
+    documentList.appendChild(button);
+  });
+}
+
+function renderVersionList(items) {
+  versionList.innerHTML = "";
+  if (!items.length) {
+    renderIndexPlaceholder(versionList, selectedDocumentId ? "No versions yet." : "Select a document.");
+    return;
+  }
+  items.forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "index-version";
+    const statusClass = item.state === "done" ? "done" : item.state === "error" ? "error" : "";
+    card.innerHTML = `
+      <div class="index-version__row">
+        <span class="index-version__label">Created</span>
+        <span class="index-version__value">${item.created_at || "-"}</span>
+      </div>
+      <div class="index-version__row">
+        <span class="index-version__label">State</span>
+        <span class="index-version__status ${statusClass}">${item.state}</span>
+      </div>
+    `;
+    if (item.viewer_url) {
+      const link = document.createElement("a");
+      link.className = "index-version__link";
+      link.href = item.viewer_url;
+      link.target = "_blank";
+      link.rel = "noreferrer";
+      link.textContent = "Open preview";
+      card.appendChild(link);
+    }
+    versionList.appendChild(card);
+  });
+}
+
 async function fetchHistory() {
   const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
   const params = new URLSearchParams({ limit: "50" });
@@ -202,6 +312,77 @@ async function fetchHistory() {
     }
   } catch (err) {
     historyList.innerHTML = `<div class="placeholder">History unavailable: ${err}</div>`;
+  }
+}
+
+async function fetchProjects() {
+  const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
+  const url = `${baseUrl}/projects?limit=50`;
+  try {
+    const response = await fetch(url, { headers: buildAuthHeaders() });
+    const payload = await response.json();
+    const items = response.ok && payload.items ? payload.items : [];
+    const hasSelection = items.some((item) => item.project_id === selectedProjectId);
+    if (!hasSelection) {
+      selectedProjectId = items[0]?.project_id || "";
+      selectedDocumentId = "";
+    }
+    renderProjectList(items);
+    if (selectedProjectId) {
+      await fetchDocuments(selectedProjectId);
+    } else {
+      renderDocumentList([]);
+      renderVersionList([]);
+    }
+  } catch (err) {
+    renderIndexPlaceholder(projectList, `Projects unavailable: ${err}`);
+    renderDocumentList([]);
+    renderVersionList([]);
+  }
+}
+
+async function fetchDocuments(projectId) {
+  if (!projectId) {
+    renderDocumentList([]);
+    renderVersionList([]);
+    return;
+  }
+  const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
+  const url = `${baseUrl}/projects/${encodeURIComponent(projectId)}/documents?limit=50`;
+  try {
+    const response = await fetch(url, { headers: buildAuthHeaders() });
+    const payload = await response.json();
+    const items = response.ok && payload.items ? payload.items : [];
+    const hasSelection = items.some((item) => item.document_id === selectedDocumentId);
+    if (!hasSelection) {
+      selectedDocumentId = items[0]?.document_id || "";
+    }
+    renderDocumentList(items);
+    if (selectedDocumentId) {
+      await fetchVersions(selectedDocumentId);
+    } else {
+      renderVersionList([]);
+    }
+  } catch (err) {
+    renderIndexPlaceholder(documentList, `Documents unavailable: ${err}`);
+    renderVersionList([]);
+  }
+}
+
+async function fetchVersions(documentId) {
+  if (!documentId) {
+    renderVersionList([]);
+    return;
+  }
+  const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
+  const url = `${baseUrl}/documents/${encodeURIComponent(documentId)}/versions?limit=25`;
+  try {
+    const response = await fetch(url, { headers: buildAuthHeaders() });
+    const payload = await response.json();
+    const items = response.ok && payload.items ? payload.items : [];
+    renderVersionList(items);
+  } catch (err) {
+    renderIndexPlaceholder(versionList, `Versions unavailable: ${err}`);
   }
 }
 
@@ -298,6 +479,7 @@ async function handleSubmit(event) {
     setStatus(state, "busy");
     await pollStatus(statusUrl, taskId);
     await fetchHistory();
+    await fetchProjects();
   } catch (err) {
     setStatus("Error", "error");
     responseEl.textContent = `Request failed: ${err}`;
@@ -310,6 +492,7 @@ routerInput.value = normalizeBaseUrl(window.location.origin);
 setPreview("");
 setStatus("Idle", "idle");
 fetchHistory();
+fetchProjects();
 scheduleHistoryPoll();
 form.addEventListener("submit", handleSubmit);
 refreshHistoryBtn.addEventListener("click", fetchHistory);
@@ -318,3 +501,4 @@ filterProject.addEventListener("input", fetchHistory);
 filterState.addEventListener("change", fetchHistory);
 filterFrom.addEventListener("input", fetchHistory);
 filterTo.addEventListener("input", fetchHistory);
+refreshIndexBtn.addEventListener("click", fetchProjects);
