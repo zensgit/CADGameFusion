@@ -37,6 +37,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--strict", action="store_true", help="Fail if any requested artifacts are missing")
     parser.add_argument("--clean", action="store_true", help="Remove existing outputs in --out before conversion")
     parser.add_argument("--convert-cli", help="Override convert_cli path")
+    parser.add_argument("--migrate-document", action="store_true", help="Run document_migrate on document.json")
+    parser.add_argument("--document-target", type=int, default=2, help="Target document schema version")
+    parser.add_argument("--document-backup", action="store_true", help="Create .bak when migrating in place")
     return parser.parse_args()
 
 
@@ -149,6 +152,20 @@ def add_warning(warnings, code: str, message: str) -> None:
     warnings.append({"code": code, "message": message})
 
 
+def run_document_migrate(doc_path: Path, target: int, backup: bool) -> str:
+    migrate_script = Path(__file__).resolve().parents[1] / "tools" / "document_migrate.py"
+    if not migrate_script.exists():
+        return "document_migrate.py not found"
+    cmd = [sys.executable, str(migrate_script), "--input", str(doc_path), "--target", str(target)]
+    if backup:
+        cmd.append("--backup")
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        message = result.stderr.strip() or result.stdout.strip()
+        return message or "document_migrate failed"
+    return ""
+
+
 def main() -> int:
     args = parse_args()
     repo_root = Path(__file__).resolve().parents[1]
@@ -204,6 +221,10 @@ def main() -> int:
     elif args.hash_names:
         output_layout = "hashed"
 
+    if args.migrate_document and not emit_json:
+        print("Document migration requires json output (use --emit json or --json).", file=sys.stderr)
+        return 2
+
     plm_convert_version = "1"
     manifest = {
         "schema_version": "1",
@@ -235,6 +256,11 @@ def main() -> int:
     outputs = []
     doc_path = out_dir / "document.json"
     if emit_json and doc_path.exists():
+        if args.migrate_document:
+            message = run_document_migrate(doc_path, args.document_target, args.document_backup)
+            if message:
+                print(f"document_migrate failed: {message}", file=sys.stderr)
+                return 4
         doc_version = read_cadgf_version(doc_path)
         doc_schema_version = read_document_schema_version(doc_path)
         doc_hash = compute_sha256(doc_path)
@@ -261,6 +287,9 @@ def main() -> int:
         outputs.append("json")
     else:
         if emit_json:
+            if args.migrate_document:
+                print("document.json missing; migration requested.", file=sys.stderr)
+                return 4
             manifest["status"] = "partial"
             missing.append(str(doc_path.name))
 

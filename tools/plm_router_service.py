@@ -46,6 +46,9 @@ class TaskConfig:
     convert_cli: str
     project_id: str = ""
     document_label: str = ""
+    migrate_document: bool = False
+    document_target: int = 0
+    document_backup: bool = False
 
 
 @dataclass
@@ -346,6 +349,12 @@ class TaskManager:
             cmd.append("--keep-legacy-names")
         if config.convert_cli:
             cmd.extend(["--convert-cli", config.convert_cli])
+        if config.migrate_document:
+            cmd.append("--migrate-document")
+            if config.document_target > 0:
+                cmd.extend(["--document-target", str(config.document_target)])
+            if config.document_backup:
+                cmd.append("--document-backup")
 
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
@@ -892,6 +901,18 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             keep_legacy = parse_bool(fields.get("keep_legacy_names"))
             project_id = fields.get("project_id", "").strip()
             document_label = fields.get("document_label", "").strip()
+            migrate_document = parse_bool(fields.get("migrate_document"))
+            document_backup = parse_bool(fields.get("document_backup"))
+            document_target = 0
+            if "document_target" in fields:
+                try:
+                    document_target = int(fields.get("document_target", "0") or 0)
+                except ValueError:
+                    respond_json(self, 400, {"status": "error", "message": "invalid document_target"})
+                    return
+                if document_target < 0:
+                    respond_json(self, 400, {"status": "error", "message": "invalid document_target"})
+                    return
             convert_cli = fields.get("convert_cli") or config.default_convert_cli
             if convert_cli and not Path(convert_cli).exists():
                 respond_json(self, 400, {"status": "error", "message": "convert_cli not found"})
@@ -922,6 +943,9 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 convert_cli=convert_cli,
                 project_id=project_id,
                 document_label=document_label or filename,
+                migrate_document=migrate_document,
+                document_target=document_target,
+                document_backup=document_backup,
             )
             task = TaskRecord(task_id=task_id, config=task_config, created_at=now_iso())
             if not manager.submit(task):
