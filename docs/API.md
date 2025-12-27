@@ -109,3 +109,42 @@ printf("features: earcut=%s clipper2=%s\n",
        (feats & CADGF_FEATURE_EARCUT)?"on":"off",
        (feats & CADGF_FEATURE_CLIPPER2)?"on":"off");
 ```
+
+# PLM Router Service — HTTP API
+
+Base URL: `http://localhost:9000` (default). Auth is optional via `Authorization: Bearer <token>`.
+
+Endpoints
+- `GET /health` → `{status:"ok"}`
+- `POST /convert` (multipart/form-data)
+  - Required: `file`, `plugin` (or server default)
+  - Optional metadata: `project_id`, `document_label`, `owner`, `tags`, `revision_note`
+  - Optional annotations: `annotation_text`, `annotation_author`, `annotation_kind`, `annotations` (JSON array)
+  - Optional document flags: `migrate_document`, `document_target`, `document_backup`, `validate_document`, `document_schema`
+- `GET /status/{task_id}` → task state + result payload
+- `GET /history`
+  - Query: `limit`, `project_id`, `state`, `event`, `from`, `to`, `owner`, `tags`, `revision`
+  - `event` values: `convert`, `annotation`
+- `GET /projects` → project index (derived from history)
+- `GET /projects/{project_id}/documents` → document list for project
+- `GET /documents/{document_id}/versions` → history entries for a document
+- `POST /annotate` (JSON or form)
+  - Identity: `document_id` or `project_id` + `document_label`
+  - Annotation: `annotation_text` (+ optional `annotation_author`, `annotation_kind`) or `annotations` JSON
+  - Optional metadata: `owner`, `tags`, `revision_note`
+
+Notes
+- `document_id` is URL-safe base64 of `{project_id}\n{document_label}` (no padding).
+- History entries include `annotations` and `event` fields.
+
+Example: post annotation
+```bash
+curl -s -X POST "http://localhost:9000/annotate" \
+  -H "Content-Type: application/json" \
+  -d '{"project_id":"demo","document_label":"sample","annotation_text":"Reviewed","annotation_author":"sam"}'
+```
+
+Example: filter history by event
+```bash
+curl -s "http://localhost:9000/history?project_id=demo&event=annotation"
+```
