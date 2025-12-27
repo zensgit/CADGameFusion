@@ -198,6 +198,12 @@ select {
   justify-content: flex-end;
 }
 
+.history-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
 .history-list {
   display: grid;
   gap: 12px;

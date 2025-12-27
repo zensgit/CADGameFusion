@@ -112,6 +112,30 @@
             </div>
             <button id="refresh-history" class="link" type="button">Refresh</button>
           </div>
+          <div class="history-filters">
+            <label class="field">
+              <span>Project</span>
+              <input id="filter-project" type="text" placeholder="project-alpha" />
+            </label>
+            <label class="field">
+              <span>Status</span>
+              <select id="filter-state">
+                <option value="">All</option>
+                <option value="queued">Queued</option>
+                <option value="running">Running</option>
+                <option value="done">Done</option>
+                <option value="error">Error</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>From (UTC)</span>
+              <input id="filter-from" type="text" placeholder="2024-01-01T00:00:00Z" />
+            </label>
+            <label class="field">
+              <span>To (UTC)</span>
+              <input id="filter-to" type="text" placeholder="2024-01-31T23:59:59Z" />
+            </label>
+          </div>
           <div class="history-toggle">
             <label class="switch">
               <input id="history-poll" type="checkbox" checked />
