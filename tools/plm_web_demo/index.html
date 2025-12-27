@@ -67,6 +67,16 @@
               </select>
             </label>
 
+            <div class="section-title">Document Pipeline</div>
+            <label class="field">
+              <span>Target Schema Version</span>
+              <input id="document-target" type="number" min="1" placeholder="2" />
+            </label>
+            <label class="field">
+              <span>Document Schema Path (optional)</span>
+              <input id="document-schema" type="text" placeholder="schemas/document.schema.json" />
+            </label>
+
             <div class="switches">
               <label class="switch">
                 <input id="hash-toggle" type="checkbox" />
@@ -79,6 +89,18 @@
               <label class="switch">
                 <input id="async-toggle" type="checkbox" checked />
                 <span>Async queue mode</span>
+              </label>
+              <label class="switch">
+                <input id="migrate-toggle" type="checkbox" checked />
+                <span>Migrate document.json</span>
+              </label>
+              <label class="switch">
+                <input id="backup-toggle" type="checkbox" />
+                <span>Create migration backup</span>
+              </label>
+              <label class="switch">
+                <input id="validate-toggle" type="checkbox" />
+                <span>Validate document.json</span>
               </label>
             </div>
 

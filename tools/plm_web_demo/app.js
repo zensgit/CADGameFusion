@@ -7,9 +7,14 @@ const documentInput = document.getElementById("document-input");
 const pluginInput = document.getElementById("plugin-input");
 const cliInput = document.getElementById("cli-input");
 const emitSelect = document.getElementById("emit-select");
+const documentTargetInput = document.getElementById("document-target");
+const documentSchemaInput = document.getElementById("document-schema");
 const hashToggle = document.getElementById("hash-toggle");
 const legacyToggle = document.getElementById("legacy-toggle");
 const asyncToggle = document.getElementById("async-toggle");
+const migrateToggle = document.getElementById("migrate-toggle");
+const backupToggle = document.getElementById("backup-toggle");
+const validateToggle = document.getElementById("validate-toggle");
 const statusPill = document.getElementById("status-pill");
 const submitBtn = document.getElementById("submit-btn");
 const responseEl = document.getElementById("response-json");
@@ -451,6 +456,23 @@ async function handleSubmit(event) {
   }
   if (asyncToggle.checked) {
     formData.append("async", "true");
+  }
+  if (migrateToggle.checked) {
+    formData.append("migrate_document", "true");
+  }
+  if (backupToggle.checked) {
+    formData.append("document_backup", "true");
+  }
+  if (validateToggle.checked) {
+    formData.append("validate_document", "true");
+  }
+  const targetValue = documentTargetInput.value.trim();
+  if (targetValue) {
+    formData.append("document_target", targetValue);
+  }
+  const schemaValue = documentSchemaInput.value.trim();
+  if (schemaValue) {
+    formData.append("document_schema", schemaValue);
   }
 
   try {
