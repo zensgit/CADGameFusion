@@ -19,3 +19,4 @@ http://localhost:9000/tools/plm_web_demo/
 ## Notes
 - The demo posts to `/convert` and polls `/status/<task_id>`.
 - Use the router base URL field if the service runs on a different host.
+- If router auth is enabled, paste the token (without `Bearer`) into the Auth Token field.
