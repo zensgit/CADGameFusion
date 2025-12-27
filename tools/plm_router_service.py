@@ -202,17 +202,23 @@ class TaskManager:
         owner: str = "",
         tags: Optional[List[str]] = None,
         revision: str = "",
+        event: str = "",
     ) -> List[dict]:
         with self._lock:
             entries = list(self._history)
 
         tag_filter = tags or []
+        event_filter = event.strip().lower()
         projects: Dict[str, dict] = {}
         order: List[str] = []
         for entry in entries:
             normalize_history_entry(entry)
             if not matches_metadata(entry, owner, tag_filter, revision):
                 continue
+            if event_filter:
+                entry_event = str(entry.get("event") or "").lower()
+                if entry_event != event_filter:
+                    continue
             project_id = normalize_project_id(entry.get("project_id"))
             if project_id not in projects:
                 annotations = entry.get("annotations") or []
@@ -248,17 +254,23 @@ class TaskManager:
         owner: str = "",
         tags: Optional[List[str]] = None,
         revision: str = "",
+        event: str = "",
     ) -> List[dict]:
         with self._lock:
             entries = list(self._history)
 
         tag_filter = tags or []
+        event_filter = event.strip().lower()
         documents: Dict[str, dict] = {}
         order: List[str] = []
         for entry in entries:
             normalize_history_entry(entry)
             if not matches_metadata(entry, owner, tag_filter, revision):
                 continue
+            if event_filter:
+                entry_event = str(entry.get("event") or "").lower()
+                if entry_event != event_filter:
+                    continue
             if normalize_project_id(entry.get("project_id")) != project_id:
                 continue
             label = normalize_document_label(entry.get("document_label"))
@@ -949,7 +961,8 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 tags_value = query_value(query, "tags") or query_value(query, "tag")
                 tags = parse_tags(tags_value)
                 revision = query_value(query, "revision") or query_value(query, "revision_note")
-                entries = manager.list_projects(limit, owner=owner, tags=tags, revision=revision)
+                event = query_value(query, "event")
+                entries = manager.list_projects(limit, owner=owner, tags=tags, revision=revision, event=event)
                 respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
             if parsed.path.startswith("/projects/") and parsed.path.endswith("/documents"):
@@ -974,7 +987,15 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 tags_value = query_value(query, "tags") or query_value(query, "tag")
                 tags = parse_tags(tags_value)
                 revision = query_value(query, "revision") or query_value(query, "revision_note")
-                entries = manager.list_documents(project_id, limit, owner=owner, tags=tags, revision=revision)
+                event = query_value(query, "event")
+                entries = manager.list_documents(
+                    project_id,
+                    limit,
+                    owner=owner,
+                    tags=tags,
+                    revision=revision,
+                    event=event,
+                )
                 respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
             if parsed.path.startswith("/documents/") and parsed.path.endswith("/versions"):
