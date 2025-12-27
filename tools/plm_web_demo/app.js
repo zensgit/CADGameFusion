@@ -569,9 +569,11 @@ async function fetchVersions(documentId) {
   const params = new URLSearchParams({ limit: "25" });
   applyMetadataFilters(params);
   const stateValue = filterState.value;
+  const eventValue = filterEvent.value;
   const fromValue = filterFrom.value.trim();
   const toValue = filterTo.value.trim();
   if (stateValue) params.set("state", stateValue);
+  if (eventValue) params.set("event", eventValue);
   if (fromValue) params.set("from", fromValue);
   if (toValue) params.set("to", toValue);
   const url = `${baseUrl}/documents/${encodeURIComponent(documentId)}/versions?${params.toString()}`;

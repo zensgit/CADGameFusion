@@ -127,7 +127,7 @@ Endpoints
   - `event` values: `convert`, `annotation`
 - `GET /projects` → project index (derived from history)
 - `GET /projects/{project_id}/documents` → document list for project
-- `GET /documents/{document_id}/versions` → history entries for a document
+- `GET /documents/{document_id}/versions` → history entries for a document (supports `event=convert|annotation`)
 - `POST /annotate` (JSON or form)
   - Identity: `document_id` or `project_id` + `document_label`
   - Annotation: `annotation_text` (+ optional `annotation_author`, `annotation_kind`) or `annotations` JSON

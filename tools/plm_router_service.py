@@ -301,11 +301,13 @@ class TaskManager:
         owner: str = "",
         tags: Optional[List[str]] = None,
         revision: str = "",
+        event: str = "",
     ) -> List[dict]:
         with self._lock:
             entries = list(self._history)
 
         tag_filter = tags or []
+        event_filter = event.strip().lower()
         payload = []
         for entry in entries:
             normalize_history_entry(entry)
@@ -318,6 +320,10 @@ class TaskManager:
                 continue
             if state and entry.get("state") != state:
                 continue
+            if event_filter:
+                entry_event = str(entry.get("event") or "").lower()
+                if entry_event != event_filter:
+                    continue
             created = entry.get("created_at") or ""
             if from_ts and created and created < from_ts:
                 continue
@@ -994,6 +1000,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 if limit < 0:
                     limit = 0
                 state = query_value(query, "state")
+                event = query_value(query, "event")
                 from_ts = query_value(query, "from")
                 to_ts = query_value(query, "to")
                 owner = query_value(query, "owner")
@@ -1010,6 +1017,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                     owner=owner,
                     tags=tags,
                     revision=revision,
+                    event=event,
                 )
                 respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
