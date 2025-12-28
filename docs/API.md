@@ -138,6 +138,48 @@ Notes
 - History entries include `annotations` and `event` fields.
 - See `docs/Tools.md` for CLI helpers.
 
+Example: generate document_id
+```bash
+python3 - <<'PY'
+import base64
+project_id = "demo"
+document_label = "sample"
+token = base64.urlsafe_b64encode(
+    f"{project_id}\n{document_label}".encode("utf-8")
+).decode("ascii").rstrip("=")
+print(token)
+PY
+```
+
+Example: convert response (sync)
+```json
+{
+  "status": "ok",
+  "task_id": "9b59c6a7f4c54c69a4a3a7b46c5b9f6b",
+  "state": "done",
+  "status_url": "http://localhost:9000/status/9b59c6a7f4c54c69a4a3a7b46c5b9f6b",
+  "manifest": {
+    "document": {
+      "project_id": "demo",
+      "document_label": "sample"
+    },
+    "artifacts": {
+      "json": "sample.json",
+      "gltf": "sample.gltf",
+      "meta": "sample_meta.json"
+    }
+  },
+  "manifest_path": "/path/to/build_vcpkg/plm_service_runs/sample/manifest.json",
+  "viewer_url": "http://localhost:9000/tools/web_viewer/index.html?manifest=build_vcpkg/plm_service_runs/sample/manifest.json",
+  "artifact_urls": {
+    "json": "http://localhost:9000/build_vcpkg/plm_service_runs/sample/sample.json",
+    "gltf": "http://localhost:9000/build_vcpkg/plm_service_runs/sample/sample.gltf",
+    "meta": "http://localhost:9000/build_vcpkg/plm_service_runs/sample/sample_meta.json"
+  },
+  "output_dir": "/path/to/build_vcpkg/plm_service_runs/sample"
+}
+```
+
 Example: post annotation
 ```bash
 curl -s -X POST "http://localhost:9000/annotate" \

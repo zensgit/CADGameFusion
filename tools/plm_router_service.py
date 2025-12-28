@@ -467,7 +467,9 @@ class TaskManager:
                 task.status = "error"
                 task.error = result.get("error", "conversion failed")
             task.finished_at = now_iso()
+        try:
             self.record_history(task)
+        finally:
             task.event.set()
 
     def _convert(self, config: TaskConfig) -> dict:
