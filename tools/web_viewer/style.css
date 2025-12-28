@@ -124,6 +124,39 @@ input[type="text"] {
   font-size: 1.05rem;
 }
 
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 0.85rem;
+}
+
+.meta-value {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.85rem;
+}
+
+.meta-link {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  color: var(--accent-deep);
+  text-decoration: none;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta-link:hover {
+  text-decoration: underline;
+}
+
+.meta-value.is-empty,
+.meta-link.is-empty {
+  color: var(--text-muted);
+}
+
 .selection {
   background: rgba(255, 255, 255, 0.6);
   border-radius: 14px;

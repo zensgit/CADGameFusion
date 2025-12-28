@@ -15,7 +15,9 @@ You can also pass query params to auto-load artifacts:
 ```
 http://localhost:8080/tools/web_viewer/index.html?gltf=sample_exports/scene_sample/mesh_group_0.gltf
 http://localhost:8080/tools/web_viewer/index.html?manifest=build_vcpkg/convert_cli_smoke/manifest.json
+http://localhost:8080/tools/web_viewer/index.html?manifest=build_vcpkg/convert_cli_smoke/manifest.json&project_id=demo&document_label=sample&document_id=ZGVtbwpzYW1wbGU
 ```
+Document metadata fields (`project_id`, `document_label`, `document_id`) are optional, but if provided they appear in the Document panel.
 
 ## PLM preview loop
 Generate artifacts with `tools/plm_preview.py`, then open the provided URL.
