@@ -53,6 +53,33 @@ make quick   # offline quick subset
 make strict  # strict quick subset
 ```
 
+## PLM Quickstart (Router + Convert + Annotate)
+Requires the PLM tools and importer plugins to be built (adjust plugin extension for your OS).
+
+```bash
+python3 tools/plm_router_service.py --port 9000
+```
+
+```bash
+curl -s -X POST "http://127.0.0.1:9000/convert" \
+  -F "file=@tests/plugin_data/importer_sample.json" \
+  -F "plugin=build_vcpkg/plugins/libcadgf_json_importer_plugin.dylib" \
+  -F "emit=json,gltf,meta" \
+  -F "project_id=demo" \
+  -F "document_label=sample"
+```
+
+```bash
+python3 tools/plm_annotate.py \
+  --router http://127.0.0.1:9000 \
+  --project-id demo \
+  --document-label sample \
+  --text "Reviewed" \
+  --author sam
+```
+
+For a one-shot check, use `tools/plm_smoke.sh` (see `docs/Tools.md`).
+
 ## Project Structure
 - `core/` — C++17 geometric core and C API
 - `editor/qt/` — Optional Qt-based editor

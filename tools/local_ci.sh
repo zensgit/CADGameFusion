@@ -8,6 +8,8 @@ set -euo pipefail
 #       [--offline] [--no-pip] [--skip-compare] [--no-fields] [--no-struct-compare] \
 #       [--scenes sample,complex] [--quick] [--clean-exports] [--strict-exit]
 #   tools/local_ci.sh -h|--help
+# Optional env:
+#   RUN_PLM_SMOKE=1  Run tools/plm_smoke.sh after main checks.
 #
 # Defaults: Release, rtol=1e-6, holes full
 # Outputs:
@@ -54,6 +56,7 @@ Examples:
   bash tools/local_ci.sh --build-dir build_vcpkg --build-type Release --rtol 1e-6 --gltf-holes full --strict-exit
   bash tools/local_ci.sh --build-dir build --toolchain \$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake --strict-exit
   bash tools/local_ci.sh --build-dir build --offline --quick
+  RUN_PLM_SMOKE=1 bash tools/local_ci.sh --build-dir build_vcpkg --quick
 USAGE
 }
 
@@ -72,6 +75,7 @@ SCENES_OVERRIDE=""
 QUICK=false
 CLEAN_EXPORTS=false
 STRICT_EXIT=false
+RUN_PLM_SMOKE="${RUN_PLM_SMOKE:-0}"
 
 # Failure tracking (for strict-exit)
 VALID_OK=0
@@ -79,6 +83,7 @@ VALID_FAIL=0
 STRUCT_FAIL=0
 FIELD_FAIL=0
 MISSING_SCENES=()
+PLM_SMOKE_STATUS="skipped"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -130,6 +135,7 @@ main() {
   echo "[LOCAL-CI] RTOL=$RTOL"
   echo "[LOCAL-CI] GLTF_HOLES=$GLTF_HOLES_DEFAULT"
   echo "[LOCAL-CI] STRICT_EXIT=$STRICT_EXIT"
+  echo "[LOCAL-CI] RUN_PLM_SMOKE=$RUN_PLM_SMOKE"
   echo "[LOCAL-CI] =============================================="
 
   echo "[LOCAL-CI] Configure"
@@ -381,6 +387,17 @@ main() {
     fi
   done
 
+  if [[ "$RUN_PLM_SMOKE" == "1" ]]; then
+    echo "[LOCAL-CI] PLM smoke check"
+    if tools/plm_smoke.sh; then
+      PLM_SMOKE_STATUS="ok"
+      echo "[OK] PLM smoke"
+    else
+      PLM_SMOKE_STATUS="fail"
+      echo "[FAIL] PLM smoke"
+    fi
+  fi
+
   echo "[LOCAL-CI] =============================================="
   echo "[LOCAL-CI] Summary"
   echo "[LOCAL-CI] =============================================="
@@ -404,6 +421,7 @@ main() {
   if [[ ${#MISSING_SCENES[@]} -gt 0 ]]; then
     echo "- Missing scenes: ${MISSING_SCENES[*]}"
   fi
+  echo "- PLM smoke: $PLM_SMOKE_STATUS"
   if [[ "$OFFLINE" == true && "$SKIP_COMPARE" == true ]]; then
     echo "[LOCAL-CI] OFFLINE_FAST_OK (exports + basic validate only)"
   fi
@@ -422,6 +440,7 @@ main() {
     echo "  \"skipFields\": $([[ "$NO_FIELDS" == true ]] && echo true || echo false),";
     echo "  \"skipStruct\": $([[ "$NO_STRUCT_COMPARE" == true ]] && echo true || echo false),";
     echo "  \"strictExit\": $([[ "$STRICT_EXIT" == true ]] && echo true || echo false),";
+    echo "  \"plmSmokeStatus\": \"$PLM_SMOKE_STATUS\",";
     echo "  \"validationOkCount\": $VALID_OK,";
     echo "  \"validationFailCount\": $VALID_FAIL,";
     echo "  \"structCompareFailCount\": $STRUCT_FAIL,";
@@ -476,6 +495,10 @@ main() {
     if [[ "$NO_FIELDS" != true && $FIELD_FAIL -gt 0 ]]; then
       FAIL_FLAG=1
       FAIL_REASONS+=("fieldCompareFailCount=$FIELD_FAIL")
+    fi
+    if [[ "$PLM_SMOKE_STATUS" == "fail" ]]; then
+      FAIL_FLAG=1
+      FAIL_REASONS+=("plmSmoke=fail")
     fi
 
     if [[ $FAIL_FLAG -ne 0 ]]; then

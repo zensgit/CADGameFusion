@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import base64
 import json
 import sys
 import urllib.error
@@ -22,6 +23,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--owner", default="", help="Owner metadata")
     parser.add_argument("--tags", default="", help="Comma-separated tags")
     parser.add_argument("--revision-note", default="", help="Revision note metadata")
+    parser.add_argument(
+        "--print-document-id",
+        action="store_true",
+        help="Print document_id for project/document and exit",
+    )
     parser.add_argument("--timeout", type=float, default=15.0, help="Request timeout seconds")
     return parser.parse_args()
 
@@ -60,6 +66,24 @@ def load_annotations(args: argparse.Namespace):
         else:
             normalized.append(item)
     return normalized
+
+
+def encode_document_id(project_id: str, document_label: str) -> str:
+    raw = f"{project_id}\n{document_label}".encode("utf-8")
+    token = base64.urlsafe_b64encode(raw).decode("ascii")
+    return token.rstrip("=")
+
+
+def print_document_id(args: argparse.Namespace) -> int:
+    if args.document_id.strip():
+        print(args.document_id.strip())
+        return 0
+    project_id = args.project_id.strip()
+    document_label = args.document_label.strip()
+    if not project_id or not document_label:
+        raise ValueError("Provide --document-id or both --project-id and --document-label to print.")
+    print(encode_document_id(project_id, document_label))
+    return 0
 
 
 def build_payload(args: argparse.Namespace) -> dict:
@@ -127,6 +151,12 @@ def post_annotation(base_url: str, token: str, payload: dict, timeout: float) ->
 
 def main() -> int:
     args = parse_args()
+    if args.print_document_id:
+        try:
+            return print_document_id(args)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
     try:
         payload = build_payload(args)
     except ValueError as exc:
