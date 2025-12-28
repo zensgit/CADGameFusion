@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import base64
 import json
 import os
 import subprocess
@@ -25,6 +26,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--convert-cli", help="Override convert_cli path")
     parser.add_argument("--skip-convert", action="store_true", help="Skip conversion if manifest exists")
     parser.add_argument("--port", type=int, default=8080, help="HTTP server port")
+    parser.add_argument("--project-id", default="", help="Project identifier for viewer metadata")
+    parser.add_argument("--document-label", default="", help="Document label for viewer metadata")
+    parser.add_argument("--document-id", default="", help="Document id for viewer metadata")
     return parser.parse_args()
 
 
@@ -63,6 +67,12 @@ def load_manifest(path: Path) -> dict:
         return {}
 
 
+def encode_document_id(project_id: str, document_label: str) -> str:
+    raw = f"{project_id}\n{document_label}".encode("utf-8")
+    token = base64.urlsafe_b64encode(raw).decode("ascii")
+    return token.rstrip("=")
+
+
 def main() -> int:
     args = parse_args()
     repo_root = Path(__file__).resolve().parents[1]
@@ -86,15 +96,28 @@ def main() -> int:
     rel_gltf = os.path.relpath(gltf_path, repo_root)
     manifest_url = quote(Path(rel_manifest).as_posix())
     gltf_url = quote(Path(rel_gltf).as_posix())
+    project_id = args.project_id.strip()
+    document_label = args.document_label.strip()
+    document_id = args.document_id.strip()
+    if not document_id and project_id and document_label:
+        document_id = encode_document_id(project_id, document_label)
+    viewer_params = [f"manifest={manifest_url}"]
+    if project_id:
+        viewer_params.append(f"project_id={quote(project_id)}")
+    if document_label:
+        viewer_params.append(f"document_label={quote(document_label)}")
+    if document_id:
+        viewer_params.append(f"document_id={quote(document_id)}")
+    viewer_url = (
+        f"http://localhost:{args.port}/tools/web_viewer/index.html?"
+        f"{'&'.join(viewer_params)}"
+    )
 
     print("Preview artifacts ready.")
     print("Serve from repo root:")
     print(f"  cd {repo_root} && python3 -m http.server {args.port}")
     print("Open in browser:")
-    print(
-        "  "
-        f"http://localhost:{args.port}/tools/web_viewer/index.html?manifest={manifest_url}"
-    )
+    print(f"  {viewer_url}")
     print("Fallback glTF URL:")
     print(f"  http://localhost:{args.port}/tools/web_viewer/index.html?gltf={gltf_url}")
     return 0
