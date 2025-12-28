@@ -52,6 +52,9 @@
       "format": "date-time"
     },
     "cadgf_version": {"type": "string"},
+    "project_id": {"type": "string"},
+    "document_label": {"type": "string"},
+    "document_id": {"type": "string"},
     "document_schema_version": {
       "type": "integer",
       "minimum": 1

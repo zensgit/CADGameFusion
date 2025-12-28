@@ -55,6 +55,12 @@ def run_convert(args: argparse.Namespace, repo_root: Path) -> int:
         cmd.append("--keep-legacy-names")
     if args.convert_cli:
         cmd.extend(["--convert-cli", args.convert_cli])
+    if args.project_id:
+        cmd.extend(["--project-id", args.project_id])
+    if args.document_label:
+        cmd.extend(["--document-label", args.document_label])
+    if args.document_id:
+        cmd.extend(["--document-id", args.document_id])
     result = subprocess.run(cmd)
     return result.returncode
 
