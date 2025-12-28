@@ -24,6 +24,10 @@ Generate artifacts with `tools/plm_preview.py`, then open the provided URL.
 ```
 python3 tools/plm_preview.py --plugin path/to/plugin.so --input path/to/input.dxf --out build_vcpkg/plm_preview
 ```
+To include document metadata in the preview URL:
+```
+python3 tools/plm_preview.py --plugin path/to/plugin.so --input path/to/input.dxf --out build_vcpkg/plm_preview --project-id demo --document-label sample
+```
 
 ## PLM router service
 Run a local service that accepts uploads and returns a preview URL:
