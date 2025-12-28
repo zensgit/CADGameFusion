@@ -11,6 +11,10 @@ const vertexCountEl = document.getElementById("vertex-count");
 const triangleCountEl = document.getElementById("triangle-count");
 const selectionInfoEl = document.getElementById("selection-info");
 const annotationListEl = document.getElementById("annotation-list");
+const metaProjectIdEl = document.getElementById("meta-project-id");
+const metaDocumentLabelEl = document.getElementById("meta-document-label");
+const metaDocumentIdEl = document.getElementById("meta-document-id");
+const metaManifestEl = document.getElementById("meta-manifest");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -58,6 +62,90 @@ function resolveUrl(baseUrl, path) {
   } catch {
     return path;
   }
+}
+
+function resolveManifestUrl(manifestParam) {
+  if (!manifestParam) return "";
+  return resolveUrl(`${window.location.origin}/`, manifestParam);
+}
+
+function encodeDocumentId(projectId, documentLabel) {
+  if (!projectId || !documentLabel) return "";
+  const payload = `${projectId}\n${documentLabel}`;
+  const bytes = new TextEncoder().encode(payload);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function decodeDocumentId(documentId) {
+  if (!documentId) return null;
+  const padding = "=".repeat((4 - (documentId.length % 4)) % 4);
+  const base64 = (documentId + padding).replace(/-/g, "+").replace(/_/g, "/");
+  try {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const text = new TextDecoder().decode(bytes);
+    const split = text.indexOf("\n");
+    if (split === -1) return null;
+    return {
+      projectId: text.slice(0, split),
+      documentLabel: text.slice(split + 1),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function setMetaValue(element, value) {
+  if (!element) return;
+  const text = value ? value : "n/a";
+  element.textContent = text;
+  element.classList.toggle("is-empty", !value);
+}
+
+function setMetaLink(element, url) {
+  if (!element) return;
+  if (url) {
+    element.textContent = url;
+    element.href = url;
+    element.classList.remove("is-empty");
+    return;
+  }
+  element.textContent = "n/a";
+  element.removeAttribute("href");
+  element.classList.add("is-empty");
+}
+
+function updateDocumentMeta(params) {
+  let projectId = params.get("project_id")?.trim() ?? "";
+  let documentLabel = params.get("document_label")?.trim() ?? "";
+  let documentId = params.get("document_id")?.trim() ?? "";
+
+  if ((!projectId || !documentLabel) && documentId) {
+    const decoded = decodeDocumentId(documentId);
+    if (decoded) {
+      projectId = projectId || decoded.projectId;
+      documentLabel = documentLabel || decoded.documentLabel;
+    }
+  }
+
+  if (!documentId && projectId && documentLabel) {
+    documentId = encodeDocumentId(projectId, documentLabel);
+  }
+
+  setMetaValue(metaProjectIdEl, projectId);
+  setMetaValue(metaDocumentLabelEl, documentLabel);
+  setMetaValue(metaDocumentIdEl, documentId);
+
+  const manifestParam = params.get("manifest");
+  const manifestUrl = resolveManifestUrl(manifestParam);
+  setMetaLink(metaManifestEl, manifestUrl);
 }
 
 async function loadFromManifest(manifestUrl) {
@@ -275,10 +363,12 @@ canvas.addEventListener("pointerdown", onPointerDown);
 async function bootstrapScene() {
   const params = new URLSearchParams(window.location.search);
   const manifestParam = params.get("manifest");
+  const manifestUrl = resolveManifestUrl(manifestParam);
   const gltfParam = params.get("gltf");
-  if (manifestParam) {
+  updateDocumentMeta(params);
+  if (manifestUrl) {
     try {
-      await loadFromManifest(manifestParam);
+      await loadFromManifest(manifestUrl);
       return;
     } catch (error) {
       console.error(error);

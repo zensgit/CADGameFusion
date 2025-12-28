@@ -514,9 +514,18 @@ class TaskManager:
 
         manifest_rel = os.path.relpath(manifest_path, self._config.repo_root)
         manifest_url = quote(Path(manifest_rel).as_posix())
-        viewer_url = f"{self._config.base_url}/tools/web_viewer/index.html?manifest={manifest_url}"
-
-        document_id = encode_document_id(config.project_id, config.document_label)
+        project_id = normalize_project_id(config.project_id)
+        document_label = normalize_document_label(config.document_label)
+        document_id = encode_document_id(project_id, document_label)
+        viewer_query = "&".join(
+            [
+                f"manifest={manifest_url}",
+                f"project_id={quote(project_id)}",
+                f"document_label={quote(document_label)}",
+                f"document_id={quote(document_id)}",
+            ]
+        )
+        viewer_url = f"{self._config.base_url}/tools/web_viewer/index.html?{viewer_query}"
         artifact_urls = {}
         for key, name in manifest.get("artifacts", {}).items():
             artifact_path = config.output_dir / name
