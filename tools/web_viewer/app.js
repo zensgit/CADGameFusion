@@ -69,6 +69,15 @@ function resolveManifestUrl(manifestParam) {
   return resolveUrl(`${window.location.origin}/`, manifestParam);
 }
 
+function extractManifestMeta(manifest) {
+  if (!manifest || typeof manifest !== "object") return null;
+  return {
+    projectId: typeof manifest.project_id === "string" ? manifest.project_id.trim() : "",
+    documentLabel: typeof manifest.document_label === "string" ? manifest.document_label.trim() : "",
+    documentId: typeof manifest.document_id === "string" ? manifest.document_id.trim() : "",
+  };
+}
+
 function encodeDocumentId(projectId, documentLabel) {
   if (!projectId || !documentLabel) return "";
   const payload = `${projectId}\n${documentLabel}`;
@@ -122,10 +131,23 @@ function setMetaLink(element, url) {
   element.classList.add("is-empty");
 }
 
-function updateDocumentMeta(params) {
+function updateDocumentMeta(params, fallbackMeta = null) {
   let projectId = params.get("project_id")?.trim() ?? "";
   let documentLabel = params.get("document_label")?.trim() ?? "";
   let documentId = params.get("document_id")?.trim() ?? "";
+  const fallbackProjectId = fallbackMeta?.projectId ?? "";
+  const fallbackDocumentLabel = fallbackMeta?.documentLabel ?? "";
+  const fallbackDocumentId = fallbackMeta?.documentId ?? "";
+
+  if (!projectId && fallbackProjectId) {
+    projectId = fallbackProjectId;
+  }
+  if (!documentLabel && fallbackDocumentLabel) {
+    documentLabel = fallbackDocumentLabel;
+  }
+  if (!documentId && fallbackDocumentId) {
+    documentId = fallbackDocumentId;
+  }
 
   if ((!projectId || !documentLabel) && documentId) {
     const decoded = decodeDocumentId(documentId);
@@ -148,13 +170,14 @@ function updateDocumentMeta(params) {
   setMetaLink(metaManifestEl, manifestUrl);
 }
 
-async function loadFromManifest(manifestUrl) {
+async function loadFromManifest(manifestUrl, params) {
   setStatus("Loading manifest...");
   const response = await fetch(manifestUrl);
   if (!response.ok) {
     throw new Error(`Manifest request failed (${response.status}).`);
   }
   const manifest = await response.json();
+  updateDocumentMeta(params, extractManifestMeta(manifest));
   const gltfName = manifest?.artifacts?.mesh_gltf;
   if (!gltfName) {
     throw new Error("Manifest missing artifacts.mesh_gltf.");
@@ -368,7 +391,7 @@ async function bootstrapScene() {
   updateDocumentMeta(params);
   if (manifestUrl) {
     try {
-      await loadFromManifest(manifestUrl);
+      await loadFromManifest(manifestUrl, params);
       return;
     } catch (error) {
       console.error(error);

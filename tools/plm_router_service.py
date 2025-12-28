@@ -474,6 +474,9 @@ class TaskManager:
 
     def _convert(self, config: TaskConfig) -> dict:
         plm_convert = self._config.repo_root / "tools" / "plm_convert.py"
+        project_id = normalize_project_id(config.project_id)
+        document_label = normalize_document_label(config.document_label)
+        document_id = encode_document_id(project_id, document_label)
         cmd = [
             sys.executable,
             str(plm_convert),
@@ -484,6 +487,12 @@ class TaskManager:
             "--out",
             str(config.output_dir),
         ]
+        if project_id:
+            cmd.extend(["--project-id", project_id])
+        if document_label:
+            cmd.extend(["--document-label", document_label])
+        if document_id:
+            cmd.extend(["--document-id", document_id])
         if config.emit:
             cmd.extend(["--emit", config.emit])
         if config.hash_names:
@@ -514,9 +523,6 @@ class TaskManager:
 
         manifest_rel = os.path.relpath(manifest_path, self._config.repo_root)
         manifest_url = quote(Path(manifest_rel).as_posix())
-        project_id = normalize_project_id(config.project_id)
-        document_label = normalize_document_label(config.document_label)
-        document_id = encode_document_id(project_id, document_label)
         viewer_query = "&".join(
             [
                 f"manifest={manifest_url}",

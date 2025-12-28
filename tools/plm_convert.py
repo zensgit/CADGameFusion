@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import base64
 import datetime as dt
 import hashlib
 import json
@@ -46,6 +47,9 @@ def parse_args() -> argparse.Namespace:
         default=str(Path("schemas") / "document.schema.json"),
         help="Path to document.json schema",
     )
+    parser.add_argument("--project-id", default="", help="Project identifier for manifest metadata")
+    parser.add_argument("--document-label", default="", help="Document label for manifest metadata")
+    parser.add_argument("--document-id", default="", help="Document id for manifest metadata")
     return parser.parse_args()
 
 
@@ -99,6 +103,12 @@ def get_input_stats(path: Path):
         return size, mtime
     except Exception:
         return 0, ""
+
+
+def encode_document_id(project_id: str, document_label: str) -> str:
+    raw = f"{project_id}\n{document_label}".encode("utf-8")
+    token = base64.urlsafe_b64encode(raw).decode("ascii")
+    return token.rstrip("=")
 
 
 def update_json_file(path: Path, updater) -> bool:
@@ -261,6 +271,12 @@ def main() -> int:
     elif args.hash_names:
         output_layout = "hashed"
 
+    project_id = args.project_id.strip()
+    document_label = args.document_label.strip()
+    document_id = args.document_id.strip()
+    if not document_id and project_id and document_label:
+        document_id = encode_document_id(project_id, document_label)
+
     if (args.migrate_document or args.validate_document) and not emit_json:
         print("Document migration/validation requires json output (use --emit json or --json).", file=sys.stderr)
         return 2
@@ -289,6 +305,12 @@ def main() -> int:
         "warnings": [],
         "status": "ok",
     }
+    if project_id:
+        manifest["project_id"] = project_id
+    if document_label:
+        manifest["document_label"] = document_label
+    if document_id:
+        manifest["document_id"] = document_id
     legacy_artifacts = {}
 
     missing = []
