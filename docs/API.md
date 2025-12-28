@@ -158,6 +158,7 @@ Example: convert response (sync)
   "task_id": "9b59c6a7f4c54c69a4a3a7b46c5b9f6b",
   "state": "done",
   "status_url": "http://localhost:9000/status/9b59c6a7f4c54c69a4a3a7b46c5b9f6b",
+  "document_id": "ZGVtbwpzYW1wbGU",
   "manifest": {
     "document": {
       "project_id": "demo",

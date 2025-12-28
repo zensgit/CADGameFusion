@@ -516,6 +516,7 @@ class TaskManager:
         manifest_url = quote(Path(manifest_rel).as_posix())
         viewer_url = f"{self._config.base_url}/tools/web_viewer/index.html?manifest={manifest_url}"
 
+        document_id = encode_document_id(config.project_id, config.document_label)
         artifact_urls = {}
         for key, name in manifest.get("artifacts", {}).items():
             artifact_path = config.output_dir / name
@@ -523,6 +524,7 @@ class TaskManager:
             artifact_urls[key] = f"{self._config.base_url}/{quote(Path(rel).as_posix())}"
 
         payload = {
+            "document_id": document_id,
             "manifest": manifest,
             "manifest_path": str(manifest_path),
             "viewer_url": viewer_url,
