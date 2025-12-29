@@ -21,7 +21,10 @@ set_target_properties(cadgf_dxf_importer_plugin PROPERTIES
 # JSON importer plugin (sample)
 add_library(cadgf_json_importer_plugin SHARED json_importer_plugin.cpp)
 target_link_libraries(cadgf_json_importer_plugin PRIVATE core_c)
-target_include_directories(cadgf_json_importer_plugin PRIVATE ${CMAKE_SOURCE_DIR}/core/include)
+target_include_directories(cadgf_json_importer_plugin PRIVATE
+    ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/tools/third_party
+)
 set_target_properties(cadgf_json_importer_plugin PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
