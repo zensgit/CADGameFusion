@@ -119,6 +119,9 @@ int main(int argc, char** argv) {
     assert(cadgf_document_get_entity_line_type(doc, line_id, line_type_buf.data(),
                                               static_cast<int>(line_type_buf.size()), &line_type_required2));
     assert(std::strcmp(line_type_buf.data(), "CENTER") == 0);
+    cadgf_entity_info_v2 line_info{};
+    assert(cadgf_document_get_entity_info_v2(doc, line_id, &line_info));
+    assert(line_info.color == 0xFF0000u);
     double line_weight = 0.0;
     double line_scale = 0.0;
     assert(cadgf_document_get_entity_line_weight(doc, line_id, &line_weight));
