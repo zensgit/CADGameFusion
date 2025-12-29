@@ -16,6 +16,9 @@ struct DxfStyle {
     bool has_line_type = false;
     bool has_line_weight = false;
     bool has_line_scale = false;
+    unsigned int color = 0;
+    bool has_color = false;
+    bool hidden = false;
 };
 
 struct DxfPolyline {
@@ -132,6 +135,21 @@ static bool parse_double(const std::string& s, double* out) {
     return true;
 }
 
+static unsigned int aci_to_rgb(int index) {
+    switch (index) {
+        case 1: return 0xFF0000u;
+        case 2: return 0xFFFF00u;
+        case 3: return 0x00FF00u;
+        case 4: return 0x00FFFFu;
+        case 5: return 0x0000FFu;
+        case 6: return 0xFF00FFu;
+        case 7: return 0xFFFFFFu;
+        case 8: return 0x808080u;
+        case 9: return 0xC0C0C0u;
+        default: return 0xFFFFFFu;
+    }
+}
+
 static bool parse_style_code(DxfStyle* style, int code, const std::string& value_line) {
     if (!style) return false;
     switch (code) {
@@ -160,6 +178,38 @@ static bool parse_style_code(DxfStyle* style, int code, const std::string& value
             }
             return true;
         }
+        case 60: {
+            int hidden = 0;
+            if (parse_int(value_line, &hidden) && hidden != 0) {
+                style->hidden = true;
+            }
+            return true;
+        }
+        case 62: {
+            int index = 0;
+            if (parse_int(value_line, &index)) {
+                if (index == 0 || index == 256) {
+                    return true;
+                }
+                if (index < 0) {
+                    style->hidden = true;
+                    index = -index;
+                }
+                if (index > 0) {
+                    style->color = aci_to_rgb(index);
+                    style->has_color = true;
+                }
+            }
+            return true;
+        }
+        case 420: {
+            int rgb = 0;
+            if (parse_int(value_line, &rgb)) {
+                style->color = static_cast<unsigned int>(rgb) & 0xFFFFFFu;
+                style->has_color = true;
+            }
+            return true;
+        }
         default:
             return false;
     }
@@ -175,6 +225,12 @@ static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfS
     }
     if (style.has_line_scale) {
         (void)cadgf_document_set_entity_line_type_scale(doc, id, style.line_type_scale);
+    }
+    if (style.has_color) {
+        (void)cadgf_document_set_entity_color(doc, id, style.color);
+    }
+    if (style.hidden) {
+        (void)cadgf_document_set_entity_visible(doc, id, 0);
     }
 }
 

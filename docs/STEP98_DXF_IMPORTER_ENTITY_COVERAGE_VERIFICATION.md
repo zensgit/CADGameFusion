@@ -19,8 +19,9 @@
 ## Expected
 - 7 entities imported (polyline, line, circle, arc, ellipse, spline, text).
 - Line style fields populated for the LINE entity.
+- LINE entity color set to `0xFF0000`.
 - Layers `LayerA`, `LayerB`, `LayerC`, `LayerD`, `LayerText` present.
 
 ## Status
 - PASS (manual).
-- Notes: Built `cadgf_dxf_importer_plugin` + `test_dxf_importer_entities` in `build_vcpkg`.
+- Notes: Re-ran after adding color mapping; build + test executed in `build_vcpkg`.
