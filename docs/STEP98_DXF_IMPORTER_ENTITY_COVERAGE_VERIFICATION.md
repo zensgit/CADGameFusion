@@ -1,0 +1,26 @@
+# DXF Importer Entity Coverage Verification
+
+## Scope
+- Build DXF importer plugin via CMake.
+- Ensure DXF entities import into Document with expected types, layers, and styles.
+
+## Steps
+1. Build the plugin and test target:
+   ```
+   cmake --build build_vcpkg --target cadgf_dxf_importer_plugin test_dxf_importer_entities
+   ```
+2. Run the test directly:
+   ```
+   ./build_vcpkg/tests/tools/test_dxf_importer_entities \
+     ./build_vcpkg/plugins/libcadgf_dxf_importer_plugin.dylib \
+     tests/plugin_data/importer_entities.dxf
+   ```
+
+## Expected
+- 7 entities imported (polyline, line, circle, arc, ellipse, spline, text).
+- Line style fields populated for the LINE entity.
+- Layers `LayerA`, `LayerB`, `LayerC`, `LayerD`, `LayerText` present.
+
+## Status
+- PASS (manual).
+- Notes: Built `cadgf_dxf_importer_plugin` + `test_dxf_importer_entities` in `build_vcpkg`.

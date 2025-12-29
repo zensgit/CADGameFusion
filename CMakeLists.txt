@@ -36,9 +36,9 @@ enable_testing()
 
 add_subdirectory(tests/core)
 add_subdirectory(tools)
+add_subdirectory(plugins)
 add_subdirectory(tests/tools)
 add_subdirectory(tests/qt)
-add_subdirectory(plugins)
 
 # Examples (C API minimal)
 add_executable(c_api_minimal examples/c_api_minimal.c)

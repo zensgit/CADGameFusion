@@ -16,7 +16,7 @@ Core facts (code-backed):
   (Clipper2, Earcut).
 - Constraints: `core/src/solver.cpp` is a minimal LM solver stub (limited set).
 - Conversion: `tools/convert_cli.cpp` -> `document.json` + `mesh.gltf`.
-- DXF import: `plugins/dxf_importer_plugin.cpp` only supports `LWPOLYLINE`.
+- DXF import: `plugins/dxf_importer_plugin.cpp` supports `LWPOLYLINE/LINE/ARC/CIRCLE/ELLIPSE/SPLINE/TEXT`.
 
 ## 2. Comparison Matrix (By Axis)
 
@@ -93,7 +93,7 @@ Notes:
 
 | Repo | IO coverage | Notes for CADGameFusion |
 | --- | --- | --- |
-| CADGameFusion | JSON + glTF export; DXF import (LWPOLYLINE only) | Import/export limited |
+| CADGameFusion | JSON + glTF export; DXF import (LWPOLYLINE/LINE/ARC/CIRCLE/ELLIPSE/SPLINE/TEXT) | Import/export limited |
 | cadquery | STEP/DXF/SVG/3MF/STL export, OCCT importers | Server-side conversion candidate |
 | freecad | Wide format support via OCCT + modules | Server-side reference only |
 | libdxfrw | DXF read/write + limited DWG | Ideal for broader DXF import plugin (license) |
@@ -204,7 +204,7 @@ xeokit (metadata tree for BIM/PLM):
 
 ### 3.1 High-impact Gaps (Core)
 
-- No native arc/circle/spline entities (DXF import currently LWPOLYLINE only).
+- No native dimension/leader entities (DXF import does not map DIMENSION/HATCH yet).
 - Constraint system is minimal and lacks DOF/rank handling.
 - No 3D mesh boolean or tessellation pipeline (beyond 2D triangulation).
 - Metadata model lacks line types, thickness, text/dimension entities.
