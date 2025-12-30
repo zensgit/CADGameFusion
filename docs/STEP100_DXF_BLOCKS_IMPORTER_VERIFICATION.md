@@ -17,7 +17,7 @@
    ```
 
 ## Expected
-- 6 entities imported from INSERTs (5 LINE + 1 CIRCLE).
+- 8 entities imported from INSERTs (5 LINE + 1 CIRCLE + 1 LWPOLYLINE + 1 ARC).
 - LINE transformed to (5,5)->(5,9) on `LayerBlock`.
 - Nested LINE transformed to (5,9)->(5,11) on `LayerNestedInsert`.
 - CIRCLE transformed to center (3,7), radius 1.0 on `LayerInsert`.
@@ -28,6 +28,8 @@
   - BYBLOCK w/ missing INSERT style falls back to layer: `LayerByblockNoInsert` -> `DASHDOT`, `0.7`.
   - BYLAYER resolves to layer style: `LayerBylayer` -> `CENTER2`, `0.25`.
   - Explicit entity style overrides INSERT+layer: `LayerExplicit` -> `HIDDEN`, `0.8`.
+  - LWPOLYLINE BYBLOCK uses INSERT style: `LayerPolyByblock` -> `PHANTOM`, `0.9`.
+  - ARC BYLAYER uses layer style: `LayerArcBylayer` -> `PHANTOM2`, `0.6`.
 - Group IDs:
   - LINE and CIRCLE share the same group id.
   - Nested LINE has a different group id.
