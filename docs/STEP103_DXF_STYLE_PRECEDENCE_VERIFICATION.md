@@ -24,6 +24,10 @@
   - `LayerByblockNoInsert` -> line type `DASHDOT`, line weight `0.7`.
 - BYLAYER resolves to layer styles (INSERT style ignored):
   - `LayerBylayer` -> line type `CENTER2`, line weight `0.25`.
+- LWPOLYLINE BYBLOCK uses INSERT style:
+  - `LayerPolyByblock` -> line type `PHANTOM`, line weight `0.9`.
+- ARC BYLAYER uses layer styles:
+  - `LayerArcBylayer` -> line type `PHANTOM2`, line weight `0.6`.
 - Explicit entity styles override both INSERT and layer:
   - `LayerExplicit` -> line type `HIDDEN`, line weight `0.8`.
 

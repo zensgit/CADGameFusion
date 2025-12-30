@@ -87,13 +87,15 @@ int main(int argc, char** argv) {
 
     int entity_count = 0;
     assert(cadgf_document_get_entity_count(doc, &entity_count));
-    assert(entity_count == 6);
+    assert(entity_count == 8);
 
     cadgf_entity_id line_id = 0;
     cadgf_entity_id nested_line_id = 0;
     cadgf_entity_id byblock_fallback_id = 0;
     cadgf_entity_id bylayer_id = 0;
     cadgf_entity_id explicit_id = 0;
+    cadgf_entity_id polyline_id = 0;
+    cadgf_entity_id arc_id = 0;
     cadgf_entity_id circle_id = 0;
     for (int i = 0; i < entity_count; ++i) {
         cadgf_entity_id id = 0;
@@ -112,6 +114,16 @@ int main(int argc, char** argv) {
                 bylayer_id = id;
             } else if (layer_name == "LayerExplicit") {
                 explicit_id = id;
+            }
+        } else if (info.type == CADGF_ENTITY_TYPE_POLYLINE) {
+            const std::string layer_name = get_layer_name(doc, info.layer_id);
+            if (layer_name == "LayerPolyByblock") {
+                polyline_id = id;
+            }
+        } else if (info.type == CADGF_ENTITY_TYPE_ARC) {
+            const std::string layer_name = get_layer_name(doc, info.layer_id);
+            if (layer_name == "LayerArcBylayer") {
+                arc_id = id;
             }
         } else if (info.type == CADGF_ENTITY_TYPE_CIRCLE) {
             circle_id = id;
@@ -166,6 +178,18 @@ int main(int argc, char** argv) {
     assert(get_entity_layer_name(doc, explicit_id) == "LayerExplicit");
     assert(get_entity_line_type(doc, explicit_id) == "HIDDEN");
     assert_near(get_entity_line_weight(doc, explicit_id), 0.8);
+
+    assert(polyline_id != 0);
+    assert(get_entity_layer_name(doc, polyline_id) == "LayerPolyByblock");
+    assert(get_entity_line_type(doc, polyline_id) == "PHANTOM");
+    assert_near(get_entity_line_weight(doc, polyline_id), 0.9);
+
+    assert(arc_id != 0);
+    cadgf_arc arc{};
+    assert(cadgf_document_get_arc(doc, arc_id, &arc));
+    assert(get_entity_layer_name(doc, arc_id) == "LayerArcBylayer");
+    assert(get_entity_line_type(doc, arc_id) == "PHANTOM2");
+    assert_near(get_entity_line_weight(doc, arc_id), 0.6);
 
     assert(circle_id != 0);
     cadgf_circle circle{};

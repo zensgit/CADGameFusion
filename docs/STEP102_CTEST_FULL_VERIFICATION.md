@@ -15,4 +15,4 @@
 
 ## Status
 - PASS (manual).
-- Notes: Executed in `build_vcpkg` after style precedence coverage updates.
+- Notes: Executed in `build_vcpkg` after LWPOLYLINE/ARC style precedence coverage updates.
