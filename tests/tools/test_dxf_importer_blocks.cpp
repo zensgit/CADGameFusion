@@ -27,6 +27,12 @@ static std::string get_entity_layer_name(const cadgf_document* doc, cadgf_entity
     return get_layer_name(doc, info.layer_id);
 }
 
+static unsigned int get_entity_color(const cadgf_document* doc, cadgf_entity_id id) {
+    cadgf_entity_info_v2 info{};
+    assert(cadgf_document_get_entity_info_v2(doc, id, &info));
+    return info.color;
+}
+
 static std::string get_entity_line_type(const cadgf_document* doc, cadgf_entity_id id) {
     int required = 0;
     assert(cadgf_document_get_entity_line_type(doc, id, nullptr, 0, &required));
@@ -164,6 +170,7 @@ int main(int argc, char** argv) {
     assert(get_entity_layer_name(doc, byblock_fallback_id) == "LayerByblockNoInsert");
     assert(get_entity_line_type(doc, byblock_fallback_id) == "DASHDOT");
     assert_near(get_entity_line_weight(doc, byblock_fallback_id), 0.7);
+    assert(get_entity_color(doc, byblock_fallback_id) == 0xFFFF00u);
 
     assert(bylayer_id != 0);
     cadgf_line bylayer_line{};
@@ -171,6 +178,7 @@ int main(int argc, char** argv) {
     assert(get_entity_layer_name(doc, bylayer_id) == "LayerBylayer");
     assert(get_entity_line_type(doc, bylayer_id) == "CENTER2");
     assert_near(get_entity_line_weight(doc, bylayer_id), 0.25);
+    assert(get_entity_color(doc, bylayer_id) == 0x00FFFFu);
 
     assert(explicit_id != 0);
     cadgf_line explicit_line{};
@@ -178,11 +186,13 @@ int main(int argc, char** argv) {
     assert(get_entity_layer_name(doc, explicit_id) == "LayerExplicit");
     assert(get_entity_line_type(doc, explicit_id) == "HIDDEN");
     assert_near(get_entity_line_weight(doc, explicit_id), 0.8);
+    assert(get_entity_color(doc, explicit_id) == 0x0000FFu);
 
     assert(polyline_id != 0);
     assert(get_entity_layer_name(doc, polyline_id) == "LayerPolyByblock");
     assert(get_entity_line_type(doc, polyline_id) == "PHANTOM");
     assert_near(get_entity_line_weight(doc, polyline_id), 0.9);
+    assert(get_entity_color(doc, polyline_id) == 0xFF00FFu);
 
     assert(arc_id != 0);
     cadgf_arc arc{};
@@ -190,6 +200,7 @@ int main(int argc, char** argv) {
     assert(get_entity_layer_name(doc, arc_id) == "LayerArcBylayer");
     assert(get_entity_line_type(doc, arc_id) == "PHANTOM2");
     assert_near(get_entity_line_weight(doc, arc_id), 0.6);
+    assert(get_entity_color(doc, arc_id) == 0xC0C0C0u);
 
     assert(circle_id != 0);
     cadgf_circle circle{};

@@ -296,6 +296,8 @@ static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfS
         (void)cadgf_document_set_entity_color(doc, id, style.color);
     } else if (style.byblock_color && block_style && block_style->has_color) {
         (void)cadgf_document_set_entity_color(doc, id, block_style->color);
+    } else if (layer_style && layer_style->has_color) {
+        (void)cadgf_document_set_entity_color(doc, id, layer_style->color);
     }
     if (style.hidden) {
         (void)cadgf_document_set_entity_visible(doc, id, 0);

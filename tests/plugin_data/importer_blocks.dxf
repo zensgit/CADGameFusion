@@ -12,6 +12,8 @@ LAYER
 LayerBlock
 6
 HIDDEN
+62
+6
 370
 15
 0
@@ -20,6 +22,8 @@ LAYER
 LayerNestedInsert
 6
 PHANTOM
+62
+5
 370
 13
 0
@@ -28,6 +32,8 @@ LAYER
 LayerInsert
 6
 CONTINUOUS
+62
+3
 370
 5
 0
@@ -36,6 +42,8 @@ LAYER
 LayerByblockNoInsert
 6
 DASHDOT
+62
+2
 370
 70
 0
@@ -44,6 +52,8 @@ LAYER
 LayerBylayer
 6
 CENTER2
+62
+4
 370
 25
 0
@@ -52,6 +62,8 @@ LAYER
 LayerExplicit
 6
 DASHDOT2
+62
+7
 370
 10
 0
@@ -60,6 +72,8 @@ LAYER
 LayerPolyByblock
 6
 BORDER
+62
+8
 370
 30
 0
@@ -68,6 +82,8 @@ LAYER
 LayerArcBylayer
 6
 PHANTOM2
+62
+9
 370
 60
 0
@@ -174,6 +190,8 @@ LINE
 LayerByblockNoInsert
 6
 BYBLOCK
+62
+0
 370
 -2
 10
@@ -200,6 +218,8 @@ LINE
 LayerBylayer
 6
 BYLAYER
+62
+256
 370
 -1
 10
@@ -226,6 +246,8 @@ LINE
 LayerExplicit
 6
 HIDDEN
+62
+5
 370
 80
 10
@@ -252,6 +274,8 @@ LWPOLYLINE
 LayerPolyByblock
 6
 BYBLOCK
+62
+0
 370
 -2
 90
@@ -284,6 +308,8 @@ ARC
 LayerArcBylayer
 6
 BYLAYER
+62
+256
 370
 -1
 10
@@ -344,6 +370,8 @@ BlockD
 LayerBylayer
 6
 DASHED
+62
+1
 370
 40
 10
@@ -358,6 +386,8 @@ BlockE
 LayerExplicit
 6
 DASHED
+62
+2
 370
 20
 10
@@ -372,6 +402,8 @@ BlockF
 LayerPolyByblock
 6
 PHANTOM
+62
+6
 370
 90
 10
@@ -386,6 +418,8 @@ BlockG
 LayerArcBylayer
 6
 DASHED
+62
+5
 370
 15
 10
