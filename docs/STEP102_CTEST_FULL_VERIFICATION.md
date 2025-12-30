@@ -15,4 +15,4 @@
 
 ## Status
 - PASS (manual).
-- Notes: Executed in `build_vcpkg` after color precedence coverage updates.
+- Notes: Executed in `build_vcpkg` after line type scale precedence coverage updates.

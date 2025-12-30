@@ -33,6 +33,12 @@ static unsigned int get_entity_color(const cadgf_document* doc, cadgf_entity_id 
     return info.color;
 }
 
+static double get_entity_line_scale(const cadgf_document* doc, cadgf_entity_id id) {
+    double scale = 0.0;
+    assert(cadgf_document_get_entity_line_type_scale(doc, id, &scale));
+    return scale;
+}
+
 static std::string get_entity_line_type(const cadgf_document* doc, cadgf_entity_id id) {
     int required = 0;
     assert(cadgf_document_get_entity_line_type(doc, id, nullptr, 0, &required));
@@ -149,6 +155,7 @@ int main(int argc, char** argv) {
     assert(line_info.color == 0xFF0000u);
     assert(get_entity_line_type(doc, line_id) == "CENTER");
     assert_near(get_entity_line_weight(doc, line_id), 0.5);
+    assert_near(get_entity_line_scale(doc, line_id), 0.25);
 
     assert(nested_line_id != 0);
     cadgf_line nested_line{};
@@ -163,6 +170,7 @@ int main(int argc, char** argv) {
     assert(nested_info.color == 0x00FF00u);
     assert(get_entity_line_type(doc, nested_line_id) == "DASHED");
     assert_near(get_entity_line_weight(doc, nested_line_id), 0.2);
+    assert_near(get_entity_line_scale(doc, nested_line_id), 0.75);
 
     assert(byblock_fallback_id != 0);
     cadgf_line byblock_fallback_line{};
@@ -171,6 +179,7 @@ int main(int argc, char** argv) {
     assert(get_entity_line_type(doc, byblock_fallback_id) == "DASHDOT");
     assert_near(get_entity_line_weight(doc, byblock_fallback_id), 0.7);
     assert(get_entity_color(doc, byblock_fallback_id) == 0xFFFF00u);
+    assert_near(get_entity_line_scale(doc, byblock_fallback_id), 1.5);
 
     assert(bylayer_id != 0);
     cadgf_line bylayer_line{};
@@ -179,6 +188,7 @@ int main(int argc, char** argv) {
     assert(get_entity_line_type(doc, bylayer_id) == "CENTER2");
     assert_near(get_entity_line_weight(doc, bylayer_id), 0.25);
     assert(get_entity_color(doc, bylayer_id) == 0x00FFFFu);
+    assert_near(get_entity_line_scale(doc, bylayer_id), 0.6);
 
     assert(explicit_id != 0);
     cadgf_line explicit_line{};
@@ -187,12 +197,14 @@ int main(int argc, char** argv) {
     assert(get_entity_line_type(doc, explicit_id) == "HIDDEN");
     assert_near(get_entity_line_weight(doc, explicit_id), 0.8);
     assert(get_entity_color(doc, explicit_id) == 0x0000FFu);
+    assert_near(get_entity_line_scale(doc, explicit_id), 2.5);
 
     assert(polyline_id != 0);
     assert(get_entity_layer_name(doc, polyline_id) == "LayerPolyByblock");
     assert(get_entity_line_type(doc, polyline_id) == "PHANTOM");
     assert_near(get_entity_line_weight(doc, polyline_id), 0.9);
     assert(get_entity_color(doc, polyline_id) == 0xFF00FFu);
+    assert_near(get_entity_line_scale(doc, polyline_id), 0.4);
 
     assert(arc_id != 0);
     cadgf_arc arc{};
@@ -201,6 +213,7 @@ int main(int argc, char** argv) {
     assert(get_entity_line_type(doc, arc_id) == "PHANTOM2");
     assert_near(get_entity_line_weight(doc, arc_id), 0.6);
     assert(get_entity_color(doc, arc_id) == 0xC0C0C0u);
+    assert_near(get_entity_line_scale(doc, arc_id), 0.9);
 
     assert(circle_id != 0);
     cadgf_circle circle{};
