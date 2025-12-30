@@ -14,6 +14,8 @@ LayerBlock
 HIDDEN
 62
 6
+48
+0.25
 370
 15
 0
@@ -24,6 +26,8 @@ LayerNestedInsert
 PHANTOM
 62
 5
+48
+0.75
 370
 13
 0
@@ -44,6 +48,8 @@ LayerByblockNoInsert
 DASHDOT
 62
 2
+48
+1.5
 370
 70
 0
@@ -54,6 +60,8 @@ LayerBylayer
 CENTER2
 62
 4
+48
+0.6
 370
 25
 0
@@ -64,6 +72,8 @@ LayerExplicit
 DASHDOT2
 62
 7
+48
+0.3
 370
 10
 0
@@ -74,6 +84,8 @@ LayerPolyByblock
 BORDER
 62
 8
+48
+0.4
 370
 30
 0
@@ -84,6 +96,8 @@ LayerArcBylayer
 PHANTOM2
 62
 9
+48
+0.9
 370
 60
 0
@@ -250,6 +264,8 @@ HIDDEN
 5
 370
 80
+48
+2.5
 10
 0
 20
