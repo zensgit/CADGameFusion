@@ -15,4 +15,4 @@
 
 ## Status
 - PASS (manual).
-- Notes: Executed in `build_vcpkg` after missing-layer default coverage updates.
+- Notes: Executed in `build_vcpkg` after INSERT line type scale precedence coverage updates.
