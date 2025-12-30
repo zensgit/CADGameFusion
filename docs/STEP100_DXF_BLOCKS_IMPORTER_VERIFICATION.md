@@ -22,8 +22,8 @@
 - Nested LINE transformed to (5,9)->(5,11) on `LayerNestedInsert`.
 - CIRCLE transformed to center (3,7), radius 1.0 on `LayerInsert`.
 - BYBLOCK styles applied:
-  - LINE uses `CENTER` line type and color `0xFF0000`.
-  - Nested LINE uses `DASHED` line type and color `0x00FF00`.
+  - LINE uses `CENTER` line type, color `0xFF0000`, line weight `0.5`.
+  - Nested LINE uses `DASHED` line type, color `0x00FF00`, line weight `0.2`.
 - Group IDs:
   - LINE and CIRCLE share the same group id.
   - Nested LINE has a different group id.
