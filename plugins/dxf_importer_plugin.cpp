@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <string>
@@ -109,6 +110,19 @@ struct DxfLayer {
     DxfStyle style;
 };
 
+struct DxfInsert {
+    std::string block_name;
+    std::string layer;
+    cadgf_vec2 pos{};
+    double scale_x = 1.0;
+    double scale_y = 1.0;
+    double rotation_deg = 0.0;
+    bool has_x = false;
+    bool has_y = false;
+    bool has_scale_x = false;
+    bool has_scale_y = false;
+};
+
 struct DxfBlock {
     std::string name;
     bool has_name = false;
@@ -121,19 +135,7 @@ struct DxfBlock {
     std::vector<DxfEllipse> ellipses;
     std::vector<DxfSpline> splines;
     std::vector<DxfText> texts;
-};
-
-struct DxfInsert {
-    std::string block_name;
-    std::string layer;
-    cadgf_vec2 pos{};
-    double scale_x = 1.0;
-    double scale_y = 1.0;
-    double rotation_deg = 0.0;
-    bool has_x = false;
-    bool has_y = false;
-    bool has_scale_x = false;
-    bool has_scale_y = false;
+    std::vector<DxfInsert> inserts;
 };
 
 static cadgf_string_view sv(const char* s) {
@@ -276,6 +278,58 @@ static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfS
     if (style.hidden) {
         (void)cadgf_document_set_entity_visible(doc, id, 0);
     }
+}
+
+struct Transform2D {
+    double m00{1.0};
+    double m01{0.0};
+    double m10{0.0};
+    double m11{1.0};
+    cadgf_vec2 t{};
+};
+
+static Transform2D make_transform(double sx, double sy, double rotation_rad,
+                                  const cadgf_vec2& pos, const cadgf_vec2& base) {
+    const double cos_r = std::cos(rotation_rad);
+    const double sin_r = std::sin(rotation_rad);
+    Transform2D tr;
+    tr.m00 = cos_r * sx;
+    tr.m01 = -sin_r * sy;
+    tr.m10 = sin_r * sx;
+    tr.m11 = cos_r * sy;
+    tr.t.x = pos.x - (tr.m00 * base.x + tr.m01 * base.y);
+    tr.t.y = pos.y - (tr.m10 * base.x + tr.m11 * base.y);
+    return tr;
+}
+
+static Transform2D combine_transform(const Transform2D& a, const Transform2D& b) {
+    Transform2D out;
+    out.m00 = a.m00 * b.m00 + a.m01 * b.m10;
+    out.m01 = a.m00 * b.m01 + a.m01 * b.m11;
+    out.m10 = a.m10 * b.m00 + a.m11 * b.m10;
+    out.m11 = a.m10 * b.m01 + a.m11 * b.m11;
+    out.t.x = a.m00 * b.t.x + a.m01 * b.t.y + a.t.x;
+    out.t.y = a.m10 * b.t.x + a.m11 * b.t.y + a.t.y;
+    return out;
+}
+
+static cadgf_vec2 apply_transform(const Transform2D& tr, const cadgf_vec2& p) {
+    cadgf_vec2 out{};
+    out.x = tr.m00 * p.x + tr.m01 * p.y + tr.t.x;
+    out.y = tr.m10 * p.x + tr.m11 * p.y + tr.t.y;
+    return out;
+}
+
+static cadgf_vec2 apply_linear(const Transform2D& tr, const cadgf_vec2& p) {
+    cadgf_vec2 out{};
+    out.x = tr.m00 * p.x + tr.m01 * p.y;
+    out.y = tr.m10 * p.x + tr.m11 * p.y;
+    return out;
+}
+
+static void transform_scales(const Transform2D& tr, double* out_sx, double* out_sy) {
+    if (out_sx) *out_sx = std::hypot(tr.m00, tr.m10);
+    if (out_sy) *out_sy = std::hypot(tr.m01, tr.m11);
 }
 
 static void finalize_polyline(DxfPolyline& pl, std::vector<DxfPolyline>& out) {
@@ -475,7 +529,11 @@ static bool parse_dxf_entities(const std::string& path,
                 reset_text();
                 break;
             case DxfEntityKind::Insert:
-                finalize_insert(current_insert, inserts);
+                if (in_block) {
+                    finalize_insert(current_insert, current_block.inserts);
+                } else {
+                    finalize_insert(current_insert, inserts);
+                }
                 reset_insert();
                 break;
             case DxfEntityKind::None:
@@ -575,7 +633,7 @@ static bool parse_dxf_entities(const std::string& path,
                 current_kind = DxfEntityKind::None;
                 continue;
             }
-            if (value_line == "INSERT" && in_entities) {
+            if (value_line == "INSERT" && (in_entities || in_block_entities)) {
                 current_kind = DxfEntityKind::Insert;
                 reset_insert();
             } else if (value_line == "LWPOLYLINE") {
@@ -1196,32 +1254,23 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             }
             return entity_layer;
         };
-
-        auto transform_point = [&](const cadgf_vec2& p, const cadgf_vec2& base,
-                                   double sx, double sy, double cos_r, double sin_r,
-                                   const cadgf_vec2& pos) -> cadgf_vec2 {
-            const double lx = (p.x - base.x) * sx;
-            const double ly = (p.y - base.y) * sy;
-            cadgf_vec2 out{};
-            out.x = lx * cos_r - ly * sin_r + pos.x;
-            out.y = lx * sin_r + ly * cos_r + pos.y;
-            return out;
+        auto apply_group = [&](cadgf_entity_id id, int group_id) {
+            if (id == 0 || group_id < 0) return;
+            (void)cadgf_document_set_entity_group_id(doc, id, group_id);
         };
 
-        for (const auto& insert : inserts) {
-            if (insert.block_name.empty()) continue;
-            auto block_it = blocks.find(insert.block_name);
-            if (block_it == blocks.end()) continue;
-            const DxfBlock& block = block_it->second;
-            const cadgf_vec2 base = block.has_base ? block.base : cadgf_vec2{0.0, 0.0};
-            const double sx = insert.scale_x;
-            const double sy = insert.scale_y;
-            const double rot = insert.rotation_deg * kDegToRad;
-            const double cos_r = std::cos(rot);
-            const double sin_r = std::sin(rot);
-            const cadgf_vec2 pos = insert.pos;
-            const std::string insert_layer = insert.layer.empty() ? "0" : insert.layer;
-            const bool uniform_scale = std::fabs(sx - sy) <= 1e-6;
+        constexpr int kMaxBlockDepth = 8;
+
+        auto emit_block = [&](auto&& self, const DxfBlock& block, const Transform2D& tr,
+                              const std::string& insert_layer, int group_id,
+                              std::vector<std::string>& stack, int depth) -> bool {
+            if (depth > kMaxBlockDepth) return true;
+
+            double scale_x = 1.0;
+            double scale_y = 1.0;
+            transform_scales(tr, &scale_x, &scale_y);
+            const bool uniform_scale = std::fabs(scale_x - scale_y) <= 1e-6;
+            const double rot = std::atan2(tr.m10, tr.m00);
 
             for (const auto& pl : block.polylines) {
                 if (pl.points.size() < 2) continue;
@@ -1229,16 +1278,17 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 int layer_id = 0;
                 if (!resolve_layer_id(layer_name, &layer_id)) {
                     set_error(out_err, 3, "failed to add layer");
-                    return 0;
+                    return false;
                 }
                 std::vector<cadgf_vec2> points;
                 points.reserve(pl.points.size());
                 for (const auto& p : pl.points) {
-                    points.push_back(transform_point(p, base, sx, sy, cos_r, sin_r, pos));
+                    points.push_back(apply_transform(tr, p));
                 }
                 cadgf_entity_id id = cadgf_document_add_polyline_ex(doc, points.data(),
                                                                     static_cast<int>(points.size()),
                                                                     "", layer_id);
+                apply_group(id, group_id);
                 apply_line_style(doc, id, pl.style, layer_style_for(layer_name));
             }
 
@@ -1247,12 +1297,13 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 int layer_id = 0;
                 if (!resolve_layer_id(layer_name, &layer_id)) {
                     set_error(out_err, 3, "failed to add layer");
-                    return 0;
+                    return false;
                 }
                 cadgf_line line{};
-                line.a = transform_point(ln.a, base, sx, sy, cos_r, sin_r, pos);
-                line.b = transform_point(ln.b, base, sx, sy, cos_r, sin_r, pos);
+                line.a = apply_transform(tr, ln.a);
+                line.b = apply_transform(tr, ln.b);
                 cadgf_entity_id id = cadgf_document_add_line(doc, &line, "", layer_id);
+                apply_group(id, group_id);
                 apply_line_style(doc, id, ln.style, layer_style_for(layer_name));
             }
 
@@ -1261,23 +1312,25 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 int layer_id = 0;
                 if (!resolve_layer_id(layer_name, &layer_id)) {
                     set_error(out_err, 3, "failed to add layer");
-                    return 0;
+                    return false;
                 }
                 if (uniform_scale) {
                     cadgf_circle circle{};
-                    circle.center = transform_point(circle_in.center, base, sx, sy, cos_r, sin_r, pos);
-                    circle.radius = circle_in.radius * sx;
+                    circle.center = apply_transform(tr, circle_in.center);
+                    circle.radius = circle_in.radius * scale_x;
                     cadgf_entity_id id = cadgf_document_add_circle(doc, &circle, "", layer_id);
+                    apply_group(id, group_id);
                     apply_line_style(doc, id, circle_in.style, layer_style_for(layer_name));
                 } else {
                     cadgf_ellipse ellipse{};
-                    ellipse.center = transform_point(circle_in.center, base, sx, sy, cos_r, sin_r, pos);
-                    ellipse.rx = circle_in.radius * sx;
-                    ellipse.ry = circle_in.radius * sy;
+                    ellipse.center = apply_transform(tr, circle_in.center);
+                    ellipse.rx = circle_in.radius * scale_x;
+                    ellipse.ry = circle_in.radius * scale_y;
                     ellipse.rotation = rot;
                     ellipse.start_angle = 0.0;
                     ellipse.end_angle = kTwoPi;
                     cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
+                    apply_group(id, group_id);
                     apply_line_style(doc, id, circle_in.style, layer_style_for(layer_name));
                 }
             }
@@ -1287,26 +1340,28 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 int layer_id = 0;
                 if (!resolve_layer_id(layer_name, &layer_id)) {
                     set_error(out_err, 3, "failed to add layer");
-                    return 0;
+                    return false;
                 }
                 if (uniform_scale) {
                     cadgf_arc arc{};
-                    arc.center = transform_point(arc_in.center, base, sx, sy, cos_r, sin_r, pos);
-                    arc.radius = arc_in.radius * sx;
-                    arc.start_angle = (arc_in.start_deg + insert.rotation_deg) * kDegToRad;
-                    arc.end_angle = (arc_in.end_deg + insert.rotation_deg) * kDegToRad;
+                    arc.center = apply_transform(tr, arc_in.center);
+                    arc.radius = arc_in.radius * scale_x;
+                    arc.start_angle = arc_in.start_deg * kDegToRad + rot;
+                    arc.end_angle = arc_in.end_deg * kDegToRad + rot;
                     arc.clockwise = 0;
                     cadgf_entity_id id = cadgf_document_add_arc(doc, &arc, "", layer_id);
+                    apply_group(id, group_id);
                     apply_line_style(doc, id, arc_in.style, layer_style_for(layer_name));
                 } else {
                     cadgf_ellipse ellipse{};
-                    ellipse.center = transform_point(arc_in.center, base, sx, sy, cos_r, sin_r, pos);
-                    ellipse.rx = arc_in.radius * sx;
-                    ellipse.ry = arc_in.radius * sy;
+                    ellipse.center = apply_transform(tr, arc_in.center);
+                    ellipse.rx = arc_in.radius * scale_x;
+                    ellipse.ry = arc_in.radius * scale_y;
                     ellipse.rotation = rot;
                     ellipse.start_angle = arc_in.start_deg * kDegToRad;
                     ellipse.end_angle = arc_in.end_deg * kDegToRad;
                     cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
+                    apply_group(id, group_id);
                     apply_line_style(doc, id, arc_in.style, layer_style_for(layer_name));
                 }
             }
@@ -1316,20 +1371,28 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 int layer_id = 0;
                 if (!resolve_layer_id(layer_name, &layer_id)) {
                     set_error(out_err, 3, "failed to add layer");
-                    return 0;
+                    return false;
                 }
                 const double ax = ellipse_in.major_axis.x;
                 const double ay = ellipse_in.major_axis.y;
                 const double major_len = std::sqrt(ax * ax + ay * ay);
                 if (major_len <= 0.0 || ellipse_in.ratio <= 0.0) continue;
+                const cadgf_vec2 major_unit{ax / major_len, ay / major_len};
+                const cadgf_vec2 minor_unit{-major_unit.y, major_unit.x};
+                const cadgf_vec2 major_vec{major_unit.x * major_len, major_unit.y * major_len};
+                const cadgf_vec2 minor_vec{minor_unit.x * major_len * ellipse_in.ratio,
+                                           minor_unit.y * major_len * ellipse_in.ratio};
+                const cadgf_vec2 major_tx = apply_linear(tr, major_vec);
+                const cadgf_vec2 minor_tx = apply_linear(tr, minor_vec);
                 cadgf_ellipse ellipse{};
-                ellipse.center = transform_point(ellipse_in.center, base, sx, sy, cos_r, sin_r, pos);
-                ellipse.rx = major_len * sx;
-                ellipse.ry = major_len * ellipse_in.ratio * sy;
-                ellipse.rotation = std::atan2(ay, ax) + rot;
+                ellipse.center = apply_transform(tr, ellipse_in.center);
+                ellipse.rx = std::hypot(major_tx.x, major_tx.y);
+                ellipse.ry = std::hypot(minor_tx.x, minor_tx.y);
+                ellipse.rotation = std::atan2(major_tx.y, major_tx.x);
                 ellipse.start_angle = ellipse_in.has_start ? ellipse_in.start_param : 0.0;
                 ellipse.end_angle = ellipse_in.has_end ? ellipse_in.end_param : kTwoPi;
                 cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
+                apply_group(id, group_id);
                 apply_line_style(doc, id, ellipse_in.style, layer_style_for(layer_name));
             }
 
@@ -1339,12 +1402,12 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 int layer_id = 0;
                 if (!resolve_layer_id(layer_name, &layer_id)) {
                     set_error(out_err, 3, "failed to add layer");
-                    return 0;
+                    return false;
                 }
                 std::vector<cadgf_vec2> control_points;
                 control_points.reserve(spline_in.control_points.size());
                 for (const auto& p : spline_in.control_points) {
-                    control_points.push_back(transform_point(p, base, sx, sy, cos_r, sin_r, pos));
+                    control_points.push_back(apply_transform(tr, p));
                 }
                 const int degree = spline_in.degree > 0 ? spline_in.degree : 3;
                 cadgf_entity_id id = cadgf_document_add_spline(doc,
@@ -1353,6 +1416,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                                                               spline_in.knots.empty() ? nullptr : spline_in.knots.data(),
                                                               static_cast<int>(spline_in.knots.size()),
                                                               degree, "", layer_id);
+                apply_group(id, group_id);
                 apply_line_style(doc, id, spline_in.style, layer_style_for(layer_name));
             }
 
@@ -1361,14 +1425,63 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 int layer_id = 0;
                 if (!resolve_layer_id(layer_name, &layer_id)) {
                     set_error(out_err, 3, "failed to add layer");
-                    return 0;
+                    return false;
                 }
-                cadgf_vec2 pos_out = transform_point(text_in.pos, base, sx, sy, cos_r, sin_r, pos);
-                const double text_scale = insert.scale_y;
-                const double rotation = (text_in.rotation_deg + insert.rotation_deg) * kDegToRad;
-                cadgf_entity_id id = cadgf_document_add_text(doc, &pos_out, text_in.height * text_scale,
+                cadgf_vec2 pos_out = apply_transform(tr, text_in.pos);
+                const double rotation = text_in.rotation_deg * kDegToRad + rot;
+                cadgf_entity_id id = cadgf_document_add_text(doc, &pos_out, text_in.height * scale_y,
                                                              rotation, text_in.text.c_str(), "", layer_id);
+                apply_group(id, group_id);
                 apply_line_style(doc, id, text_in.style, layer_style_for(layer_name));
+            }
+
+            for (const auto& nested_insert : block.inserts) {
+                if (nested_insert.block_name.empty()) continue;
+                auto nested_it = blocks.find(nested_insert.block_name);
+                if (nested_it == blocks.end()) continue;
+                const DxfBlock& nested_block = nested_it->second;
+                const std::string nested_layer = (nested_insert.layer.empty() || nested_insert.layer == "0")
+                                                    ? insert_layer
+                                                    : nested_insert.layer;
+                const cadgf_vec2 nested_base = nested_block.has_base ? nested_block.base : cadgf_vec2{0.0, 0.0};
+                const double nested_rot = nested_insert.rotation_deg * kDegToRad;
+                const Transform2D local = make_transform(nested_insert.scale_x, nested_insert.scale_y,
+                                                         nested_rot, nested_insert.pos, nested_base);
+                const Transform2D combined = combine_transform(tr, local);
+                if (std::find(stack.begin(), stack.end(), nested_block.name) != stack.end()) {
+                    continue;
+                }
+                stack.push_back(nested_block.name);
+                const int nested_group = cadgf_document_alloc_group_id(doc);
+                if (!self(self, nested_block, combined, nested_layer, nested_group, stack, depth + 1)) {
+                    return false;
+                }
+                stack.pop_back();
+            }
+
+            return true;
+        };
+
+        const Transform2D identity{};
+        std::vector<std::string> stack;
+        for (const auto& insert : inserts) {
+            if (insert.block_name.empty()) continue;
+            auto block_it = blocks.find(insert.block_name);
+            if (block_it == blocks.end()) continue;
+            const DxfBlock& block = block_it->second;
+            const cadgf_vec2 base = block.has_base ? block.base : cadgf_vec2{0.0, 0.0};
+            const std::string insert_layer = (insert.layer.empty() || insert.layer == "0")
+                                                ? std::string("0")
+                                                : insert.layer;
+            const Transform2D local = make_transform(insert.scale_x, insert.scale_y,
+                                                     insert.rotation_deg * kDegToRad,
+                                                     insert.pos, base);
+            const Transform2D combined = combine_transform(identity, local);
+            stack.clear();
+            stack.push_back(block.name);
+            const int group_id = cadgf_document_alloc_group_id(doc);
+            if (!emit_block(emit_block, block, combined, insert_layer, group_id, stack, 0)) {
+                return 0;
             }
         }
 

@@ -70,9 +70,10 @@ int main(int argc, char** argv) {
 
     int entity_count = 0;
     assert(cadgf_document_get_entity_count(doc, &entity_count));
-    assert(entity_count == 2);
+    assert(entity_count == 3);
 
     cadgf_entity_id line_id = 0;
+    cadgf_entity_id nested_line_id = 0;
     cadgf_entity_id circle_id = 0;
     for (int i = 0; i < entity_count; ++i) {
         cadgf_entity_id id = 0;
@@ -80,7 +81,12 @@ int main(int argc, char** argv) {
         cadgf_entity_info info{};
         assert(cadgf_document_get_entity_info(doc, id, &info));
         if (info.type == CADGF_ENTITY_TYPE_LINE) {
-            line_id = id;
+            const std::string layer_name = get_layer_name(doc, info.layer_id);
+            if (layer_name == "LayerBlock") {
+                line_id = id;
+            } else if (layer_name == "LayerNestedInsert") {
+                nested_line_id = id;
+            }
         } else if (info.type == CADGF_ENTITY_TYPE_CIRCLE) {
             circle_id = id;
         }
@@ -94,6 +100,15 @@ int main(int argc, char** argv) {
     assert_near(line.b.x, 5.0);
     assert_near(line.b.y, 9.0);
     assert(get_entity_layer_name(doc, line_id) == "LayerBlock");
+
+    assert(nested_line_id != 0);
+    cadgf_line nested_line{};
+    assert(cadgf_document_get_line(doc, nested_line_id, &nested_line));
+    assert_near(nested_line.a.x, 5.0);
+    assert_near(nested_line.a.y, 9.0);
+    assert_near(nested_line.b.x, 5.0);
+    assert_near(nested_line.b.y, 11.0);
+    assert(get_entity_layer_name(doc, nested_line_id) == "LayerNestedInsert");
 
     assert(circle_id != 0);
     cadgf_circle circle{};

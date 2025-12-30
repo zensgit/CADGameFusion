@@ -1,7 +1,7 @@
 # Full CTest Verification (build_vcpkg)
 
 ## Scope
-- Run the full CTest suite after DXF BLOCKS/INSERT support.
+- Run the full CTest suite after DXF BLOCKS/INSERT nested support.
 
 ## Steps
 1. Run the full test suite:
@@ -15,4 +15,4 @@
 
 ## Status
 - PASS (manual).
-- Notes: Executed in `build_vcpkg` after BLOCKS/INSERT changes.
+- Notes: Executed in `build_vcpkg` after nested BLOCKS/INSERT changes.
