@@ -100,6 +100,17 @@ int main(int argc, char** argv) {
     assert_near(line.b.x, 5.0);
     assert_near(line.b.y, 9.0);
     assert(get_entity_layer_name(doc, line_id) == "LayerBlock");
+    cadgf_entity_info_v2 line_info{};
+    assert(cadgf_document_get_entity_info_v2(doc, line_id, &line_info));
+    assert(line_info.color == 0xFF0000u);
+    int line_type_required = 0;
+    assert(cadgf_document_get_entity_line_type(doc, line_id, nullptr, 0, &line_type_required));
+    std::vector<char> line_type_buf(static_cast<size_t>(line_type_required));
+    int line_type_required2 = 0;
+    assert(cadgf_document_get_entity_line_type(doc, line_id, line_type_buf.data(),
+                                               static_cast<int>(line_type_buf.size()),
+                                               &line_type_required2));
+    assert(std::strcmp(line_type_buf.data(), "CENTER") == 0);
 
     assert(nested_line_id != 0);
     cadgf_line nested_line{};
@@ -109,6 +120,17 @@ int main(int argc, char** argv) {
     assert_near(nested_line.b.x, 5.0);
     assert_near(nested_line.b.y, 11.0);
     assert(get_entity_layer_name(doc, nested_line_id) == "LayerNestedInsert");
+    cadgf_entity_info_v2 nested_info{};
+    assert(cadgf_document_get_entity_info_v2(doc, nested_line_id, &nested_info));
+    assert(nested_info.color == 0x00FF00u);
+    int nested_line_type_required = 0;
+    assert(cadgf_document_get_entity_line_type(doc, nested_line_id, nullptr, 0, &nested_line_type_required));
+    std::vector<char> nested_line_type_buf(static_cast<size_t>(nested_line_type_required));
+    int nested_line_type_required2 = 0;
+    assert(cadgf_document_get_entity_line_type(doc, nested_line_id, nested_line_type_buf.data(),
+                                               static_cast<int>(nested_line_type_buf.size()),
+                                               &nested_line_type_required2));
+    assert(std::strcmp(nested_line_type_buf.data(), "DASHED") == 0);
 
     assert(circle_id != 0);
     cadgf_circle circle{};
@@ -117,6 +139,12 @@ int main(int argc, char** argv) {
     assert_near(circle.center.y, 7.0);
     assert_near(circle.radius, 1.0);
     assert(get_entity_layer_name(doc, circle_id) == "LayerInsert");
+    cadgf_entity_info_v2 circle_info{};
+    assert(cadgf_document_get_entity_info_v2(doc, circle_id, &circle_info));
+    assert(line_info.group_id >= 1);
+    assert(circle_info.group_id == line_info.group_id);
+    assert(nested_info.group_id >= 1);
+    assert(nested_info.group_id != line_info.group_id);
 
     cadgf_document_destroy(doc);
     return 0;

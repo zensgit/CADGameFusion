@@ -17,8 +17,11 @@ struct DxfStyle {
     bool has_line_type = false;
     bool has_line_weight = false;
     bool has_line_scale = false;
+    bool byblock_line_type = false;
+    bool byblock_line_weight = false;
     unsigned int color = 0;
     bool has_color = false;
+    bool byblock_color = false;
     bool hidden = false;
 };
 
@@ -121,6 +124,7 @@ struct DxfInsert {
     bool has_y = false;
     bool has_scale_x = false;
     bool has_scale_y = false;
+    DxfStyle style;
 };
 
 struct DxfBlock {
@@ -193,7 +197,11 @@ static bool parse_style_code(DxfStyle* style, int code, const std::string& value
     if (!style) return false;
     switch (code) {
         case 6: {
-            if (!value_line.empty() && value_line != "BYLAYER" && value_line != "BYBLOCK") {
+            if (value_line == "BYBLOCK") {
+                style->byblock_line_type = true;
+                return true;
+            }
+            if (!value_line.empty() && value_line != "BYLAYER") {
                 style->line_type = value_line;
                 style->has_line_type = true;
             }
@@ -210,6 +218,10 @@ static bool parse_style_code(DxfStyle* style, int code, const std::string& value
         case 370: {
             int weight = 0;
             if (parse_int(value_line, &weight)) {
+                if (weight == -2) {
+                    style->byblock_line_weight = true;
+                    return true;
+                }
                 if (weight >= 0) {
                     style->line_weight = static_cast<double>(weight) / 100.0;
                     style->has_line_weight = true;
@@ -227,7 +239,11 @@ static bool parse_style_code(DxfStyle* style, int code, const std::string& value
         case 62: {
             int index = 0;
             if (parse_int(value_line, &index)) {
-                if (index == 0 || index == 256) {
+                if (index == 0) {
+                    style->byblock_color = true;
+                    return true;
+                }
+                if (index == 256) {
                     return true;
                 }
                 if (index < 0) {
@@ -255,15 +271,19 @@ static bool parse_style_code(DxfStyle* style, int code, const std::string& value
 }
 
 static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfStyle& style,
-                             const DxfStyle* layer_style) {
+                             const DxfStyle* layer_style, const DxfStyle* block_style) {
     if (!doc || id == 0) return;
     if (style.has_line_type) {
         (void)cadgf_document_set_entity_line_type(doc, id, style.line_type.c_str());
+    } else if (style.byblock_line_type && block_style && block_style->has_line_type) {
+        (void)cadgf_document_set_entity_line_type(doc, id, block_style->line_type.c_str());
     } else if (layer_style && layer_style->has_line_type) {
         (void)cadgf_document_set_entity_line_type(doc, id, layer_style->line_type.c_str());
     }
     if (style.has_line_weight) {
         (void)cadgf_document_set_entity_line_weight(doc, id, style.line_weight);
+    } else if (style.byblock_line_weight && block_style && block_style->has_line_weight) {
+        (void)cadgf_document_set_entity_line_weight(doc, id, block_style->line_weight);
     } else if (layer_style && layer_style->has_line_weight) {
         (void)cadgf_document_set_entity_line_weight(doc, id, layer_style->line_weight);
     }
@@ -274,6 +294,8 @@ static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfS
     }
     if (style.has_color) {
         (void)cadgf_document_set_entity_color(doc, id, style.color);
+    } else if (style.byblock_color && block_style && block_style->has_color) {
+        (void)cadgf_document_set_entity_color(doc, id, block_style->color);
     }
     if (style.hidden) {
         (void)cadgf_document_set_entity_visible(doc, id, 0);
@@ -995,6 +1017,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Insert:
+                if (parse_style_code(&current_insert.style, code, value_line)) break;
                 switch (code) {
                     case 2:
                         current_insert.block_name = value_line;
@@ -1151,7 +1174,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             cadgf_entity_id id = cadgf_document_add_polyline_ex(doc, pl.points.data(),
                                                                 static_cast<int>(pl.points.size()),
                                                                 "", layer_id);
-            apply_line_style(doc, id, pl.style, layer_style_for(pl.layer));
+            apply_line_style(doc, id, pl.style, layer_style_for(pl.layer), nullptr);
         }
 
         for (const auto& ln : lines) {
@@ -1164,7 +1187,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             line.a = ln.a;
             line.b = ln.b;
             cadgf_entity_id id = cadgf_document_add_line(doc, &line, "", layer_id);
-            apply_line_style(doc, id, ln.style, layer_style_for(ln.layer));
+            apply_line_style(doc, id, ln.style, layer_style_for(ln.layer), nullptr);
         }
 
         for (const auto& circle_in : circles) {
@@ -1177,7 +1200,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             circle.center = circle_in.center;
             circle.radius = circle_in.radius;
             cadgf_entity_id id = cadgf_document_add_circle(doc, &circle, "", layer_id);
-            apply_line_style(doc, id, circle_in.style, layer_style_for(circle_in.layer));
+            apply_line_style(doc, id, circle_in.style, layer_style_for(circle_in.layer), nullptr);
         }
 
         for (const auto& arc_in : arcs) {
@@ -1193,7 +1216,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             arc.end_angle = arc_in.end_deg * kDegToRad;
             arc.clockwise = 0;
             cadgf_entity_id id = cadgf_document_add_arc(doc, &arc, "", layer_id);
-            apply_line_style(doc, id, arc_in.style, layer_style_for(arc_in.layer));
+            apply_line_style(doc, id, arc_in.style, layer_style_for(arc_in.layer), nullptr);
         }
 
         for (const auto& ellipse_in : ellipses) {
@@ -1214,7 +1237,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             ellipse.start_angle = ellipse_in.has_start ? ellipse_in.start_param : 0.0;
             ellipse.end_angle = ellipse_in.has_end ? ellipse_in.end_param : kTwoPi;
             cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
-            apply_line_style(doc, id, ellipse_in.style, layer_style_for(ellipse_in.layer));
+            apply_line_style(doc, id, ellipse_in.style, layer_style_for(ellipse_in.layer), nullptr);
         }
 
         for (const auto& spline_in : splines) {
@@ -1231,7 +1254,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                                                           spline_in.knots.empty() ? nullptr : spline_in.knots.data(),
                                                           static_cast<int>(spline_in.knots.size()),
                                                           degree, "", layer_id);
-            apply_line_style(doc, id, spline_in.style, layer_style_for(spline_in.layer));
+            apply_line_style(doc, id, spline_in.style, layer_style_for(spline_in.layer), nullptr);
         }
 
         for (const auto& text_in : texts) {
@@ -1244,7 +1267,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             const double rotation = text_in.rotation_deg * kDegToRad;
             cadgf_entity_id id = cadgf_document_add_text(doc, &pos, text_in.height, rotation,
                                                          text_in.text.c_str(), "", layer_id);
-            apply_line_style(doc, id, text_in.style, layer_style_for(text_in.layer));
+            apply_line_style(doc, id, text_in.style, layer_style_for(text_in.layer), nullptr);
         }
 
         auto resolve_entity_layer_name = [&](const std::string& entity_layer,
@@ -1262,7 +1285,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
         constexpr int kMaxBlockDepth = 8;
 
         auto emit_block = [&](auto&& self, const DxfBlock& block, const Transform2D& tr,
-                              const std::string& insert_layer, int group_id,
+                              const std::string& insert_layer, const DxfStyle* insert_style, int group_id,
                               std::vector<std::string>& stack, int depth) -> bool {
             if (depth > kMaxBlockDepth) return true;
 
@@ -1289,7 +1312,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                                                                     static_cast<int>(points.size()),
                                                                     "", layer_id);
                 apply_group(id, group_id);
-                apply_line_style(doc, id, pl.style, layer_style_for(layer_name));
+                apply_line_style(doc, id, pl.style, layer_style_for(layer_name), insert_style);
             }
 
             for (const auto& ln : block.lines) {
@@ -1304,7 +1327,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 line.b = apply_transform(tr, ln.b);
                 cadgf_entity_id id = cadgf_document_add_line(doc, &line, "", layer_id);
                 apply_group(id, group_id);
-                apply_line_style(doc, id, ln.style, layer_style_for(layer_name));
+                apply_line_style(doc, id, ln.style, layer_style_for(layer_name), insert_style);
             }
 
             for (const auto& circle_in : block.circles) {
@@ -1320,7 +1343,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                     circle.radius = circle_in.radius * scale_x;
                     cadgf_entity_id id = cadgf_document_add_circle(doc, &circle, "", layer_id);
                     apply_group(id, group_id);
-                    apply_line_style(doc, id, circle_in.style, layer_style_for(layer_name));
+                    apply_line_style(doc, id, circle_in.style, layer_style_for(layer_name), insert_style);
                 } else {
                     cadgf_ellipse ellipse{};
                     ellipse.center = apply_transform(tr, circle_in.center);
@@ -1331,7 +1354,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                     ellipse.end_angle = kTwoPi;
                     cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
                     apply_group(id, group_id);
-                    apply_line_style(doc, id, circle_in.style, layer_style_for(layer_name));
+                    apply_line_style(doc, id, circle_in.style, layer_style_for(layer_name), insert_style);
                 }
             }
 
@@ -1351,7 +1374,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                     arc.clockwise = 0;
                     cadgf_entity_id id = cadgf_document_add_arc(doc, &arc, "", layer_id);
                     apply_group(id, group_id);
-                    apply_line_style(doc, id, arc_in.style, layer_style_for(layer_name));
+                    apply_line_style(doc, id, arc_in.style, layer_style_for(layer_name), insert_style);
                 } else {
                     cadgf_ellipse ellipse{};
                     ellipse.center = apply_transform(tr, arc_in.center);
@@ -1362,7 +1385,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                     ellipse.end_angle = arc_in.end_deg * kDegToRad;
                     cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
                     apply_group(id, group_id);
-                    apply_line_style(doc, id, arc_in.style, layer_style_for(layer_name));
+                    apply_line_style(doc, id, arc_in.style, layer_style_for(layer_name), insert_style);
                 }
             }
 
@@ -1393,7 +1416,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 ellipse.end_angle = ellipse_in.has_end ? ellipse_in.end_param : kTwoPi;
                 cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
                 apply_group(id, group_id);
-                apply_line_style(doc, id, ellipse_in.style, layer_style_for(layer_name));
+                apply_line_style(doc, id, ellipse_in.style, layer_style_for(layer_name), insert_style);
             }
 
             for (const auto& spline_in : block.splines) {
@@ -1417,7 +1440,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                                                               static_cast<int>(spline_in.knots.size()),
                                                               degree, "", layer_id);
                 apply_group(id, group_id);
-                apply_line_style(doc, id, spline_in.style, layer_style_for(layer_name));
+                apply_line_style(doc, id, spline_in.style, layer_style_for(layer_name), insert_style);
             }
 
             for (const auto& text_in : block.texts) {
@@ -1432,7 +1455,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 cadgf_entity_id id = cadgf_document_add_text(doc, &pos_out, text_in.height * scale_y,
                                                              rotation, text_in.text.c_str(), "", layer_id);
                 apply_group(id, group_id);
-                apply_line_style(doc, id, text_in.style, layer_style_for(layer_name));
+                apply_line_style(doc, id, text_in.style, layer_style_for(layer_name), insert_style);
             }
 
             for (const auto& nested_insert : block.inserts) {
@@ -1453,7 +1476,8 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 }
                 stack.push_back(nested_block.name);
                 const int nested_group = cadgf_document_alloc_group_id(doc);
-                if (!self(self, nested_block, combined, nested_layer, nested_group, stack, depth + 1)) {
+                if (!self(self, nested_block, combined, nested_layer, &nested_insert.style,
+                          nested_group, stack, depth + 1)) {
                     return false;
                 }
                 stack.pop_back();
@@ -1480,7 +1504,8 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             stack.clear();
             stack.push_back(block.name);
             const int group_id = cadgf_document_alloc_group_id(doc);
-            if (!emit_block(emit_block, block, combined, insert_layer, group_id, stack, 0)) {
+            if (!emit_block(emit_block, block, combined, insert_layer, &insert.style,
+                            group_id, stack, 0)) {
                 return 0;
             }
         }

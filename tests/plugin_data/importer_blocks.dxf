@@ -14,6 +14,10 @@ BlockB
 LINE
 8
 0
+6
+BYBLOCK
+62
+0
 10
 0
 20
@@ -36,6 +40,10 @@ BlockA
 LINE
 8
 LayerBlock
+6
+BYBLOCK
+62
+0
 10
 0
 20
@@ -60,6 +68,10 @@ INSERT
 BlockB
 8
 LayerNestedInsert
+6
+DASHED
+62
+3
 10
 2
 20
@@ -78,6 +90,10 @@ INSERT
 BlockA
 8
 LayerInsert
+6
+CENTER
+62
+1
 10
 5
 20
