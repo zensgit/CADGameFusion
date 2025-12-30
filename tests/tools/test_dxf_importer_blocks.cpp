@@ -99,13 +99,14 @@ int main(int argc, char** argv) {
 
     int entity_count = 0;
     assert(cadgf_document_get_entity_count(doc, &entity_count));
-    assert(entity_count == 12);
+    assert(entity_count == 13);
 
     cadgf_entity_id line_id = 0;
     cadgf_entity_id nested_line_id = 0;
     cadgf_entity_id byblock_fallback_id = 0;
     cadgf_entity_id bylayer_id = 0;
     cadgf_entity_id explicit_id = 0;
+    cadgf_entity_id byblock_insert_scale_id = 0;
     cadgf_entity_id polyline_id = 0;
     cadgf_entity_id arc_id = 0;
     cadgf_entity_id text_id = 0;
@@ -130,6 +131,8 @@ int main(int argc, char** argv) {
                 bylayer_id = id;
             } else if (layer_name == "LayerExplicit") {
                 explicit_id = id;
+            } else if (layer_name == "LayerByblockInsertScale") {
+                byblock_insert_scale_id = id;
             } else if (layer_name == "LayerMissing") {
                 missing_layer_id = id;
             } else if (layer_name == "0") {
@@ -216,6 +219,15 @@ int main(int argc, char** argv) {
     assert_near(get_entity_line_weight(doc, explicit_id), 0.8);
     assert(get_entity_color(doc, explicit_id) == 0x0000FFu);
     assert_near(get_entity_line_scale(doc, explicit_id), 2.5);
+
+    assert(byblock_insert_scale_id != 0);
+    cadgf_line byblock_insert_scale_line{};
+    assert(cadgf_document_get_line(doc, byblock_insert_scale_id, &byblock_insert_scale_line));
+    assert(get_entity_layer_name(doc, byblock_insert_scale_id) == "LayerByblockInsertScale");
+    assert(get_entity_line_type(doc, byblock_insert_scale_id) == "DASHDOT");
+    assert_near(get_entity_line_weight(doc, byblock_insert_scale_id), 0.9);
+    assert(get_entity_color(doc, byblock_insert_scale_id) == 0xFF0000u);
+    assert_near(get_entity_line_scale(doc, byblock_insert_scale_id), 1.3);
 
     assert(polyline_id != 0);
     assert(get_entity_layer_name(doc, polyline_id) == "LayerPolyByblock");
