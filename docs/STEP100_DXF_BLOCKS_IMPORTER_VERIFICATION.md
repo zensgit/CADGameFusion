@@ -17,7 +17,7 @@
    ```
 
 ## Expected
-- 11 entities imported from INSERTs (6 LINE + 1 CIRCLE + 1 LWPOLYLINE + 1 ARC + 1 TEXT + 1 SPLINE).
+- 12 entities imported from DXF (7 LINE + 1 CIRCLE + 1 LWPOLYLINE + 1 ARC + 1 TEXT + 1 SPLINE).
 - LINE transformed to (5,5)->(5,9) on `LayerBlock`.
 - Nested LINE transformed to (5,9)->(5,11) on `LayerNestedInsert`.
 - CIRCLE transformed to center (3,7), radius 1.0 on `LayerInsert`.
@@ -33,6 +33,7 @@
   - TEXT BYBLOCK uses INSERT style: `LayerTextByblock` -> `DASHDOTX`, `0.3`, scale `2.2`, color `0xFF0000`.
   - SPLINE BYLAYER uses layer style: `LayerSplineBylayer` -> `CENTERX`, `0.45`, scale `0.8`, color `0xFFFFFF`.
   - Missing layer entry uses defaults: `LayerMissing` -> line type empty, line weight `0.0`, scale `0.0`, color `0x0`.
+  - Layer 0 inherits its layer style: `0` -> `HIDDEN2`, `0.55`, scale `1.7`, color `0x808080`.
 - Group IDs:
   - LINE and CIRCLE share the same group id.
   - Nested LINE has a different group id.

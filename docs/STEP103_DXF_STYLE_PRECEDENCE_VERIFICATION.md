@@ -34,6 +34,8 @@
   - `LayerSplineBylayer` -> line type `CENTERX`, line weight `0.45`, scale `0.8`, color `0xFFFFFF`.
 - Missing layer entry falls back to defaults:
   - `LayerMissing` -> line type empty, line weight `0.0`, scale `0.0`, color `0x0`.
+- Layer 0 inherits its layer style:
+  - `0` -> line type `HIDDEN2`, line weight `0.55`, scale `1.7`, color `0x808080`.
 - Explicit entity styles override both INSERT and layer:
   - `LayerExplicit` -> line type `HIDDEN`, line weight `0.8`, scale `2.5`, color `0x0000FF`.
 
