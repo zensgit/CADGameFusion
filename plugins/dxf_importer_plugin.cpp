@@ -109,6 +109,33 @@ struct DxfLayer {
     DxfStyle style;
 };
 
+struct DxfBlock {
+    std::string name;
+    bool has_name = false;
+    cadgf_vec2 base{};
+    bool has_base = false;
+    std::vector<DxfPolyline> polylines;
+    std::vector<DxfLine> lines;
+    std::vector<DxfCircle> circles;
+    std::vector<DxfArc> arcs;
+    std::vector<DxfEllipse> ellipses;
+    std::vector<DxfSpline> splines;
+    std::vector<DxfText> texts;
+};
+
+struct DxfInsert {
+    std::string block_name;
+    std::string layer;
+    cadgf_vec2 pos{};
+    double scale_x = 1.0;
+    double scale_y = 1.0;
+    double rotation_deg = 0.0;
+    bool has_x = false;
+    bool has_y = false;
+    bool has_scale_x = false;
+    bool has_scale_y = false;
+};
+
 static cadgf_string_view sv(const char* s) {
     cadgf_string_view v;
     v.data = s;
@@ -293,6 +320,17 @@ static void finalize_text(const DxfText& text, std::vector<DxfText>& out) {
     out.push_back(text);
 }
 
+static void finalize_insert(DxfInsert& insert, std::vector<DxfInsert>& out) {
+    if (insert.block_name.empty() || !(insert.has_x && insert.has_y)) return;
+    if (!insert.has_scale_x && insert.has_scale_y) {
+        insert.scale_x = insert.scale_y;
+    }
+    if (!insert.has_scale_y && insert.has_scale_x) {
+        insert.scale_y = insert.scale_x;
+    }
+    out.push_back(insert);
+}
+
 enum class DxfEntityKind {
     None,
     Polyline,
@@ -301,12 +339,14 @@ enum class DxfEntityKind {
     Arc,
     Ellipse,
     Spline,
-    Text
+    Text,
+    Insert
 };
 
 enum class DxfSection {
     None,
     Tables,
+    Blocks,
     Entities
 };
 
@@ -318,6 +358,8 @@ static bool parse_dxf_entities(const std::string& path,
                                std::vector<DxfEllipse>& ellipses,
                                std::vector<DxfSpline>& splines,
                                std::vector<DxfText>& texts,
+                               std::unordered_map<std::string, DxfBlock>& blocks,
+                               std::vector<DxfInsert>& inserts,
                                std::unordered_map<std::string, DxfLayer>& layers,
                                std::string* err) {
     std::ifstream in(path);
@@ -336,15 +378,21 @@ static bool parse_dxf_entities(const std::string& path,
     DxfEllipse current_ellipse;
     DxfSpline current_spline;
     DxfText current_text;
+    DxfInsert current_insert;
+    DxfBlock current_block;
     DxfLayer current_layer;
     double pending_x = 0.0;
     bool has_x = false;
     double pending_spline_x = 0.0;
     bool has_spline_x = false;
+    double pending_block_x = 0.0;
+    bool has_block_x = false;
     bool expect_section_name = false;
     bool expect_table_name = false;
     bool in_layer_table = false;
     bool in_layer_record = false;
+    bool in_block = false;
+    bool in_block_header = false;
     DxfSection current_section = DxfSection::None;
     std::string current_table;
 
@@ -361,37 +409,74 @@ static bool parse_dxf_entities(const std::string& path,
         has_spline_x = false;
     };
     auto reset_text = [&]() { current_text = DxfText{}; };
+    auto reset_insert = [&]() { current_insert = DxfInsert{}; };
+    auto reset_block = [&]() {
+        current_block = DxfBlock{};
+        has_block_x = false;
+    };
     auto reset_layer = [&]() { current_layer = DxfLayer{}; };
 
     auto flush_current = [&]() {
         switch (current_kind) {
             case DxfEntityKind::Polyline:
-                finalize_polyline(current_polyline, polylines);
+                if (in_block) {
+                    finalize_polyline(current_polyline, current_block.polylines);
+                } else {
+                    finalize_polyline(current_polyline, polylines);
+                }
                 reset_polyline();
                 break;
             case DxfEntityKind::Line:
-                finalize_line(current_line, lines);
+                if (in_block) {
+                    finalize_line(current_line, current_block.lines);
+                } else {
+                    finalize_line(current_line, lines);
+                }
                 reset_line();
                 break;
             case DxfEntityKind::Circle:
-                finalize_circle(current_circle, circles);
+                if (in_block) {
+                    finalize_circle(current_circle, current_block.circles);
+                } else {
+                    finalize_circle(current_circle, circles);
+                }
                 reset_circle();
                 break;
             case DxfEntityKind::Arc:
-                finalize_arc(current_arc, arcs);
+                if (in_block) {
+                    finalize_arc(current_arc, current_block.arcs);
+                } else {
+                    finalize_arc(current_arc, arcs);
+                }
                 reset_arc();
                 break;
             case DxfEntityKind::Ellipse:
-                finalize_ellipse(current_ellipse, ellipses);
+                if (in_block) {
+                    finalize_ellipse(current_ellipse, current_block.ellipses);
+                } else {
+                    finalize_ellipse(current_ellipse, ellipses);
+                }
                 reset_ellipse();
                 break;
             case DxfEntityKind::Spline:
-                finalize_spline(current_spline, splines);
+                if (in_block) {
+                    finalize_spline(current_spline, current_block.splines);
+                } else {
+                    finalize_spline(current_spline, splines);
+                }
                 reset_spline();
                 break;
             case DxfEntityKind::Text:
-                finalize_text(current_text, texts);
+                if (in_block) {
+                    finalize_text(current_text, current_block.texts);
+                } else {
+                    finalize_text(current_text, texts);
+                }
                 reset_text();
+                break;
+            case DxfEntityKind::Insert:
+                finalize_insert(current_insert, inserts);
+                reset_insert();
                 break;
             case DxfEntityKind::None:
                 break;
@@ -405,6 +490,11 @@ static bool parse_dxf_entities(const std::string& path,
             layer.visible = false;
         }
         layers[layer.name] = layer;
+    };
+
+    auto finalize_block = [&](DxfBlock& block) {
+        if (!block.has_name) return;
+        blocks[block.name] = block;
     };
 
     while (std::getline(in, code_line)) {
@@ -424,6 +514,12 @@ static bool parse_dxf_entities(const std::string& path,
                     finalize_layer(current_layer);
                     reset_layer();
                     in_layer_record = false;
+                }
+                if (in_block) {
+                    finalize_block(current_block);
+                    reset_block();
+                    in_block = false;
+                    in_block_header = false;
                 }
                 in_layer_table = false;
                 current_table.clear();
@@ -452,11 +548,37 @@ static bool parse_dxf_entities(const std::string& path,
                 in_layer_record = true;
                 continue;
             }
-            if (current_section != DxfSection::Entities) {
+            if (value_line == "BLOCK" && current_section == DxfSection::Blocks) {
+                if (in_block) {
+                    finalize_block(current_block);
+                }
+                reset_block();
+                in_block = true;
+                in_block_header = true;
+                continue;
+            }
+            if (value_line == "ENDBLK") {
+                if (in_block) {
+                    finalize_block(current_block);
+                    reset_block();
+                    in_block = false;
+                }
+                in_block_header = false;
+                continue;
+            }
+            if (in_block && in_block_header) {
+                in_block_header = false;
+            }
+            const bool in_entities = current_section == DxfSection::Entities;
+            const bool in_block_entities = current_section == DxfSection::Blocks && in_block && !in_block_header;
+            if (!in_entities && !in_block_entities) {
                 current_kind = DxfEntityKind::None;
                 continue;
             }
-            if (value_line == "LWPOLYLINE") {
+            if (value_line == "INSERT" && in_entities) {
+                current_kind = DxfEntityKind::Insert;
+                reset_insert();
+            } else if (value_line == "LWPOLYLINE") {
                 current_kind = DxfEntityKind::Polyline;
                 reset_polyline();
             } else if (value_line == "LINE") {
@@ -487,10 +609,20 @@ static bool parse_dxf_entities(const std::string& path,
             expect_section_name = false;
             if (value_line == "TABLES") {
                 current_section = DxfSection::Tables;
+                in_block = false;
+                in_block_header = false;
             } else if (value_line == "ENTITIES") {
                 current_section = DxfSection::Entities;
+                in_block = false;
+                in_block_header = false;
+            } else if (value_line == "BLOCKS") {
+                current_section = DxfSection::Blocks;
+                in_block = false;
+                in_block_header = false;
             } else {
                 current_section = DxfSection::None;
+                in_block = false;
+                in_block_header = false;
             }
             continue;
         }
@@ -527,7 +659,36 @@ static bool parse_dxf_entities(const std::string& path,
             continue;
         }
 
-        if (current_section != DxfSection::Entities) {
+        if (in_block_header) {
+            switch (code) {
+                case 2:
+                    current_block.name = value_line;
+                    current_block.has_name = true;
+                    break;
+                case 10:
+                    if (parse_double(value_line, &pending_block_x)) {
+                        has_block_x = true;
+                    }
+                    break;
+                case 20: {
+                    if (!has_block_x) break;
+                    double y = 0.0;
+                    if (parse_double(value_line, &y)) {
+                        current_block.base = cadgf_vec2{pending_block_x, y};
+                        current_block.has_base = true;
+                    }
+                    has_block_x = false;
+                    break;
+                }
+                default:
+                    break;
+            }
+            continue;
+        }
+
+        const bool in_entities = current_section == DxfSection::Entities;
+        const bool in_block_entities = current_section == DxfSection::Blocks && in_block && !in_block_header;
+        if (!in_entities && !in_block_entities) {
             continue;
         }
 
@@ -775,6 +936,41 @@ static bool parse_dxf_entities(const std::string& path,
                         break;
                 }
                 break;
+            case DxfEntityKind::Insert:
+                switch (code) {
+                    case 2:
+                        current_insert.block_name = value_line;
+                        break;
+                    case 8:
+                        current_insert.layer = value_line;
+                        break;
+                    case 10:
+                        if (parse_double(value_line, &current_insert.pos.x)) {
+                            current_insert.has_x = true;
+                        }
+                        break;
+                    case 20:
+                        if (parse_double(value_line, &current_insert.pos.y)) {
+                            current_insert.has_y = true;
+                        }
+                        break;
+                    case 41:
+                        if (parse_double(value_line, &current_insert.scale_x)) {
+                            current_insert.has_scale_x = true;
+                        }
+                        break;
+                    case 42:
+                        if (parse_double(value_line, &current_insert.scale_y)) {
+                            current_insert.has_scale_y = true;
+                        }
+                        break;
+                    case 50:
+                        (void)parse_double(value_line, &current_insert.rotation_deg);
+                        break;
+                    default:
+                        break;
+                }
+                break;
             case DxfEntityKind::None:
                 break;
         }
@@ -786,9 +982,12 @@ static bool parse_dxf_entities(const std::string& path,
     if (in_layer_table && in_layer_record) {
         finalize_layer(current_layer);
     }
+    if (in_block) {
+        finalize_block(current_block);
+    }
 
     if (polylines.empty() && lines.empty() && circles.empty() && arcs.empty() &&
-        ellipses.empty() && splines.empty() && texts.empty()) {
+        ellipses.empty() && splines.empty() && texts.empty() && inserts.empty()) {
         if (err) *err = "no supported DXF entities found";
         return false;
     }
@@ -809,9 +1008,12 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
         std::vector<DxfEllipse> ellipses;
         std::vector<DxfSpline> splines;
         std::vector<DxfText> texts;
+        std::unordered_map<std::string, DxfBlock> blocks;
+        std::vector<DxfInsert> inserts;
         std::unordered_map<std::string, DxfLayer> layers;
         std::string err;
-        if (!parse_dxf_entities(path_utf8, polylines, lines, circles, arcs, ellipses, splines, texts, layers, &err)) {
+        if (!parse_dxf_entities(path_utf8, polylines, lines, circles, arcs, ellipses, splines, texts,
+                                blocks, inserts, layers, &err)) {
             set_error(out_err, 2, err.empty() ? "parse failed" : err.c_str());
             return 0;
         }
@@ -878,6 +1080,9 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             return &it->second.style;
         };
 
+        constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+        constexpr double kTwoPi = 6.28318530717958647692;
+
         for (const auto& pl : polylines) {
             int layer_id = 0;
             if (!resolve_layer_id(pl.layer, &layer_id)) {
@@ -917,8 +1122,6 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             apply_line_style(doc, id, circle_in.style, layer_style_for(circle_in.layer));
         }
 
-        constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
-        constexpr double kTwoPi = 6.28318530717958647692;
         for (const auto& arc_in : arcs) {
             int layer_id = 0;
             if (!resolve_layer_id(arc_in.layer, &layer_id)) {
@@ -984,6 +1187,189 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             cadgf_entity_id id = cadgf_document_add_text(doc, &pos, text_in.height, rotation,
                                                          text_in.text.c_str(), "", layer_id);
             apply_line_style(doc, id, text_in.style, layer_style_for(text_in.layer));
+        }
+
+        auto resolve_entity_layer_name = [&](const std::string& entity_layer,
+                                             const std::string& insert_layer) -> std::string {
+            if (entity_layer.empty() || entity_layer == "0") {
+                return insert_layer.empty() ? std::string("0") : insert_layer;
+            }
+            return entity_layer;
+        };
+
+        auto transform_point = [&](const cadgf_vec2& p, const cadgf_vec2& base,
+                                   double sx, double sy, double cos_r, double sin_r,
+                                   const cadgf_vec2& pos) -> cadgf_vec2 {
+            const double lx = (p.x - base.x) * sx;
+            const double ly = (p.y - base.y) * sy;
+            cadgf_vec2 out{};
+            out.x = lx * cos_r - ly * sin_r + pos.x;
+            out.y = lx * sin_r + ly * cos_r + pos.y;
+            return out;
+        };
+
+        for (const auto& insert : inserts) {
+            if (insert.block_name.empty()) continue;
+            auto block_it = blocks.find(insert.block_name);
+            if (block_it == blocks.end()) continue;
+            const DxfBlock& block = block_it->second;
+            const cadgf_vec2 base = block.has_base ? block.base : cadgf_vec2{0.0, 0.0};
+            const double sx = insert.scale_x;
+            const double sy = insert.scale_y;
+            const double rot = insert.rotation_deg * kDegToRad;
+            const double cos_r = std::cos(rot);
+            const double sin_r = std::sin(rot);
+            const cadgf_vec2 pos = insert.pos;
+            const std::string insert_layer = insert.layer.empty() ? "0" : insert.layer;
+            const bool uniform_scale = std::fabs(sx - sy) <= 1e-6;
+
+            for (const auto& pl : block.polylines) {
+                if (pl.points.size() < 2) continue;
+                const std::string layer_name = resolve_entity_layer_name(pl.layer, insert_layer);
+                int layer_id = 0;
+                if (!resolve_layer_id(layer_name, &layer_id)) {
+                    set_error(out_err, 3, "failed to add layer");
+                    return 0;
+                }
+                std::vector<cadgf_vec2> points;
+                points.reserve(pl.points.size());
+                for (const auto& p : pl.points) {
+                    points.push_back(transform_point(p, base, sx, sy, cos_r, sin_r, pos));
+                }
+                cadgf_entity_id id = cadgf_document_add_polyline_ex(doc, points.data(),
+                                                                    static_cast<int>(points.size()),
+                                                                    "", layer_id);
+                apply_line_style(doc, id, pl.style, layer_style_for(layer_name));
+            }
+
+            for (const auto& ln : block.lines) {
+                const std::string layer_name = resolve_entity_layer_name(ln.layer, insert_layer);
+                int layer_id = 0;
+                if (!resolve_layer_id(layer_name, &layer_id)) {
+                    set_error(out_err, 3, "failed to add layer");
+                    return 0;
+                }
+                cadgf_line line{};
+                line.a = transform_point(ln.a, base, sx, sy, cos_r, sin_r, pos);
+                line.b = transform_point(ln.b, base, sx, sy, cos_r, sin_r, pos);
+                cadgf_entity_id id = cadgf_document_add_line(doc, &line, "", layer_id);
+                apply_line_style(doc, id, ln.style, layer_style_for(layer_name));
+            }
+
+            for (const auto& circle_in : block.circles) {
+                const std::string layer_name = resolve_entity_layer_name(circle_in.layer, insert_layer);
+                int layer_id = 0;
+                if (!resolve_layer_id(layer_name, &layer_id)) {
+                    set_error(out_err, 3, "failed to add layer");
+                    return 0;
+                }
+                if (uniform_scale) {
+                    cadgf_circle circle{};
+                    circle.center = transform_point(circle_in.center, base, sx, sy, cos_r, sin_r, pos);
+                    circle.radius = circle_in.radius * sx;
+                    cadgf_entity_id id = cadgf_document_add_circle(doc, &circle, "", layer_id);
+                    apply_line_style(doc, id, circle_in.style, layer_style_for(layer_name));
+                } else {
+                    cadgf_ellipse ellipse{};
+                    ellipse.center = transform_point(circle_in.center, base, sx, sy, cos_r, sin_r, pos);
+                    ellipse.rx = circle_in.radius * sx;
+                    ellipse.ry = circle_in.radius * sy;
+                    ellipse.rotation = rot;
+                    ellipse.start_angle = 0.0;
+                    ellipse.end_angle = kTwoPi;
+                    cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
+                    apply_line_style(doc, id, circle_in.style, layer_style_for(layer_name));
+                }
+            }
+
+            for (const auto& arc_in : block.arcs) {
+                const std::string layer_name = resolve_entity_layer_name(arc_in.layer, insert_layer);
+                int layer_id = 0;
+                if (!resolve_layer_id(layer_name, &layer_id)) {
+                    set_error(out_err, 3, "failed to add layer");
+                    return 0;
+                }
+                if (uniform_scale) {
+                    cadgf_arc arc{};
+                    arc.center = transform_point(arc_in.center, base, sx, sy, cos_r, sin_r, pos);
+                    arc.radius = arc_in.radius * sx;
+                    arc.start_angle = (arc_in.start_deg + insert.rotation_deg) * kDegToRad;
+                    arc.end_angle = (arc_in.end_deg + insert.rotation_deg) * kDegToRad;
+                    arc.clockwise = 0;
+                    cadgf_entity_id id = cadgf_document_add_arc(doc, &arc, "", layer_id);
+                    apply_line_style(doc, id, arc_in.style, layer_style_for(layer_name));
+                } else {
+                    cadgf_ellipse ellipse{};
+                    ellipse.center = transform_point(arc_in.center, base, sx, sy, cos_r, sin_r, pos);
+                    ellipse.rx = arc_in.radius * sx;
+                    ellipse.ry = arc_in.radius * sy;
+                    ellipse.rotation = rot;
+                    ellipse.start_angle = arc_in.start_deg * kDegToRad;
+                    ellipse.end_angle = arc_in.end_deg * kDegToRad;
+                    cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
+                    apply_line_style(doc, id, arc_in.style, layer_style_for(layer_name));
+                }
+            }
+
+            for (const auto& ellipse_in : block.ellipses) {
+                const std::string layer_name = resolve_entity_layer_name(ellipse_in.layer, insert_layer);
+                int layer_id = 0;
+                if (!resolve_layer_id(layer_name, &layer_id)) {
+                    set_error(out_err, 3, "failed to add layer");
+                    return 0;
+                }
+                const double ax = ellipse_in.major_axis.x;
+                const double ay = ellipse_in.major_axis.y;
+                const double major_len = std::sqrt(ax * ax + ay * ay);
+                if (major_len <= 0.0 || ellipse_in.ratio <= 0.0) continue;
+                cadgf_ellipse ellipse{};
+                ellipse.center = transform_point(ellipse_in.center, base, sx, sy, cos_r, sin_r, pos);
+                ellipse.rx = major_len * sx;
+                ellipse.ry = major_len * ellipse_in.ratio * sy;
+                ellipse.rotation = std::atan2(ay, ax) + rot;
+                ellipse.start_angle = ellipse_in.has_start ? ellipse_in.start_param : 0.0;
+                ellipse.end_angle = ellipse_in.has_end ? ellipse_in.end_param : kTwoPi;
+                cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
+                apply_line_style(doc, id, ellipse_in.style, layer_style_for(layer_name));
+            }
+
+            for (const auto& spline_in : block.splines) {
+                if (spline_in.control_points.size() < 2) continue;
+                const std::string layer_name = resolve_entity_layer_name(spline_in.layer, insert_layer);
+                int layer_id = 0;
+                if (!resolve_layer_id(layer_name, &layer_id)) {
+                    set_error(out_err, 3, "failed to add layer");
+                    return 0;
+                }
+                std::vector<cadgf_vec2> control_points;
+                control_points.reserve(spline_in.control_points.size());
+                for (const auto& p : spline_in.control_points) {
+                    control_points.push_back(transform_point(p, base, sx, sy, cos_r, sin_r, pos));
+                }
+                const int degree = spline_in.degree > 0 ? spline_in.degree : 3;
+                cadgf_entity_id id = cadgf_document_add_spline(doc,
+                                                              control_points.data(),
+                                                              static_cast<int>(control_points.size()),
+                                                              spline_in.knots.empty() ? nullptr : spline_in.knots.data(),
+                                                              static_cast<int>(spline_in.knots.size()),
+                                                              degree, "", layer_id);
+                apply_line_style(doc, id, spline_in.style, layer_style_for(layer_name));
+            }
+
+            for (const auto& text_in : block.texts) {
+                const std::string layer_name = resolve_entity_layer_name(text_in.layer, insert_layer);
+                int layer_id = 0;
+                if (!resolve_layer_id(layer_name, &layer_id)) {
+                    set_error(out_err, 3, "failed to add layer");
+                    return 0;
+                }
+                cadgf_vec2 pos_out = transform_point(text_in.pos, base, sx, sy, cos_r, sin_r, pos);
+                const double text_scale = insert.scale_y;
+                const double rotation = (text_in.rotation_deg + insert.rotation_deg) * kDegToRad;
+                cadgf_entity_id id = cadgf_document_add_text(doc, &pos_out, text_in.height * text_scale,
+                                                             rotation, text_in.text.c_str(), "", layer_id);
+                apply_line_style(doc, id, text_in.style, layer_style_for(layer_name));
+            }
         }
 
         set_error(out_err, 0, "");
