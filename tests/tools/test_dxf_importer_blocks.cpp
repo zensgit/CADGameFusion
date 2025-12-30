@@ -246,7 +246,7 @@ int main(int argc, char** argv) {
     assert(get_entity_line_type(doc, text_id) == "DASHDOTX");
     assert_near(get_entity_line_weight(doc, text_id), 0.3);
     assert(get_entity_color(doc, text_id) == 0xFF0000u);
-    assert_near(get_entity_line_scale(doc, text_id), 1.1);
+    assert_near(get_entity_line_scale(doc, text_id), 2.2);
 
     assert(spline_id != 0);
     assert(get_entity_layer_name(doc, spline_id) == "LayerSplineBylayer");

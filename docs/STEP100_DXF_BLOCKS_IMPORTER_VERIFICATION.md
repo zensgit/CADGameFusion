@@ -30,7 +30,7 @@
   - Explicit entity style overrides INSERT+layer: `LayerExplicit` -> `HIDDEN`, `0.8`, scale `2.5`, color `0x0000FF`.
   - LWPOLYLINE BYBLOCK uses INSERT style: `LayerPolyByblock` -> `PHANTOM`, `0.9`, scale `0.4`, color `0xFF00FF`.
   - ARC BYLAYER uses layer style: `LayerArcBylayer` -> `PHANTOM2`, `0.6`, scale `0.9`, color `0xC0C0C0`.
-  - TEXT BYBLOCK uses INSERT style: `LayerTextByblock` -> `DASHDOTX`, `0.3`, scale `1.1`, color `0xFF0000`.
+  - TEXT BYBLOCK uses INSERT style: `LayerTextByblock` -> `DASHDOTX`, `0.3`, scale `2.2`, color `0xFF0000`.
   - SPLINE BYLAYER uses layer style: `LayerSplineBylayer` -> `CENTERX`, `0.45`, scale `0.8`, color `0xFFFFFF`.
   - Missing layer entry uses defaults: `LayerMissing` -> line type empty, line weight `0.0`, scale `0.0`, color `0x0`.
 - Group IDs:

@@ -29,7 +29,7 @@
 - ARC BYLAYER uses layer styles:
   - `LayerArcBylayer` -> line type `PHANTOM2`, line weight `0.6`, scale `0.9`, color `0xC0C0C0`.
 - TEXT BYBLOCK uses INSERT style:
-  - `LayerTextByblock` -> line type `DASHDOTX`, line weight `0.3`, scale `1.1`, color `0xFF0000`.
+  - `LayerTextByblock` -> line type `DASHDOTX`, line weight `0.3`, scale `2.2`, color `0xFF0000`.
 - SPLINE BYLAYER uses layer styles:
   - `LayerSplineBylayer` -> line type `CENTERX`, line weight `0.45`, scale `0.8`, color `0xFFFFFF`.
 - Missing layer entry falls back to defaults:
