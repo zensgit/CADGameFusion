@@ -99,6 +99,16 @@ struct DxfText {
     DxfStyle style;
 };
 
+struct DxfLayer {
+    std::string name;
+    bool has_name = false;
+    bool visible = true;
+    bool locked = false;
+    bool frozen = false;
+    bool printable = true;
+    DxfStyle style;
+};
+
 static cadgf_string_view sv(const char* s) {
     cadgf_string_view v;
     v.data = s;
@@ -215,16 +225,23 @@ static bool parse_style_code(DxfStyle* style, int code, const std::string& value
     }
 }
 
-static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfStyle& style) {
+static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfStyle& style,
+                             const DxfStyle* layer_style) {
     if (!doc || id == 0) return;
     if (style.has_line_type) {
         (void)cadgf_document_set_entity_line_type(doc, id, style.line_type.c_str());
+    } else if (layer_style && layer_style->has_line_type) {
+        (void)cadgf_document_set_entity_line_type(doc, id, layer_style->line_type.c_str());
     }
     if (style.has_line_weight) {
         (void)cadgf_document_set_entity_line_weight(doc, id, style.line_weight);
+    } else if (layer_style && layer_style->has_line_weight) {
+        (void)cadgf_document_set_entity_line_weight(doc, id, layer_style->line_weight);
     }
     if (style.has_line_scale) {
         (void)cadgf_document_set_entity_line_type_scale(doc, id, style.line_type_scale);
+    } else if (layer_style && layer_style->has_line_scale) {
+        (void)cadgf_document_set_entity_line_type_scale(doc, id, layer_style->line_type_scale);
     }
     if (style.has_color) {
         (void)cadgf_document_set_entity_color(doc, id, style.color);
@@ -287,6 +304,12 @@ enum class DxfEntityKind {
     Text
 };
 
+enum class DxfSection {
+    None,
+    Tables,
+    Entities
+};
+
 static bool parse_dxf_entities(const std::string& path,
                                std::vector<DxfPolyline>& polylines,
                                std::vector<DxfLine>& lines,
@@ -295,6 +318,7 @@ static bool parse_dxf_entities(const std::string& path,
                                std::vector<DxfEllipse>& ellipses,
                                std::vector<DxfSpline>& splines,
                                std::vector<DxfText>& texts,
+                               std::unordered_map<std::string, DxfLayer>& layers,
                                std::string* err) {
     std::ifstream in(path);
     if (!in.is_open()) {
@@ -312,10 +336,17 @@ static bool parse_dxf_entities(const std::string& path,
     DxfEllipse current_ellipse;
     DxfSpline current_spline;
     DxfText current_text;
+    DxfLayer current_layer;
     double pending_x = 0.0;
     bool has_x = false;
     double pending_spline_x = 0.0;
     bool has_spline_x = false;
+    bool expect_section_name = false;
+    bool expect_table_name = false;
+    bool in_layer_table = false;
+    bool in_layer_record = false;
+    DxfSection current_section = DxfSection::None;
+    std::string current_table;
 
     auto reset_polyline = [&]() {
         current_polyline = DxfPolyline{};
@@ -330,6 +361,7 @@ static bool parse_dxf_entities(const std::string& path,
         has_spline_x = false;
     };
     auto reset_text = [&]() { current_text = DxfText{}; };
+    auto reset_layer = [&]() { current_layer = DxfLayer{}; };
 
     auto flush_current = [&]() {
         switch (current_kind) {
@@ -367,6 +399,14 @@ static bool parse_dxf_entities(const std::string& path,
         current_kind = DxfEntityKind::None;
     };
 
+    auto finalize_layer = [&](DxfLayer& layer) {
+        if (!layer.has_name) return;
+        if (layer.style.hidden) {
+            layer.visible = false;
+        }
+        layers[layer.name] = layer;
+    };
+
     while (std::getline(in, code_line)) {
         if (!std::getline(in, value_line)) break;
 
@@ -375,6 +415,47 @@ static bool parse_dxf_entities(const std::string& path,
 
         if (code == 0) {
             flush_current();
+            if (value_line == "SECTION") {
+                expect_section_name = true;
+                continue;
+            }
+            if (value_line == "ENDSEC") {
+                if (in_layer_table && in_layer_record) {
+                    finalize_layer(current_layer);
+                    reset_layer();
+                    in_layer_record = false;
+                }
+                in_layer_table = false;
+                current_table.clear();
+                current_section = DxfSection::None;
+                continue;
+            }
+            if (value_line == "TABLE") {
+                expect_table_name = true;
+                continue;
+            }
+            if (value_line == "ENDTAB") {
+                if (in_layer_table && in_layer_record) {
+                    finalize_layer(current_layer);
+                    reset_layer();
+                    in_layer_record = false;
+                }
+                in_layer_table = false;
+                current_table.clear();
+                continue;
+            }
+            if (in_layer_table && value_line == "LAYER") {
+                if (in_layer_record) {
+                    finalize_layer(current_layer);
+                    reset_layer();
+                }
+                in_layer_record = true;
+                continue;
+            }
+            if (current_section != DxfSection::Entities) {
+                current_kind = DxfEntityKind::None;
+                continue;
+            }
             if (value_line == "LWPOLYLINE") {
                 current_kind = DxfEntityKind::Polyline;
                 reset_polyline();
@@ -399,6 +480,54 @@ static bool parse_dxf_entities(const std::string& path,
             } else {
                 current_kind = DxfEntityKind::None;
             }
+            continue;
+        }
+
+        if (expect_section_name && code == 2) {
+            expect_section_name = false;
+            if (value_line == "TABLES") {
+                current_section = DxfSection::Tables;
+            } else if (value_line == "ENTITIES") {
+                current_section = DxfSection::Entities;
+            } else {
+                current_section = DxfSection::None;
+            }
+            continue;
+        }
+
+        if (expect_table_name && code == 2) {
+            expect_table_name = false;
+            current_table = value_line;
+            in_layer_table = (current_section == DxfSection::Tables && current_table == "LAYER");
+            continue;
+        }
+
+        if (in_layer_table && in_layer_record) {
+            if (parse_style_code(&current_layer.style, code, value_line)) {
+                if (current_layer.style.hidden) current_layer.visible = false;
+                continue;
+            }
+            switch (code) {
+                case 2:
+                    current_layer.name = value_line;
+                    current_layer.has_name = true;
+                    break;
+                case 70: {
+                    int flags = 0;
+                    if (parse_int(value_line, &flags)) {
+                        current_layer.frozen = (flags & 1) != 0 || (flags & 2) != 0;
+                        current_layer.locked = (flags & 4) != 0;
+                        current_layer.printable = (flags & 128) == 0;
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+            continue;
+        }
+
+        if (current_section != DxfSection::Entities) {
             continue;
         }
 
@@ -654,6 +783,9 @@ static bool parse_dxf_entities(const std::string& path,
     if (current_kind != DxfEntityKind::None) {
         flush_current();
     }
+    if (in_layer_table && in_layer_record) {
+        finalize_layer(current_layer);
+    }
 
     if (polylines.empty() && lines.empty() && circles.empty() && arcs.empty() &&
         ellipses.empty() && splines.empty() && texts.empty()) {
@@ -677,8 +809,9 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
         std::vector<DxfEllipse> ellipses;
         std::vector<DxfSpline> splines;
         std::vector<DxfText> texts;
+        std::unordered_map<std::string, DxfLayer> layers;
         std::string err;
-        if (!parse_dxf_entities(path_utf8, polylines, lines, circles, arcs, ellipses, splines, texts, &err)) {
+        if (!parse_dxf_entities(path_utf8, polylines, lines, circles, arcs, ellipses, splines, texts, layers, &err)) {
             set_error(out_err, 2, err.empty() ? "parse failed" : err.c_str());
             return 0;
         }
@@ -686,6 +819,41 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
         std::unordered_map<std::string, int> layer_ids;
         layer_ids["0"] = 0;
         layer_ids[""] = 0;
+
+        auto apply_layer_metadata = [&](int layer_id, const DxfLayer& layer) -> bool {
+            if (!cadgf_document_set_layer_visible(doc, layer_id, layer.visible ? 1 : 0)) return false;
+            if (!cadgf_document_set_layer_locked(doc, layer_id, layer.locked ? 1 : 0)) return false;
+            if (!cadgf_document_set_layer_frozen(doc, layer_id, layer.frozen ? 1 : 0)) return false;
+            if (!cadgf_document_set_layer_printable(doc, layer_id, layer.printable ? 1 : 0)) return false;
+            if (layer.style.has_color) {
+                if (!cadgf_document_set_layer_color(doc, layer_id, layer.style.color)) return false;
+            }
+            return true;
+        };
+
+        for (const auto& entry : layers) {
+            const std::string& layer_name = entry.first;
+            if (layer_name.empty()) continue;
+            if (layer_name == "0") {
+                if (!apply_layer_metadata(0, entry.second)) {
+                    set_error(out_err, 3, "failed to apply layer metadata");
+                    return 0;
+                }
+                continue;
+            }
+            if (layer_ids.find(layer_name) != layer_ids.end()) continue;
+            const unsigned int color = entry.second.style.has_color ? entry.second.style.color : 0xFFFFFFu;
+            int new_id = -1;
+            if (!cadgf_document_add_layer(doc, layer_name.c_str(), color, &new_id)) {
+                set_error(out_err, 3, "failed to add layer");
+                return 0;
+            }
+            layer_ids[layer_name] = new_id;
+            if (!apply_layer_metadata(new_id, entry.second)) {
+                set_error(out_err, 3, "failed to apply layer metadata");
+                return 0;
+            }
+        }
 
         auto resolve_layer_id = [&](const std::string& layer, int* out_layer_id) -> bool {
             const std::string layer_name = layer.empty() ? "0" : layer;
@@ -703,6 +871,13 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             return true;
         };
 
+        auto layer_style_for = [&](const std::string& layer) -> const DxfStyle* {
+            const std::string layer_name = layer.empty() ? "0" : layer;
+            auto it = layers.find(layer_name);
+            if (it == layers.end()) return nullptr;
+            return &it->second.style;
+        };
+
         for (const auto& pl : polylines) {
             int layer_id = 0;
             if (!resolve_layer_id(pl.layer, &layer_id)) {
@@ -713,7 +888,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             cadgf_entity_id id = cadgf_document_add_polyline_ex(doc, pl.points.data(),
                                                                 static_cast<int>(pl.points.size()),
                                                                 "", layer_id);
-            apply_line_style(doc, id, pl.style);
+            apply_line_style(doc, id, pl.style, layer_style_for(pl.layer));
         }
 
         for (const auto& ln : lines) {
@@ -726,7 +901,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             line.a = ln.a;
             line.b = ln.b;
             cadgf_entity_id id = cadgf_document_add_line(doc, &line, "", layer_id);
-            apply_line_style(doc, id, ln.style);
+            apply_line_style(doc, id, ln.style, layer_style_for(ln.layer));
         }
 
         for (const auto& circle_in : circles) {
@@ -739,7 +914,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             circle.center = circle_in.center;
             circle.radius = circle_in.radius;
             cadgf_entity_id id = cadgf_document_add_circle(doc, &circle, "", layer_id);
-            apply_line_style(doc, id, circle_in.style);
+            apply_line_style(doc, id, circle_in.style, layer_style_for(circle_in.layer));
         }
 
         constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
@@ -757,7 +932,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             arc.end_angle = arc_in.end_deg * kDegToRad;
             arc.clockwise = 0;
             cadgf_entity_id id = cadgf_document_add_arc(doc, &arc, "", layer_id);
-            apply_line_style(doc, id, arc_in.style);
+            apply_line_style(doc, id, arc_in.style, layer_style_for(arc_in.layer));
         }
 
         for (const auto& ellipse_in : ellipses) {
@@ -778,7 +953,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             ellipse.start_angle = ellipse_in.has_start ? ellipse_in.start_param : 0.0;
             ellipse.end_angle = ellipse_in.has_end ? ellipse_in.end_param : kTwoPi;
             cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
-            apply_line_style(doc, id, ellipse_in.style);
+            apply_line_style(doc, id, ellipse_in.style, layer_style_for(ellipse_in.layer));
         }
 
         for (const auto& spline_in : splines) {
@@ -795,7 +970,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                                                           spline_in.knots.empty() ? nullptr : spline_in.knots.data(),
                                                           static_cast<int>(spline_in.knots.size()),
                                                           degree, "", layer_id);
-            apply_line_style(doc, id, spline_in.style);
+            apply_line_style(doc, id, spline_in.style, layer_style_for(spline_in.layer));
         }
 
         for (const auto& text_in : texts) {
@@ -808,7 +983,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             const double rotation = text_in.rotation_deg * kDegToRad;
             cadgf_entity_id id = cadgf_document_add_text(doc, &pos, text_in.height, rotation,
                                                          text_in.text.c_str(), "", layer_id);
-            apply_line_style(doc, id, text_in.style);
+            apply_line_style(doc, id, text_in.style, layer_style_for(text_in.layer));
         }
 
         set_error(out_err, 0, "");

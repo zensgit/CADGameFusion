@@ -33,6 +33,23 @@ static bool layer_exists(const cadgf_document* doc, const std::string& name) {
     return false;
 }
 
+static bool get_layer_info_by_name(const cadgf_document* doc, const std::string& name,
+                                   int* out_layer_id, cadgf_layer_info_v2* out_info) {
+    int count = 0;
+    if (!cadgf_document_get_layer_count(doc, &count)) return false;
+    for (int i = 0; i < count; ++i) {
+        int layer_id = 0;
+        if (!cadgf_document_get_layer_id_at(doc, i, &layer_id)) continue;
+        if (get_layer_name(doc, layer_id) != name) continue;
+        if (out_layer_id) *out_layer_id = layer_id;
+        if (out_info) {
+            if (!cadgf_document_get_layer_info_v2(doc, layer_id, out_info)) return false;
+        }
+        return true;
+    }
+    return false;
+}
+
 static void assert_near(double value, double expected, double eps = 1e-6) {
     assert(std::fabs(value - expected) <= eps);
 }
@@ -81,6 +98,7 @@ int main(int argc, char** argv) {
     std::map<int, int> type_counts;
     cadgf_entity_id polyline_id = 0;
     cadgf_entity_id line_id = 0;
+    cadgf_entity_id spline_id = 0;
     cadgf_entity_id text_id = 0;
 
     for (int i = 0; i < entity_count; ++i) {
@@ -93,6 +111,8 @@ int main(int argc, char** argv) {
             polyline_id = id;
         } else if (info.type == CADGF_ENTITY_TYPE_LINE) {
             line_id = id;
+        } else if (info.type == CADGF_ENTITY_TYPE_SPLINE) {
+            spline_id = id;
         } else if (info.type == CADGF_ENTITY_TYPE_TEXT) {
             text_id = id;
         }
@@ -129,6 +149,22 @@ int main(int argc, char** argv) {
     assert_near(line_weight, 0.35);
     assert_near(line_scale, 0.5);
 
+    assert(spline_id != 0);
+    int spline_line_type_required = 0;
+    assert(cadgf_document_get_entity_line_type(doc, spline_id, nullptr, 0, &spline_line_type_required));
+    std::vector<char> spline_line_type_buf(static_cast<size_t>(spline_line_type_required));
+    int spline_line_type_required2 = 0;
+    assert(cadgf_document_get_entity_line_type(doc, spline_id, spline_line_type_buf.data(),
+                                              static_cast<int>(spline_line_type_buf.size()),
+                                              &spline_line_type_required2));
+    assert(std::strcmp(spline_line_type_buf.data(), "DASHED") == 0);
+    double spline_weight = 0.0;
+    double spline_scale = 0.0;
+    assert(cadgf_document_get_entity_line_weight(doc, spline_id, &spline_weight));
+    assert(cadgf_document_get_entity_line_type_scale(doc, spline_id, &spline_scale));
+    assert_near(spline_weight, 0.25);
+    assert_near(spline_scale, 1.25);
+
     assert(text_id != 0);
     cadgf_vec2 text_pos{};
     double text_height = 0.0;
@@ -147,6 +183,27 @@ int main(int argc, char** argv) {
     assert(layer_exists(doc, "LayerC"));
     assert(layer_exists(doc, "LayerD"));
     assert(layer_exists(doc, "LayerText"));
+
+    cadgf_layer_info_v2 layer_info{};
+    int layer_id = 0;
+    assert(get_layer_info_by_name(doc, "LayerA", &layer_id, &layer_info));
+    assert(layer_info.printable == 0);
+    assert(layer_info.visible == 1);
+    assert(layer_info.locked == 0);
+    assert(layer_info.frozen == 0);
+    assert(layer_info.color == 0x00FFFFu);
+
+    assert(get_layer_info_by_name(doc, "LayerB", &layer_id, &layer_info));
+    assert(layer_info.locked == 1);
+    assert(layer_info.frozen == 0);
+    assert(layer_info.visible == 1);
+    assert(layer_info.color == 0xFFFF00u);
+
+    assert(get_layer_info_by_name(doc, "LayerC", &layer_id, &layer_info));
+    assert(layer_info.frozen == 1);
+    assert(layer_info.visible == 0);
+    assert(layer_info.locked == 0);
+    assert(layer_info.color == 0x00FF00u);
 
     cadgf_document_destroy(doc);
     return 0;

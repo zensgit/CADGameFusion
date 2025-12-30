@@ -20,8 +20,13 @@
 - 7 entities imported (polyline, line, circle, arc, ellipse, spline, text).
 - Line style fields populated for the LINE entity.
 - LINE entity color set to `0xFF0000`.
+- BYLAYER style applied to SPLINE (line type `DASHED`, weight `0.25`, scale `1.25`).
 - Layers `LayerA`, `LayerB`, `LayerC`, `LayerD`, `LayerText` present.
+- Layer properties from TABLES/LAYER applied:
+  - `LayerA`: printable = 0, color = `0x00FFFF`.
+  - `LayerB`: locked = 1, color = `0xFFFF00`.
+  - `LayerC`: frozen = 1, visible = 0, color = `0x00FF00`.
 
 ## Status
 - PASS (manual).
-- Notes: Re-ran after adding color mapping; build + test executed in `build_vcpkg`.
+- Notes: Re-ran after BYLAYER style fallback; build + test executed in `build_vcpkg`.
