@@ -17,10 +17,11 @@
    ```
 
 ## Expected
-- 2 entities imported from the INSERT (LINE + CIRCLE).
+- 3 entities imported from the INSERT (LINE + nested LINE + CIRCLE).
 - LINE transformed to (5,5)->(5,9) on `LayerBlock`.
+- Nested LINE transformed to (5,9)->(5,11) on `LayerNestedInsert`.
 - CIRCLE transformed to center (3,7), radius 1.0 on `LayerInsert`.
 
 ## Status
 - PASS (manual).
-- Notes: Build + test executed in `build_vcpkg` after adding BLOCKS/INSERT flattening.
+- Notes: Build + test executed in `build_vcpkg` after adding nested BLOCKS/INSERT flattening.
