@@ -15,4 +15,4 @@
 
 ## Status
 - PASS (manual).
-- Notes: Executed in `build_vcpkg` after BYBLOCK and grouping changes.
+- Notes: Executed in `build_vcpkg` after style precedence coverage updates.
