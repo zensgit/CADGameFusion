@@ -273,6 +273,7 @@ static bool parse_style_code(DxfStyle* style, int code, const std::string& value
 static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfStyle& style,
                              const DxfStyle* layer_style, const DxfStyle* block_style) {
     if (!doc || id == 0) return;
+    const bool use_byblock = style.byblock_line_type || style.byblock_line_weight || style.byblock_color;
     if (style.has_line_type) {
         (void)cadgf_document_set_entity_line_type(doc, id, style.line_type.c_str());
     } else if (style.byblock_line_type && block_style && block_style->has_line_type) {
@@ -289,6 +290,8 @@ static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfS
     }
     if (style.has_line_scale) {
         (void)cadgf_document_set_entity_line_type_scale(doc, id, style.line_type_scale);
+    } else if (use_byblock && block_style && block_style->has_line_scale) {
+        (void)cadgf_document_set_entity_line_type_scale(doc, id, block_style->line_type_scale);
     } else if (layer_style && layer_style->has_line_scale) {
         (void)cadgf_document_set_entity_line_type_scale(doc, id, layer_style->line_type_scale);
     }

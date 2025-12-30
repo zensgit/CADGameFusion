@@ -20,6 +20,7 @@
 - BYBLOCK + INSERT style wins over layer styles:
   - `LayerBlock` -> line type `CENTER`, line weight `0.5`, scale `0.25`, color `0xFF0000`.
   - `LayerNestedInsert` -> line type `DASHED`, line weight `0.2`, scale `0.75`, color `0x00FF00`.
+  - `LayerByblockInsertScale` -> line type `DASHDOT`, line weight `0.9`, scale `1.3`, color `0xFF0000`.
 - BYBLOCK with missing INSERT style falls back to layer styles:
   - `LayerByblockNoInsert` -> line type `DASHDOT`, line weight `0.7`, scale `1.5`, color `0xFFFF00`.
 - BYLAYER resolves to layer styles (INSERT style ignored):

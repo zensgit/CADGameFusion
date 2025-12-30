@@ -15,4 +15,4 @@
 
 ## Status
 - PASS (manual).
-- Notes: Executed in `build_vcpkg` after layer 0 inheritance coverage updates.
+- Notes: Executed in `build_vcpkg` after BYBLOCK INSERT line scale coverage updates.
