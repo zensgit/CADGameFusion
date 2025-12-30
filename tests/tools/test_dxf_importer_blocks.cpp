@@ -111,6 +111,9 @@ int main(int argc, char** argv) {
                                                static_cast<int>(line_type_buf.size()),
                                                &line_type_required2));
     assert(std::strcmp(line_type_buf.data(), "CENTER") == 0);
+    double line_weight = 0.0;
+    assert(cadgf_document_get_entity_line_weight(doc, line_id, &line_weight));
+    assert_near(line_weight, 0.5);
 
     assert(nested_line_id != 0);
     cadgf_line nested_line{};
@@ -131,6 +134,9 @@ int main(int argc, char** argv) {
                                                static_cast<int>(nested_line_type_buf.size()),
                                                &nested_line_type_required2));
     assert(std::strcmp(nested_line_type_buf.data(), "DASHED") == 0);
+    double nested_line_weight = 0.0;
+    assert(cadgf_document_get_entity_line_weight(doc, nested_line_id, &nested_line_weight));
+    assert_near(nested_line_weight, 0.2);
 
     assert(circle_id != 0);
     cadgf_circle circle{};
