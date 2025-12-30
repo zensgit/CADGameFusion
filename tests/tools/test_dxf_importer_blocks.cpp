@@ -27,6 +27,23 @@ static std::string get_entity_layer_name(const cadgf_document* doc, cadgf_entity
     return get_layer_name(doc, info.layer_id);
 }
 
+static std::string get_entity_line_type(const cadgf_document* doc, cadgf_entity_id id) {
+    int required = 0;
+    assert(cadgf_document_get_entity_line_type(doc, id, nullptr, 0, &required));
+    assert(required > 0);
+    std::vector<char> buf(static_cast<size_t>(required));
+    int required2 = 0;
+    assert(cadgf_document_get_entity_line_type(doc, id, buf.data(),
+                                               static_cast<int>(buf.size()), &required2));
+    return std::string(buf.data());
+}
+
+static double get_entity_line_weight(const cadgf_document* doc, cadgf_entity_id id) {
+    double weight = 0.0;
+    assert(cadgf_document_get_entity_line_weight(doc, id, &weight));
+    return weight;
+}
+
 static void assert_near(double value, double expected, double eps = 1e-6) {
     assert(std::fabs(value - expected) <= eps);
 }
@@ -70,10 +87,13 @@ int main(int argc, char** argv) {
 
     int entity_count = 0;
     assert(cadgf_document_get_entity_count(doc, &entity_count));
-    assert(entity_count == 3);
+    assert(entity_count == 6);
 
     cadgf_entity_id line_id = 0;
     cadgf_entity_id nested_line_id = 0;
+    cadgf_entity_id byblock_fallback_id = 0;
+    cadgf_entity_id bylayer_id = 0;
+    cadgf_entity_id explicit_id = 0;
     cadgf_entity_id circle_id = 0;
     for (int i = 0; i < entity_count; ++i) {
         cadgf_entity_id id = 0;
@@ -86,6 +106,12 @@ int main(int argc, char** argv) {
                 line_id = id;
             } else if (layer_name == "LayerNestedInsert") {
                 nested_line_id = id;
+            } else if (layer_name == "LayerByblockNoInsert") {
+                byblock_fallback_id = id;
+            } else if (layer_name == "LayerBylayer") {
+                bylayer_id = id;
+            } else if (layer_name == "LayerExplicit") {
+                explicit_id = id;
             }
         } else if (info.type == CADGF_ENTITY_TYPE_CIRCLE) {
             circle_id = id;
@@ -103,17 +129,8 @@ int main(int argc, char** argv) {
     cadgf_entity_info_v2 line_info{};
     assert(cadgf_document_get_entity_info_v2(doc, line_id, &line_info));
     assert(line_info.color == 0xFF0000u);
-    int line_type_required = 0;
-    assert(cadgf_document_get_entity_line_type(doc, line_id, nullptr, 0, &line_type_required));
-    std::vector<char> line_type_buf(static_cast<size_t>(line_type_required));
-    int line_type_required2 = 0;
-    assert(cadgf_document_get_entity_line_type(doc, line_id, line_type_buf.data(),
-                                               static_cast<int>(line_type_buf.size()),
-                                               &line_type_required2));
-    assert(std::strcmp(line_type_buf.data(), "CENTER") == 0);
-    double line_weight = 0.0;
-    assert(cadgf_document_get_entity_line_weight(doc, line_id, &line_weight));
-    assert_near(line_weight, 0.5);
+    assert(get_entity_line_type(doc, line_id) == "CENTER");
+    assert_near(get_entity_line_weight(doc, line_id), 0.5);
 
     assert(nested_line_id != 0);
     cadgf_line nested_line{};
@@ -126,17 +143,29 @@ int main(int argc, char** argv) {
     cadgf_entity_info_v2 nested_info{};
     assert(cadgf_document_get_entity_info_v2(doc, nested_line_id, &nested_info));
     assert(nested_info.color == 0x00FF00u);
-    int nested_line_type_required = 0;
-    assert(cadgf_document_get_entity_line_type(doc, nested_line_id, nullptr, 0, &nested_line_type_required));
-    std::vector<char> nested_line_type_buf(static_cast<size_t>(nested_line_type_required));
-    int nested_line_type_required2 = 0;
-    assert(cadgf_document_get_entity_line_type(doc, nested_line_id, nested_line_type_buf.data(),
-                                               static_cast<int>(nested_line_type_buf.size()),
-                                               &nested_line_type_required2));
-    assert(std::strcmp(nested_line_type_buf.data(), "DASHED") == 0);
-    double nested_line_weight = 0.0;
-    assert(cadgf_document_get_entity_line_weight(doc, nested_line_id, &nested_line_weight));
-    assert_near(nested_line_weight, 0.2);
+    assert(get_entity_line_type(doc, nested_line_id) == "DASHED");
+    assert_near(get_entity_line_weight(doc, nested_line_id), 0.2);
+
+    assert(byblock_fallback_id != 0);
+    cadgf_line byblock_fallback_line{};
+    assert(cadgf_document_get_line(doc, byblock_fallback_id, &byblock_fallback_line));
+    assert(get_entity_layer_name(doc, byblock_fallback_id) == "LayerByblockNoInsert");
+    assert(get_entity_line_type(doc, byblock_fallback_id) == "DASHDOT");
+    assert_near(get_entity_line_weight(doc, byblock_fallback_id), 0.7);
+
+    assert(bylayer_id != 0);
+    cadgf_line bylayer_line{};
+    assert(cadgf_document_get_line(doc, bylayer_id, &bylayer_line));
+    assert(get_entity_layer_name(doc, bylayer_id) == "LayerBylayer");
+    assert(get_entity_line_type(doc, bylayer_id) == "CENTER2");
+    assert_near(get_entity_line_weight(doc, bylayer_id), 0.25);
+
+    assert(explicit_id != 0);
+    cadgf_line explicit_line{};
+    assert(cadgf_document_get_line(doc, explicit_id, &explicit_line));
+    assert(get_entity_layer_name(doc, explicit_id) == "LayerExplicit");
+    assert(get_entity_line_type(doc, explicit_id) == "HIDDEN");
+    assert_near(get_entity_line_weight(doc, explicit_id), 0.8);
 
     assert(circle_id != 0);
     cadgf_circle circle{};

@@ -17,13 +17,17 @@
    ```
 
 ## Expected
-- 3 entities imported from the INSERT (LINE + nested LINE + CIRCLE).
+- 6 entities imported from INSERTs (5 LINE + 1 CIRCLE).
 - LINE transformed to (5,5)->(5,9) on `LayerBlock`.
 - Nested LINE transformed to (5,9)->(5,11) on `LayerNestedInsert`.
 - CIRCLE transformed to center (3,7), radius 1.0 on `LayerInsert`.
 - BYBLOCK styles applied:
   - LINE uses `CENTER` line type, color `0xFF0000`, line weight `0.5`.
   - Nested LINE uses `DASHED` line type, color `0x00FF00`, line weight `0.2`.
+- Style precedence coverage:
+  - BYBLOCK w/ missing INSERT style falls back to layer: `LayerByblockNoInsert` -> `DASHDOT`, `0.7`.
+  - BYLAYER resolves to layer style: `LayerBylayer` -> `CENTER2`, `0.25`.
+  - Explicit entity style overrides INSERT+layer: `LayerExplicit` -> `HIDDEN`, `0.8`.
 - Group IDs:
   - LINE and CIRCLE share the same group id.
   - Nested LINE has a different group id.
