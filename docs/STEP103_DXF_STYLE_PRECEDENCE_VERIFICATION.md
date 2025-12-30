@@ -32,6 +32,8 @@
   - `LayerTextByblock` -> line type `DASHDOTX`, line weight `0.3`, scale `1.1`, color `0xFF0000`.
 - SPLINE BYLAYER uses layer styles:
   - `LayerSplineBylayer` -> line type `CENTERX`, line weight `0.45`, scale `0.8`, color `0xFFFFFF`.
+- Missing layer entry falls back to defaults:
+  - `LayerMissing` -> line type empty, line weight `0.0`, scale `0.0`, color `0x0`.
 - Explicit entity styles override both INSERT and layer:
   - `LayerExplicit` -> line type `HIDDEN`, line weight `0.8`, scale `2.5`, color `0x0000FF`.
 

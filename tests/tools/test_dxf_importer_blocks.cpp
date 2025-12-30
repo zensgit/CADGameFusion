@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
 
     int entity_count = 0;
     assert(cadgf_document_get_entity_count(doc, &entity_count));
-    assert(entity_count == 10);
+    assert(entity_count == 11);
 
     cadgf_entity_id line_id = 0;
     cadgf_entity_id nested_line_id = 0;
@@ -110,6 +110,7 @@ int main(int argc, char** argv) {
     cadgf_entity_id arc_id = 0;
     cadgf_entity_id text_id = 0;
     cadgf_entity_id spline_id = 0;
+    cadgf_entity_id missing_layer_id = 0;
     cadgf_entity_id circle_id = 0;
     for (int i = 0; i < entity_count; ++i) {
         cadgf_entity_id id = 0;
@@ -128,6 +129,8 @@ int main(int argc, char** argv) {
                 bylayer_id = id;
             } else if (layer_name == "LayerExplicit") {
                 explicit_id = id;
+            } else if (layer_name == "LayerMissing") {
+                missing_layer_id = id;
             }
         } else if (info.type == CADGF_ENTITY_TYPE_POLYLINE) {
             const std::string layer_name = get_layer_name(doc, info.layer_id);
@@ -251,6 +254,15 @@ int main(int argc, char** argv) {
     assert_near(get_entity_line_weight(doc, spline_id), 0.45);
     assert(get_entity_color(doc, spline_id) == 0xFFFFFFu);
     assert_near(get_entity_line_scale(doc, spline_id), 0.8);
+
+    assert(missing_layer_id != 0);
+    cadgf_line missing_line{};
+    assert(cadgf_document_get_line(doc, missing_layer_id, &missing_line));
+    assert(get_entity_layer_name(doc, missing_layer_id) == "LayerMissing");
+    assert(get_entity_line_type(doc, missing_layer_id).empty());
+    assert_near(get_entity_line_weight(doc, missing_layer_id), 0.0);
+    assert_near(get_entity_line_scale(doc, missing_layer_id), 0.0);
+    assert(get_entity_color(doc, missing_layer_id) == 0u);
 
     assert(circle_id != 0);
     cadgf_circle circle{};
