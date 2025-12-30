@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
 
     int entity_count = 0;
     assert(cadgf_document_get_entity_count(doc, &entity_count));
-    assert(entity_count == 8);
+    assert(entity_count == 10);
 
     cadgf_entity_id line_id = 0;
     cadgf_entity_id nested_line_id = 0;
@@ -108,6 +108,8 @@ int main(int argc, char** argv) {
     cadgf_entity_id explicit_id = 0;
     cadgf_entity_id polyline_id = 0;
     cadgf_entity_id arc_id = 0;
+    cadgf_entity_id text_id = 0;
+    cadgf_entity_id spline_id = 0;
     cadgf_entity_id circle_id = 0;
     for (int i = 0; i < entity_count; ++i) {
         cadgf_entity_id id = 0;
@@ -136,6 +138,16 @@ int main(int argc, char** argv) {
             const std::string layer_name = get_layer_name(doc, info.layer_id);
             if (layer_name == "LayerArcBylayer") {
                 arc_id = id;
+            }
+        } else if (info.type == CADGF_ENTITY_TYPE_TEXT) {
+            const std::string layer_name = get_layer_name(doc, info.layer_id);
+            if (layer_name == "LayerTextByblock") {
+                text_id = id;
+            }
+        } else if (info.type == CADGF_ENTITY_TYPE_SPLINE) {
+            const std::string layer_name = get_layer_name(doc, info.layer_id);
+            if (layer_name == "LayerSplineBylayer") {
+                spline_id = id;
             }
         } else if (info.type == CADGF_ENTITY_TYPE_CIRCLE) {
             circle_id = id;
@@ -214,6 +226,31 @@ int main(int argc, char** argv) {
     assert_near(get_entity_line_weight(doc, arc_id), 0.6);
     assert(get_entity_color(doc, arc_id) == 0xC0C0C0u);
     assert_near(get_entity_line_scale(doc, arc_id), 0.9);
+
+    assert(text_id != 0);
+    cadgf_vec2 text_pos{};
+    double text_height = 0.0;
+    double text_rotation = 0.0;
+    int text_required = 0;
+    assert(cadgf_document_get_text(doc, text_id, &text_pos, &text_height, &text_rotation,
+                                   nullptr, 0, &text_required));
+    std::vector<char> text_buf(static_cast<size_t>(text_required));
+    int text_required2 = 0;
+    assert(cadgf_document_get_text(doc, text_id, &text_pos, &text_height, &text_rotation,
+                                   text_buf.data(), static_cast<int>(text_buf.size()), &text_required2));
+    assert(std::strcmp(text_buf.data(), "TextByBlock") == 0);
+    assert(get_entity_layer_name(doc, text_id) == "LayerTextByblock");
+    assert(get_entity_line_type(doc, text_id) == "DASHDOTX");
+    assert_near(get_entity_line_weight(doc, text_id), 0.3);
+    assert(get_entity_color(doc, text_id) == 0xFF0000u);
+    assert_near(get_entity_line_scale(doc, text_id), 1.1);
+
+    assert(spline_id != 0);
+    assert(get_entity_layer_name(doc, spline_id) == "LayerSplineBylayer");
+    assert(get_entity_line_type(doc, spline_id) == "CENTERX");
+    assert_near(get_entity_line_weight(doc, spline_id), 0.45);
+    assert(get_entity_color(doc, spline_id) == 0xFFFFFFu);
+    assert_near(get_entity_line_scale(doc, spline_id), 0.8);
 
     assert(circle_id != 0);
     cadgf_circle circle{};
