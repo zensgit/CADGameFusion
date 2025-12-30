@@ -32,6 +32,17 @@ add_test(NAME test_dxf_importer_entities_run
         $<TARGET_FILE:cadgf_dxf_importer_plugin>
         ${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_entities.dxf)
 
+add_executable(test_dxf_importer_blocks test_dxf_importer_blocks.cpp)
+target_link_libraries(test_dxf_importer_blocks PRIVATE core_c ${CMAKE_DL_LIBS})
+target_include_directories(test_dxf_importer_blocks PRIVATE ${CMAKE_SOURCE_DIR}/core/include ${CMAKE_SOURCE_DIR}/tools)
+set_target_properties(test_dxf_importer_blocks PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_dependencies(test_dxf_importer_blocks cadgf_dxf_importer_plugin)
+
+add_test(NAME test_dxf_importer_blocks_run
+    COMMAND test_dxf_importer_blocks
+        $<TARGET_FILE:cadgf_dxf_importer_plugin>
+        ${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_blocks.dxf)
+
 if(WIN32)
     set(_plugin_env "PATH=$<TARGET_FILE_DIR:core>;$<TARGET_FILE_DIR:core_c>;$ENV{PATH}")
 elseif(APPLE)
@@ -40,3 +51,4 @@ else()
     set(_plugin_env "LD_LIBRARY_PATH=$<TARGET_FILE_DIR:core>:$<TARGET_FILE_DIR:core_c>:$ENV{LD_LIBRARY_PATH}")
 endif()
 set_tests_properties(test_dxf_importer_entities_run PROPERTIES ENVIRONMENT "${_plugin_env}")
+set_tests_properties(test_dxf_importer_blocks_run PROPERTIES ENVIRONMENT "${_plugin_env}")
