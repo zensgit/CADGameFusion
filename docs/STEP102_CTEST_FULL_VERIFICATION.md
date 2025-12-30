@@ -15,4 +15,4 @@
 
 ## Status
 - PASS (manual).
-- Notes: Executed in `build_vcpkg` after TEXT/SPLINE style precedence coverage updates.
+- Notes: Executed in `build_vcpkg` after missing-layer default coverage updates.
