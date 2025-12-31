@@ -33,7 +33,14 @@ struct ConvertOptions {
 struct MeshSlice {
     cadgf_entity_id id{};
     int layerId{};
+    std::string layerName;
+    uint32_t layerColor{};
+    bool hasLayerColor{false};
     std::string name;
+    uint32_t color{};
+    std::string colorSource;
+    int colorAci{};
+    bool hasColorAci{false};
     std::string lineType;
     double lineWeight{};
     double lineTypeScale{};
@@ -450,6 +457,23 @@ static bool write_mesh_metadata(const std::string& path,
         std::fprintf(f, "    {\"id\": %llu, \"name\": ", static_cast<unsigned long long>(s.id));
         json_write_escaped(f, s.name.c_str(), s.name.size());
         std::fprintf(f, ", \"layer_id\": %d", s.layerId);
+        if (!s.layerName.empty()) {
+            std::fprintf(f, ", \"layer_name\": ");
+            json_write_escaped(f, s.layerName.c_str(), s.layerName.size());
+        }
+        if (s.hasLayerColor) {
+            std::fprintf(f, ", \"layer_color\": %u", s.layerColor);
+        }
+        if (s.color != 0) {
+            std::fprintf(f, ", \"color\": %u", s.color);
+        }
+        if (!s.colorSource.empty()) {
+            std::fprintf(f, ", \"color_source\": ");
+            json_write_escaped(f, s.colorSource.c_str(), s.colorSource.size());
+        }
+        if (s.hasColorAci) {
+            std::fprintf(f, ", \"color_aci\": %d", s.colorAci);
+        }
         if (!s.lineType.empty()) {
             std::fprintf(f, ", \"line_type\": ");
             json_write_escaped(f, s.lineType.c_str(), s.lineType.size());
@@ -758,8 +782,26 @@ int main(int argc, char** argv) {
             MeshSlice slice;
             slice.id = eid;
             slice.layerId = info.layer_id;
+            slice.layerName = query_layer_name_utf8(doc, info.layer_id);
+            cadgf_layer_info_v2 layer_info{};
+            if (cadgf_document_get_layer_info_v2(doc, info.layer_id, &layer_info)) {
+                slice.layerColor = layer_info.color;
+                slice.hasLayerColor = true;
+            } else {
+                cadgf_layer_info legacy{};
+                if (cadgf_document_get_layer_info(doc, info.layer_id, &legacy)) {
+                    slice.layerColor = legacy.color;
+                    slice.hasLayerColor = true;
+                }
+            }
             slice.name = query_entity_name_utf8(doc, eid);
             slice.lineType = query_entity_line_type_utf8(doc, eid);
+            slice.colorSource = query_entity_color_source_utf8(doc, eid);
+            slice.hasColorAci = query_entity_color_aci(doc, eid, &slice.colorAci);
+            cadgf_entity_info_v2 info_v2{};
+            if (cadgf_document_get_entity_info_v2(doc, eid, &info_v2)) {
+                slice.color = info_v2.color;
+            }
             (void)cadgf_document_get_entity_line_weight(doc, eid, &slice.lineWeight);
             (void)cadgf_document_get_entity_line_type_scale(doc, eid, &slice.lineTypeScale);
             slice.baseVertex = base;

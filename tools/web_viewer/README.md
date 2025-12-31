@@ -51,6 +51,7 @@ curl -s http://localhost:9000/status/<task_id>
 - Default glTF path points to `sample_exports/scene_sample/mesh_group_0.gltf`.
 - Use the URL field to load artifacts produced by `convert_cli` (e.g., `build_vcpkg/convert_cli_smoke/mesh.gltf`).
 - When a manifest provides `document_json` and `mesh_metadata`, the viewer applies per-entity colors and shows DXF color metadata on selection.
+- Layer list is populated from document.json (preferred) or mesh_metadata when available.
 - Shift + click adds a simple annotation marker.
 - A basic PWA manifest + service worker are included for offline caching of the viewer UI (assets only).
 - The viewer pulls Three.js modules from `https://unpkg.com` (network required for first load).
