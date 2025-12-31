@@ -21,8 +21,25 @@ struct DxfStyle {
     bool byblock_line_weight = false;
     unsigned int color = 0;
     bool has_color = false;
+    int color_aci = 0;
+    bool has_color_aci = false;
+    bool color_is_true = false;
     bool byblock_color = false;
     bool hidden = false;
+};
+
+enum class DxfColorSource {
+    None,
+    ByLayer,
+    ByBlock,
+    Index,
+    TrueColor
+};
+
+struct DxfColorMeta {
+    DxfColorSource source{DxfColorSource::None};
+    int aci{0};
+    bool has_aci{false};
 };
 
 struct DxfPolyline {
@@ -193,6 +210,78 @@ static unsigned int aci_to_rgb(int index) {
     }
 }
 
+static const char* color_source_label(DxfColorSource source) {
+    switch (source) {
+        case DxfColorSource::ByLayer:
+            return "BYLAYER";
+        case DxfColorSource::ByBlock:
+            return "BYBLOCK";
+        case DxfColorSource::Index:
+            return "INDEX";
+        case DxfColorSource::TrueColor:
+            return "TRUECOLOR";
+        default:
+            return "";
+    }
+}
+
+static DxfColorMeta resolve_color_metadata(const DxfStyle& style,
+                                           const DxfStyle* layer_style,
+                                           const DxfStyle* block_style,
+                                           unsigned int* out_color,
+                                           bool* out_has_color) {
+    if (out_color) *out_color = 0;
+    if (out_has_color) *out_has_color = false;
+
+    DxfColorMeta meta{};
+    const DxfStyle* resolved = nullptr;
+    DxfColorSource source_hint = DxfColorSource::ByLayer;
+
+    if (style.has_color) {
+        resolved = &style;
+        source_hint = DxfColorSource::Index;
+    } else if (style.byblock_color && block_style && block_style->has_color) {
+        resolved = block_style;
+        source_hint = DxfColorSource::ByBlock;
+    } else if (layer_style && layer_style->has_color) {
+        resolved = layer_style;
+        source_hint = DxfColorSource::ByLayer;
+    }
+
+    if (resolved) {
+        if (out_color) *out_color = resolved->color;
+        if (out_has_color) *out_has_color = true;
+        if (resolved->color_is_true) {
+            meta.source = DxfColorSource::TrueColor;
+        } else {
+            meta.source = source_hint;
+        }
+        if (resolved->has_color_aci && !resolved->color_is_true) {
+            meta.aci = resolved->color_aci;
+            meta.has_aci = true;
+        }
+        return meta;
+    }
+
+    meta.source = DxfColorSource::ByLayer;
+    return meta;
+}
+
+static void write_color_metadata(cadgf_document* doc, cadgf_entity_id id, const DxfColorMeta& meta) {
+    if (!doc || id == 0) return;
+    const char* label = color_source_label(meta.source);
+    if (!label || !*label) return;
+
+    const std::string base = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id));
+    const std::string source_key = base + ".color_source";
+    (void)cadgf_document_set_meta_value(doc, source_key.c_str(), label);
+
+    if (!meta.has_aci) return;
+    const std::string aci_key = base + ".color_aci";
+    const std::string aci_value = std::to_string(meta.aci);
+    (void)cadgf_document_set_meta_value(doc, aci_key.c_str(), aci_value.c_str());
+}
+
 static bool parse_style_code(DxfStyle* style, int code, const std::string& value_line) {
     if (!style) return false;
     switch (code) {
@@ -253,6 +342,9 @@ static bool parse_style_code(DxfStyle* style, int code, const std::string& value
                 if (index > 0) {
                     style->color = aci_to_rgb(index);
                     style->has_color = true;
+                    style->color_aci = index;
+                    style->has_color_aci = true;
+                    style->color_is_true = false;
                 }
             }
             return true;
@@ -262,6 +354,8 @@ static bool parse_style_code(DxfStyle* style, int code, const std::string& value
             if (parse_int(value_line, &rgb)) {
                 style->color = static_cast<unsigned int>(rgb) & 0xFFFFFFu;
                 style->has_color = true;
+                style->has_color_aci = false;
+                style->color_is_true = true;
             }
             return true;
         }
@@ -303,13 +397,14 @@ static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfS
     if (!line_scale_applied) {
         (void)cadgf_document_set_entity_line_type_scale(doc, id, default_line_scale);
     }
-    if (style.has_color) {
-        (void)cadgf_document_set_entity_color(doc, id, style.color);
-    } else if (style.byblock_color && block_style && block_style->has_color) {
-        (void)cadgf_document_set_entity_color(doc, id, block_style->color);
-    } else if (layer_style && layer_style->has_color) {
-        (void)cadgf_document_set_entity_color(doc, id, layer_style->color);
+    unsigned int resolved_color = 0;
+    bool has_color = false;
+    const DxfColorMeta color_meta = resolve_color_metadata(style, layer_style, block_style,
+                                                           &resolved_color, &has_color);
+    if (has_color) {
+        (void)cadgf_document_set_entity_color(doc, id, resolved_color);
     }
+    write_color_metadata(doc, id, color_meta);
     if (style.hidden) {
         (void)cadgf_document_set_entity_visible(doc, id, 0);
     }
@@ -332,6 +427,9 @@ static DxfStyle resolve_insert_byblock_style(const DxfStyle& insert_style, const
     if (out.byblock_color && parent_style->has_color) {
         out.color = parent_style->color;
         out.has_color = true;
+        out.color_aci = parent_style->color_aci;
+        out.has_color_aci = parent_style->has_color_aci;
+        out.color_is_true = parent_style->color_is_true;
     }
     if (use_byblock && !out.has_line_scale && parent_style->has_line_scale) {
         out.line_type_scale = parent_style->line_type_scale;

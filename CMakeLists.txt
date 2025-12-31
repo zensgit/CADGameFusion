@@ -78,6 +78,33 @@ add_test(NAME export_cli_sample_run
     -Doutdir="${EXPORT_CLI_OUT_DIR}"
     -P "${CMAKE_SOURCE_DIR}/cmake/RunExportCli.cmake")
 
+add_test(NAME convert_cli_build_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -Dexe="$<TARGET_FILE:convert_cli>"
+    -P "${CMAKE_SOURCE_DIR}/cmake/CheckBinaryExists.cmake")
+
+set(CONVERT_CLI_OUT_DIR "${CMAKE_BINARY_DIR}/convert_cli_smoke")
+set(CONVERT_CLI_OUT_JSON "${CONVERT_CLI_OUT_DIR}/document.json")
+add_test(NAME convert_cli_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -Dexe="$<TARGET_FILE:convert_cli>"
+    -Dplugin="$<TARGET_FILE:cadgf_dxf_importer_plugin>"
+    -Dinput="${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_entities.dxf"
+    -Doutdir="${CONVERT_CLI_OUT_DIR}"
+    -Doutjson="${CONVERT_CLI_OUT_JSON}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunConvertCli.cmake")
+
+set(CONVERT_CLI_DXF_OUT_DIR "${CMAKE_BINARY_DIR}/convert_cli_dxf_style_smoke")
+set(CONVERT_CLI_DXF_OUT_JSON "${CONVERT_CLI_DXF_OUT_DIR}/document.json")
+add_test(NAME convert_cli_dxf_style_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -Dexe="$<TARGET_FILE:convert_cli>"
+    -Dplugin="$<TARGET_FILE:cadgf_dxf_importer_plugin>"
+    -Dinput="${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_entities.dxf"
+    -Doutdir="${CONVERT_CLI_DXF_OUT_DIR}"
+    -Doutjson="${CONVERT_CLI_DXF_OUT_JSON}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunConvertCliDxfLineStyle.cmake")
+
 set(PLUGIN_DEMO_OUT "${CMAKE_BINARY_DIR}/out_plugin_export.json")
 add_test(NAME plugin_host_demo_run
   COMMAND ${CMAKE_COMMAND}

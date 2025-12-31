@@ -40,6 +40,10 @@
   - `0` -> line type `HIDDEN2`, line weight `0.55`, scale `1.7`, color `0x808080`.
 - Explicit entity styles override both INSERT and layer:
   - `LayerExplicit` -> line type `HIDDEN`, line weight `0.8`, scale `2.5`, color `0x0000FF`.
+- DXF color metadata is emitted into document meta:
+  - `dxf.entity.<id>.color_source` is set to `BYBLOCK`, `BYLAYER`, or `INDEX` (or `TRUECOLOR` when applicable).
+  - `dxf.entity.<id>.color_aci` is populated when an ACI index is available.
+  - `cadgf_document_get_entity_color_source` / `cadgf_document_get_entity_color_aci` mirror the same values.
 
 ## Status
 - PASS (manual).

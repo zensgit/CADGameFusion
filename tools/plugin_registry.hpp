@@ -102,6 +102,21 @@ public:
         return out;
     }
 
+    std::vector<const cadgf_importer_api_v1*> importers() const {
+        std::vector<const cadgf_importer_api_v1*> out;
+        for (const auto& p : plugins_) {
+            if (!p.api) continue;
+            const int32_t n = p.api->importer_count();
+            for (int32_t i = 0; i < n; ++i) {
+                const cadgf_importer_api_v1* im = p.api->get_importer(i);
+                if (!im) continue;
+                if (im->size < static_cast<int32_t>(sizeof(cadgf_importer_api_v1))) continue;
+                out.push_back(im);
+            }
+        }
+        return out;
+    }
+
     const cadgf_exporter_api_v1* find_exporter_by_extension(std::string ext) const {
         if (!ext.empty() && ext[0] == '.') ext.erase(ext.begin());
         to_lower_ascii(ext);
@@ -121,6 +136,25 @@ public:
         return nullptr;
     }
 
+    const cadgf_importer_api_v1* find_importer_by_extension(std::string ext) const {
+        if (!ext.empty() && ext[0] == '.') ext.erase(ext.begin());
+        to_lower_ascii(ext);
+
+        for (const auto& p : plugins_) {
+            if (!p.api) continue;
+            const int32_t n = p.api->importer_count();
+            for (int32_t i = 0; i < n; ++i) {
+                const cadgf_importer_api_v1* im = p.api->get_importer(i);
+                if (!im || !im->extensions_csv) continue;
+                if (im->size < static_cast<int32_t>(sizeof(cadgf_importer_api_v1))) continue;
+                std::string csv = to_string(im->extensions_csv());
+                to_lower_ascii(csv);
+                if (csv_has_extension(csv, ext)) return im;
+            }
+        }
+        return nullptr;
+    }
+
 private:
     static std::string to_string(cadgf_string_view v) {
         if (!v.data || v.size <= 0) return std::string();
@@ -129,6 +163,32 @@ private:
 
     static void to_lower_ascii(std::string& s) {
         for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+
+    static bool csv_has_extension(const std::string& csv, const std::string& ext) {
+        if (ext.empty()) return false;
+        size_t start = 0;
+        while (start < csv.size()) {
+            size_t end = csv.find(',', start);
+            if (end == std::string::npos) end = csv.size();
+            size_t token_start = start;
+            while (token_start < end && std::isspace(static_cast<unsigned char>(csv[token_start]))) {
+                ++token_start;
+            }
+            size_t token_end = end;
+            while (token_end > token_start &&
+                   std::isspace(static_cast<unsigned char>(csv[token_end - 1]))) {
+                --token_end;
+            }
+            if (token_end > token_start) {
+                if (csv[token_start] == '.') ++token_start;
+                const std::string token = csv.substr(token_start, token_end - token_start);
+                if (token == ext) return true;
+            }
+            if (end == csv.size()) break;
+            start = end + 1;
+        }
+        return false;
     }
 
     static bool validate_exporter(const cadgf_exporter_api_v1* ex, int32_t index, std::string* err) {

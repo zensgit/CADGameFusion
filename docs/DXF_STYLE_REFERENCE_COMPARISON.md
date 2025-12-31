@@ -51,6 +51,10 @@
 - DXF importer applies a default line type scale using header `$LTSCALE * $CELTSCALE`,
   falling back to `1.0` when header values are missing.
   `plugins/dxf_importer_plugin.cpp:291`.
+- DXF importer records per-entity color metadata (source + ACI) into document meta keys
+  `dxf.entity.<id>.color_source` and `dxf.entity.<id>.color_aci` for downstream UI decisions.
+- C API helpers (`cadgf_document_get_entity_color_source`, `cadgf_document_get_entity_color_aci`)
+  and `document.json` fields (`color_source`, `color_aci`) expose the same metadata.
 
 ## Differences and Gaps
 1) Default line type scale

@@ -126,6 +126,20 @@ static std::string query_entity_line_type_utf8(const cadgf_document* doc, cadgf_
     return std::string(buf.begin(), buf.end());
 }
 
+static std::string query_entity_color_source_utf8(const cadgf_document* doc, cadgf_entity_id id) {
+    int required = 0;
+    if (!cadgf_document_get_entity_color_source(doc, id, nullptr, 0, &required) || required <= 0) return {};
+    std::vector<char> buf(static_cast<size_t>(required));
+    if (!cadgf_document_get_entity_color_source(doc, id, buf.data(), required, &required)) return {};
+    if (!buf.empty() && buf.back() == 0) buf.pop_back();
+    return std::string(buf.begin(), buf.end());
+}
+
+static bool query_entity_color_aci(const cadgf_document* doc, cadgf_entity_id id, int* out_aci) {
+    if (!out_aci) return false;
+    return cadgf_document_get_entity_color_aci(doc, id, out_aci) != 0;
+}
+
 using DocStringGetter = int (*)(const cadgf_document*, char*, int, int*);
 
 static std::string query_doc_string_utf8(const cadgf_document* doc, DocStringGetter getter) {
@@ -270,11 +284,14 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
         (void)cadgf_document_get_entity_info(doc, eid, &info);
         const std::string name = query_entity_name_utf8(doc, eid);
         const std::string line_type = query_entity_line_type_utf8(doc, eid);
+        const std::string color_source = query_entity_color_source_utf8(doc, eid);
         double line_weight = 0.0;
         double line_scale = 0.0;
+        int color_aci = 0;
         const bool has_line_weight = cadgf_document_get_entity_line_weight(doc, eid, &line_weight) && line_weight != 0.0;
         const bool has_line_scale = cadgf_document_get_entity_line_type_scale(doc, eid, &line_scale) && line_scale != 0.0;
         const bool has_line_type = !line_type.empty();
+        const bool has_color_aci = query_entity_color_aci(doc, eid, &color_aci);
 
         std::fprintf(f, "    {\"id\": %llu, \"type\": %d, \"layer_id\": %d, \"name\": ",
                      static_cast<unsigned long long>(eid), info.type, info.layer_id);
@@ -288,6 +305,13 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
         }
         if (has_line_scale) {
             std::fprintf(f, ", \"line_type_scale\": %.6f", line_scale);
+        }
+        if (!color_source.empty()) {
+            std::fprintf(f, ", \"color_source\": ");
+            json_write_escaped(f, color_source.c_str(), color_source.size());
+        }
+        if (has_color_aci) {
+            std::fprintf(f, ", \"color_aci\": %d", color_aci);
         }
 
         if (info.type == CADGF_ENTITY_TYPE_POLYLINE) {

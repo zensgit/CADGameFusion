@@ -540,6 +540,37 @@ CORE_API int core_document_get_entity_line_type_scale(const core_document* doc, 
     return 1;
 }
 
+static std::string make_entity_meta_key(core_entity_id id, const char* suffix) {
+    std::string key = "dxf.entity.";
+    key += std::to_string(static_cast<unsigned long long>(id));
+    key += ".";
+    if (suffix) key += suffix;
+    return key;
+}
+
+CORE_API int core_document_get_entity_color_source(const core_document* doc, core_entity_id id,
+                                                   char* out_utf8, int out_cap, int* out_required_bytes) {
+    if (!doc) return 0;
+    const auto& meta = doc->impl.metadata().meta;
+    const std::string key = make_entity_meta_key(id, "color_source");
+    auto it = meta.find(key);
+    if (it == meta.end()) return 0;
+    return copy_utf8(it->second, out_utf8, out_cap, out_required_bytes) ? 1 : 0;
+}
+
+CORE_API int core_document_get_entity_color_aci(const core_document* doc, core_entity_id id, int* out_aci) {
+    if (!doc || !out_aci) return 0;
+    const auto& meta = doc->impl.metadata().meta;
+    const std::string key = make_entity_meta_key(id, "color_aci");
+    auto it = meta.find(key);
+    if (it == meta.end()) return 0;
+    char* end = nullptr;
+    const long value = std::strtol(it->second.c_str(), &end, 10);
+    if (!end || *end != '\0') return 0;
+    *out_aci = static_cast<int>(value);
+    return 1;
+}
+
 CORE_API int core_document_alloc_group_id(core_document* doc) {
     if (!doc) return -1;
     return doc->impl.alloc_group_id();
@@ -1046,6 +1077,15 @@ CADGF_API int cadgf_document_set_entity_line_type_scale(cadgf_document* doc, cad
 
 CADGF_API int cadgf_document_get_entity_line_type_scale(const cadgf_document* doc, cadgf_entity_id id, double* out_scale) {
     return core_document_get_entity_line_type_scale(doc, id, out_scale);
+}
+
+CADGF_API int cadgf_document_get_entity_color_source(const cadgf_document* doc, cadgf_entity_id id,
+                                                     char* out_utf8, int out_cap, int* out_required_bytes) {
+    return core_document_get_entity_color_source(doc, id, out_utf8, out_cap, out_required_bytes);
+}
+
+CADGF_API int cadgf_document_get_entity_color_aci(const cadgf_document* doc, cadgf_entity_id id, int* out_aci) {
+    return core_document_get_entity_color_aci(doc, id, out_aci);
 }
 
 CADGF_API int cadgf_document_alloc_group_id(cadgf_document* doc) {
