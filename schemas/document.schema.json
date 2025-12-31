@@ -103,6 +103,7 @@
           "line_type": {"type": "string"},
           "line_weight": {"type": "number"},
           "line_type_scale": {"type": "number"},
+          "color": {"type": "integer", "minimum": 0, "maximum": 16777215},
           "color_source": {"type": "string"},
           "color_aci": {"type": "integer", "minimum": 0, "maximum": 255},
           "polyline": {

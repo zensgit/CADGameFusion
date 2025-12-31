@@ -160,6 +160,26 @@ if(BUILD_EDITOR_QT)
   )
   add_test(NAME qt_canvas_box_select_run COMMAND test_qt_canvas_box_select)
 
+  add_executable(test_qt_canvas_color_metadata
+    test_qt_canvas_color_metadata.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
+  )
+  target_include_directories(test_qt_canvas_color_metadata PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_canvas_color_metadata PRIVATE Qt6::Widgets core)
+  target_compile_definitions(test_qt_canvas_color_metadata PRIVATE CADGF_QT_TEST_ACCESS)
+  set_target_properties(test_qt_canvas_color_metadata PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_canvas_color_metadata_run COMMAND test_qt_canvas_color_metadata)
+
   add_executable(test_qt_snap_manager
     test_qt_snap_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp

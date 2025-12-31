@@ -280,8 +280,19 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
     for (int i = 0; i < entity_count; ++i) {
         cadgf_entity_id eid = 0;
         if (!cadgf_document_get_entity_id_at(doc, i, &eid)) continue;
+        cadgf_entity_info_v2 info_v2{};
         cadgf_entity_info info{};
-        (void)cadgf_document_get_entity_info(doc, eid, &info);
+        int entity_type = 0;
+        int layer_id = 0;
+        unsigned int entity_color = 0;
+        if (cadgf_document_get_entity_info_v2(doc, eid, &info_v2)) {
+            entity_type = info_v2.type;
+            layer_id = info_v2.layer_id;
+            entity_color = info_v2.color;
+        } else if (cadgf_document_get_entity_info(doc, eid, &info)) {
+            entity_type = info.type;
+            layer_id = info.layer_id;
+        }
         const std::string name = query_entity_name_utf8(doc, eid);
         const std::string line_type = query_entity_line_type_utf8(doc, eid);
         const std::string color_source = query_entity_color_source_utf8(doc, eid);
@@ -292,9 +303,10 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
         const bool has_line_scale = cadgf_document_get_entity_line_type_scale(doc, eid, &line_scale) && line_scale != 0.0;
         const bool has_line_type = !line_type.empty();
         const bool has_color_aci = query_entity_color_aci(doc, eid, &color_aci);
+        const bool has_color = entity_color != 0;
 
         std::fprintf(f, "    {\"id\": %llu, \"type\": %d, \"layer_id\": %d, \"name\": ",
-                     static_cast<unsigned long long>(eid), info.type, info.layer_id);
+                     static_cast<unsigned long long>(eid), entity_type, layer_id);
         json_write_escaped(f, name.c_str(), name.size());
         if (has_line_type) {
             std::fprintf(f, ", \"line_type\": ");
@@ -306,6 +318,9 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
         if (has_line_scale) {
             std::fprintf(f, ", \"line_type_scale\": %.6f", line_scale);
         }
+        if (has_color) {
+            std::fprintf(f, ", \"color\": %u", entity_color);
+        }
         if (!color_source.empty()) {
             std::fprintf(f, ", \"color_source\": ");
             json_write_escaped(f, color_source.c_str(), color_source.size());
@@ -314,7 +329,7 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
             std::fprintf(f, ", \"color_aci\": %d", color_aci);
         }
 
-        if (info.type == CADGF_ENTITY_TYPE_POLYLINE) {
+        if (entity_type == CADGF_ENTITY_TYPE_POLYLINE) {
             std::vector<cadgf_vec2> pts;
             if (query_polyline_points(doc, eid, pts)) {
                 std::fprintf(f, ", \"polyline\": [");
@@ -324,37 +339,37 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
                 }
                 std::fprintf(f, "]");
             }
-        } else if (info.type == CADGF_ENTITY_TYPE_POINT) {
+        } else if (entity_type == CADGF_ENTITY_TYPE_POINT) {
             cadgf_point pt{};
             if (cadgf_document_get_point(doc, eid, &pt)) {
                 std::fprintf(f, ", \"point\": [%.6f, %.6f]", pt.p.x, pt.p.y);
             }
-        } else if (info.type == CADGF_ENTITY_TYPE_LINE) {
+        } else if (entity_type == CADGF_ENTITY_TYPE_LINE) {
             cadgf_line ln{};
             if (cadgf_document_get_line(doc, eid, &ln)) {
                 std::fprintf(f, ", \"line\": [[%.6f, %.6f], [%.6f, %.6f]]",
                              ln.a.x, ln.a.y, ln.b.x, ln.b.y);
             }
-        } else if (info.type == CADGF_ENTITY_TYPE_ARC) {
+        } else if (entity_type == CADGF_ENTITY_TYPE_ARC) {
             cadgf_arc arc{};
             if (cadgf_document_get_arc(doc, eid, &arc)) {
                 std::fprintf(f, ", \"arc\": {\"c\": [%.6f, %.6f], \"r\": %.6f, \"a0\": %.6f, \"a1\": %.6f, \"cw\": %d}",
                              arc.center.x, arc.center.y, arc.radius, arc.start_angle, arc.end_angle, arc.clockwise);
             }
-        } else if (info.type == CADGF_ENTITY_TYPE_CIRCLE) {
+        } else if (entity_type == CADGF_ENTITY_TYPE_CIRCLE) {
             cadgf_circle circle{};
             if (cadgf_document_get_circle(doc, eid, &circle)) {
                 std::fprintf(f, ", \"circle\": {\"c\": [%.6f, %.6f], \"r\": %.6f}",
                              circle.center.x, circle.center.y, circle.radius);
             }
-        } else if (info.type == CADGF_ENTITY_TYPE_ELLIPSE) {
+        } else if (entity_type == CADGF_ENTITY_TYPE_ELLIPSE) {
             cadgf_ellipse ellipse{};
             if (cadgf_document_get_ellipse(doc, eid, &ellipse)) {
                 std::fprintf(f, ", \"ellipse\": {\"c\": [%.6f, %.6f], \"rx\": %.6f, \"ry\": %.6f, \"rot\": %.6f, \"a0\": %.6f, \"a1\": %.6f}",
                              ellipse.center.x, ellipse.center.y, ellipse.rx, ellipse.ry,
                              ellipse.rotation, ellipse.start_angle, ellipse.end_angle);
             }
-        } else if (info.type == CADGF_ENTITY_TYPE_SPLINE) {
+        } else if (entity_type == CADGF_ENTITY_TYPE_SPLINE) {
             int required_ctrl = 0;
             int required_knots = 0;
             int degree = 0;
@@ -383,7 +398,7 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
                     std::fprintf(f, "]}");
                 }
             }
-        } else if (info.type == CADGF_ENTITY_TYPE_TEXT) {
+        } else if (entity_type == CADGF_ENTITY_TYPE_TEXT) {
             int required = 0;
             cadgf_vec2 pos{};
             double height = 0.0;
