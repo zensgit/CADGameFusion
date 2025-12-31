@@ -11,6 +11,7 @@ const vertexCountEl = document.getElementById("vertex-count");
 const triangleCountEl = document.getElementById("triangle-count");
 const selectionInfoEl = document.getElementById("selection-info");
 const annotationListEl = document.getElementById("annotation-list");
+const layerListEl = document.getElementById("layer-list");
 const metaProjectIdEl = document.getElementById("meta-project-id");
 const metaDocumentLabelEl = document.getElementById("meta-document-label");
 const metaDocumentIdEl = document.getElementById("meta-document-id");
@@ -54,6 +55,7 @@ let meshMetadata = null;
 let documentData = null;
 let entityIndex = new Map();
 let layerColors = new Map();
+let layerNames = new Map();
 let meshSlices = [];
 let metadataApplied = false;
 
@@ -67,8 +69,10 @@ function resetMetadataState() {
   documentData = null;
   entityIndex = new Map();
   layerColors = new Map();
+  layerNames = new Map();
   meshSlices = [];
   metadataApplied = false;
+  renderLayerList();
 }
 
 function aciToRgb(index) {
@@ -91,9 +95,12 @@ function colorIntToHex(color) {
   return `#${safe.toString(16).padStart(6, "0")}`;
 }
 
-function resolveEntityColor(entity, fallbackLayerId = null) {
+function resolveEntityColor(entity, fallbackLayerId = null, fallbackLayerColor = null) {
   const layerId = Number.isFinite(entity?.layer_id) ? entity.layer_id : fallbackLayerId;
-  const layerColor = Number.isFinite(layerId) ? (layerColors.get(layerId) ?? 0xdcdce6) : 0xdcdce6;
+  const fallbackColor = Number.isFinite(fallbackLayerColor) ? fallbackLayerColor : null;
+  const layerColor = Number.isFinite(layerId)
+    ? (layerColors.get(layerId) ?? fallbackColor ?? 0xdcdce6)
+    : (fallbackColor ?? 0xdcdce6);
   const entityColor = Number.isFinite(entity?.color) ? entity.color : 0;
   const source = (entity?.color_source || "").toUpperCase();
   const aci = Number.isFinite(entity?.color_aci) ? entity.color_aci : 0;
@@ -114,6 +121,7 @@ function ingestDocumentData(doc) {
     doc.layers.forEach((layer) => {
       if (layer && Number.isFinite(layer.id)) {
         layerColors.set(layer.id, Number.isFinite(layer.color) ? layer.color : 0);
+        layerNames.set(layer.id, typeof layer.name === "string" ? layer.name : "");
       }
     });
   }
@@ -129,6 +137,61 @@ function ingestDocumentData(doc) {
 function ingestMeshMetadata(meta) {
   meshMetadata = meta;
   meshSlices = Array.isArray(meta?.entities) ? meta.entities : [];
+}
+
+function buildLayerInfoFromSlices() {
+  if (layerNames.size > 0) return;
+  meshSlices.forEach((slice) => {
+    if (!slice || !Number.isFinite(slice.layer_id)) return;
+    const id = slice.layer_id;
+    if (!layerNames.has(id) && typeof slice.layer_name === "string") {
+      layerNames.set(id, slice.layer_name);
+    }
+    if (!layerColors.has(id) && Number.isFinite(slice.layer_color)) {
+      layerColors.set(id, slice.layer_color);
+    }
+  });
+}
+
+function renderLayerList() {
+  if (!layerListEl) return;
+  layerListEl.innerHTML = "";
+  const entries = Array.from(layerNames.entries())
+    .map(([id, name]) => ({
+      id,
+      name: name || `Layer ${id}`,
+      color: layerColors.get(id)
+    }))
+    .sort((a, b) => a.id - b.id);
+
+  if (entries.length === 0) {
+    const item = document.createElement("li");
+    item.className = "layer-item";
+    item.innerHTML = "<span class=\"layer-label\">No layer metadata</span>";
+    layerListEl.appendChild(item);
+    return;
+  }
+
+  entries.forEach((layer) => {
+    const item = document.createElement("li");
+    item.className = "layer-item";
+    const swatch = document.createElement("span");
+    swatch.className = "layer-swatch";
+    if (Number.isFinite(layer.color)) {
+      swatch.style.background = colorIntToHex(layer.color);
+    }
+    const label = document.createElement("span");
+    label.className = "layer-label";
+    const name = document.createElement("strong");
+    name.textContent = layer.name;
+    const id = document.createElement("span");
+    id.textContent = `#${layer.id}`;
+    label.appendChild(swatch);
+    label.appendChild(name);
+    item.appendChild(label);
+    item.appendChild(id);
+    layerListEl.appendChild(item);
+  });
 }
 
 async function loadJson(url) {
@@ -266,6 +329,8 @@ async function loadManifestArtifacts(manifestUrl, manifest) {
   }
   if (tasks.length === 0) return;
   await Promise.allSettled(tasks);
+  buildLayerInfoFromSlices();
+  renderLayerList();
   tryApplyMetadata();
 }
 
@@ -358,14 +423,21 @@ function setSelection(mesh) {
     if (Number.isFinite(layerId)) {
       rows.push(`<div class="selection__row"><span>Layer ID</span><strong>${layerId}</strong></div>`);
     }
-    if (entity?.color_source) {
-      rows.push(`<div class="selection__row"><span>Color Source</span><strong>${entity.color_source}</strong></div>`);
+    const layerName = (Number.isFinite(layerId) && layerNames.get(layerId)) || slice?.layer_name;
+    if (layerName) {
+      rows.push(`<div class="selection__row"><span>Layer Name</span><strong>${layerName}</strong></div>`);
     }
-    if (Number.isFinite(entity?.color_aci)) {
-      rows.push(`<div class="selection__row"><span>Color ACI</span><strong>${entity.color_aci}</strong></div>`);
+    const colorSource = entity?.color_source ?? slice?.color_source;
+    if (colorSource) {
+      rows.push(`<div class="selection__row"><span>Color Source</span><strong>${colorSource}</strong></div>`);
     }
-    if (entity || layerId != null) {
-      const resolved = resolveEntityColor(entity ?? {}, layerId);
+    const colorAci = Number.isFinite(entity?.color_aci) ? entity.color_aci : slice?.color_aci;
+    if (Number.isFinite(colorAci)) {
+      rows.push(`<div class="selection__row"><span>Color ACI</span><strong>${colorAci}</strong></div>`);
+    }
+    if (entity || slice || layerId != null) {
+      const fallbackLayerColor = Number.isFinite(slice?.layer_color) ? slice.layer_color : null;
+      const resolved = resolveEntityColor(entity ?? slice ?? {}, layerId, fallbackLayerColor);
       rows.push(`<div class="selection__row"><span>Resolved Color</span><strong>${colorIntToHex(resolved)}</strong></div>`);
     }
   }
@@ -411,8 +483,9 @@ function applyEntityMaterials(mesh) {
   }
   meshSlices.forEach((slice) => {
     if (!Number.isFinite(slice.index_offset) || !Number.isFinite(slice.index_count)) return;
-    const entity = entityIndex.get(slice.id) || {};
-    const colorInt = resolveEntityColor(entity, slice.layer_id);
+    const entity = entityIndex.get(slice.id) || null;
+    const fallbackLayerColor = Number.isFinite(slice.layer_color) ? slice.layer_color : null;
+    const colorInt = resolveEntityColor(entity ?? slice ?? {}, slice.layer_id, fallbackLayerColor);
     const material = new THREE.MeshStandardMaterial({
       color: colorIntToHex(colorInt),
       metalness: 0.05,
