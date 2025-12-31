@@ -288,7 +288,7 @@ int main(int argc, char** argv) {
     assert(get_entity_layer_name(doc, missing_layer_id) == "LayerMissing");
     assert(get_entity_line_type(doc, missing_layer_id).empty());
     assert_near(get_entity_line_weight(doc, missing_layer_id), 0.0);
-    assert_near(get_entity_line_scale(doc, missing_layer_id), 1.0);
+    assert_near(get_entity_line_scale(doc, missing_layer_id), 3.0);
     assert(get_entity_color(doc, missing_layer_id) == 0u);
 
     assert(layer0_id != 0);

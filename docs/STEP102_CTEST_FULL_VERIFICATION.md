@@ -15,4 +15,4 @@
 
 ## Status
 - PASS (manual).
-- Notes: Executed in `build_vcpkg` after DXF default line type scale updates.
+- Notes: Executed in `build_vcpkg` after DXF header line type scale updates.
