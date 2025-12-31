@@ -288,12 +288,19 @@ static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfS
     } else if (layer_style && layer_style->has_line_weight) {
         (void)cadgf_document_set_entity_line_weight(doc, id, layer_style->line_weight);
     }
+    bool line_scale_applied = false;
     if (style.has_line_scale) {
         (void)cadgf_document_set_entity_line_type_scale(doc, id, style.line_type_scale);
+        line_scale_applied = true;
     } else if (use_byblock && block_style && block_style->has_line_scale) {
         (void)cadgf_document_set_entity_line_type_scale(doc, id, block_style->line_type_scale);
+        line_scale_applied = true;
     } else if (layer_style && layer_style->has_line_scale) {
         (void)cadgf_document_set_entity_line_type_scale(doc, id, layer_style->line_type_scale);
+        line_scale_applied = true;
+    }
+    if (!line_scale_applied) {
+        (void)cadgf_document_set_entity_line_type_scale(doc, id, 1.0);
     }
     if (style.has_color) {
         (void)cadgf_document_set_entity_color(doc, id, style.color);

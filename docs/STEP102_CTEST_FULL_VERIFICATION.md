@@ -15,4 +15,4 @@
 
 ## Status
 - PASS (manual).
-- Notes: Executed in `build_vcpkg` after nested BYBLOCK INSERT precedence coverage updates.
+- Notes: Executed in `build_vcpkg` after DXF default line type scale updates.

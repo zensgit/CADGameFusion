@@ -48,12 +48,13 @@
   `plugins/dxf_importer_plugin.cpp:273`.
 - Nested INSERT BYBLOCK resolution merges the nested INSERT style with the parent INSERT style.
   `plugins/dxf_importer_plugin.cpp:1491`.
+- DXF importer applies a default line type scale of `1.0` when no scale is specified.
+  `plugins/dxf_importer_plugin.cpp:291`.
 
 ## Differences and Gaps
 1) Default line type scale
    - libdxfrw defaults line type scale to `1.0` (even if code 48 is absent).
-   - CADGameFusion only sets line type scale when code 48 is present on entity/INSERT/layer,
-     otherwise it stays unset (tests currently expect `0.0`).
+   - CADGameFusion now defaults to `1.0` but does not yet honor header LTSCALE/CELTSCALE.
 
 2) Eager vs deferred resolution
    - LibreCAD resolves BYBLOCK/BYLAYER at render/update time so layer edits propagate.
@@ -71,8 +72,7 @@
    - CADGameFusion maps ACI 7 to white (fixed).
 
 ## Recommendations
-- Consider defaulting line type scale to `1.0` (or header LTSCALE) when no explicit scale
-  is provided to better align with libdxfrw/AutoCAD defaults.
+- Consider reading header LTSCALE/CELTSCALE to match AutoCAD defaults more closely.
 - If layer edits should propagate post-import, store BYLAYER/BYBLOCK flags as metadata and
   resolve at render/export time instead of baking values at import.
 - Decide whether ACI 7 should be configurable (white vs neutral gray) based on UI needs.
