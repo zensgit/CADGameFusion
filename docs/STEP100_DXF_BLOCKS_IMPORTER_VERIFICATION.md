@@ -17,7 +17,7 @@
    ```
 
 ## Expected
-- 13 entities imported from DXF (8 LINE + 1 CIRCLE + 1 LWPOLYLINE + 1 ARC + 1 TEXT + 1 SPLINE).
+- 14 entities imported from DXF (9 LINE + 1 CIRCLE + 1 LWPOLYLINE + 1 ARC + 1 TEXT + 1 SPLINE).
 - LINE transformed to (5,5)->(5,9) on `LayerBlock`.
 - Nested LINE transformed to (5,9)->(5,11) on `LayerNestedInsert`.
 - CIRCLE transformed to center (3,7), radius 1.0 on `LayerInsert`.
@@ -27,6 +27,7 @@
 - Style precedence coverage:
   - BYBLOCK w/ missing INSERT style falls back to layer: `LayerByblockNoInsert` -> `DASHDOT`, `0.7`, scale `1.5`, color `0xFFFF00`.
   - BYBLOCK uses INSERT line scale: `LayerByblockInsertScale` -> `DASHDOT`, `0.9`, scale `1.3`, color `0xFF0000`.
+  - Nested BYBLOCK insert inherits outer INSERT style: `LayerNestedByblockInner` -> `DASHED2`, `0.65`, scale `1.6`, color `0xFF00FF`.
   - BYLAYER resolves to layer style: `LayerBylayer` -> `CENTER2`, `0.25`, scale `0.6`, color `0x00FFFF`.
   - Explicit entity style overrides INSERT+layer: `LayerExplicit` -> `HIDDEN`, `0.8`, scale `2.5`, color `0x0000FF`.
   - LWPOLYLINE BYBLOCK uses INSERT style: `LayerPolyByblock` -> `PHANTOM`, `0.9`, scale `0.4`, color `0xFF00FF`.

@@ -307,6 +307,31 @@ static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfS
     }
 }
 
+static DxfStyle resolve_insert_byblock_style(const DxfStyle& insert_style, const DxfStyle* parent_style) {
+    if (!parent_style) {
+        return insert_style;
+    }
+    DxfStyle out = insert_style;
+    const bool use_byblock = out.byblock_line_type || out.byblock_line_weight || out.byblock_color;
+    if (out.byblock_line_type && parent_style->has_line_type) {
+        out.line_type = parent_style->line_type;
+        out.has_line_type = true;
+    }
+    if (out.byblock_line_weight && parent_style->has_line_weight) {
+        out.line_weight = parent_style->line_weight;
+        out.has_line_weight = true;
+    }
+    if (out.byblock_color && parent_style->has_color) {
+        out.color = parent_style->color;
+        out.has_color = true;
+    }
+    if (use_byblock && !out.has_line_scale && parent_style->has_line_scale) {
+        out.line_type_scale = parent_style->line_type_scale;
+        out.has_line_scale = true;
+    }
+    return out;
+}
+
 struct Transform2D {
     double m00{1.0};
     double m01{0.0};
@@ -1481,7 +1506,8 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 }
                 stack.push_back(nested_block.name);
                 const int nested_group = cadgf_document_alloc_group_id(doc);
-                if (!self(self, nested_block, combined, nested_layer, &nested_insert.style,
+                const DxfStyle nested_style = resolve_insert_byblock_style(nested_insert.style, insert_style);
+                if (!self(self, nested_block, combined, nested_layer, &nested_style,
                           nested_group, stack, depth + 1)) {
                     return false;
                 }

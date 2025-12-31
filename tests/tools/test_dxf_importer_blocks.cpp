@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
 
     int entity_count = 0;
     assert(cadgf_document_get_entity_count(doc, &entity_count));
-    assert(entity_count == 13);
+    assert(entity_count == 14);
 
     cadgf_entity_id line_id = 0;
     cadgf_entity_id nested_line_id = 0;
@@ -107,6 +107,7 @@ int main(int argc, char** argv) {
     cadgf_entity_id bylayer_id = 0;
     cadgf_entity_id explicit_id = 0;
     cadgf_entity_id byblock_insert_scale_id = 0;
+    cadgf_entity_id nested_byblock_chain_id = 0;
     cadgf_entity_id polyline_id = 0;
     cadgf_entity_id arc_id = 0;
     cadgf_entity_id text_id = 0;
@@ -133,6 +134,8 @@ int main(int argc, char** argv) {
                 explicit_id = id;
             } else if (layer_name == "LayerByblockInsertScale") {
                 byblock_insert_scale_id = id;
+            } else if (layer_name == "LayerNestedByblockInner") {
+                nested_byblock_chain_id = id;
             } else if (layer_name == "LayerMissing") {
                 missing_layer_id = id;
             } else if (layer_name == "0") {
@@ -228,6 +231,15 @@ int main(int argc, char** argv) {
     assert_near(get_entity_line_weight(doc, byblock_insert_scale_id), 0.9);
     assert(get_entity_color(doc, byblock_insert_scale_id) == 0xFF0000u);
     assert_near(get_entity_line_scale(doc, byblock_insert_scale_id), 1.3);
+
+    assert(nested_byblock_chain_id != 0);
+    cadgf_line nested_byblock_chain_line{};
+    assert(cadgf_document_get_line(doc, nested_byblock_chain_id, &nested_byblock_chain_line));
+    assert(get_entity_layer_name(doc, nested_byblock_chain_id) == "LayerNestedByblockInner");
+    assert(get_entity_line_type(doc, nested_byblock_chain_id) == "DASHED2");
+    assert_near(get_entity_line_weight(doc, nested_byblock_chain_id), 0.65);
+    assert(get_entity_color(doc, nested_byblock_chain_id) == 0xFF00FFu);
+    assert_near(get_entity_line_scale(doc, nested_byblock_chain_id), 1.6);
 
     assert(polyline_id != 0);
     assert(get_entity_layer_name(doc, polyline_id) == "LayerPolyByblock");
