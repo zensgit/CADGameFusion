@@ -50,10 +50,93 @@ let selected = null;
 const annotationGroup = new THREE.Group();
 scene.add(annotationGroup);
 const annotations = [];
+let meshMetadata = null;
+let documentData = null;
+let entityIndex = new Map();
+let layerColors = new Map();
+let meshSlices = [];
+let metadataApplied = false;
 
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
   statusEl.style.color = isError ? "#c0392b" : "#5f6b73";
+}
+
+function resetMetadataState() {
+  meshMetadata = null;
+  documentData = null;
+  entityIndex = new Map();
+  layerColors = new Map();
+  meshSlices = [];
+  metadataApplied = false;
+}
+
+function aciToRgb(index) {
+  switch (index) {
+    case 1: return 0xff0000;
+    case 2: return 0xffff00;
+    case 3: return 0x00ff00;
+    case 4: return 0x00ffff;
+    case 5: return 0x0000ff;
+    case 6: return 0xff00ff;
+    case 7: return 0xffffff;
+    case 8: return 0x808080;
+    case 9: return 0xc0c0c0;
+    default: return 0xffffff;
+  }
+}
+
+function colorIntToHex(color) {
+  const safe = Number.isFinite(color) ? color : 0;
+  return `#${safe.toString(16).padStart(6, "0")}`;
+}
+
+function resolveEntityColor(entity, fallbackLayerId = null) {
+  const layerId = Number.isFinite(entity?.layer_id) ? entity.layer_id : fallbackLayerId;
+  const layerColor = Number.isFinite(layerId) ? (layerColors.get(layerId) ?? 0xdcdce6) : 0xdcdce6;
+  const entityColor = Number.isFinite(entity?.color) ? entity.color : 0;
+  const source = (entity?.color_source || "").toUpperCase();
+  const aci = Number.isFinite(entity?.color_aci) ? entity.color_aci : 0;
+  const aciColor = aci > 0 ? aciToRgb(aci) : null;
+
+  if (source === "BYLAYER") return layerColor;
+  if (source === "INDEX") return aciColor ?? (entityColor || layerColor);
+  if (source === "TRUECOLOR") return entityColor || aciColor || layerColor;
+  if (source === "BYBLOCK") return entityColor || aciColor || layerColor;
+  return entityColor || aciColor || layerColor;
+}
+
+function ingestDocumentData(doc) {
+  documentData = doc;
+  entityIndex = new Map();
+  layerColors = new Map();
+  if (Array.isArray(doc?.layers)) {
+    doc.layers.forEach((layer) => {
+      if (layer && Number.isFinite(layer.id)) {
+        layerColors.set(layer.id, Number.isFinite(layer.color) ? layer.color : 0);
+      }
+    });
+  }
+  if (Array.isArray(doc?.entities)) {
+    doc.entities.forEach((entity) => {
+      if (entity && Number.isFinite(entity.id)) {
+        entityIndex.set(entity.id, entity);
+      }
+    });
+  }
+}
+
+function ingestMeshMetadata(meta) {
+  meshMetadata = meta;
+  meshSlices = Array.isArray(meta?.entities) ? meta.entities : [];
+}
+
+async function loadJson(url) {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Request failed (${response.status})`);
+  }
+  return response.json();
 }
 
 function resolveUrl(baseUrl, path) {
@@ -170,14 +253,34 @@ function updateDocumentMeta(params, fallbackMeta = null) {
   setMetaLink(metaManifestEl, manifestUrl);
 }
 
+async function loadManifestArtifacts(manifestUrl, manifest) {
+  const artifacts = manifest?.artifacts ?? {};
+  const tasks = [];
+  if (artifacts.document_json) {
+    const docUrl = resolveUrl(manifestUrl, artifacts.document_json);
+    tasks.push(loadJson(docUrl).then(ingestDocumentData));
+  }
+  if (artifacts.mesh_metadata) {
+    const metaUrl = resolveUrl(manifestUrl, artifacts.mesh_metadata);
+    tasks.push(loadJson(metaUrl).then(ingestMeshMetadata));
+  }
+  if (tasks.length === 0) return;
+  await Promise.allSettled(tasks);
+  tryApplyMetadata();
+}
+
 async function loadFromManifest(manifestUrl, params) {
   setStatus("Loading manifest...");
+  resetMetadataState();
   const response = await fetch(manifestUrl);
   if (!response.ok) {
     throw new Error(`Manifest request failed (${response.status}).`);
   }
   const manifest = await response.json();
   updateDocumentMeta(params, extractManifestMeta(manifest));
+  loadManifestArtifacts(manifestUrl, manifest).catch((error) => {
+    console.error(error);
+  });
   const gltfName = manifest?.artifacts?.mesh_gltf;
   if (!gltfName) {
     throw new Error("Manifest missing artifacts.mesh_gltf.");
@@ -235,11 +338,39 @@ function setSelection(mesh) {
   const geometry = mesh.geometry;
   const verts = geometry?.attributes?.position?.count ?? 0;
   const tris = geometry?.index ? geometry.index.count / 3 : verts / 3;
-  selectionInfoEl.innerHTML = `
-    <div class="selection__row"><span>Name</span><strong>${mesh.name || "Mesh"}</strong></div>
-    <div class="selection__row"><span>Vertices</span><strong>${verts}</strong></div>
-    <div class="selection__row"><span>Triangles</span><strong>${Math.round(tris)}</strong></div>
-  `;
+  const rows = [
+    `<div class="selection__row"><span>Name</span><strong>${mesh.name || "Mesh"}</strong></div>`,
+    `<div class="selection__row"><span>Vertices</span><strong>${verts}</strong></div>`,
+    `<div class="selection__row"><span>Triangles</span><strong>${Math.round(tris)}</strong></div>`
+  ];
+
+  const entity = mesh?.userData?.cadgfEntity;
+  const slice = mesh?.userData?.cadgfSlice;
+  if (entity || slice) {
+    const entityId = entity?.id ?? slice?.id;
+    const layerId = Number.isFinite(entity?.layer_id) ? entity.layer_id : slice?.layer_id;
+    if (Number.isFinite(entityId)) {
+      rows.push(`<div class="selection__row"><span>Entity ID</span><strong>${entityId}</strong></div>`);
+    }
+    if (entity?.name) {
+      rows.push(`<div class="selection__row"><span>Entity Name</span><strong>${entity.name}</strong></div>`);
+    }
+    if (Number.isFinite(layerId)) {
+      rows.push(`<div class="selection__row"><span>Layer ID</span><strong>${layerId}</strong></div>`);
+    }
+    if (entity?.color_source) {
+      rows.push(`<div class="selection__row"><span>Color Source</span><strong>${entity.color_source}</strong></div>`);
+    }
+    if (Number.isFinite(entity?.color_aci)) {
+      rows.push(`<div class="selection__row"><span>Color ACI</span><strong>${entity.color_aci}</strong></div>`);
+    }
+    if (entity || layerId != null) {
+      const resolved = resolveEntityColor(entity ?? {}, layerId);
+      rows.push(`<div class="selection__row"><span>Resolved Color</span><strong>${colorIntToHex(resolved)}</strong></div>`);
+    }
+  }
+
+  selectionInfoEl.innerHTML = rows.join("");
 }
 
 function resetScene() {
@@ -263,6 +394,63 @@ function resetScene() {
   activeScene = null;
   clearSelection();
   updateCounts();
+}
+
+function applyEntityMaterials(mesh) {
+  const geometry = mesh.geometry;
+  if (!geometry || !geometry.index || meshSlices.length === 0) return;
+  geometry.clearGroups();
+  const materials = [];
+  const previous = mesh.material;
+  if (previous) {
+    if (Array.isArray(previous)) {
+      previous.forEach((mat) => mat?.dispose());
+    } else {
+      previous.dispose?.();
+    }
+  }
+  meshSlices.forEach((slice) => {
+    if (!Number.isFinite(slice.index_offset) || !Number.isFinite(slice.index_count)) return;
+    const entity = entityIndex.get(slice.id) || {};
+    const colorInt = resolveEntityColor(entity, slice.layer_id);
+    const material = new THREE.MeshStandardMaterial({
+      color: colorIntToHex(colorInt),
+      metalness: 0.05,
+      roughness: 0.7
+    });
+    materials.push(material);
+    geometry.addGroup(slice.index_offset, slice.index_count, materials.length - 1);
+  });
+  if (materials.length > 0) {
+    mesh.material = materials;
+    mesh.userData.cadgfSlices = meshSlices;
+  }
+}
+
+function tryApplyMetadata() {
+  if (metadataApplied || !activeScene || meshSlices.length === 0 || entityIndex.size === 0) return;
+  activeScene.traverse((child) => {
+    if (child.isMesh) {
+      applyEntityMaterials(child);
+    }
+  });
+  metadataApplied = true;
+}
+
+function resolveEntityFromHit(hit) {
+  if (!hit || !hit.object) return null;
+  const slices = hit.object.userData?.cadgfSlices;
+  if (!Array.isArray(slices) || !Number.isFinite(hit.faceIndex)) return null;
+  const indexStart = hit.faceIndex * 3;
+  const slice = slices.find((s) =>
+    Number.isFinite(s.index_offset) &&
+    Number.isFinite(s.index_count) &&
+    indexStart >= s.index_offset &&
+    indexStart < s.index_offset + s.index_count
+  );
+  if (!slice) return null;
+  const entity = entityIndex.get(slice.id) || null;
+  return { entity, slice };
 }
 
 function frameScene(object) {
@@ -295,6 +483,7 @@ function loadScene(url) {
       });
       frameScene(activeScene);
       updateCounts();
+      tryApplyMetadata();
       setStatus("Loaded successfully.");
     },
     undefined,
@@ -354,6 +543,14 @@ function onPointerDown(event) {
     addAnnotation(hit.point);
     return;
   }
+  const resolved = resolveEntityFromHit(hit);
+  if (resolved) {
+    hit.object.userData.cadgfEntity = resolved.entity;
+    hit.object.userData.cadgfSlice = resolved.slice;
+  } else {
+    hit.object.userData.cadgfEntity = null;
+    hit.object.userData.cadgfSlice = null;
+  }
   setSelection(hit.object);
 }
 
@@ -377,6 +574,7 @@ loadBtn.addEventListener("click", () => {
     setStatus("Enter a glTF URL.", true);
     return;
   }
+  resetMetadataState();
   loadScene(url);
 });
 
@@ -400,11 +598,13 @@ async function bootstrapScene() {
   }
   if (gltfParam) {
     gltfUrlInput.value = gltfParam;
+    resetMetadataState();
     loadScene(gltfParam);
     return;
   }
   const fallback = gltfUrlInput.value.trim();
   if (fallback) {
+    resetMetadataState();
     loadScene(fallback);
   }
 }

@@ -11,6 +11,46 @@
 #include <QDebug>
 #include <QMetaObject>
 #include <cmath>
+#include <cstdlib>
+#include <string>
+
+namespace {
+
+uint32_t aci_to_rgb(int index) {
+    switch (index) {
+        case 1: return 0xFF0000u;
+        case 2: return 0xFFFF00u;
+        case 3: return 0x00FF00u;
+        case 4: return 0x00FFFFu;
+        case 5: return 0x0000FFu;
+        case 6: return 0xFF00FFu;
+        case 7: return 0xFFFFFFu;
+        case 8: return 0x808080u;
+        case 9: return 0xC0C0C0u;
+        default: return 0xFFFFFFu;
+    }
+}
+
+bool parse_int(const std::string& s, int* out) {
+    if (!out) return false;
+    char* end = nullptr;
+    long v = std::strtol(s.c_str(), &end, 10);
+    if (!end || *end != '\0') return false;
+    *out = static_cast<int>(v);
+    return true;
+}
+
+std::string lookup_entity_meta(const core::Document* doc, EntityId id, const char* suffix) {
+    if (!doc || id == 0 || !suffix || !*suffix) return {};
+    const auto& meta = doc->metadata().meta;
+    const std::string key = "dxf.entity." +
+        std::to_string(static_cast<unsigned long long>(id)) + "." + suffix;
+    const auto it = meta.find(key);
+    if (it == meta.end()) return {};
+    return it->second;
+}
+
+} // namespace
 
 CanvasWidget::CanvasWidget(QWidget* parent) : QWidget(parent) {
     setMouseTracking(true);
@@ -77,14 +117,47 @@ bool CanvasWidget::isEntityVisible(const core::Entity& entity) const {
 
 QColor CanvasWidget::resolveEntityColor(const core::Entity& entity) const {
     uint32_t color = entity.color;
-    if (color == 0) {
-        const auto* layer = layerFor(entity.layerId);
-        if (layer) {
-            color = layer->color;
-        } else {
-            color = 0xDCDCE6u;
+    const auto* layer = layerFor(entity.layerId);
+    const uint32_t layer_color = layer ? layer->color : 0xDCDCE6u;
+
+    const std::string source = lookup_entity_meta(m_doc, entity.id, "color_source");
+    if (!source.empty()) {
+        if (source == "BYLAYER") {
+            color = layer_color;
+        } else if (source == "BYBLOCK") {
+            if (color == 0) {
+                int aci = 0;
+                const std::string aci_text = lookup_entity_meta(m_doc, entity.id, "color_aci");
+                if (parse_int(aci_text, &aci) && aci > 0) {
+                    color = aci_to_rgb(aci);
+                } else {
+                    color = layer_color;
+                }
+            }
+        } else if (source == "INDEX") {
+            if (color == 0) {
+                int aci = 0;
+                const std::string aci_text = lookup_entity_meta(m_doc, entity.id, "color_aci");
+                if (parse_int(aci_text, &aci) && aci > 0) {
+                    color = aci_to_rgb(aci);
+                } else {
+                    color = layer_color;
+                }
+            }
+        } else if (source == "TRUECOLOR") {
+            if (color == 0) {
+                int aci = 0;
+                const std::string aci_text = lookup_entity_meta(m_doc, entity.id, "color_aci");
+                if (parse_int(aci_text, &aci) && aci > 0) {
+                    color = aci_to_rgb(aci);
+                } else {
+                    color = layer_color;
+                }
+            }
         }
     }
+
+    if (color == 0) color = layer_color ? layer_color : 0xDCDCE6u;
     return QColor((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
 }
 
