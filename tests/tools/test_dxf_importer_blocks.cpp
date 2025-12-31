@@ -56,6 +56,43 @@ static double get_entity_line_weight(const cadgf_document* doc, cadgf_entity_id 
     return weight;
 }
 
+static std::string get_doc_meta_value(const cadgf_document* doc, const std::string& key) {
+    int required = 0;
+    if (!cadgf_document_get_meta_value(doc, key.c_str(), nullptr, 0, &required) || required <= 0) {
+        return std::string();
+    }
+    std::vector<char> buf(static_cast<size_t>(required));
+    int required2 = 0;
+    if (!cadgf_document_get_meta_value(doc, key.c_str(), buf.data(),
+                                       static_cast<int>(buf.size()), &required2)) {
+        return std::string();
+    }
+    return std::string(buf.data());
+}
+
+static std::string get_entity_meta(const cadgf_document* doc, cadgf_entity_id id, const char* suffix) {
+    const std::string key = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id)) + "." + suffix;
+    return get_doc_meta_value(doc, key);
+}
+
+static std::string get_entity_color_source_api(const cadgf_document* doc, cadgf_entity_id id) {
+    int required = 0;
+    if (!cadgf_document_get_entity_color_source(doc, id, nullptr, 0, &required) || required <= 0) {
+        return std::string();
+    }
+    std::vector<char> buf(static_cast<size_t>(required));
+    int required2 = 0;
+    if (!cadgf_document_get_entity_color_source(doc, id, buf.data(),
+                                                static_cast<int>(buf.size()), &required2)) {
+        return std::string();
+    }
+    return std::string(buf.data());
+}
+
+static bool get_entity_color_aci_api(const cadgf_document* doc, cadgf_entity_id id, int* out_aci) {
+    return cadgf_document_get_entity_color_aci(doc, id, out_aci) != 0;
+}
+
 static void assert_near(double value, double expected, double eps = 1e-6) {
     assert(std::fabs(value - expected) <= eps);
 }
@@ -180,6 +217,12 @@ int main(int argc, char** argv) {
     assert(get_entity_line_type(doc, line_id) == "CENTER");
     assert_near(get_entity_line_weight(doc, line_id), 0.5);
     assert_near(get_entity_line_scale(doc, line_id), 0.25);
+    assert(get_entity_meta(doc, line_id, "color_source") == "BYBLOCK");
+    assert(get_entity_meta(doc, line_id, "color_aci") == "1");
+    assert(get_entity_color_source_api(doc, line_id) == "BYBLOCK");
+    int line_aci = 0;
+    assert(get_entity_color_aci_api(doc, line_id, &line_aci));
+    assert(line_aci == 1);
 
     assert(nested_line_id != 0);
     cadgf_line nested_line{};
@@ -213,6 +256,12 @@ int main(int argc, char** argv) {
     assert_near(get_entity_line_weight(doc, bylayer_id), 0.25);
     assert(get_entity_color(doc, bylayer_id) == 0x00FFFFu);
     assert_near(get_entity_line_scale(doc, bylayer_id), 0.6);
+    assert(get_entity_meta(doc, bylayer_id, "color_source") == "BYLAYER");
+    assert(get_entity_meta(doc, bylayer_id, "color_aci") == "4");
+    assert(get_entity_color_source_api(doc, bylayer_id) == "BYLAYER");
+    int bylayer_aci = 0;
+    assert(get_entity_color_aci_api(doc, bylayer_id, &bylayer_aci));
+    assert(bylayer_aci == 4);
 
     assert(explicit_id != 0);
     cadgf_line explicit_line{};
@@ -222,6 +271,12 @@ int main(int argc, char** argv) {
     assert_near(get_entity_line_weight(doc, explicit_id), 0.8);
     assert(get_entity_color(doc, explicit_id) == 0x0000FFu);
     assert_near(get_entity_line_scale(doc, explicit_id), 2.5);
+    assert(get_entity_meta(doc, explicit_id, "color_source") == "INDEX");
+    assert(get_entity_meta(doc, explicit_id, "color_aci") == "5");
+    assert(get_entity_color_source_api(doc, explicit_id) == "INDEX");
+    int explicit_aci = 0;
+    assert(get_entity_color_aci_api(doc, explicit_id, &explicit_aci));
+    assert(explicit_aci == 5);
 
     assert(byblock_insert_scale_id != 0);
     cadgf_line byblock_insert_scale_line{};
@@ -290,6 +345,11 @@ int main(int argc, char** argv) {
     assert_near(get_entity_line_weight(doc, missing_layer_id), 0.0);
     assert_near(get_entity_line_scale(doc, missing_layer_id), 3.0);
     assert(get_entity_color(doc, missing_layer_id) == 0u);
+    assert(get_entity_meta(doc, missing_layer_id, "color_source") == "BYLAYER");
+    assert(get_entity_meta(doc, missing_layer_id, "color_aci").empty());
+    assert(get_entity_color_source_api(doc, missing_layer_id) == "BYLAYER");
+    int missing_aci = 0;
+    assert(!get_entity_color_aci_api(doc, missing_layer_id, &missing_aci));
 
     assert(layer0_id != 0);
     cadgf_line layer0_line{};

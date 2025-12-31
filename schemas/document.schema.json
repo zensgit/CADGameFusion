@@ -103,6 +103,8 @@
           "line_type": {"type": "string"},
           "line_weight": {"type": "number"},
           "line_type_scale": {"type": "number"},
+          "color_source": {"type": "string"},
+          "color_aci": {"type": "integer", "minimum": 0, "maximum": 255},
           "polyline": {
             "type": "array",
             "items": {"$ref": "#/$defs/vec2"}

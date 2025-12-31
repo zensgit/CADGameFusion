@@ -267,6 +267,10 @@ CORE_API int core_document_set_entity_line_weight(core_document* doc, core_entit
 CORE_API int core_document_get_entity_line_weight(const core_document* doc, core_entity_id id, double* out_weight);
 CORE_API int core_document_set_entity_line_type_scale(core_document* doc, core_entity_id id, double scale);
 CORE_API int core_document_get_entity_line_type_scale(const core_document* doc, core_entity_id id, double* out_scale);
+// Optional DXF color metadata (returns 0 when not present).
+CORE_API int core_document_get_entity_color_source(const core_document* doc, core_entity_id id,
+                                                   char* out_utf8, int out_cap, int* out_required_bytes);
+CORE_API int core_document_get_entity_color_aci(const core_document* doc, core_entity_id id, int* out_aci);
 // Allocate a new group id (>=1). Returns -1 on failure.
 CORE_API int core_document_alloc_group_id(core_document* doc);
 // Document settings
@@ -358,6 +362,9 @@ CADGF_API int cadgf_document_set_entity_line_weight(cadgf_document* doc, cadgf_e
 CADGF_API int cadgf_document_get_entity_line_weight(const cadgf_document* doc, cadgf_entity_id id, double* out_weight);
 CADGF_API int cadgf_document_set_entity_line_type_scale(cadgf_document* doc, cadgf_entity_id id, double scale);
 CADGF_API int cadgf_document_get_entity_line_type_scale(const cadgf_document* doc, cadgf_entity_id id, double* out_scale);
+CADGF_API int cadgf_document_get_entity_color_source(const cadgf_document* doc, cadgf_entity_id id,
+                                                     char* out_utf8, int out_cap, int* out_required_bytes);
+CADGF_API int cadgf_document_get_entity_color_aci(const cadgf_document* doc, cadgf_entity_id id, int* out_aci);
 // Allocate a new group id (>=1). Returns -1 on failure.
 CADGF_API int cadgf_document_alloc_group_id(cadgf_document* doc);
 // Document settings
