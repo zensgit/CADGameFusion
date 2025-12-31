@@ -34,7 +34,7 @@
   - ARC BYLAYER uses layer style: `LayerArcBylayer` -> `PHANTOM2`, `0.6`, scale `0.9`, color `0xC0C0C0`.
   - TEXT BYBLOCK uses INSERT style: `LayerTextByblock` -> `DASHDOTX`, `0.3`, scale `2.2`, color `0xFF0000`.
   - SPLINE BYLAYER uses layer style: `LayerSplineBylayer` -> `CENTERX`, `0.45`, scale `0.8`, color `0xFFFFFF`.
-  - Missing layer entry uses defaults: `LayerMissing` -> line type empty, line weight `0.0`, scale `0.0`, color `0x0`.
+  - Missing layer entry uses defaults: `LayerMissing` -> line type empty, line weight `0.0`, scale `1.0`, color `0x0`.
   - Layer 0 inherits its layer style: `0` -> `HIDDEN2`, `0.55`, scale `1.7`, color `0x808080`.
 - Group IDs:
   - LINE and CIRCLE share the same group id.
