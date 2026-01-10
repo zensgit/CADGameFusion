@@ -94,6 +94,17 @@ body::before {
   color: var(--muted);
 }
 
+.plugin-auto {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.plugin-auto.is-visible {
+  display: flex;
+}
+
 input[type="text"],
 input[type="file"],
 input[type="number"],

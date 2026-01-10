@@ -75,7 +75,12 @@
               <p class="subtle">Uses Project/Document fields when set, otherwise the selected document.</p>
             </div>
 
-            <label class="field">
+            <div id="plugin-auto" class="plugin-auto">
+              <p id="plugin-auto-note" class="subtle">Importer plugin auto-selected by router.</p>
+              <button id="plugin-override" class="btn btn-secondary" type="button">Override plugin</button>
+            </div>
+
+            <label class="field" id="plugin-field">
               <span>Importer Plugin (optional)</span>
               <input id="plugin-input" type="text" placeholder="build_vcpkg/plugins/libcadgf_dxf_importer_plugin.dylib" />
             </label>
