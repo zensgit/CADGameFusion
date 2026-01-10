@@ -11,6 +11,15 @@ python3 tools/plm_router_service.py \
   --default-convert-cli build_vcpkg/tools/convert_cli
 ```
 
+Or use extension-based auto selection (plugin optional in uploads):
+```bash
+CADGF_ROUTER_PLUGIN_MAP=".dxf=build_vcpkg/plugins/libcadgf_dxf_importer_plugin.dylib,.json=build_vcpkg/plugins/libcadgf_json_importer_plugin.dylib" \
+CADGF_ROUTER_PLUGIN_ALLOWLIST="build_vcpkg/plugins" \
+CADGF_ROUTER_CLI_ALLOWLIST="build_vcpkg/tools" \
+python3 tools/plm_router_service.py \
+  --default-convert-cli build_vcpkg/tools/convert_cli
+```
+
 Then open the demo on the same host/port:
 ```
 http://localhost:9000/tools/plm_web_demo/
