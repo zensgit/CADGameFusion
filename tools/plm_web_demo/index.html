@@ -32,6 +32,20 @@
               <span>Auth Token (optional)</span>
               <input id="token-input" type="text" placeholder="token" />
             </label>
+            <div id="router-info" class="router-info">
+              <div class="router-info__row">
+                <span class="router-info__label">Status</span>
+                <span id="router-status" class="router-info__value" data-state="unknown">unknown</span>
+              </div>
+              <div class="router-info__row">
+                <span class="router-info__label">Plugin map</span>
+                <span id="router-plugin-map" class="router-info__value">—</span>
+              </div>
+              <div class="router-info__row">
+                <span class="router-info__label">Default plugin</span>
+                <span id="router-default-plugin" class="router-info__value">—</span>
+              </div>
+            </div>
 
             <div class="section-title">File Upload</div>
             <label class="field">

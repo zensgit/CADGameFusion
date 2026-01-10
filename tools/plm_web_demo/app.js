@@ -1,6 +1,9 @@
 const form = document.getElementById("upload-form");
 const routerInput = document.getElementById("router-url");
 const tokenInput = document.getElementById("token-input");
+const routerStatusEl = document.getElementById("router-status");
+const routerPluginMapEl = document.getElementById("router-plugin-map");
+const routerDefaultPluginEl = document.getElementById("router-default-plugin");
 const fileInput = document.getElementById("file-input");
 const projectInput = document.getElementById("project-input");
 const documentInput = document.getElementById("document-input");
@@ -67,6 +70,18 @@ function normalizeBaseUrl(value) {
   return trimmed.replace(/\/$/, "");
 }
 
+function setRouterInfo(status, pluginMap, defaultPlugin) {
+  if (!routerStatusEl || !routerPluginMapEl || !routerDefaultPluginEl) {
+    return;
+  }
+  const label = status || "unknown";
+  routerStatusEl.textContent = label;
+  routerStatusEl.dataset.state = label;
+  const list = Array.isArray(pluginMap) ? pluginMap.filter(Boolean) : [];
+  routerPluginMapEl.textContent = list.length ? list.join(", ") : "—";
+  routerDefaultPluginEl.textContent = defaultPlugin || "—";
+}
+
 function setPluginAutoState(enabled, extensions) {
   if (!pluginField || !pluginAuto || !pluginAutoNote) {
     return;
@@ -96,13 +111,17 @@ async function refreshRouterPluginMap() {
   try {
     const response = await fetch(`${baseUrl}/health`);
     if (!response.ok) {
+      setRouterInfo("error", [], "");
       setPluginAutoState(false, []);
       return;
     }
     const payload = await response.json();
     const map = Array.isArray(payload?.plugin_map) ? payload.plugin_map : [];
+    const defaultPlugin = typeof payload?.default_plugin === "string" ? payload.default_plugin : "";
+    setRouterInfo(payload?.status || "ok", map, defaultPlugin);
     setPluginAutoState(map.length > 0, map);
   } catch {
+    setRouterInfo("unreachable", [], "");
     setPluginAutoState(false, []);
   }
 }
