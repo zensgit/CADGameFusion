@@ -638,6 +638,36 @@ static void append_spline_lines(std::vector<float>& positions,
     append_polyline_lines(positions, indices, control_points);
 }
 
+static void populate_slice_metadata(const cadgf_document* doc,
+                                    cadgf_entity_id id,
+                                    const cadgf_entity_info& info,
+                                    MeshSlice& slice) {
+    slice.id = id;
+    slice.layerId = info.layer_id;
+    slice.layerName = query_layer_name_utf8(doc, info.layer_id);
+    cadgf_layer_info_v2 layer_info{};
+    if (cadgf_document_get_layer_info_v2(doc, info.layer_id, &layer_info)) {
+        slice.layerColor = layer_info.color;
+        slice.hasLayerColor = true;
+    } else {
+        cadgf_layer_info legacy{};
+        if (cadgf_document_get_layer_info(doc, info.layer_id, &legacy)) {
+            slice.layerColor = legacy.color;
+            slice.hasLayerColor = true;
+        }
+    }
+    slice.name = query_entity_name_utf8(doc, id);
+    slice.lineType = query_entity_line_type_utf8(doc, id);
+    slice.colorSource = query_entity_color_source_utf8(doc, id);
+    slice.hasColorAci = query_entity_color_aci(doc, id, &slice.colorAci);
+    cadgf_entity_info_v2 info_v2{};
+    if (cadgf_document_get_entity_info_v2(doc, id, &info_v2)) {
+        slice.color = info_v2.color;
+    }
+    (void)cadgf_document_get_entity_line_weight(doc, id, &slice.lineWeight);
+    (void)cadgf_document_get_entity_line_type_scale(doc, id, &slice.lineTypeScale);
+}
+
 #if defined(CADGF_HAS_TINYGLTF)
 static tinygltf::Value build_cadgf_extras(const cadgf_document* doc) {
     using Value = tinygltf::Value;
@@ -990,6 +1020,7 @@ int main(int argc, char** argv) {
         std::vector<float> line_positions;
         std::vector<uint32_t> line_indices;
         std::vector<MeshSlice> slices;
+        std::vector<MeshSlice> line_slices;
         int entity_count = 0;
         (void)cadgf_document_get_entity_count(doc, &entity_count);
         for (int i = 0; i < entity_count; ++i) {
@@ -1002,7 +1033,22 @@ int main(int argc, char** argv) {
                 case CADGF_ENTITY_TYPE_POLYLINE: {
                     std::vector<cadgf_vec2> pts;
                     if (!query_polyline_points(doc, eid, pts)) break;
+                    const uint32_t line_base = static_cast<uint32_t>(line_positions.size() / 3);
+                    const uint32_t line_offset = static_cast<uint32_t>(line_indices.size());
                     append_polyline_lines(line_positions, line_indices, pts);
+                    const uint32_t line_vertex_count =
+                        static_cast<uint32_t>(line_positions.size() / 3) - line_base;
+                    const uint32_t line_index_count =
+                        static_cast<uint32_t>(line_indices.size()) - line_offset;
+                    if (line_index_count > 0) {
+                        MeshSlice line_slice{};
+                        populate_slice_metadata(doc, eid, info, line_slice);
+                        line_slice.baseVertex = line_base;
+                        line_slice.vertexCount = line_vertex_count;
+                        line_slice.indexOffset = line_offset;
+                        line_slice.indexCount = line_index_count;
+                        line_slices.push_back(line_slice);
+                    }
 
                     std::vector<cadgf_vec2> mesh_pts = pts;
                     strip_closing_point(mesh_pts);
@@ -1030,30 +1076,7 @@ int main(int argc, char** argv) {
                     }
 
                     MeshSlice slice;
-                    slice.id = eid;
-                    slice.layerId = info.layer_id;
-                    slice.layerName = query_layer_name_utf8(doc, info.layer_id);
-                    cadgf_layer_info_v2 layer_info{};
-                    if (cadgf_document_get_layer_info_v2(doc, info.layer_id, &layer_info)) {
-                        slice.layerColor = layer_info.color;
-                        slice.hasLayerColor = true;
-                    } else {
-                        cadgf_layer_info legacy{};
-                        if (cadgf_document_get_layer_info(doc, info.layer_id, &legacy)) {
-                            slice.layerColor = legacy.color;
-                            slice.hasLayerColor = true;
-                        }
-                    }
-                    slice.name = query_entity_name_utf8(doc, eid);
-                    slice.lineType = query_entity_line_type_utf8(doc, eid);
-                    slice.colorSource = query_entity_color_source_utf8(doc, eid);
-                    slice.hasColorAci = query_entity_color_aci(doc, eid, &slice.colorAci);
-                    cadgf_entity_info_v2 info_v2{};
-                    if (cadgf_document_get_entity_info_v2(doc, eid, &info_v2)) {
-                        slice.color = info_v2.color;
-                    }
-                    (void)cadgf_document_get_entity_line_weight(doc, eid, &slice.lineWeight);
-                    (void)cadgf_document_get_entity_line_type_scale(doc, eid, &slice.lineTypeScale);
+                    populate_slice_metadata(doc, eid, info, slice);
                     slice.baseVertex = base;
                     slice.vertexCount = static_cast<uint32_t>(mesh_pts.size());
                     slice.indexOffset = index_offset;
@@ -1064,35 +1087,110 @@ int main(int argc, char** argv) {
                 case CADGF_ENTITY_TYPE_LINE: {
                     cadgf_line ln{};
                     if (cadgf_document_get_line(doc, eid, &ln)) {
+                        const uint32_t line_base = static_cast<uint32_t>(line_positions.size() / 3);
+                        const uint32_t line_offset = static_cast<uint32_t>(line_indices.size());
                         append_line_segment(line_positions, line_indices, ln.a, ln.b);
+                        const uint32_t line_vertex_count =
+                            static_cast<uint32_t>(line_positions.size() / 3) - line_base;
+                        const uint32_t line_index_count =
+                            static_cast<uint32_t>(line_indices.size()) - line_offset;
+                        if (line_index_count > 0) {
+                            MeshSlice line_slice{};
+                            populate_slice_metadata(doc, eid, info, line_slice);
+                            line_slice.baseVertex = line_base;
+                            line_slice.vertexCount = line_vertex_count;
+                            line_slice.indexOffset = line_offset;
+                            line_slice.indexCount = line_index_count;
+                            line_slices.push_back(line_slice);
+                        }
                     }
                     break;
                 }
                 case CADGF_ENTITY_TYPE_ARC: {
                     cadgf_arc arc{};
                     if (cadgf_document_get_arc(doc, eid, &arc)) {
+                        const uint32_t line_base = static_cast<uint32_t>(line_positions.size() / 3);
+                        const uint32_t line_offset = static_cast<uint32_t>(line_indices.size());
                         append_arc_lines(line_positions, line_indices, arc);
+                        const uint32_t line_vertex_count =
+                            static_cast<uint32_t>(line_positions.size() / 3) - line_base;
+                        const uint32_t line_index_count =
+                            static_cast<uint32_t>(line_indices.size()) - line_offset;
+                        if (line_index_count > 0) {
+                            MeshSlice line_slice{};
+                            populate_slice_metadata(doc, eid, info, line_slice);
+                            line_slice.baseVertex = line_base;
+                            line_slice.vertexCount = line_vertex_count;
+                            line_slice.indexOffset = line_offset;
+                            line_slice.indexCount = line_index_count;
+                            line_slices.push_back(line_slice);
+                        }
                     }
                     break;
                 }
                 case CADGF_ENTITY_TYPE_CIRCLE: {
                     cadgf_circle circle{};
                     if (cadgf_document_get_circle(doc, eid, &circle)) {
+                        const uint32_t line_base = static_cast<uint32_t>(line_positions.size() / 3);
+                        const uint32_t line_offset = static_cast<uint32_t>(line_indices.size());
                         append_circle_lines(line_positions, line_indices, circle);
+                        const uint32_t line_vertex_count =
+                            static_cast<uint32_t>(line_positions.size() / 3) - line_base;
+                        const uint32_t line_index_count =
+                            static_cast<uint32_t>(line_indices.size()) - line_offset;
+                        if (line_index_count > 0) {
+                            MeshSlice line_slice{};
+                            populate_slice_metadata(doc, eid, info, line_slice);
+                            line_slice.baseVertex = line_base;
+                            line_slice.vertexCount = line_vertex_count;
+                            line_slice.indexOffset = line_offset;
+                            line_slice.indexCount = line_index_count;
+                            line_slices.push_back(line_slice);
+                        }
                     }
                     break;
                 }
                 case CADGF_ENTITY_TYPE_ELLIPSE: {
                     cadgf_ellipse ellipse{};
                     if (cadgf_document_get_ellipse(doc, eid, &ellipse)) {
+                        const uint32_t line_base = static_cast<uint32_t>(line_positions.size() / 3);
+                        const uint32_t line_offset = static_cast<uint32_t>(line_indices.size());
                         append_ellipse_lines(line_positions, line_indices, ellipse);
+                        const uint32_t line_vertex_count =
+                            static_cast<uint32_t>(line_positions.size() / 3) - line_base;
+                        const uint32_t line_index_count =
+                            static_cast<uint32_t>(line_indices.size()) - line_offset;
+                        if (line_index_count > 0) {
+                            MeshSlice line_slice{};
+                            populate_slice_metadata(doc, eid, info, line_slice);
+                            line_slice.baseVertex = line_base;
+                            line_slice.vertexCount = line_vertex_count;
+                            line_slice.indexOffset = line_offset;
+                            line_slice.indexCount = line_index_count;
+                            line_slices.push_back(line_slice);
+                        }
                     }
                     break;
                 }
                 case CADGF_ENTITY_TYPE_SPLINE: {
                     std::vector<cadgf_vec2> control_points;
                     if (query_spline_control_points(doc, eid, control_points)) {
+                        const uint32_t line_base = static_cast<uint32_t>(line_positions.size() / 3);
+                        const uint32_t line_offset = static_cast<uint32_t>(line_indices.size());
                         append_spline_lines(line_positions, line_indices, control_points);
+                        const uint32_t line_vertex_count =
+                            static_cast<uint32_t>(line_positions.size() / 3) - line_base;
+                        const uint32_t line_index_count =
+                            static_cast<uint32_t>(line_indices.size()) - line_offset;
+                        if (line_index_count > 0) {
+                            MeshSlice line_slice{};
+                            populate_slice_metadata(doc, eid, info, line_slice);
+                            line_slice.baseVertex = line_base;
+                            line_slice.vertexCount = line_vertex_count;
+                            line_slice.indexOffset = line_offset;
+                            line_slice.indexCount = line_index_count;
+                            line_slices.push_back(line_slice);
+                        }
                     }
                     break;
                 }
@@ -1118,6 +1216,12 @@ int main(int argc, char** argv) {
         } else if (has_lines) {
             if (!write_gltf_lines(gltf_path, bin_path, line_positions, line_indices, doc, &err)) {
                 std::cerr << "glTF export failed: " << err << "\n";
+                cadgf_document_destroy(doc);
+                return 1;
+            }
+            const std::string meta_path = (fs::path(opts.outDir) / "mesh_metadata.json").string();
+            if (!write_mesh_metadata(meta_path, gltf_path, bin_path, line_slices, &err)) {
+                std::cerr << "metadata export failed: " << err << "\n";
                 cadgf_document_destroy(doc);
                 return 1;
             }
