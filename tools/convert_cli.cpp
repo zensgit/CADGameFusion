@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <iostream>
 #include <limits>
@@ -21,6 +22,8 @@
 namespace fs = std::filesystem;
 
 static constexpr int kDocumentSchemaVersion = 1;
+static constexpr double kPi = 3.14159265358979323846;
+static constexpr double kTwoPi = kPi * 2.0;
 
 struct ConvertOptions {
     std::string pluginPath;
@@ -502,6 +505,139 @@ static void strip_closing_point(std::vector<cadgf_vec2>& pts) {
     }
 }
 
+static void append_line_segment(std::vector<float>& positions,
+                                std::vector<uint32_t>& indices,
+                                const cadgf_vec2& a,
+                                const cadgf_vec2& b) {
+    if (a.x == b.x && a.y == b.y) return;
+    const uint32_t base = static_cast<uint32_t>(positions.size() / 3);
+    positions.push_back(static_cast<float>(a.x));
+    positions.push_back(static_cast<float>(a.y));
+    positions.push_back(0.0f);
+    positions.push_back(static_cast<float>(b.x));
+    positions.push_back(static_cast<float>(b.y));
+    positions.push_back(0.0f);
+    indices.push_back(base);
+    indices.push_back(base + 1);
+}
+
+static void append_polyline_lines(std::vector<float>& positions,
+                                  std::vector<uint32_t>& indices,
+                                  const std::vector<cadgf_vec2>& pts) {
+    if (pts.size() < 2) return;
+    for (size_t i = 0; i + 1 < pts.size(); ++i) {
+        append_line_segment(positions, indices, pts[i], pts[i + 1]);
+    }
+}
+
+static int segment_count_for_delta(double delta) {
+    const double step = kPi / 18.0; // ~10 degrees
+    const int segments = static_cast<int>(std::ceil(std::abs(delta) / step));
+    return std::max(8, segments);
+}
+
+static void append_arc_lines(std::vector<float>& positions,
+                             std::vector<uint32_t>& indices,
+                             const cadgf_arc& arc) {
+    if (arc.radius <= 0.0) return;
+    double start = arc.start_angle;
+    double end = arc.end_angle;
+    double delta = end - start;
+    if (arc.clockwise) {
+        if (delta > 0.0) delta -= kTwoPi;
+    } else {
+        if (delta < 0.0) delta += kTwoPi;
+    }
+    if (std::abs(delta) < 1e-9) {
+        delta = arc.clockwise ? -kTwoPi : kTwoPi;
+    }
+    const int segments = segment_count_for_delta(delta);
+    for (int i = 0; i < segments; ++i) {
+        const double t0 = start + delta * (static_cast<double>(i) / segments);
+        const double t1 = start + delta * (static_cast<double>(i + 1) / segments);
+        cadgf_vec2 a{arc.center.x + arc.radius * std::cos(t0),
+                     arc.center.y + arc.radius * std::sin(t0)};
+        cadgf_vec2 b{arc.center.x + arc.radius * std::cos(t1),
+                     arc.center.y + arc.radius * std::sin(t1)};
+        append_line_segment(positions, indices, a, b);
+    }
+}
+
+static void append_circle_lines(std::vector<float>& positions,
+                                std::vector<uint32_t>& indices,
+                                const cadgf_circle& circle) {
+    if (circle.radius <= 0.0) return;
+    cadgf_arc arc{};
+    arc.center = circle.center;
+    arc.radius = circle.radius;
+    arc.start_angle = 0.0;
+    arc.end_angle = kTwoPi;
+    arc.clockwise = 0;
+    append_arc_lines(positions, indices, arc);
+}
+
+static void append_ellipse_lines(std::vector<float>& positions,
+                                 std::vector<uint32_t>& indices,
+                                 const cadgf_ellipse& ellipse) {
+    if (ellipse.rx <= 0.0 || ellipse.ry <= 0.0) return;
+    double start = ellipse.start_angle;
+    double end = ellipse.end_angle;
+    double delta = end - start;
+    if (std::abs(delta) < 1e-9) {
+        delta = kTwoPi;
+    }
+    const int segments = segment_count_for_delta(delta);
+    const double cos_r = std::cos(ellipse.rotation);
+    const double sin_r = std::sin(ellipse.rotation);
+    for (int i = 0; i < segments; ++i) {
+        const double t0 = start + delta * (static_cast<double>(i) / segments);
+        const double t1 = start + delta * (static_cast<double>(i + 1) / segments);
+        const double x0 = ellipse.rx * std::cos(t0);
+        const double y0 = ellipse.ry * std::sin(t0);
+        const double x1 = ellipse.rx * std::cos(t1);
+        const double y1 = ellipse.ry * std::sin(t1);
+        cadgf_vec2 a{ellipse.center.x + x0 * cos_r - y0 * sin_r,
+                     ellipse.center.y + x0 * sin_r + y0 * cos_r};
+        cadgf_vec2 b{ellipse.center.x + x1 * cos_r - y1 * sin_r,
+                     ellipse.center.y + x1 * sin_r + y1 * cos_r};
+        append_line_segment(positions, indices, a, b);
+    }
+}
+
+static bool query_spline_control_points(const cadgf_document* doc,
+                                        cadgf_entity_id id,
+                                        std::vector<cadgf_vec2>& out) {
+    int required_ctrl = 0;
+    int required_knots = 0;
+    int degree = 0;
+    if (!cadgf_document_get_spline(doc, id, nullptr, 0, &required_ctrl,
+                                   nullptr, 0, &required_knots, &degree)) {
+        return false;
+    }
+    if (required_ctrl <= 0) return false;
+    out.assign(static_cast<size_t>(required_ctrl), {});
+    std::vector<double> knots(static_cast<size_t>(std::max(0, required_knots)));
+    if (!cadgf_document_get_spline(doc, id, out.data(), required_ctrl, &required_ctrl,
+                                   knots.empty() ? nullptr : knots.data(),
+                                   required_knots, &required_knots, &degree)) {
+        return false;
+    }
+    if (required_ctrl <= 0) {
+        out.clear();
+        return false;
+    }
+    if (static_cast<int>(out.size()) != required_ctrl) {
+        out.resize(static_cast<size_t>(required_ctrl));
+    }
+    return true;
+}
+
+static void append_spline_lines(std::vector<float>& positions,
+                                std::vector<uint32_t>& indices,
+                                const std::vector<cadgf_vec2>& control_points) {
+    append_polyline_lines(positions, indices, control_points);
+}
+
 #if defined(CADGF_HAS_TINYGLTF)
 static tinygltf::Value build_cadgf_extras(const cadgf_document* doc) {
     using Value = tinygltf::Value;
@@ -668,6 +804,114 @@ static bool write_gltf(const std::string& gltf_path,
     }
     return true;
 }
+
+static bool write_gltf_lines(const std::string& gltf_path,
+                             const std::string& bin_path,
+                             const std::vector<float>& positions,
+                             const std::vector<uint32_t>& indices,
+                             const cadgf_document* doc,
+                             std::string* err) {
+    if (positions.empty() || indices.empty()) {
+        if (err) *err = "no line data";
+        return false;
+    }
+
+    tinygltf::Model model;
+    tinygltf::Scene scene;
+    tinygltf::Mesh mesh;
+    tinygltf::Primitive prim;
+    model.asset.version = "2.0";
+    model.asset.generator = "CADGameFusion_Convert_CLI";
+
+    tinygltf::Buffer buffer;
+    const size_t pos_bytes = positions.size() * sizeof(float);
+    const size_t idx_bytes = indices.size() * sizeof(uint32_t);
+    buffer.data.resize(pos_bytes + idx_bytes);
+    std::memcpy(buffer.data.data(), positions.data(), pos_bytes);
+    std::memcpy(buffer.data.data() + pos_bytes, indices.data(), idx_bytes);
+    buffer.uri = fs::path(bin_path).filename().string();
+    model.buffers.push_back(buffer);
+
+    tinygltf::BufferView pos_view;
+    pos_view.buffer = 0;
+    pos_view.byteOffset = 0;
+    pos_view.byteLength = pos_bytes;
+    pos_view.target = TINYGLTF_TARGET_ARRAY_BUFFER;
+    const int pos_view_idx = static_cast<int>(model.bufferViews.size());
+    model.bufferViews.push_back(pos_view);
+
+    tinygltf::BufferView idx_view;
+    idx_view.buffer = 0;
+    idx_view.byteOffset = pos_bytes;
+    idx_view.byteLength = idx_bytes;
+    idx_view.target = TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER;
+    const int idx_view_idx = static_cast<int>(model.bufferViews.size());
+    model.bufferViews.push_back(idx_view);
+
+    float min_x = std::numeric_limits<float>::max();
+    float min_y = std::numeric_limits<float>::max();
+    float min_z = std::numeric_limits<float>::max();
+    float max_x = std::numeric_limits<float>::lowest();
+    float max_y = std::numeric_limits<float>::lowest();
+    float max_z = std::numeric_limits<float>::lowest();
+    for (size_t i = 0; i + 2 < positions.size(); i += 3) {
+        const float x = positions[i];
+        const float y = positions[i + 1];
+        const float z = positions[i + 2];
+        min_x = std::min(min_x, x);
+        min_y = std::min(min_y, y);
+        min_z = std::min(min_z, z);
+        max_x = std::max(max_x, x);
+        max_y = std::max(max_y, y);
+        max_z = std::max(max_z, z);
+    }
+
+    tinygltf::Accessor pos_accessor;
+    pos_accessor.bufferView = pos_view_idx;
+    pos_accessor.byteOffset = 0;
+    pos_accessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+    pos_accessor.count = positions.size() / 3;
+    pos_accessor.type = TINYGLTF_TYPE_VEC3;
+    pos_accessor.minValues = {min_x, min_y, min_z};
+    pos_accessor.maxValues = {max_x, max_y, max_z};
+    const int pos_accessor_idx = static_cast<int>(model.accessors.size());
+    model.accessors.push_back(pos_accessor);
+
+    tinygltf::Accessor idx_accessor;
+    idx_accessor.bufferView = idx_view_idx;
+    idx_accessor.byteOffset = 0;
+    idx_accessor.componentType = TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
+    idx_accessor.count = indices.size();
+    idx_accessor.type = TINYGLTF_TYPE_SCALAR;
+    const int idx_accessor_idx = static_cast<int>(model.accessors.size());
+    model.accessors.push_back(idx_accessor);
+
+    prim.attributes["POSITION"] = pos_accessor_idx;
+    prim.indices = idx_accessor_idx;
+    prim.mode = TINYGLTF_MODE_LINE;
+    mesh.primitives.push_back(prim);
+    if (doc) {
+        mesh.extras = build_cadgf_extras(doc);
+    }
+    model.meshes.push_back(mesh);
+
+    tinygltf::Node node;
+    node.mesh = 0;
+    if (doc) {
+        node.extras = build_cadgf_extras(doc);
+    }
+    model.nodes.push_back(node);
+    scene.nodes.push_back(0);
+    model.scenes.push_back(scene);
+    model.defaultScene = 0;
+
+    tinygltf::TinyGLTF gltf;
+    if (!gltf.WriteGltfSceneToFile(&model, gltf_path, false, false, true, false)) {
+        if (err) *err = "failed to write glTF";
+        return false;
+    }
+    return true;
+}
 #endif
 
 int main(int argc, char** argv) {
@@ -743,6 +987,8 @@ int main(int argc, char** argv) {
 #if defined(CADGF_HAS_TINYGLTF)
         std::vector<float> positions;
         std::vector<uint32_t> indices;
+        std::vector<float> line_positions;
+        std::vector<uint32_t> line_indices;
         std::vector<MeshSlice> slices;
         int entity_count = 0;
         (void)cadgf_document_get_entity_count(doc, &entity_count);
@@ -751,75 +997,132 @@ int main(int argc, char** argv) {
             if (!cadgf_document_get_entity_id_at(doc, i, &eid)) continue;
             cadgf_entity_info info{};
             (void)cadgf_document_get_entity_info(doc, eid, &info);
-            if (info.type != CADGF_ENTITY_TYPE_POLYLINE) continue;
 
-            std::vector<cadgf_vec2> pts;
-            if (!query_polyline_points(doc, eid, pts)) continue;
-            strip_closing_point(pts);
-            if (pts.size() < 3) continue;
+            switch (info.type) {
+                case CADGF_ENTITY_TYPE_POLYLINE: {
+                    std::vector<cadgf_vec2> pts;
+                    if (!query_polyline_points(doc, eid, pts)) break;
+                    append_polyline_lines(line_positions, line_indices, pts);
 
-            int index_count = 0;
-            if (!cadgf_triangulate_polygon(pts.data(), static_cast<int>(pts.size()), nullptr, &index_count) || index_count <= 0) {
-                continue;
-            }
-            std::vector<unsigned int> local_indices(static_cast<size_t>(index_count));
-            int index_count2 = index_count;
-            if (!cadgf_triangulate_polygon(pts.data(), static_cast<int>(pts.size()), local_indices.data(), &index_count2) || index_count2 <= 0) {
-                continue;
-            }
+                    std::vector<cadgf_vec2> mesh_pts = pts;
+                    strip_closing_point(mesh_pts);
+                    if (mesh_pts.size() < 3) break;
 
-            const uint32_t base = static_cast<uint32_t>(positions.size() / 3);
-            const uint32_t index_offset = static_cast<uint32_t>(indices.size());
-            for (const auto& p : pts) {
-                positions.push_back(static_cast<float>(p.x));
-                positions.push_back(static_cast<float>(p.y));
-                positions.push_back(0.0f);
-            }
-            for (int k = 0; k < index_count2; ++k) {
-                indices.push_back(base + static_cast<uint32_t>(local_indices[static_cast<size_t>(k)]));
-            }
+                    int index_count = 0;
+                    if (!cadgf_triangulate_polygon(mesh_pts.data(), static_cast<int>(mesh_pts.size()), nullptr, &index_count) || index_count <= 0) {
+                        break;
+                    }
+                    std::vector<unsigned int> local_indices(static_cast<size_t>(index_count));
+                    int index_count2 = index_count;
+                    if (!cadgf_triangulate_polygon(mesh_pts.data(), static_cast<int>(mesh_pts.size()), local_indices.data(), &index_count2) || index_count2 <= 0) {
+                        break;
+                    }
 
-            MeshSlice slice;
-            slice.id = eid;
-            slice.layerId = info.layer_id;
-            slice.layerName = query_layer_name_utf8(doc, info.layer_id);
-            cadgf_layer_info_v2 layer_info{};
-            if (cadgf_document_get_layer_info_v2(doc, info.layer_id, &layer_info)) {
-                slice.layerColor = layer_info.color;
-                slice.hasLayerColor = true;
-            } else {
-                cadgf_layer_info legacy{};
-                if (cadgf_document_get_layer_info(doc, info.layer_id, &legacy)) {
-                    slice.layerColor = legacy.color;
-                    slice.hasLayerColor = true;
+                    const uint32_t base = static_cast<uint32_t>(positions.size() / 3);
+                    const uint32_t index_offset = static_cast<uint32_t>(indices.size());
+                    for (const auto& p : mesh_pts) {
+                        positions.push_back(static_cast<float>(p.x));
+                        positions.push_back(static_cast<float>(p.y));
+                        positions.push_back(0.0f);
+                    }
+                    for (int k = 0; k < index_count2; ++k) {
+                        indices.push_back(base + static_cast<uint32_t>(local_indices[static_cast<size_t>(k)]));
+                    }
+
+                    MeshSlice slice;
+                    slice.id = eid;
+                    slice.layerId = info.layer_id;
+                    slice.layerName = query_layer_name_utf8(doc, info.layer_id);
+                    cadgf_layer_info_v2 layer_info{};
+                    if (cadgf_document_get_layer_info_v2(doc, info.layer_id, &layer_info)) {
+                        slice.layerColor = layer_info.color;
+                        slice.hasLayerColor = true;
+                    } else {
+                        cadgf_layer_info legacy{};
+                        if (cadgf_document_get_layer_info(doc, info.layer_id, &legacy)) {
+                            slice.layerColor = legacy.color;
+                            slice.hasLayerColor = true;
+                        }
+                    }
+                    slice.name = query_entity_name_utf8(doc, eid);
+                    slice.lineType = query_entity_line_type_utf8(doc, eid);
+                    slice.colorSource = query_entity_color_source_utf8(doc, eid);
+                    slice.hasColorAci = query_entity_color_aci(doc, eid, &slice.colorAci);
+                    cadgf_entity_info_v2 info_v2{};
+                    if (cadgf_document_get_entity_info_v2(doc, eid, &info_v2)) {
+                        slice.color = info_v2.color;
+                    }
+                    (void)cadgf_document_get_entity_line_weight(doc, eid, &slice.lineWeight);
+                    (void)cadgf_document_get_entity_line_type_scale(doc, eid, &slice.lineTypeScale);
+                    slice.baseVertex = base;
+                    slice.vertexCount = static_cast<uint32_t>(mesh_pts.size());
+                    slice.indexOffset = index_offset;
+                    slice.indexCount = static_cast<uint32_t>(index_count2);
+                    slices.push_back(slice);
+                    break;
                 }
+                case CADGF_ENTITY_TYPE_LINE: {
+                    cadgf_line ln{};
+                    if (cadgf_document_get_line(doc, eid, &ln)) {
+                        append_line_segment(line_positions, line_indices, ln.a, ln.b);
+                    }
+                    break;
+                }
+                case CADGF_ENTITY_TYPE_ARC: {
+                    cadgf_arc arc{};
+                    if (cadgf_document_get_arc(doc, eid, &arc)) {
+                        append_arc_lines(line_positions, line_indices, arc);
+                    }
+                    break;
+                }
+                case CADGF_ENTITY_TYPE_CIRCLE: {
+                    cadgf_circle circle{};
+                    if (cadgf_document_get_circle(doc, eid, &circle)) {
+                        append_circle_lines(line_positions, line_indices, circle);
+                    }
+                    break;
+                }
+                case CADGF_ENTITY_TYPE_ELLIPSE: {
+                    cadgf_ellipse ellipse{};
+                    if (cadgf_document_get_ellipse(doc, eid, &ellipse)) {
+                        append_ellipse_lines(line_positions, line_indices, ellipse);
+                    }
+                    break;
+                }
+                case CADGF_ENTITY_TYPE_SPLINE: {
+                    std::vector<cadgf_vec2> control_points;
+                    if (query_spline_control_points(doc, eid, control_points)) {
+                        append_spline_lines(line_positions, line_indices, control_points);
+                    }
+                    break;
+                }
+                default:
+                    break;
             }
-            slice.name = query_entity_name_utf8(doc, eid);
-            slice.lineType = query_entity_line_type_utf8(doc, eid);
-            slice.colorSource = query_entity_color_source_utf8(doc, eid);
-            slice.hasColorAci = query_entity_color_aci(doc, eid, &slice.colorAci);
-            cadgf_entity_info_v2 info_v2{};
-            if (cadgf_document_get_entity_info_v2(doc, eid, &info_v2)) {
-                slice.color = info_v2.color;
-            }
-            (void)cadgf_document_get_entity_line_weight(doc, eid, &slice.lineWeight);
-            (void)cadgf_document_get_entity_line_type_scale(doc, eid, &slice.lineTypeScale);
-            slice.baseVertex = base;
-            slice.vertexCount = static_cast<uint32_t>(pts.size());
-            slice.indexOffset = index_offset;
-            slice.indexCount = static_cast<uint32_t>(index_count2);
-            slices.push_back(slice);
         }
 
-        if (!write_gltf(gltf_path, bin_path, positions, indices, doc, &err)) {
-            std::cerr << "glTF export failed: " << err << "\n";
-            cadgf_document_destroy(doc);
-            return 1;
-        }
-
-        const std::string meta_path = (fs::path(opts.outDir) / "mesh_metadata.json").string();
-        if (!write_mesh_metadata(meta_path, gltf_path, bin_path, slices, &err)) {
-            std::cerr << "metadata export failed: " << err << "\n";
+        const bool has_mesh = !positions.empty() && !indices.empty();
+        const bool has_lines = !line_positions.empty() && !line_indices.empty();
+        if (has_mesh) {
+            if (!write_gltf(gltf_path, bin_path, positions, indices, doc, &err)) {
+                std::cerr << "glTF export failed: " << err << "\n";
+                cadgf_document_destroy(doc);
+                return 1;
+            }
+            const std::string meta_path = (fs::path(opts.outDir) / "mesh_metadata.json").string();
+            if (!write_mesh_metadata(meta_path, gltf_path, bin_path, slices, &err)) {
+                std::cerr << "metadata export failed: " << err << "\n";
+                cadgf_document_destroy(doc);
+                return 1;
+            }
+        } else if (has_lines) {
+            if (!write_gltf_lines(gltf_path, bin_path, line_positions, line_indices, doc, &err)) {
+                std::cerr << "glTF export failed: " << err << "\n";
+                cadgf_document_destroy(doc);
+                return 1;
+            }
+        } else {
+            std::cerr << "glTF export failed: no geometry data\n";
             cadgf_document_destroy(doc);
             return 1;
         }
