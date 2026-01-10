@@ -26,6 +26,7 @@ class ServerConfig:
     repo_root: Path
     out_root: Path
     default_plugin: str
+    plugin_map: Dict[str, str]
     default_convert_cli: str
     base_url: str
     auth_token: str
@@ -592,6 +593,11 @@ def parse_args() -> argparse.Namespace:
         help="Default importer plugin path (used when request omits plugin)",
     )
     parser.add_argument(
+        "--plugin-map",
+        default="",
+        help="Extension-to-plugin map (e.g. .dxf=path,.json=path)",
+    )
+    parser.add_argument(
         "--default-convert-cli",
         default="",
         help="Default convert_cli path (used when request omits convert_cli)",
@@ -794,6 +800,42 @@ def parse_allowlist(value: str, repo_root: Path) -> List[Path]:
             path = repo_root / path
         entries.append(path.resolve())
     return entries
+
+
+def normalize_extension(value: str) -> str:
+    ext = value.strip().lower()
+    if ext and not ext.startswith("."):
+        ext = f".{ext}"
+    return ext
+
+
+def parse_plugin_map(value: str, repo_root: Path) -> Dict[str, str]:
+    mapping: Dict[str, str] = {}
+    for token in parse_csv(value.replace(";", ",")):
+        if "=" in token:
+            ext_raw, path_raw = token.split("=", 1)
+        elif ":" in token:
+            ext_raw, path_raw = token.split(":", 1)
+        else:
+            continue
+        ext = normalize_extension(ext_raw)
+        if not ext:
+            continue
+        path = Path(path_raw.strip())
+        if not path_raw.strip():
+            continue
+        if not path.is_absolute():
+            path = repo_root / path
+        mapping[ext] = str(path.resolve())
+    return mapping
+
+
+def select_plugin_for_filename(filename: str, config: ServerConfig) -> str:
+    if filename:
+        ext = normalize_extension(Path(filename).suffix)
+        if ext and ext in config.plugin_map:
+            return config.plugin_map[ext]
+    return config.default_plugin
 
 
 def is_path_allowed(path_value: str, allowlist: List[Path]) -> bool:
@@ -1261,7 +1303,11 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             with input_path.open("wb") as fh:
                 fh.write(file_part.get("data", b""))
 
-            plugin = fields.get("plugin") or config.default_plugin
+            plugin = fields.get("plugin")
+            if not plugin:
+                plugin = select_plugin_for_filename(filename, config)
+                if plugin:
+                    self.log_message("Auto plugin %s for %s", plugin, filename)
             if not plugin:
                 respond_json(self, 400, {"status": "error", "message": "missing plugin"})
                 return
@@ -1446,6 +1492,7 @@ def main() -> int:
 
     auth_token = env_or_arg(args.auth_token, "CADGF_ROUTER_AUTH_TOKEN")
     cors_raw = env_or_arg(args.cors_origins, "CADGF_ROUTER_CORS_ORIGINS")
+    plugin_map_raw = env_or_arg(args.plugin_map, "CADGF_ROUTER_PLUGIN_MAP")
     plugin_allowlist_raw = env_or_arg(args.plugin_allowlist, "CADGF_ROUTER_PLUGIN_ALLOWLIST")
     cli_allowlist_raw = env_or_arg(args.cli_allowlist, "CADGF_ROUTER_CLI_ALLOWLIST")
     history_file_raw = env_or_arg(args.history_file, "CADGF_ROUTER_HISTORY_FILE")
@@ -1467,6 +1514,7 @@ def main() -> int:
         max_bytes = 0
 
     cors_origins = parse_csv(cors_raw)
+    plugin_map = parse_plugin_map(plugin_map_raw, repo_root)
     plugin_allowlist = parse_allowlist(plugin_allowlist_raw, repo_root)
     cli_allowlist = parse_allowlist(cli_allowlist_raw, repo_root)
     history_file = None
@@ -1481,6 +1529,7 @@ def main() -> int:
         repo_root=repo_root,
         out_root=out_root,
         default_plugin=args.default_plugin,
+        plugin_map=plugin_map,
         default_convert_cli=args.default_convert_cli,
         base_url=base_url,
         auth_token=auth_token,
@@ -1503,13 +1552,16 @@ def main() -> int:
     handler = make_handler(config, manager)
     server = ThreadingHTTPServer((args.host, args.port), handler)
     print(f"Serving CADGameFusion at {base_url}")
-    print("POST /convert (multipart form-data) with fields: file, plugin, emit, hash_names")
+    print("POST /convert (multipart form-data) with fields: file, plugin?, emit, hash_names")
     print("POST /annotate (json/form) with fields: document_id or project_id+document_label, annotation_text")
     print(f"Output root: {out_root}")
     if auth_token:
         print("Auth: enabled (Bearer token)")
     if cors_origins:
         print(f"CORS allowlist: {', '.join(cors_origins)}")
+    if plugin_map:
+        summary = ", ".join(f"{ext}={Path(path).name}" for ext, path in plugin_map.items())
+        print(f"Plugin map: {summary}")
     if max_bytes > 0:
         print(f"Max upload bytes: {max_bytes}")
     if history_file:
