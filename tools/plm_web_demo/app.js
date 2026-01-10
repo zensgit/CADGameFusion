@@ -11,6 +11,10 @@ const annotationInput = document.getElementById("annotation-input");
 const annotationAuthorInput = document.getElementById("annotation-author");
 const annotateBtn = document.getElementById("annotation-btn");
 const pluginInput = document.getElementById("plugin-input");
+const pluginField = document.getElementById("plugin-field");
+const pluginAuto = document.getElementById("plugin-auto");
+const pluginAutoNote = document.getElementById("plugin-auto-note");
+const pluginOverrideBtn = document.getElementById("plugin-override");
 const cliInput = document.getElementById("cli-input");
 const emitSelect = document.getElementById("emit-select");
 const documentTargetInput = document.getElementById("document-target");
@@ -48,6 +52,7 @@ let pollTimer = null;
 let historyTimer = null;
 let selectedProjectId = "";
 let selectedDocumentId = "";
+let pluginOverride = false;
 
 function setStatus(label, state) {
   statusPill.textContent = label;
@@ -60,6 +65,46 @@ function normalizeBaseUrl(value) {
     return window.location.origin;
   }
   return trimmed.replace(/\/$/, "");
+}
+
+function setPluginAutoState(enabled, extensions) {
+  if (!pluginField || !pluginAuto || !pluginAutoNote) {
+    return;
+  }
+  if (!enabled) {
+    pluginOverride = false;
+    pluginAuto.classList.remove("is-visible");
+    pluginField.style.display = "";
+    return;
+  }
+  if (pluginOverride) {
+    pluginAuto.classList.remove("is-visible");
+    pluginField.style.display = "";
+    return;
+  }
+  const list = Array.isArray(extensions) ? extensions.filter(Boolean) : [];
+  pluginAutoNote.textContent = list.length
+    ? `Importer plugin auto-selected for ${list.join(", ")}.`
+    : "Importer plugin auto-selected by router.";
+  pluginInput.value = "";
+  pluginField.style.display = "none";
+  pluginAuto.classList.add("is-visible");
+}
+
+async function refreshRouterPluginMap() {
+  const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
+  try {
+    const response = await fetch(`${baseUrl}/health`);
+    if (!response.ok) {
+      setPluginAutoState(false, []);
+      return;
+    }
+    const payload = await response.json();
+    const map = Array.isArray(payload?.plugin_map) ? payload.plugin_map : [];
+    setPluginAutoState(map.length > 0, map);
+  } catch {
+    setPluginAutoState(false, []);
+  }
 }
 
 function renderResponse(payload) {
@@ -821,10 +866,13 @@ async function handleSubmit(event) {
 routerInput.value = normalizeBaseUrl(window.location.origin);
 setPreview("");
 setStatus("Idle", "idle");
+refreshRouterPluginMap();
 fetchHistory();
 fetchProjects();
 scheduleHistoryPoll();
 form.addEventListener("submit", handleSubmit);
+routerInput.addEventListener("change", refreshRouterPluginMap);
+routerInput.addEventListener("blur", refreshRouterPluginMap);
 refreshHistoryBtn.addEventListener("click", fetchHistory);
 historyPollToggle.addEventListener("change", scheduleHistoryPoll);
 filterProject.addEventListener("input", refreshFilters);
@@ -837,3 +885,15 @@ filterFrom.addEventListener("input", refreshFilters);
 filterTo.addEventListener("input", refreshFilters);
 refreshIndexBtn.addEventListener("click", fetchProjects);
 annotateBtn.addEventListener("click", handleAnnotationPost);
+if (pluginOverrideBtn) {
+  pluginOverrideBtn.addEventListener("click", () => {
+    pluginOverride = true;
+    if (pluginAuto) {
+      pluginAuto.classList.remove("is-visible");
+    }
+    if (pluginField) {
+      pluginField.style.display = "";
+    }
+    pluginInput.focus();
+  });
+}

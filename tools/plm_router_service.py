@@ -1003,7 +1003,12 @@ def make_handler(config: ServerConfig, manager: TaskManager):
         def do_GET(self):
             parsed = urlparse(self.path)
             if parsed.path == "/health":
-                respond_json(self, 200, {"status": "ok"})
+                payload = {"status": "ok"}
+                if config.plugin_map:
+                    payload["plugin_map"] = sorted(config.plugin_map.keys())
+                if config.default_plugin:
+                    payload["default_plugin"] = Path(config.default_plugin).name
+                respond_json(self, 200, payload)
                 return
             if parsed.path == "/projects":
                 if not self._authorized():
