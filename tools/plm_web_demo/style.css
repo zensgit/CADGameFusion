@@ -94,6 +94,46 @@ body::before {
   color: var(--muted);
 }
 
+.router-info {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(20, 24, 32, 0.08);
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 0.8rem;
+}
+
+.router-info__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.router-info__label {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.75rem;
+}
+
+.router-info__value {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-align: right;
+}
+
+.router-info__value[data-state="ok"] {
+  color: var(--success);
+}
+
+.router-info__value[data-state="error"],
+.router-info__value[data-state="unreachable"] {
+  color: var(--danger);
+}
+
 .plugin-auto {
   display: none;
   flex-direction: column;
