@@ -67,6 +67,7 @@ class TaskRecord:
     started_at: Optional[str] = None
     finished_at: Optional[str] = None
     error: Optional[str] = None
+    error_code: Optional[str] = None
     result: Optional[dict] = None
     event: threading.Event = field(default_factory=threading.Event)
 
@@ -138,6 +139,7 @@ class TaskManager:
             "finished_at": task.finished_at,
             "viewer_url": None,
             "error": task.error,
+            "error_code": task.error_code,
             "project_id": task.config.project_id,
             "document_label": task.config.document_label,
             "owner": task.config.owner,
@@ -426,6 +428,7 @@ class TaskManager:
                 "finished_at": now,
                 "viewer_url": base.get("viewer_url"),
                 "error": base.get("error"),
+                "error_code": base.get("error_code"),
                 "project_id": project_id,
                 "document_label": document_label,
                 "owner": entry_owner,
@@ -458,7 +461,7 @@ class TaskManager:
         try:
             result = self._convert(task.config)
         except Exception as exc:
-            result = {"ok": False, "error": str(exc)}
+            result = {"ok": False, "error": str(exc), "error_code": "CONVERT_EXCEPTION"}
 
         with self._lock:
             if result.get("ok"):
@@ -467,6 +470,7 @@ class TaskManager:
             else:
                 task.status = "error"
                 task.error = result.get("error", "conversion failed")
+                task.error_code = result.get("error_code") or "CONVERT_FAILED"
             task.finished_at = now_iso()
         try:
             self.record_history(task)
@@ -515,12 +519,20 @@ class TaskManager:
 
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
-            return {"ok": False, "error": result.stderr.strip() or "conversion failed"}
+            return {
+                "ok": False,
+                "error": result.stderr.strip() or "conversion failed",
+                "error_code": "CONVERT_FAILED",
+            }
 
         manifest_path = config.output_dir / "manifest.json"
         manifest = load_manifest(manifest_path)
         if not manifest:
-            return {"ok": False, "error": "manifest.json missing or invalid"}
+            return {
+                "ok": False,
+                "error": "manifest.json missing or invalid",
+                "error_code": "MANIFEST_MISSING",
+            }
 
         manifest_rel = os.path.relpath(manifest_path, self._config.repo_root)
         manifest_url = quote(Path(manifest_rel).as_posix())
@@ -959,6 +971,18 @@ def respond_json(handler, status: int, payload: dict, extra_headers: Optional[Di
     handler.wfile.write(body)
 
 
+def respond_error(
+    handler,
+    status: int,
+    message: str,
+    code: str,
+    extra_headers: Optional[Dict[str, str]] = None,
+    error_key: str = "message",
+) -> None:
+    payload = {"status": "error", error_key: message, "error_code": code}
+    respond_json(handler, status, payload, extra_headers)
+
+
 def make_handler(config: ServerConfig, manager: TaskManager):
     class RouterHandler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
@@ -1012,10 +1036,11 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 return
             if parsed.path == "/projects":
                 if not self._authorized():
-                    respond_json(
+                    respond_error(
                         self,
                         401,
-                        {"status": "error", "message": "unauthorized"},
+                        "unauthorized",
+                        "AUTH_REQUIRED",
                         {"WWW-Authenticate": "Bearer"},
                     )
                     return
@@ -1033,16 +1058,17 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 return
             if parsed.path.startswith("/projects/") and parsed.path.endswith("/documents"):
                 if not self._authorized():
-                    respond_json(
+                    respond_error(
                         self,
                         401,
-                        {"status": "error", "message": "unauthorized"},
+                        "unauthorized",
+                        "AUTH_REQUIRED",
                         {"WWW-Authenticate": "Bearer"},
                     )
                     return
                 project_token = parsed.path[len("/projects/") : -len("/documents")].strip("/")
                 if not project_token:
-                    respond_json(self, 400, {"status": "error", "message": "missing project id"})
+                    respond_error(self, 400, "missing project id", "MISSING_PROJECT_ID")
                     return
                 project_id = normalize_project_id(decode_query_value(project_token))
                 query = parsed.query or ""
@@ -1066,10 +1092,11 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 return
             if parsed.path.startswith("/documents/") and parsed.path.endswith("/versions"):
                 if not self._authorized():
-                    respond_json(
+                    respond_error(
                         self,
                         401,
-                        {"status": "error", "message": "unauthorized"},
+                        "unauthorized",
+                        "AUTH_REQUIRED",
                         {"WWW-Authenticate": "Bearer"},
                     )
                     return
@@ -1077,7 +1104,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 document_id = decode_query_value(doc_token)
                 decoded = decode_document_id(document_id)
                 if not decoded:
-                    respond_json(self, 400, {"status": "error", "message": "invalid document id"})
+                    respond_error(self, 400, "invalid document id", "INVALID_DOCUMENT_ID")
                     return
                 project_id, document_label = decoded
                 project_id = normalize_project_id(project_id)
@@ -1110,10 +1137,11 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 return
             if parsed.path == "/history":
                 if not self._authorized():
-                    respond_json(
+                    respond_error(
                         self,
                         401,
-                        {"status": "error", "message": "unauthorized"},
+                        "unauthorized",
+                        "AUTH_REQUIRED",
                         {"WWW-Authenticate": "Bearer"},
                     )
                     return
@@ -1160,17 +1188,18 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 return
             if parsed.path.startswith("/status/"):
                 if not self._authorized():
-                    respond_json(
+                    respond_error(
                         self,
                         401,
-                        {"status": "error", "message": "unauthorized"},
+                        "unauthorized",
+                        "AUTH_REQUIRED",
                         {"WWW-Authenticate": "Bearer"},
                     )
                     return
                 task_id = parsed.path.split("/status/", 1)[1]
                 task = manager.get(task_id)
                 if not task:
-                    respond_json(self, 404, {"status": "error", "message": "task not found"})
+                    respond_error(self, 404, "task not found", "TASK_NOT_FOUND")
                     return
                 payload = {
                     "status": "ok",
@@ -1185,6 +1214,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                     payload.update(task.result)
                 if task.status == "error":
                     payload["error"] = task.error
+                    payload["error_code"] = task.error_code
                 respond_json(self, 200, payload)
                 self.log_message("GET /status/%s -> %s", task_id, task.status)
                 return
@@ -1193,14 +1223,15 @@ def make_handler(config: ServerConfig, manager: TaskManager):
         def do_POST(self):
             parsed = urlparse(self.path)
             if parsed.path not in {"/convert", "/annotate"}:
-                respond_json(self, 404, {"status": "error", "message": "unknown endpoint"})
+                respond_error(self, 404, "unknown endpoint", "UNKNOWN_ENDPOINT")
                 return
 
             if not self._authorized():
-                respond_json(
+                respond_error(
                     self,
                     401,
-                    {"status": "error", "message": "unauthorized"},
+                    "unauthorized",
+                    "AUTH_REQUIRED",
                     {"WWW-Authenticate": "Bearer"},
                 )
                 return
@@ -1208,13 +1239,13 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             try:
                 length = int(self.headers.get("Content-Length", "0"))
             except ValueError:
-                respond_json(self, 400, {"status": "error", "message": "invalid content length"})
+                respond_error(self, 400, "invalid content length", "BAD_CONTENT_LENGTH")
                 return
             if length <= 0:
-                respond_json(self, 400, {"status": "error", "message": "empty request"})
+                respond_error(self, 400, "empty request", "EMPTY_REQUEST")
                 return
             if config.max_bytes > 0 and length > config.max_bytes:
-                respond_json(self, 413, {"status": "error", "message": "payload too large"})
+                respond_error(self, 413, "payload too large", "PAYLOAD_TOO_LARGE")
                 return
 
             content_type = self.headers.get("Content-Type", "")
@@ -1222,20 +1253,20 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             if parsed.path == "/annotate":
                 fields = parse_simple_body(body, content_type)
                 if not isinstance(fields, dict) or not fields:
-                    respond_json(self, 400, {"status": "error", "message": "invalid request body"})
+                    respond_error(self, 400, "invalid request body", "INVALID_BODY")
                     return
                 document_id = str(fields.get("document_id", "")).strip()
                 if document_id:
                     decoded = decode_document_id(document_id)
                     if not decoded:
-                        respond_json(self, 400, {"status": "error", "message": "invalid document id"})
+                        respond_error(self, 400, "invalid document id", "INVALID_DOCUMENT_ID")
                         return
                     project_id, document_label = decoded
                 else:
                     project_id = str(fields.get("project_id", "")).strip()
                     document_label = str(fields.get("document_label", "")).strip()
                 if not project_id or not document_label:
-                    respond_json(self, 400, {"status": "error", "message": "missing document identity"})
+                    respond_error(self, 400, "missing document identity", "MISSING_DOCUMENT_IDENTITY")
                     return
                 project_id = normalize_project_id(project_id)
                 document_label = normalize_document_label(document_label)
@@ -1252,7 +1283,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                         try:
                             parsed_annotations = json.loads(annotations_raw)
                         except json.JSONDecodeError:
-                            respond_json(self, 400, {"status": "error", "message": "invalid annotations json"})
+                            respond_error(self, 400, "invalid annotations json", "INVALID_ANNOTATIONS_JSON")
                             return
                     else:
                         parsed_annotations = annotations_raw
@@ -1265,7 +1296,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                         build_annotation(annotation_text, annotation_author, annotation_now, annotation_kind)
                     )
                 if not annotations:
-                    respond_json(self, 400, {"status": "error", "message": "missing annotations"})
+                    respond_error(self, 400, "missing annotations", "MISSING_ANNOTATIONS")
                     return
 
                 entry = manager.add_annotation(
@@ -1277,7 +1308,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                     revision_note=revision_note or None,
                 )
                 if not entry:
-                    respond_json(self, 404, {"status": "error", "message": "document not found"})
+                    respond_error(self, 404, "document not found", "DOCUMENT_NOT_FOUND")
                     return
 
                 respond_json(
@@ -1293,7 +1324,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 return
             fields, files = parse_multipart(body, content_type)
             if not files:
-                respond_json(self, 400, {"status": "error", "message": "missing file"})
+                respond_error(self, 400, "missing file", "MISSING_FILE")
                 return
 
             file_part = files[0]
@@ -1314,13 +1345,13 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 if plugin:
                     self.log_message("Auto plugin %s for %s", plugin, filename)
             if not plugin:
-                respond_json(self, 400, {"status": "error", "message": "missing plugin"})
+                respond_error(self, 400, "missing plugin", "MISSING_PLUGIN")
                 return
             if not Path(plugin).exists():
-                respond_json(self, 400, {"status": "error", "message": "plugin not found"})
+                respond_error(self, 400, "plugin not found", "PLUGIN_NOT_FOUND")
                 return
             if not is_path_allowed(plugin, config.plugin_allowlist):
-                respond_json(self, 403, {"status": "error", "message": "plugin not allowed"})
+                respond_error(self, 403, "plugin not allowed", "PLUGIN_NOT_ALLOWED")
                 return
 
             emit = fields.get("emit", "")
@@ -1338,7 +1369,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 try:
                     parsed = json.loads(annotations_raw)
                 except json.JSONDecodeError:
-                    respond_json(self, 400, {"status": "error", "message": "invalid annotations json"})
+                    respond_error(self, 400, "invalid annotations json", "INVALID_ANNOTATIONS_JSON")
                     return
                 annotations = normalize_annotations(parsed, annotation_now)
             annotation_text = fields.get("annotation_text", "").strip()
@@ -1353,10 +1384,10 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 try:
                     document_target = int(fields.get("document_target", "0") or 0)
                 except ValueError:
-                    respond_json(self, 400, {"status": "error", "message": "invalid document_target"})
+                    respond_error(self, 400, "invalid document_target", "INVALID_DOCUMENT_TARGET")
                     return
                 if document_target < 0:
-                    respond_json(self, 400, {"status": "error", "message": "invalid document_target"})
+                    respond_error(self, 400, "invalid document_target", "INVALID_DOCUMENT_TARGET")
                     return
             validate_document = parse_bool(fields.get("validate_document"))
             document_schema = fields.get("document_schema", "").strip()
@@ -1368,18 +1399,18 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 try:
                     schema_path.relative_to(config.repo_root)
                 except ValueError:
-                    respond_json(self, 403, {"status": "error", "message": "document_schema not allowed"})
+                    respond_error(self, 403, "document_schema not allowed", "DOCUMENT_SCHEMA_NOT_ALLOWED")
                     return
                 if not schema_path.exists():
-                    respond_json(self, 400, {"status": "error", "message": "document_schema not found"})
+                    respond_error(self, 400, "document_schema not found", "DOCUMENT_SCHEMA_NOT_FOUND")
                     return
                 document_schema = str(schema_path)
             convert_cli = fields.get("convert_cli") or config.default_convert_cli
             if convert_cli and not Path(convert_cli).exists():
-                respond_json(self, 400, {"status": "error", "message": "convert_cli not found"})
+                respond_error(self, 400, "convert_cli not found", "CONVERT_CLI_NOT_FOUND")
                 return
             if convert_cli and not is_path_allowed(convert_cli, config.cli_allowlist):
-                respond_json(self, 403, {"status": "error", "message": "convert_cli not allowed"})
+                respond_error(self, 403, "convert_cli not allowed", "CONVERT_CLI_NOT_ALLOWED")
                 return
 
             async_flag = parse_bool(fields.get("async"))
@@ -1416,7 +1447,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             )
             task = TaskRecord(task_id=task_id, config=task_config, created_at=now_iso())
             if not manager.submit(task):
-                respond_json(self, 429, {"status": "error", "message": "queue full"})
+                respond_error(self, 429, "queue full", "QUEUE_FULL")
                 return
 
             status_url = manager.status_url(task_id)
@@ -1436,7 +1467,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
 
             task = manager.wait(task_id, timeout=wait_timeout)
             if not task:
-                respond_json(self, 404, {"status": "error", "message": "task not found"})
+                respond_error(self, 404, "task not found", "TASK_NOT_FOUND")
                 return
 
             if task.status == "done" and task.result:
@@ -1451,15 +1482,19 @@ def make_handler(config: ServerConfig, manager: TaskManager):
                 self.log_message("POST /convert done task_id=%s", task_id)
                 return
             if task.status == "error":
+                payload = {
+                    "task_id": task_id,
+                    "state": task.status,
+                    "status_url": status_url,
+                }
                 respond_json(
                     self,
                     500,
                     {
+                        **payload,
                         "status": "error",
-                        "task_id": task_id,
-                        "state": task.status,
-                        "status_url": status_url,
                         "error": task.error,
+                        "error_code": task.error_code or "CONVERT_FAILED",
                     },
                 )
                 self.log_message("POST /convert error task_id=%s", task_id)

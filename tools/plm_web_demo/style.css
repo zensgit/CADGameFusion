@@ -245,6 +245,16 @@ select {
   margin-bottom: 16px;
 }
 
+.annotation-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  display: none;
+}
+
+.annotation-error.is-visible {
+  display: block;
+}
+
 .status[data-state="error"] {
   background: rgba(192, 57, 43, 0.16);
   color: var(--danger);
