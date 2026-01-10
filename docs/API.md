@@ -138,6 +138,17 @@ Notes
 - History entries include `annotations` and `event` fields.
 - See `docs/Tools.md` for CLI helpers.
 
+Error codes
+- Error responses include `error_code` plus a human-readable `message` or `error`.
+- Common auth/route codes: `AUTH_REQUIRED`, `UNKNOWN_ENDPOINT`.
+- Validation codes: `BAD_CONTENT_LENGTH`, `EMPTY_REQUEST`, `PAYLOAD_TOO_LARGE`, `INVALID_BODY`,
+  `MISSING_FILE`, `MISSING_PLUGIN`, `PLUGIN_NOT_FOUND`, `PLUGIN_NOT_ALLOWED`,
+  `INVALID_DOCUMENT_ID`, `MISSING_PROJECT_ID`, `MISSING_DOCUMENT_IDENTITY`,
+  `INVALID_ANNOTATIONS_JSON`, `MISSING_ANNOTATIONS`, `DOCUMENT_NOT_FOUND`,
+  `INVALID_DOCUMENT_TARGET`, `DOCUMENT_SCHEMA_NOT_ALLOWED`, `DOCUMENT_SCHEMA_NOT_FOUND`,
+  `CONVERT_CLI_NOT_FOUND`, `CONVERT_CLI_NOT_ALLOWED`.
+- Runtime codes: `QUEUE_FULL`, `TASK_NOT_FOUND`, `CONVERT_FAILED`, `MANIFEST_MISSING`, `CONVERT_EXCEPTION`.
+
 Example: generate document_id
 ```bash
 python3 - <<'PY'

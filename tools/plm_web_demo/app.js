@@ -13,6 +13,7 @@ const revisionInput = document.getElementById("revision-input");
 const annotationInput = document.getElementById("annotation-input");
 const annotationAuthorInput = document.getElementById("annotation-author");
 const annotateBtn = document.getElementById("annotation-btn");
+const annotationError = document.getElementById("annotation-error");
 const pluginInput = document.getElementById("plugin-input");
 const pluginField = document.getElementById("plugin-field");
 const pluginAuto = document.getElementById("plugin-auto");
@@ -57,9 +58,76 @@ let selectedProjectId = "";
 let selectedDocumentId = "";
 let pluginOverride = false;
 
+const ERROR_MESSAGES = {
+  AUTH_REQUIRED: "Auth required",
+  UNKNOWN_ENDPOINT: "Unknown endpoint",
+  BAD_CONTENT_LENGTH: "Invalid content length",
+  EMPTY_REQUEST: "Empty request",
+  PAYLOAD_TOO_LARGE: "Payload too large",
+  INVALID_BODY: "Invalid request body",
+  MISSING_FILE: "Missing file",
+  MISSING_PLUGIN: "Missing plugin",
+  PLUGIN_NOT_FOUND: "Plugin not found",
+  PLUGIN_NOT_ALLOWED: "Plugin not allowed",
+  INVALID_DOCUMENT_ID: "Invalid document id",
+  MISSING_PROJECT_ID: "Missing project id",
+  MISSING_DOCUMENT_IDENTITY: "Missing document identity",
+  INVALID_ANNOTATIONS_JSON: "Invalid annotations JSON",
+  MISSING_ANNOTATIONS: "Missing annotations",
+  DOCUMENT_NOT_FOUND: "Document not found",
+  INVALID_DOCUMENT_TARGET: "Invalid document target",
+  DOCUMENT_SCHEMA_NOT_ALLOWED: "Schema not allowed",
+  DOCUMENT_SCHEMA_NOT_FOUND: "Schema not found",
+  CONVERT_CLI_NOT_FOUND: "convert_cli not found",
+  CONVERT_CLI_NOT_ALLOWED: "convert_cli not allowed",
+  QUEUE_FULL: "Queue full",
+  TASK_NOT_FOUND: "Task not found",
+  CONVERT_FAILED: "Conversion failed",
+  MANIFEST_MISSING: "Manifest missing",
+  CONVERT_EXCEPTION: "Conversion crashed",
+};
+
 function setStatus(label, state) {
   statusPill.textContent = label;
   statusPill.dataset.state = state || "idle";
+}
+
+function formatErrorLabel(code, fallbackMessage) {
+  const trimmed = typeof code === "string" ? code.trim() : "";
+  const mapped = trimmed && ERROR_MESSAGES[trimmed] ? ERROR_MESSAGES[trimmed] : "";
+  const message = mapped || fallbackMessage || "";
+  if (trimmed && message) {
+    return `Error: ${message} (${trimmed})`;
+  }
+  if (trimmed) {
+    return `Error (${trimmed})`;
+  }
+  if (message) {
+    return `Error: ${message}`;
+  }
+  return "Error";
+}
+
+function formatErrorText(errorMessage, code) {
+  const trimmed = typeof code === "string" ? code.trim() : "";
+  const mapped = trimmed && ERROR_MESSAGES[trimmed] ? ERROR_MESSAGES[trimmed] : "";
+  const message = errorMessage || mapped;
+  if (message && trimmed) {
+    return `${message} [${trimmed}]`;
+  }
+  if (message) {
+    return message;
+  }
+  return trimmed;
+}
+
+function setAnnotationError(message) {
+  if (!annotationError) {
+    return;
+  }
+  const text = message ? String(message).trim() : "";
+  annotationError.textContent = text;
+  annotationError.classList.toggle("is-visible", Boolean(text));
 }
 
 function normalizeBaseUrl(value) {
@@ -178,7 +246,8 @@ async function pollStatus(url, taskId) {
     renderResponse(payload);
 
     if (!response.ok) {
-      setStatus("Error", "error");
+      const errorMessage = payload?.error || payload?.message || "";
+      setStatus(formatErrorLabel(payload?.error_code, errorMessage), "error");
       return;
     }
 
@@ -189,7 +258,7 @@ async function pollStatus(url, taskId) {
     }
 
     if (payload.state === "error") {
-      setStatus("Error", "error");
+      setStatus(formatErrorLabel(payload?.error_code, payload?.error || ""), "error");
       return;
     }
 
@@ -311,7 +380,12 @@ function renderHistory(items) {
       if (item.error) {
         const err = document.createElement("div");
         err.className = "history-item__value";
-        err.textContent = item.error;
+        err.textContent = formatErrorText(item.error, item.error_code);
+        card.appendChild(err);
+      } else if (item.error_code) {
+        const err = document.createElement("div");
+        err.className = "history-item__value";
+        err.textContent = formatErrorText("", item.error_code);
         card.appendChild(err);
       }
       group.appendChild(card);
@@ -670,9 +744,11 @@ function refreshFilters() {
 }
 
 async function handleAnnotationPost() {
+  setAnnotationError("");
   const annotationText = annotationInput.value.trim();
   if (!annotationText) {
     setStatus("Add annotation text", "error");
+    setAnnotationError("Annotation text is required.");
     return;
   }
 
@@ -696,6 +772,7 @@ async function handleAnnotationPost() {
 
   if (!payload.document_id && (!payload.project_id || !payload.document_label)) {
     setStatus("Select a document", "error");
+    setAnnotationError("Select a document or fill Project/Document fields.");
     return;
   }
 
@@ -731,11 +808,14 @@ async function handleAnnotationPost() {
     renderResponse(result);
 
     if (!response.ok) {
-      setStatus("Error", "error");
+      const errorMessage = result?.error || result?.message || "";
+      setStatus(formatErrorLabel(result?.error_code, errorMessage), "error");
+      setAnnotationError(formatErrorText(errorMessage, result?.error_code));
       return;
     }
 
     setStatus("Annotated", "done");
+    setAnnotationError("");
     await fetchHistory();
     await fetchProjects();
     if (selectedDocumentId) {
@@ -744,6 +824,7 @@ async function handleAnnotationPost() {
   } catch (err) {
     setStatus("Error", "error");
     responseEl.textContent = `Request failed: ${err}`;
+    setAnnotationError(`Request failed: ${err}`);
   } finally {
     annotateBtn.disabled = false;
   }
@@ -857,7 +938,8 @@ async function handleSubmit(event) {
     renderResponse(payload);
 
     if (!response.ok) {
-      setStatus("Error", "error");
+      const errorMessage = payload?.error || payload?.message || "";
+      setStatus(formatErrorLabel(payload?.error_code, errorMessage), "error");
       return;
     }
 
