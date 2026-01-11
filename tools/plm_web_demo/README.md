@@ -29,3 +29,15 @@ http://localhost:9000/tools/plm_web_demo/
 - The demo posts to `/convert` and polls `/status/<task_id>`.
 - Use the router base URL field if the service runs on a different host.
 - If router auth is enabled, paste the token (without `Bearer`) into the Auth Token field.
+
+## Error Codes
+- Router error responses include `error_code`; the demo surfaces it in the status pill and annotation section.
+- Example:
+```json
+{
+  "status": "error",
+  "message": "missing plugin",
+  "error_code": "MISSING_PLUGIN"
+}
+```
+- Full code list: `docs/API.md`.
