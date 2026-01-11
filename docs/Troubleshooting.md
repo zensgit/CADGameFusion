@@ -66,6 +66,16 @@ Common build/run issues and fixes.
   - Since glTF holes now default to `full`, ensure goldens are refreshed with `--gltf-holes full` (run `tools/refresh_golden_samples.sh`).
   - Locally, use `tools/local_ci.sh --gltf-holes full` to reproduce strict workflow behavior.
 
+## PLM router error codes
+- Symptom: router returns `status: "error"` with `error_code`.
+- Fix:
+  - `AUTH_REQUIRED`: include `Authorization: Bearer <token>` or unset `CADGF_ROUTER_AUTH_TOKEN`.
+  - `MISSING_PLUGIN`: supply `plugin` or configure `CADGF_ROUTER_PLUGIN_MAP` + allowlist.
+  - `TASK_NOT_FOUND`: re-use the `task_id` from `/convert` or `/status` output.
+  - `MISSING_ANNOTATIONS`: send `annotation_text` or `annotations` in `/annotate`.
+  - `CONVERT_FAILED` / `MANIFEST_MISSING`: verify plugin + `convert_cli` paths and inspect router logs.
+- Reference: `docs/API.md` for the full error code list.
+
 ## Unity cannot load core_c
 - Symptom: DllNotFoundException / plugin not found
 - Fix:
