@@ -94,6 +94,21 @@ Environment overrides:
 - `DOCUMENT_LABEL`: Document label (default `sample`).
 - `WAIT_TIMEOUT`: Wait timeout seconds (default `30`).
 
+## plm_error_codes_smoke.sh
+Validates common router error codes (auth required, missing plugin, etc.).
+
+```bash
+tools/plm_error_codes_smoke.sh
+```
+
+Environment overrides:
+- `ROUTER_URL`: Base URL for the router (default `http://127.0.0.1:9033`).
+- `ROUTER_HOST`: Host for local router (default `127.0.0.1`).
+- `ROUTER_PORT`: Port for local router (default `9033`).
+- `SKIP_ROUTER`: Set to `1` to skip launching a local router.
+- `AUTH_TOKEN`: Auth token for secured routes (default `testtoken`).
+- `OUT_DIR`: Router output dir (default `build_vcpkg/plm_service_runs_error_codes`).
+
 Print a document_id for `/documents/{id}/versions` or `POST /annotate`:
 
 ```bash
