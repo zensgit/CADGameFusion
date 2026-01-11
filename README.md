@@ -79,6 +79,7 @@ python3 tools/plm_annotate.py \
 ```
 
 For a one-shot check, use `tools/plm_smoke.sh` (see `docs/Tools.md`).
+For error-code regression, run `tools/plm_error_codes_smoke.sh`.
 
 ## Project Structure
 - `core/` — C++17 geometric core and C API
