@@ -54,6 +54,11 @@ Import the dashboard JSON at:
 In Grafana:
 - Dashboards → Import → Upload JSON → select your Prometheus datasource.
 
+## 4) Docker Compose shortcut
+For a one-command Prometheus + Grafana stack, see:
+
+- `docs/PLM_METRICS_DOCKER_COMPOSE.md`
+
 ## Notes
 - History-based metrics are bounded by the router history window (see `--history-limit`).
 - `cadgf_router_info` exposes build metadata via labels.

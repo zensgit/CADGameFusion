@@ -138,7 +138,8 @@ python3 tools/plm_annotate.py \
 ## Metrics
 `GET /metrics` returns Prometheus text output for queue depth, task/history counts, and error codes.
 Set `CADGF_ROUTER_METRICS_AUTH=1` or pass `--metrics-auth` to require the router auth token.
-See `docs/PLM_METRICS_PROMETHEUS.md` and `docs/grafana/cadgf_router_dashboard.json`.
+See `docs/PLM_METRICS_PROMETHEUS.md`, `docs/PLM_METRICS_DOCKER_COMPOSE.md`, and
+`docs/grafana/cadgf_router_dashboard.json`.
 
 ## Notes
 - Use `--token` with router/annotate if auth is enabled.
