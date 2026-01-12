@@ -115,7 +115,7 @@ printf("features: earcut=%s clipper2=%s\n",
 Base URL: `http://localhost:9000` (default). Auth is optional via `Authorization: Bearer <token>`.
 
 Endpoints
-- `GET /health` → `{status:"ok", version:"1.0.0", commit:"abc1234", build_time:"2024-01-01T00:00:00Z", hostname:"router-01", pid:12345, uptime_seconds:120, plugin_map:[...], default_plugin:"...", default_convert_cli:"...", error_codes:[...]}`
+- `GET /health` → `{status:"ok", started_at:"2024-01-01T00:00:00Z", version:"1.0.0", commit:"abc1234", build_time:"2024-01-01T00:00:00Z", hostname:"router-01", pid:12345, uptime_seconds:120, plugin_map:[...], default_plugin:"...", default_convert_cli:"...", error_codes:[...]}`
 - `POST /convert` (multipart/form-data)
   - Required: `file`, `plugin` (or server default)
   - Optional metadata: `project_id`, `document_label`, `owner`, `tags`, `revision_note`
