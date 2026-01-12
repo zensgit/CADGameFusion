@@ -93,6 +93,7 @@ Environment overrides:
 - `PROJECT_ID`: Project id (default `demo`).
 - `DOCUMENT_LABEL`: Document label (default `sample`).
 - `WAIT_TIMEOUT`: Wait timeout seconds (default `30`).
+- `VERIFY_ERRORS`: Set to `1` to run `tools/plm_error_codes_smoke.sh` after the main flow.
 
 ## plm_error_codes_smoke.sh
 Validates common router error codes (auth required, missing plugin, etc.).

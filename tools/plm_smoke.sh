@@ -15,6 +15,7 @@ EMIT="${EMIT:-json,gltf,meta}"
 PROJECT_ID="${PROJECT_ID:-demo}"
 DOCUMENT_LABEL="${DOCUMENT_LABEL:-sample}"
 WAIT_TIMEOUT="${WAIT_TIMEOUT:-30}"
+VERIFY_ERRORS="${VERIFY_ERRORS:-0}"
 
 if ! command -v "$PYTHON" >/dev/null 2>&1; then
   echo "python executable not found: $PYTHON" >&2
@@ -83,6 +84,11 @@ echo "$annotate_response"
 if ! echo "$annotate_response" | grep -q '"status"[[:space:]]*:[[:space:]]*"ok"'; then
   echo "annotate failed" >&2
   exit 1
+fi
+
+if [[ "$VERIFY_ERRORS" == "1" ]]; then
+  echo "running error code smoke..."
+  bash "$ROOT/tools/plm_error_codes_smoke.sh"
 fi
 
 echo "plm smoke OK"
