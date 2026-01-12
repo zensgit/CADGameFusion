@@ -21,6 +21,40 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 
+ERROR_CODES = tuple(
+    sorted(
+        {
+            "AUTH_REQUIRED",
+            "BAD_CONTENT_LENGTH",
+            "CONVERT_CLI_NOT_ALLOWED",
+            "CONVERT_CLI_NOT_FOUND",
+            "CONVERT_EXCEPTION",
+            "CONVERT_FAILED",
+            "DOCUMENT_NOT_FOUND",
+            "DOCUMENT_SCHEMA_NOT_ALLOWED",
+            "DOCUMENT_SCHEMA_NOT_FOUND",
+            "EMPTY_REQUEST",
+            "INVALID_ANNOTATIONS_JSON",
+            "INVALID_BODY",
+            "INVALID_DOCUMENT_ID",
+            "INVALID_DOCUMENT_TARGET",
+            "MANIFEST_MISSING",
+            "MISSING_ANNOTATIONS",
+            "MISSING_DOCUMENT_IDENTITY",
+            "MISSING_FILE",
+            "MISSING_PLUGIN",
+            "MISSING_PROJECT_ID",
+            "PAYLOAD_TOO_LARGE",
+            "PLUGIN_NOT_ALLOWED",
+            "PLUGIN_NOT_FOUND",
+            "QUEUE_FULL",
+            "TASK_NOT_FOUND",
+            "UNKNOWN_ENDPOINT",
+        }
+    )
+)
+
+
 @dataclass
 class ServerConfig:
     repo_root: Path
@@ -1028,6 +1062,7 @@ def make_handler(config: ServerConfig, manager: TaskManager):
             parsed = urlparse(self.path)
             if parsed.path == "/health":
                 payload = {"status": "ok"}
+                payload["error_codes"] = list(ERROR_CODES)
                 if config.plugin_map:
                     payload["plugin_map"] = sorted(config.plugin_map.keys())
                 if config.default_plugin:

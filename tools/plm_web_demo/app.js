@@ -4,6 +4,7 @@ const tokenInput = document.getElementById("token-input");
 const routerStatusEl = document.getElementById("router-status");
 const routerPluginMapEl = document.getElementById("router-plugin-map");
 const routerDefaultPluginEl = document.getElementById("router-default-plugin");
+const routerErrorCodesEl = document.getElementById("router-error-codes");
 const fileInput = document.getElementById("file-input");
 const projectInput = document.getElementById("project-input");
 const documentInput = document.getElementById("document-input");
@@ -138,8 +139,8 @@ function normalizeBaseUrl(value) {
   return trimmed.replace(/\/$/, "");
 }
 
-function setRouterInfo(status, pluginMap, defaultPlugin) {
-  if (!routerStatusEl || !routerPluginMapEl || !routerDefaultPluginEl) {
+function setRouterInfo(status, pluginMap, defaultPlugin, errorCodes) {
+  if (!routerStatusEl || !routerPluginMapEl || !routerDefaultPluginEl || !routerErrorCodesEl) {
     return;
   }
   const label = status || "unknown";
@@ -148,6 +149,8 @@ function setRouterInfo(status, pluginMap, defaultPlugin) {
   const list = Array.isArray(pluginMap) ? pluginMap.filter(Boolean) : [];
   routerPluginMapEl.textContent = list.length ? list.join(", ") : "—";
   routerDefaultPluginEl.textContent = defaultPlugin || "—";
+  const codes = Array.isArray(errorCodes) ? errorCodes.filter(Boolean) : [];
+  routerErrorCodesEl.textContent = codes.length ? codes.join(", ") : "—";
 }
 
 function setPluginAutoState(enabled, extensions) {
@@ -179,17 +182,18 @@ async function refreshRouterPluginMap() {
   try {
     const response = await fetch(`${baseUrl}/health`);
     if (!response.ok) {
-      setRouterInfo("error", [], "");
+      setRouterInfo("error", [], "", []);
       setPluginAutoState(false, []);
       return;
     }
     const payload = await response.json();
     const map = Array.isArray(payload?.plugin_map) ? payload.plugin_map : [];
     const defaultPlugin = typeof payload?.default_plugin === "string" ? payload.default_plugin : "";
-    setRouterInfo(payload?.status || "ok", map, defaultPlugin);
+    const errorCodes = Array.isArray(payload?.error_codes) ? payload.error_codes : [];
+    setRouterInfo(payload?.status || "ok", map, defaultPlugin, errorCodes);
     setPluginAutoState(map.length > 0, map);
   } catch {
-    setRouterInfo("unreachable", [], "");
+    setRouterInfo("unreachable", [], "", []);
     setPluginAutoState(false, []);
   }
 }

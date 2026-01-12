@@ -115,7 +115,7 @@ printf("features: earcut=%s clipper2=%s\n",
 Base URL: `http://localhost:9000` (default). Auth is optional via `Authorization: Bearer <token>`.
 
 Endpoints
-- `GET /health` → `{status:"ok"}`
+- `GET /health` → `{status:"ok", plugin_map:[...], default_plugin:"...", error_codes:[...]}`
 - `POST /convert` (multipart/form-data)
   - Required: `file`, `plugin` (or server default)
   - Optional metadata: `project_id`, `document_label`, `owner`, `tags`, `revision_note`
@@ -140,14 +140,36 @@ Notes
 
 Error codes
 - Error responses include `error_code` plus a human-readable `message` or `error`.
-- Common auth/route codes: `AUTH_REQUIRED`, `UNKNOWN_ENDPOINT`.
-- Validation codes: `BAD_CONTENT_LENGTH`, `EMPTY_REQUEST`, `PAYLOAD_TOO_LARGE`, `INVALID_BODY`,
-  `MISSING_FILE`, `MISSING_PLUGIN`, `PLUGIN_NOT_FOUND`, `PLUGIN_NOT_ALLOWED`,
-  `INVALID_DOCUMENT_ID`, `MISSING_PROJECT_ID`, `MISSING_DOCUMENT_IDENTITY`,
-  `INVALID_ANNOTATIONS_JSON`, `MISSING_ANNOTATIONS`, `DOCUMENT_NOT_FOUND`,
-  `INVALID_DOCUMENT_TARGET`, `DOCUMENT_SCHEMA_NOT_ALLOWED`, `DOCUMENT_SCHEMA_NOT_FOUND`,
-  `CONVERT_CLI_NOT_FOUND`, `CONVERT_CLI_NOT_ALLOWED`.
-- Runtime codes: `QUEUE_FULL`, `TASK_NOT_FOUND`, `CONVERT_FAILED`, `MANIFEST_MISSING`, `CONVERT_EXCEPTION`.
+- `/health` returns the current `error_codes` list for the router.
+
+| error_code | When it happens | Fix |
+| --- | --- | --- |
+| `AUTH_REQUIRED` | Missing/invalid bearer token. | Send `Authorization: Bearer <token>` or unset `CADGF_ROUTER_AUTH_TOKEN`. |
+| `BAD_CONTENT_LENGTH` | Invalid `Content-Length` header. | Provide a valid `Content-Length`. |
+| `CONVERT_CLI_NOT_ALLOWED` | `convert_cli` path not on allowlist. | Add path to `CADGF_ROUTER_CLI_ALLOWLIST`. |
+| `CONVERT_CLI_NOT_FOUND` | `convert_cli` path does not exist. | Point to a valid `convert_cli`. |
+| `CONVERT_EXCEPTION` | Unexpected exception during convert. | Check router logs and inputs. |
+| `CONVERT_FAILED` | `convert_cli` exited non-zero. | Verify plugin inputs and CLI flags. |
+| `DOCUMENT_NOT_FOUND` | Annotate target missing. | Ensure the document exists in history. |
+| `DOCUMENT_SCHEMA_NOT_ALLOWED` | Schema path outside repo. | Use a repo-relative path. |
+| `DOCUMENT_SCHEMA_NOT_FOUND` | Schema file missing. | Point `document_schema` to a valid file. |
+| `EMPTY_REQUEST` | Request body empty. | Send a request body. |
+| `INVALID_ANNOTATIONS_JSON` | `annotations` JSON invalid. | Send a valid JSON array. |
+| `INVALID_BODY` | Request body could not be parsed. | Send valid JSON/form data. |
+| `INVALID_DOCUMENT_ID` | `document_id` invalid. | Use a valid `document_id` or `project_id` + `document_label`. |
+| `INVALID_DOCUMENT_TARGET` | `document_target` not an integer. | Use an integer >= 0. |
+| `MANIFEST_MISSING` | `manifest.json` not emitted. | Check output dir permissions and converter output. |
+| `MISSING_ANNOTATIONS` | `/annotate` lacks content. | Provide `annotation_text` or `annotations`. |
+| `MISSING_DOCUMENT_IDENTITY` | Missing `document_id` and project/document. | Provide `document_id` or `project_id` + `document_label`. |
+| `MISSING_FILE` | Upload missing file part. | Send `file` in multipart form. |
+| `MISSING_PLUGIN` | No `plugin` and no plugin map/default. | Provide `plugin` or configure `CADGF_ROUTER_PLUGIN_MAP`. |
+| `MISSING_PROJECT_ID` | Missing project id in URL. | Provide `/projects/{project_id}/documents`. |
+| `PAYLOAD_TOO_LARGE` | Upload exceeds max size. | Increase `--max-bytes`/`CADGF_ROUTER_MAX_BYTES` or send smaller files. |
+| `PLUGIN_NOT_ALLOWED` | Plugin path not on allowlist. | Update `CADGF_ROUTER_PLUGIN_ALLOWLIST`. |
+| `PLUGIN_NOT_FOUND` | Plugin path missing. | Point to an existing plugin file. |
+| `QUEUE_FULL` | Router queue at capacity. | Retry or raise `--queue-size`. |
+| `TASK_NOT_FOUND` | Unknown task id. | Use the `task_id` returned by `/convert`. |
+| `UNKNOWN_ENDPOINT` | Invalid endpoint path. | Check the URL/HTTP method. |
 
 Example: generate document_id
 ```bash
