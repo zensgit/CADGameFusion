@@ -985,6 +985,38 @@ def make_run_dir(out_root: Path) -> Path:
     return run_dir
 
 
+def get_git_commit(repo_root: Path) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def get_core_version(repo_root: Path) -> str:
+    version_path = repo_root / "core" / "include" / "core" / "version.hpp"
+    if not version_path.exists():
+        return ""
+    try:
+        content = version_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    for line in content.splitlines():
+        line = line.strip()
+        if line.startswith("return") and "\"" in line:
+            parts = line.split("\"")
+            if len(parts) >= 2:
+                return parts[1]
+    return ""
+
+
 def load_manifest(path: Path) -> dict:
     try:
         with path.open("r", encoding="utf-8") as fh:
@@ -1017,7 +1049,13 @@ def respond_error(
     respond_json(handler, status, payload, extra_headers)
 
 
-def make_handler(config: ServerConfig, manager: TaskManager):
+def make_handler(
+    config: ServerConfig,
+    manager: TaskManager,
+    started_at: float,
+    commit_id: str,
+    core_version: str,
+):
     class RouterHandler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(config.repo_root), **kwargs)
@@ -1061,12 +1099,20 @@ def make_handler(config: ServerConfig, manager: TaskManager):
         def do_GET(self):
             parsed = urlparse(self.path)
             if parsed.path == "/health":
-                payload = {"status": "ok"}
+                uptime_seconds = max(0, int(time.time() - started_at))
+                payload = {
+                    "status": "ok",
+                    "uptime_seconds": uptime_seconds,
+                    "commit": commit_id or "",
+                    "version": core_version or "",
+                }
                 payload["error_codes"] = list(ERROR_CODES)
                 if config.plugin_map:
                     payload["plugin_map"] = sorted(config.plugin_map.keys())
                 if config.default_plugin:
                     payload["default_plugin"] = Path(config.default_plugin).name
+                if config.default_convert_cli:
+                    payload["default_convert_cli"] = Path(config.default_convert_cli).name
                 respond_json(self, 200, payload)
                 return
             if parsed.path == "/projects":
@@ -1564,6 +1610,7 @@ def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
     out_root = (repo_root / args.out_root).resolve()
     base_url = build_base_url(args.host, args.port, args.public_host)
+    started_at = time.time()
 
     auth_token = env_or_arg(args.auth_token, "CADGF_ROUTER_AUTH_TOKEN")
     cors_raw = env_or_arg(args.cors_origins, "CADGF_ROUTER_CORS_ORIGINS")
@@ -1592,6 +1639,8 @@ def main() -> int:
     plugin_map = parse_plugin_map(plugin_map_raw, repo_root)
     plugin_allowlist = parse_allowlist(plugin_allowlist_raw, repo_root)
     cli_allowlist = parse_allowlist(cli_allowlist_raw, repo_root)
+    commit_id = get_git_commit(repo_root)
+    core_version = get_core_version(repo_root)
     history_file = None
     if history_file_raw:
         history_path = Path(history_file_raw)
@@ -1624,7 +1673,7 @@ def main() -> int:
         history_file=history_file,
         history_load=history_load,
     )
-    handler = make_handler(config, manager)
+    handler = make_handler(config, manager, started_at, commit_id, core_version)
     server = ThreadingHTTPServer((args.host, args.port), handler)
     print(f"Serving CADGameFusion at {base_url}")
     print("POST /convert (multipart form-data) with fields: file, plugin?, emit, hash_names")
