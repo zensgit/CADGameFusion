@@ -105,6 +105,16 @@ body::before {
   font-size: 0.8rem;
 }
 
+.router-info[data-state="ok"] {
+  border-color: rgba(43, 138, 62, 0.25);
+}
+
+.router-info[data-state="error"],
+.router-info[data-state="unreachable"] {
+  border-color: rgba(192, 57, 43, 0.35);
+  background: rgba(255, 245, 244, 0.8);
+}
+
 .router-info__row {
   display: flex;
   justify-content: space-between;

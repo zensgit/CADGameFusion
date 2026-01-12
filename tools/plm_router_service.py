@@ -6,6 +6,7 @@ import json
 import os
 import queue
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -1017,6 +1018,27 @@ def get_core_version(repo_root: Path) -> str:
     return ""
 
 
+def get_build_time() -> str:
+    env_value = os.getenv("CADGF_BUILD_TIME", "").strip()
+    if not env_value:
+        env_value = os.getenv("SOURCE_DATE_EPOCH", "").strip()
+    if not env_value:
+        return ""
+    if env_value.isdigit():
+        try:
+            return dt.datetime.utcfromtimestamp(int(env_value)).isoformat(timespec="seconds") + "Z"
+        except ValueError:
+            return ""
+    return env_value
+
+
+def get_hostname() -> str:
+    try:
+        return socket.gethostname()
+    except Exception:
+        return ""
+
+
 def load_manifest(path: Path) -> dict:
     try:
         with path.open("r", encoding="utf-8") as fh:
@@ -1055,6 +1077,9 @@ def make_handler(
     started_at: float,
     commit_id: str,
     core_version: str,
+    build_time: str,
+    hostname: str,
+    pid: int,
 ):
     class RouterHandler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
@@ -1105,6 +1130,9 @@ def make_handler(
                     "uptime_seconds": uptime_seconds,
                     "commit": commit_id or "",
                     "version": core_version or "",
+                    "build_time": build_time or "",
+                    "hostname": hostname or "",
+                    "pid": pid,
                 }
                 payload["error_codes"] = list(ERROR_CODES)
                 if config.plugin_map:
@@ -1641,6 +1669,9 @@ def main() -> int:
     cli_allowlist = parse_allowlist(cli_allowlist_raw, repo_root)
     commit_id = get_git_commit(repo_root)
     core_version = get_core_version(repo_root)
+    build_time = get_build_time()
+    hostname = get_hostname()
+    pid = os.getpid()
     history_file = None
     if history_file_raw:
         history_path = Path(history_file_raw)
@@ -1673,9 +1704,28 @@ def main() -> int:
         history_file=history_file,
         history_load=history_load,
     )
-    handler = make_handler(config, manager, started_at, commit_id, core_version)
+    handler = make_handler(
+        config,
+        manager,
+        started_at,
+        commit_id,
+        core_version,
+        build_time,
+        hostname,
+        pid,
+    )
     server = ThreadingHTTPServer((args.host, args.port), handler)
     print(f"Serving CADGameFusion at {base_url}")
+    print(
+        "Router metadata: version=%s commit=%s build_time=%s host=%s pid=%s"
+        % (
+            core_version or "unknown",
+            commit_id or "unknown",
+            build_time or "unknown",
+            hostname or "unknown",
+            pid,
+        )
+    )
     print("POST /convert (multipart form-data) with fields: file, plugin?, emit, hash_names")
     print("POST /annotate (json/form) with fields: document_id or project_id+document_label, annotation_text")
     print(f"Output root: {out_root}")
