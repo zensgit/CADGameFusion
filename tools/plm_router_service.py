@@ -1074,7 +1074,8 @@ def respond_error(
 def make_handler(
     config: ServerConfig,
     manager: TaskManager,
-    started_at: float,
+    started_at_monotonic: float,
+    started_at_iso: str,
     commit_id: str,
     core_version: str,
     build_time: str,
@@ -1124,9 +1125,10 @@ def make_handler(
         def do_GET(self):
             parsed = urlparse(self.path)
             if parsed.path == "/health":
-                uptime_seconds = max(0, int(time.time() - started_at))
+                uptime_seconds = max(0, int(time.monotonic() - started_at_monotonic))
                 payload = {
                     "status": "ok",
+                    "started_at": started_at_iso,
                     "uptime_seconds": uptime_seconds,
                     "commit": commit_id or "",
                     "version": core_version or "",
@@ -1638,7 +1640,8 @@ def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
     out_root = (repo_root / args.out_root).resolve()
     base_url = build_base_url(args.host, args.port, args.public_host)
-    started_at = time.time()
+    started_at_monotonic = time.monotonic()
+    started_at_iso = now_iso()
 
     auth_token = env_or_arg(args.auth_token, "CADGF_ROUTER_AUTH_TOKEN")
     cors_raw = env_or_arg(args.cors_origins, "CADGF_ROUTER_CORS_ORIGINS")
@@ -1707,7 +1710,8 @@ def main() -> int:
     handler = make_handler(
         config,
         manager,
-        started_at,
+        started_at_monotonic,
+        started_at_iso,
         commit_id,
         core_version,
         build_time,

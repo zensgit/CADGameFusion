@@ -130,6 +130,8 @@ python3 tools/plm_annotate.py \
 - `CADGF_ROUTER_HISTORY_FILE`: Append task history to a JSONL file (directories created if needed).
 - `CADGF_ROUTER_HISTORY_LOAD`: Max history entries to load on startup (0 = all).
 - `CADGF_ROUTER_MAX_BYTES`: Max upload size in bytes (0 disables).
+- `CADGF_BUILD_TIME`: ISO timestamp or epoch seconds for `/health` `build_time` (overrides `SOURCE_DATE_EPOCH`).
+- `SOURCE_DATE_EPOCH`: Epoch seconds used for `/health` `build_time` when `CADGF_BUILD_TIME` is unset.
 
 ## Notes
 - Use `--token` with router/annotate if auth is enabled.

@@ -78,12 +78,20 @@ if ! echo "$health_response" | grep -q '"uptime_seconds"'; then
   echo "[health] expected uptime_seconds" >&2
   exit 1
 fi
+if ! echo "$health_response" | grep -q '"started_at"'; then
+  echo "[health] expected started_at" >&2
+  exit 1
+fi
 if ! echo "$health_response" | grep -q '"version"'; then
   echo "[health] expected version" >&2
   exit 1
 fi
 if ! echo "$health_response" | grep -q '"commit"'; then
   echo "[health] expected commit" >&2
+  exit 1
+fi
+if ! echo "$health_response" | grep -q '"build_time"'; then
+  echo "[health] expected build_time" >&2
   exit 1
 fi
 if echo "$health_response" | grep -q '"default_convert_cli"'; then

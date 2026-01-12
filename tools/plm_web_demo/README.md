@@ -51,6 +51,7 @@ Example response:
 ```json
 {
   "status": "ok",
+  "started_at": "2024-01-01T00:00:00Z",
   "version": "1.0.0",
   "commit": "abc1234",
   "build_time": "2024-01-01T00:00:00Z",
