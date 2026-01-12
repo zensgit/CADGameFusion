@@ -69,12 +69,22 @@ Common build/run issues and fixes.
 ## PLM router error codes
 - Symptom: router returns `status: "error"` with `error_code`.
 - Fix:
-  - `AUTH_REQUIRED`: include `Authorization: Bearer <token>` or unset `CADGF_ROUTER_AUTH_TOKEN`.
-  - `MISSING_PLUGIN`: supply `plugin` or configure `CADGF_ROUTER_PLUGIN_MAP` + allowlist.
-  - `TASK_NOT_FOUND`: re-use the `task_id` from `/convert` or `/status` output.
-  - `MISSING_ANNOTATIONS`: send `annotation_text` or `annotations` in `/annotate`.
-  - `CONVERT_FAILED` / `MANIFEST_MISSING`: verify plugin + `convert_cli` paths and inspect router logs.
+  - Common error codes:
+
+    | error_code | When it happens | Fix |
+    | --- | --- | --- |
+    | `AUTH_REQUIRED` | Missing/invalid bearer token. | Send `Authorization: Bearer <token>` or unset `CADGF_ROUTER_AUTH_TOKEN`. |
+    | `MISSING_PLUGIN` | `/convert` called without `plugin` and no plugin map/default. | Supply `plugin` or configure `CADGF_ROUTER_PLUGIN_MAP` + allowlist. |
+    | `PLUGIN_NOT_ALLOWED` | Plugin path not in allowlist. | Add the plugin path or directory to `CADGF_ROUTER_PLUGIN_ALLOWLIST`. |
+    | `CONVERT_CLI_NOT_FOUND` | `convert_cli` path does not exist. | Point to a valid `convert_cli` binary or set `CADGF_ROUTER_CLI_ALLOWLIST`. |
+    | `TASK_NOT_FOUND` | Invalid task id in `/status/{task_id}`. | Reuse the `task_id` from `/convert` response. |
+    | `MISSING_ANNOTATIONS` | `/annotate` without annotation content. | Provide `annotation_text` or `annotations`. |
+    | `CONVERT_FAILED` | `convert_cli` returned non-zero. | Check router logs, plugin inputs, and CLI flags. |
+    | `MANIFEST_MISSING` | Conversion did not emit `manifest.json`. | Verify output dir permissions and exporter output. |
+    | `DOCUMENT_SCHEMA_NOT_FOUND` | Schema path invalid. | Ensure `document_schema` points to an existing file. |
+
 - Reference: `docs/API.md` for the full error code list.
+- Tip: run `tools/plm_error_codes_smoke.sh` to validate error code responses.
 
 ## Unity cannot load core_c
 - Symptom: DllNotFoundException / plugin not found
