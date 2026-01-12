@@ -1,6 +1,7 @@
 const form = document.getElementById("upload-form");
 const routerInput = document.getElementById("router-url");
 const tokenInput = document.getElementById("token-input");
+const routerInfoEl = document.getElementById("router-info");
 const routerStatusEl = document.getElementById("router-status");
 const routerPluginMapEl = document.getElementById("router-plugin-map");
 const routerDefaultPluginEl = document.getElementById("router-default-plugin");
@@ -9,6 +10,9 @@ const routerDefaultConvertCliEl = document.getElementById("router-default-conver
 const routerVersionEl = document.getElementById("router-version");
 const routerCommitEl = document.getElementById("router-commit");
 const routerUptimeEl = document.getElementById("router-uptime");
+const routerBuildTimeEl = document.getElementById("router-build-time");
+const routerHostnameEl = document.getElementById("router-hostname");
+const routerPidEl = document.getElementById("router-pid");
 const fileInput = document.getElementById("file-input");
 const projectInput = document.getElementById("project-input");
 const documentInput = document.getElementById("document-input");
@@ -62,6 +66,8 @@ let historyTimer = null;
 let selectedProjectId = "";
 let selectedDocumentId = "";
 let pluginOverride = false;
+let routerInfoTimer = null;
+let routerInfoBusy = false;
 
 const ERROR_MESSAGES = {
   AUTH_REQUIRED: "Auth required",
@@ -160,6 +166,7 @@ function formatUptime(seconds) {
 
 function setRouterInfo(status, pluginMap, defaultPlugin, errorCodes, meta) {
   if (
+    !routerInfoEl ||
     !routerStatusEl ||
     !routerPluginMapEl ||
     !routerDefaultPluginEl ||
@@ -167,13 +174,17 @@ function setRouterInfo(status, pluginMap, defaultPlugin, errorCodes, meta) {
     !routerDefaultConvertCliEl ||
     !routerVersionEl ||
     !routerCommitEl ||
-    !routerUptimeEl
+    !routerUptimeEl ||
+    !routerBuildTimeEl ||
+    !routerHostnameEl ||
+    !routerPidEl
   ) {
     return;
   }
   const label = status || "unknown";
   routerStatusEl.textContent = label;
   routerStatusEl.dataset.state = label;
+  routerInfoEl.dataset.state = label;
   const list = Array.isArray(pluginMap) ? pluginMap.filter(Boolean) : [];
   routerPluginMapEl.textContent = list.length ? list.join(", ") : "—";
   routerDefaultPluginEl.textContent = defaultPlugin || "—";
@@ -183,6 +194,9 @@ function setRouterInfo(status, pluginMap, defaultPlugin, errorCodes, meta) {
   routerVersionEl.textContent = meta?.version || "—";
   routerCommitEl.textContent = meta?.commit || "—";
   routerUptimeEl.textContent = formatUptime(meta?.uptimeSeconds);
+  routerBuildTimeEl.textContent = meta?.buildTime || "—";
+  routerHostnameEl.textContent = meta?.hostname || "—";
+  routerPidEl.textContent = meta?.pid || "—";
 }
 
 function setPluginAutoState(enabled, extensions) {
@@ -210,6 +224,10 @@ function setPluginAutoState(enabled, extensions) {
 }
 
 async function refreshRouterPluginMap() {
+  if (routerInfoBusy) {
+    return;
+  }
+  routerInfoBusy = true;
   const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
   try {
     const response = await fetch(`${baseUrl}/health`);
@@ -224,9 +242,13 @@ async function refreshRouterPluginMap() {
     const defaultConvertCli =
       typeof payload?.default_convert_cli === "string" ? payload.default_convert_cli : "";
     const errorCodes = Array.isArray(payload?.error_codes) ? payload.error_codes : [];
+    const pidValue = Number(payload?.pid);
     const meta = {
       version: typeof payload?.version === "string" ? payload.version : "",
       commit: typeof payload?.commit === "string" ? payload.commit : "",
+      buildTime: typeof payload?.build_time === "string" ? payload.build_time : "",
+      hostname: typeof payload?.hostname === "string" ? payload.hostname : "",
+      pid: Number.isFinite(pidValue) ? String(pidValue) : "",
       uptimeSeconds: Number(payload?.uptime_seconds),
       defaultConvertCli,
     };
@@ -235,7 +257,18 @@ async function refreshRouterPluginMap() {
   } catch {
     setRouterInfo("unreachable", [], "", [], {});
     setPluginAutoState(false, []);
+  } finally {
+    routerInfoBusy = false;
   }
+}
+
+function scheduleRouterInfoPoll() {
+  if (routerInfoTimer) {
+    clearInterval(routerInfoTimer);
+  }
+  routerInfoTimer = setInterval(() => {
+    refreshRouterPluginMap();
+  }, 60000);
 }
 
 function renderResponse(payload) {
@@ -1012,6 +1045,7 @@ routerInput.value = normalizeBaseUrl(window.location.origin);
 setPreview("");
 setStatus("Idle", "idle");
 refreshRouterPluginMap();
+scheduleRouterInfoPoll();
 fetchHistory();
 fetchProjects();
 scheduleHistoryPoll();

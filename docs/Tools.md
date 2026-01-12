@@ -98,6 +98,8 @@ Environment overrides:
 ## plm_error_codes_smoke.sh
 Validates common router error codes (auth required, missing plugin, etc.).
 Also checks `/health` includes `error_codes`, `version`, `commit`, and `uptime_seconds`.
+If `CADGF_ROUTER_DEFAULT_CONVERT_CLI` is set, it validates the default convert_cli is executable
+and (when `CADGF_ROUTER_CLI_ALLOWLIST` is set) allowlisted.
 
 ```bash
 tools/plm_error_codes_smoke.sh
