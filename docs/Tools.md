@@ -132,9 +132,11 @@ python3 tools/plm_annotate.py \
 - `CADGF_ROUTER_MAX_BYTES`: Max upload size in bytes (0 disables).
 - `CADGF_BUILD_TIME`: ISO timestamp or epoch seconds for `/health` `build_time` (overrides `SOURCE_DATE_EPOCH`).
 - `SOURCE_DATE_EPOCH`: Epoch seconds used for `/health` `build_time` when `CADGF_BUILD_TIME` is unset.
+- `CADGF_ROUTER_METRICS_AUTH`: Set to `1` to require auth token for `/metrics`.
 
 ## Metrics
 `GET /metrics` returns Prometheus text output for queue depth, task/history counts, and error codes.
+Set `CADGF_ROUTER_METRICS_AUTH=1` or pass `--metrics-auth` to require the router auth token.
 
 ## Notes
 - Use `--token` with router/annotate if auth is enabled.

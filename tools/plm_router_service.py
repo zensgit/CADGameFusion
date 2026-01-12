@@ -69,6 +69,7 @@ class ServerConfig:
     max_bytes: int
     plugin_allowlist: List[Path]
     cli_allowlist: List[Path]
+    metrics_auth: bool
 
 
 @dataclass
@@ -705,6 +706,11 @@ def parse_args() -> argparse.Namespace:
         "--cors-origins",
         default="",
         help="Comma-separated allowlist of origins (use * to allow all)",
+    )
+    parser.add_argument(
+        "--metrics-auth",
+        action="store_true",
+        help="Require auth token for /metrics",
     )
     parser.add_argument(
         "--max-bytes",
@@ -1353,6 +1359,15 @@ def make_handler(
                 respond_json(self, 200, payload)
                 return
             if parsed.path == "/metrics":
+                if config.metrics_auth and not self._authorized():
+                    respond_error(
+                        self,
+                        401,
+                        "unauthorized",
+                        "AUTH_REQUIRED",
+                        {"WWW-Authenticate": "Bearer"},
+                    )
+                    return
                 uptime_seconds = max(0, int(time.monotonic() - started_at_monotonic))
                 body = render_metrics(
                     config,
@@ -1873,6 +1888,7 @@ def main() -> int:
     plugin_allowlist_raw = env_or_arg(args.plugin_allowlist, "CADGF_ROUTER_PLUGIN_ALLOWLIST")
     cli_allowlist_raw = env_or_arg(args.cli_allowlist, "CADGF_ROUTER_CLI_ALLOWLIST")
     history_file_raw = env_or_arg(args.history_file, "CADGF_ROUTER_HISTORY_FILE")
+    metrics_auth = parse_bool(os.getenv("CADGF_ROUTER_METRICS_AUTH")) or args.metrics_auth
     history_load = args.history_load
     env_history_load = os.getenv("CADGF_ROUTER_HISTORY_LOAD")
     if env_history_load and args.history_load == 200:
@@ -1919,6 +1935,7 @@ def main() -> int:
         max_bytes=max_bytes,
         plugin_allowlist=plugin_allowlist,
         cli_allowlist=cli_allowlist,
+        metrics_auth=metrics_auth,
     )
 
     manager = TaskManager(
@@ -1955,6 +1972,8 @@ def main() -> int:
             pid,
         )
     )
+    if metrics_auth:
+        print("Metrics auth enabled: /metrics requires Bearer token")
     print("POST /convert (multipart form-data) with fields: file, plugin?, emit, hash_names")
     print("POST /annotate (json/form) with fields: document_id or project_id+document_label, annotation_text")
     print(f"Output root: {out_root}")
