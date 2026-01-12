@@ -160,6 +160,22 @@ if ! echo "$health_response" | grep -q '"AUTH_REQUIRED"'; then
   exit 1
 fi
 
+check_metrics_body() {
+  local body="$1"
+  if ! echo "$body" | grep -q "cadgf_router_info"; then
+    echo "[metrics] expected cadgf_router_info" >&2
+    exit 1
+  fi
+  if ! echo "$body" | grep -q "cadgf_router_uptime_seconds"; then
+    echo "[metrics] expected cadgf_router_uptime_seconds" >&2
+    exit 1
+  fi
+  if ! echo "$body" | grep -q "cadgf_router_queue_depth"; then
+    echo "[metrics] expected cadgf_router_queue_depth" >&2
+    exit 1
+  fi
+}
+
 metrics_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$ROUTER_URL/metrics")
 if [[ "$METRICS_AUTH" == "1" ]]; then
   if [[ "$metrics_status" != "401" ]]; then
@@ -173,12 +189,15 @@ if [[ "$METRICS_AUTH" == "1" ]]; then
     echo "[metrics] expected 200 with auth token, got $metrics_status" >&2
     exit 1
   fi
+  metrics_body=$(curl -s --max-time 10 -H "Authorization: Bearer $AUTH_TOKEN" "$ROUTER_URL/metrics")
 else
   if [[ "$metrics_status" != "200" ]]; then
     echo "[metrics] expected 200 without auth, got $metrics_status" >&2
     exit 1
   fi
+  metrics_body=$(curl -s --max-time 10 "$ROUTER_URL/metrics")
 fi
+check_metrics_body "$metrics_body"
 
 check_error_code() {
   local label="$1"
