@@ -133,5 +133,8 @@ python3 tools/plm_annotate.py \
 - `CADGF_BUILD_TIME`: ISO timestamp or epoch seconds for `/health` `build_time` (overrides `SOURCE_DATE_EPOCH`).
 - `SOURCE_DATE_EPOCH`: Epoch seconds used for `/health` `build_time` when `CADGF_BUILD_TIME` is unset.
 
+## Metrics
+`GET /metrics` returns Prometheus text output for queue depth, task/history counts, and error codes.
+
 ## Notes
 - Use `--token` with router/annotate if auth is enabled.

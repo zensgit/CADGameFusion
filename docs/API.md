@@ -116,6 +116,7 @@ Base URL: `http://localhost:9000` (default). Auth is optional via `Authorization
 
 Endpoints
 - `GET /health` → `{status:"ok", started_at:"2024-01-01T00:00:00Z", version:"1.0.0", commit:"abc1234", build_time:"2024-01-01T00:00:00Z", hostname:"router-01", pid:12345, uptime_seconds:120, plugin_map:[...], default_plugin:"...", default_convert_cli:"...", error_codes:[...]}`
+- `GET /metrics` → Prometheus text format (queue depth, task/history counts, error codes).
 - `POST /convert` (multipart/form-data)
   - Required: `file`, `plugin` (or server default)
   - Optional metadata: `project_id`, `document_label`, `owner`, `tags`, `revision_note`
@@ -141,6 +142,7 @@ Notes
 Error codes
 - Error responses include `error_code` plus a human-readable `message` or `error`.
 - `/health` returns the current `error_codes` list for the router.
+- `/metrics` is Prometheus text output; history-based metrics reflect the router history window.
 
 | error_code | When it happens | Fix |
 | --- | --- | --- |

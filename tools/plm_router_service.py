@@ -120,7 +120,8 @@ class TaskManager:
         history_load: int,
     ):
         self._config = config
-        self._queue = queue.Queue(maxsize=max(queue_size, 0))
+        self._queue_maxsize = max(queue_size, 0)
+        self._queue = queue.Queue(maxsize=self._queue_maxsize)
         self._tasks: Dict[str, TaskRecord] = {}
         self._lock = threading.Lock()
         self._ttl_seconds = ttl_seconds
@@ -131,8 +132,9 @@ class TaskManager:
         self._history_load = max(history_load, 0)
         self._stop_event = threading.Event()
         self._workers = []
+        self._max_workers = max(1, max_workers)
         self._load_history()
-        for _ in range(max(1, max_workers)):
+        for _ in range(self._max_workers):
             worker = threading.Thread(target=self._worker_loop, daemon=True)
             worker.start()
             self._workers.append(worker)
@@ -383,6 +385,50 @@ class TaskManager:
             if limit > 0 and len(payload) >= limit:
                 break
         return payload
+
+    def metrics_snapshot(self) -> dict:
+        try:
+            queue_depth = self._queue.qsize()
+        except NotImplementedError:
+            queue_depth = 0
+
+        with self._lock:
+            tasks = list(self._tasks.values())
+            history = list(self._history)
+
+        task_states: Dict[str, int] = {}
+        for task in tasks:
+            state = task.status or "unknown"
+            task_states[state] = task_states.get(state, 0) + 1
+
+        history_states: Dict[str, int] = {}
+        history_events: Dict[str, int] = {}
+        error_codes: Dict[str, int] = {}
+        error_total = 0
+        for entry in history:
+            state = entry.get("state") or "unknown"
+            history_states[state] = history_states.get(state, 0) + 1
+            event = entry.get("event") or ""
+            if event:
+                history_events[event] = history_events.get(event, 0) + 1
+            error_code = entry.get("error_code") or ""
+            if error_code:
+                error_total += 1
+                error_codes[error_code] = error_codes.get(error_code, 0) + 1
+
+        return {
+            "queue_depth": queue_depth,
+            "queue_capacity": self._queue.maxsize,
+            "max_workers": self._max_workers,
+            "tasks_total": len(tasks),
+            "tasks_by_state": task_states,
+            "history_total": len(history),
+            "history_by_state": history_states,
+            "history_event_total": history_events,
+            "history_error_total": error_total,
+            "history_error_codes": error_codes,
+            "history_limit": self._history_limit,
+        }
 
     def _append_history(self, entry: dict) -> None:
         if not self._history_file:
@@ -1059,6 +1105,166 @@ def respond_json(handler, status: int, payload: dict, extra_headers: Optional[Di
     handler.wfile.write(body)
 
 
+def respond_text(
+    handler,
+    status: int,
+    body: str,
+    content_type: str = "text/plain; version=0.0.4",
+    extra_headers: Optional[Dict[str, str]] = None,
+) -> None:
+    payload = body.encode("utf-8")
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(payload)))
+    if extra_headers:
+        for key, value in extra_headers.items():
+            handler.send_header(key, value)
+    handler.end_headers()
+    handler.wfile.write(payload)
+
+
+def prom_escape_label(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
+def prom_format_labels(labels: Dict[str, str]) -> str:
+    if not labels:
+        return ""
+    parts = [f'{key}="{prom_escape_label(str(value))}"' for key, value in sorted(labels.items())]
+    return "{" + ",".join(parts) + "}"
+
+
+def prom_metric_line(name: str, value: float, labels: Optional[Dict[str, str]] = None) -> str:
+    return f"{name}{prom_format_labels(labels or {})} {value}"
+
+
+def render_metrics(
+    config: ServerConfig,
+    manager: TaskManager,
+    uptime_seconds: int,
+    started_at_iso: str,
+    started_at_epoch: float,
+    commit_id: str,
+    core_version: str,
+    build_time: str,
+    hostname: str,
+    pid: int,
+) -> str:
+    snapshot = manager.metrics_snapshot()
+    lines = [
+        "# HELP cadgf_router_info Router build metadata.",
+        "# TYPE cadgf_router_info gauge",
+        prom_metric_line(
+            "cadgf_router_info",
+            1,
+            {
+                "version": core_version or "unknown",
+                "commit": commit_id or "unknown",
+                "build_time": build_time or "",
+                "hostname": hostname or "",
+                "pid": str(pid),
+                "started_at": started_at_iso or "",
+            },
+        ),
+        "# HELP cadgf_router_uptime_seconds Router uptime in seconds.",
+        "# TYPE cadgf_router_uptime_seconds gauge",
+        prom_metric_line("cadgf_router_uptime_seconds", float(uptime_seconds)),
+        "# HELP cadgf_router_started_at_timestamp Router start time in seconds since epoch.",
+        "# TYPE cadgf_router_started_at_timestamp gauge",
+        prom_metric_line("cadgf_router_started_at_timestamp", float(int(started_at_epoch))),
+        "# HELP cadgf_router_queue_depth Tasks currently queued.",
+        "# TYPE cadgf_router_queue_depth gauge",
+        prom_metric_line("cadgf_router_queue_depth", float(snapshot["queue_depth"])),
+        "# HELP cadgf_router_queue_capacity Queue capacity (0 = unbounded).",
+        "# TYPE cadgf_router_queue_capacity gauge",
+        prom_metric_line("cadgf_router_queue_capacity", float(snapshot["queue_capacity"])),
+        "# HELP cadgf_router_workers Router worker threads.",
+        "# TYPE cadgf_router_workers gauge",
+        prom_metric_line("cadgf_router_workers", float(snapshot["max_workers"])),
+        "# HELP cadgf_router_tasks_total Total tracked tasks.",
+        "# TYPE cadgf_router_tasks_total gauge",
+        prom_metric_line("cadgf_router_tasks_total", float(snapshot["tasks_total"])),
+        "# HELP cadgf_router_tasks_state_total Tasks by state.",
+        "# TYPE cadgf_router_tasks_state_total gauge",
+    ]
+    for state, count in sorted(snapshot["tasks_by_state"].items()):
+        lines.append(
+            prom_metric_line(
+                "cadgf_router_tasks_state_total",
+                float(count),
+                {"state": state},
+            )
+        )
+
+    lines.extend(
+        [
+            "# HELP cadgf_router_history_total History entries retained.",
+            "# TYPE cadgf_router_history_total gauge",
+            prom_metric_line("cadgf_router_history_total", float(snapshot["history_total"])),
+            "# HELP cadgf_router_history_limit History limit (0 = unbounded).",
+            "# TYPE cadgf_router_history_limit gauge",
+            prom_metric_line("cadgf_router_history_limit", float(snapshot["history_limit"])),
+            "# HELP cadgf_router_history_state_total History entries by state.",
+            "# TYPE cadgf_router_history_state_total gauge",
+        ]
+    )
+    for state, count in sorted(snapshot["history_by_state"].items()):
+        lines.append(
+            prom_metric_line(
+                "cadgf_router_history_state_total",
+                float(count),
+                {"state": state},
+            )
+        )
+    lines.extend(
+        [
+            "# HELP cadgf_router_history_event_total History entries by event.",
+            "# TYPE cadgf_router_history_event_total gauge",
+        ]
+    )
+    for event, count in sorted(snapshot["history_event_total"].items()):
+        lines.append(
+            prom_metric_line(
+                "cadgf_router_history_event_total",
+                float(count),
+                {"event": event},
+            )
+        )
+    lines.extend(
+        [
+            "# HELP cadgf_router_history_error_total History entries with errors.",
+            "# TYPE cadgf_router_history_error_total gauge",
+            prom_metric_line("cadgf_router_history_error_total", float(snapshot["history_error_total"])),
+            "# HELP cadgf_router_history_error_code_total History error codes (bounded by history window).",
+            "# TYPE cadgf_router_history_error_code_total gauge",
+        ]
+    )
+    for code, count in sorted(snapshot["history_error_codes"].items()):
+        lines.append(
+            prom_metric_line(
+                "cadgf_router_history_error_code_total",
+                float(count),
+                {"error_code": code},
+            )
+        )
+
+    lines.extend(
+        [
+            "# HELP cadgf_router_plugin_map_total Number of configured plugin extensions.",
+            "# TYPE cadgf_router_plugin_map_total gauge",
+            prom_metric_line("cadgf_router_plugin_map_total", float(len(config.plugin_map or {}))),
+            "# HELP cadgf_router_default_plugin_configured Whether a default plugin is configured.",
+            "# TYPE cadgf_router_default_plugin_configured gauge",
+            prom_metric_line("cadgf_router_default_plugin_configured", float(1 if config.default_plugin else 0)),
+            "# HELP cadgf_router_default_convert_cli_configured Whether a default convert_cli is configured.",
+            "# TYPE cadgf_router_default_convert_cli_configured gauge",
+            prom_metric_line("cadgf_router_default_convert_cli_configured", float(1 if config.default_convert_cli else 0)),
+        ]
+    )
+
+    return "\n".join(lines) + "\n"
+
+
 def respond_error(
     handler,
     status: int,
@@ -1076,6 +1282,7 @@ def make_handler(
     manager: TaskManager,
     started_at_monotonic: float,
     started_at_iso: str,
+    started_at_epoch: float,
     commit_id: str,
     core_version: str,
     build_time: str,
@@ -1144,6 +1351,22 @@ def make_handler(
                 if config.default_convert_cli:
                     payload["default_convert_cli"] = Path(config.default_convert_cli).name
                 respond_json(self, 200, payload)
+                return
+            if parsed.path == "/metrics":
+                uptime_seconds = max(0, int(time.monotonic() - started_at_monotonic))
+                body = render_metrics(
+                    config,
+                    manager,
+                    uptime_seconds,
+                    started_at_iso,
+                    started_at_epoch,
+                    commit_id,
+                    core_version,
+                    build_time,
+                    hostname,
+                    pid,
+                )
+                respond_text(self, 200, body)
                 return
             if parsed.path == "/projects":
                 if not self._authorized():
@@ -1640,8 +1863,9 @@ def main() -> int:
     repo_root = Path(__file__).resolve().parents[1]
     out_root = (repo_root / args.out_root).resolve()
     base_url = build_base_url(args.host, args.port, args.public_host)
+    started_at_epoch = time.time()
     started_at_monotonic = time.monotonic()
-    started_at_iso = now_iso()
+    started_at_iso = dt.datetime.utcfromtimestamp(started_at_epoch).isoformat(timespec="seconds") + "Z"
 
     auth_token = env_or_arg(args.auth_token, "CADGF_ROUTER_AUTH_TOKEN")
     cors_raw = env_or_arg(args.cors_origins, "CADGF_ROUTER_CORS_ORIGINS")
@@ -1712,6 +1936,7 @@ def main() -> int:
         manager,
         started_at_monotonic,
         started_at_iso,
+        started_at_epoch,
         commit_id,
         core_version,
         build_time,
