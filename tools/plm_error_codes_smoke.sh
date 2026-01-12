@@ -12,6 +12,7 @@ AUTH_TOKEN="${AUTH_TOKEN:-testtoken}"
 OUT_DIR="${OUT_DIR:-$ROOT/build_vcpkg/plm_service_runs_error_codes}"
 DEFAULT_CONVERT_CLI="${CADGF_ROUTER_DEFAULT_CONVERT_CLI:-}"
 CLI_ALLOWLIST="${CADGF_ROUTER_CLI_ALLOWLIST:-}"
+METRICS_AUTH="${CADGF_ROUTER_METRICS_AUTH:-0}"
 
 if ! command -v "$PYTHON" >/dev/null 2>&1; then
   echo "python executable not found: $PYTHON" >&2
@@ -50,6 +51,9 @@ if [[ "$SKIP_ROUTER" != "1" ]]; then
   fi
   if [[ -n "$CLI_ALLOWLIST" ]]; then
     router_args+=(--cli-allowlist "$CLI_ALLOWLIST")
+  fi
+  if [[ "$METRICS_AUTH" == "1" ]]; then
+    router_args+=(--metrics-auth)
   fi
   "$PYTHON" "$ROOT/tools/plm_router_service.py" "${router_args[@]}" >/dev/null 2>&1 &
   ROUTER_PID=$!
@@ -154,6 +158,26 @@ fi
 if ! echo "$health_response" | grep -q '"AUTH_REQUIRED"'; then
   echo "[health] expected AUTH_REQUIRED in error_codes" >&2
   exit 1
+fi
+
+metrics_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$ROUTER_URL/metrics")
+if [[ "$METRICS_AUTH" == "1" ]]; then
+  if [[ "$metrics_status" != "401" ]]; then
+    echo "[metrics] expected 401 when auth is required, got $metrics_status" >&2
+    exit 1
+  fi
+  metrics_status=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 \
+    -H "Authorization: Bearer $AUTH_TOKEN" \
+    "$ROUTER_URL/metrics")
+  if [[ "$metrics_status" != "200" ]]; then
+    echo "[metrics] expected 200 with auth token, got $metrics_status" >&2
+    exit 1
+  fi
+else
+  if [[ "$metrics_status" != "200" ]]; then
+    echo "[metrics] expected 200 without auth, got $metrics_status" >&2
+    exit 1
+  fi
 fi
 
 check_error_code() {
