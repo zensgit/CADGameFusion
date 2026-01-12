@@ -97,6 +97,7 @@ Environment overrides:
 
 ## plm_error_codes_smoke.sh
 Validates common router error codes (auth required, missing plugin, etc.).
+Also checks `/health` includes an `error_codes` list.
 
 ```bash
 tools/plm_error_codes_smoke.sh

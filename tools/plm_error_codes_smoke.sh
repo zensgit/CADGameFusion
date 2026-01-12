@@ -58,6 +58,17 @@ if [[ "$ready" != "1" ]]; then
   exit 1
 fi
 
+health_response=$(curl -s --max-time 10 "$ROUTER_URL/health")
+echo "$health_response"
+if ! echo "$health_response" | grep -q '"error_codes"'; then
+  echo "[health] expected error_codes list" >&2
+  exit 1
+fi
+if ! echo "$health_response" | grep -q '"AUTH_REQUIRED"'; then
+  echo "[health] expected AUTH_REQUIRED in error_codes" >&2
+  exit 1
+fi
+
 check_error_code() {
   local label="$1"
   local expected="$2"
