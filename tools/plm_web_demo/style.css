@@ -125,6 +125,11 @@ body::before {
   text-align: right;
 }
 
+.router-info__value--wrap {
+  max-width: 220px;
+  word-break: break-word;
+}
+
 .router-info__value[data-state="ok"] {
   color: var(--success);
 }
