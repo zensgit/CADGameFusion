@@ -41,3 +41,22 @@ http://localhost:9000/tools/plm_web_demo/
 }
 ```
 - Full code list: `docs/API.md`.
+
+## Health Sample
+```bash
+curl -s http://localhost:9000/health
+```
+
+Example response:
+```json
+{
+  "status": "ok",
+  "version": "1.0.0",
+  "commit": "abc1234",
+  "uptime_seconds": 120,
+  "error_codes": ["AUTH_REQUIRED", "MISSING_PLUGIN"],
+  "plugin_map": [".dxf", ".json"],
+  "default_plugin": "libcadgf_dxf_importer_plugin.dylib",
+  "default_convert_cli": "convert_cli"
+}
+```

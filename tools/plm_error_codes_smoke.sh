@@ -64,6 +64,18 @@ if ! echo "$health_response" | grep -q '"error_codes"'; then
   echo "[health] expected error_codes list" >&2
   exit 1
 fi
+if ! echo "$health_response" | grep -q '"uptime_seconds"'; then
+  echo "[health] expected uptime_seconds" >&2
+  exit 1
+fi
+if ! echo "$health_response" | grep -q '"version"'; then
+  echo "[health] expected version" >&2
+  exit 1
+fi
+if ! echo "$health_response" | grep -q '"commit"'; then
+  echo "[health] expected commit" >&2
+  exit 1
+fi
 if ! echo "$health_response" | grep -q '"AUTH_REQUIRED"'; then
   echo "[health] expected AUTH_REQUIRED in error_codes" >&2
   exit 1

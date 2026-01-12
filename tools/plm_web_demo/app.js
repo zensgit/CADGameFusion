@@ -5,6 +5,10 @@ const routerStatusEl = document.getElementById("router-status");
 const routerPluginMapEl = document.getElementById("router-plugin-map");
 const routerDefaultPluginEl = document.getElementById("router-default-plugin");
 const routerErrorCodesEl = document.getElementById("router-error-codes");
+const routerDefaultConvertCliEl = document.getElementById("router-default-convert-cli");
+const routerVersionEl = document.getElementById("router-version");
+const routerCommitEl = document.getElementById("router-commit");
+const routerUptimeEl = document.getElementById("router-uptime");
 const fileInput = document.getElementById("file-input");
 const projectInput = document.getElementById("project-input");
 const documentInput = document.getElementById("document-input");
@@ -139,8 +143,32 @@ function normalizeBaseUrl(value) {
   return trimmed.replace(/\/$/, "");
 }
 
-function setRouterInfo(status, pluginMap, defaultPlugin, errorCodes) {
-  if (!routerStatusEl || !routerPluginMapEl || !routerDefaultPluginEl || !routerErrorCodesEl) {
+function formatUptime(seconds) {
+  if (!Number.isFinite(seconds)) {
+    return "—";
+  }
+  const total = Math.max(0, Math.floor(seconds));
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (hours || days) parts.push(`${hours}h`);
+  parts.push(`${minutes}m`);
+  return parts.join(" ");
+}
+
+function setRouterInfo(status, pluginMap, defaultPlugin, errorCodes, meta) {
+  if (
+    !routerStatusEl ||
+    !routerPluginMapEl ||
+    !routerDefaultPluginEl ||
+    !routerErrorCodesEl ||
+    !routerDefaultConvertCliEl ||
+    !routerVersionEl ||
+    !routerCommitEl ||
+    !routerUptimeEl
+  ) {
     return;
   }
   const label = status || "unknown";
@@ -151,6 +179,10 @@ function setRouterInfo(status, pluginMap, defaultPlugin, errorCodes) {
   routerDefaultPluginEl.textContent = defaultPlugin || "—";
   const codes = Array.isArray(errorCodes) ? errorCodes.filter(Boolean) : [];
   routerErrorCodesEl.textContent = codes.length ? codes.join(", ") : "—";
+  routerDefaultConvertCliEl.textContent = meta?.defaultConvertCli || "—";
+  routerVersionEl.textContent = meta?.version || "—";
+  routerCommitEl.textContent = meta?.commit || "—";
+  routerUptimeEl.textContent = formatUptime(meta?.uptimeSeconds);
 }
 
 function setPluginAutoState(enabled, extensions) {
@@ -182,18 +214,26 @@ async function refreshRouterPluginMap() {
   try {
     const response = await fetch(`${baseUrl}/health`);
     if (!response.ok) {
-      setRouterInfo("error", [], "", []);
+      setRouterInfo("error", [], "", [], {});
       setPluginAutoState(false, []);
       return;
     }
     const payload = await response.json();
     const map = Array.isArray(payload?.plugin_map) ? payload.plugin_map : [];
     const defaultPlugin = typeof payload?.default_plugin === "string" ? payload.default_plugin : "";
+    const defaultConvertCli =
+      typeof payload?.default_convert_cli === "string" ? payload.default_convert_cli : "";
     const errorCodes = Array.isArray(payload?.error_codes) ? payload.error_codes : [];
-    setRouterInfo(payload?.status || "ok", map, defaultPlugin, errorCodes);
+    const meta = {
+      version: typeof payload?.version === "string" ? payload.version : "",
+      commit: typeof payload?.commit === "string" ? payload.commit : "",
+      uptimeSeconds: Number(payload?.uptime_seconds),
+      defaultConvertCli,
+    };
+    setRouterInfo(payload?.status || "ok", map, defaultPlugin, errorCodes, meta);
     setPluginAutoState(map.length > 0, map);
   } catch {
-    setRouterInfo("unreachable", [], "", []);
+    setRouterInfo("unreachable", [], "", [], {});
     setPluginAutoState(false, []);
   }
 }
