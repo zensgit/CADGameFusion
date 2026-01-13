@@ -41,6 +41,14 @@ curl -s -X POST -F "file=@tests/plugin_data/importer_sample.dxf" http://localhos
 ```
 The JSON response includes `viewer_url` for the web preview.
 
+CLI helper for the same flow:
+```
+python3 tools/plm_router_smoke.py \
+  --input tests/plugin_data/importer_sample.dxf \
+  --plugin build_vcpkg/plugins/libcadgf_dxf_importer_plugin.dylib \
+  --emit json,gltf,meta
+```
+
 Async upload with status polling:
 ```
 curl -s -X POST -F "file=@tests/plugin_data/importer_sample.dxf" -F "async=true" http://localhost:9000/convert
