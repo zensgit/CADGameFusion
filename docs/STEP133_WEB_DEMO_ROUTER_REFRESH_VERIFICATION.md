@@ -16,7 +16,8 @@
 - Confirmed `setRouterUpdated` and the refresh click handler exist in `tools/plm_web_demo/app.js`.
 
 ## Automated Tests
-- Not available for this UI-only change.
+- Playwright headless UI check using a mocked `/health` response.
 
 ## Verification Result
-- Static checks passed; manual UI verification not run.
+- Static checks passed.
+- Playwright check passed (refresh triggers `/health`, timestamp updates, and button disables while fetching).
