@@ -13,6 +13,8 @@ const routerUptimeEl = document.getElementById("router-uptime");
 const routerBuildTimeEl = document.getElementById("router-build-time");
 const routerHostnameEl = document.getElementById("router-hostname");
 const routerPidEl = document.getElementById("router-pid");
+const routerRefreshBtn = document.getElementById("router-refresh");
+const routerUpdatedEl = document.getElementById("router-updated");
 const fileInput = document.getElementById("file-input");
 const projectInput = document.getElementById("project-input");
 const documentInput = document.getElementById("document-input");
@@ -164,6 +166,17 @@ function formatUptime(seconds) {
   return parts.join(" ");
 }
 
+function setRouterUpdated(timestamp) {
+  if (!routerUpdatedEl) {
+    return;
+  }
+  if (!(timestamp instanceof Date) || Number.isNaN(timestamp.getTime())) {
+    routerUpdatedEl.textContent = "Last update: —";
+    return;
+  }
+  routerUpdatedEl.textContent = `Last update: ${timestamp.toLocaleTimeString()}`;
+}
+
 function setRouterInfo(status, pluginMap, defaultPlugin, errorCodes, meta) {
   if (
     !routerInfoEl ||
@@ -228,12 +241,16 @@ async function refreshRouterPluginMap() {
     return;
   }
   routerInfoBusy = true;
+  if (routerRefreshBtn) {
+    routerRefreshBtn.disabled = true;
+  }
   const baseUrl = normalizeBaseUrl(routerInput.value || window.location.origin);
   try {
     const response = await fetch(`${baseUrl}/health`);
     if (!response.ok) {
       setRouterInfo("error", [], "", [], {});
       setPluginAutoState(false, []);
+      setRouterUpdated(null);
       return;
     }
     const payload = await response.json();
@@ -254,11 +271,16 @@ async function refreshRouterPluginMap() {
     };
     setRouterInfo(payload?.status || "ok", map, defaultPlugin, errorCodes, meta);
     setPluginAutoState(map.length > 0, map);
+    setRouterUpdated(new Date());
   } catch {
     setRouterInfo("unreachable", [], "", [], {});
     setPluginAutoState(false, []);
+    setRouterUpdated(null);
   } finally {
     routerInfoBusy = false;
+    if (routerRefreshBtn) {
+      routerRefreshBtn.disabled = false;
+    }
   }
 }
 
@@ -1052,6 +1074,9 @@ scheduleHistoryPoll();
 form.addEventListener("submit", handleSubmit);
 routerInput.addEventListener("change", refreshRouterPluginMap);
 routerInput.addEventListener("blur", refreshRouterPluginMap);
+if (routerRefreshBtn) {
+  routerRefreshBtn.addEventListener("click", refreshRouterPluginMap);
+}
 refreshHistoryBtn.addEventListener("click", fetchHistory);
 historyPollToggle.addEventListener("change", scheduleHistoryPoll);
 filterProject.addEventListener("input", refreshFilters);
