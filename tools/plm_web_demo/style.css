@@ -94,6 +94,17 @@ body::before {
   color: var(--muted);
 }
 
+.router-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.router-actions .btn {
+  padding: 8px 14px;
+}
+
 .router-info {
   display: grid;
   gap: 6px;
