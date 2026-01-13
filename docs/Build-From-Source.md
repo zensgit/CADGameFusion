@@ -5,7 +5,7 @@ This guide covers building the repo on macOS/Windows/Linux.
 ## Prerequisites
 - Git, CMake (3.16+), C++17 compiler
 - vcpkg (scripts/bootstrap_vcpkg.sh will clone & bootstrap into repo)
-- Qt 6 (for the Qt editor)
+- Qt 6 (only needed for the legacy `editor/qt` build in this repo)
 - Optional: Ninja for faster multi-config builds
 
 ## Quick scripts
@@ -14,9 +14,11 @@ This guide covers building the repo on macOS/Windows/Linux.
 export VCPKG_ROOT="$(pwd)/vcpkg"
 # Core
 ./scripts/build_core.sh
-# Editor (auto-detects Qt; pass path if needed)
+# Legacy editor (auto-detects Qt; pass path if needed)
 ./scripts/build_editor.sh /Applications/Qt/6.x/macos
 ```
+
+Note: the standalone Qt app now lives in https://github.com/zensgit/cadgf-app-qt.
 
 ## Manual CMake
 ```bash
@@ -35,7 +37,7 @@ cmake --build build --config Release
 
 ## Output
 - `build/bin/core_c.*` — C API (Unity adapter)
-- `build/bin/editor_qt` — Qt editor app
+- `build/bin/editor_qt` — legacy Qt editor app
 
 ## Validate Exports Locally
 - 验证一个场景目录：

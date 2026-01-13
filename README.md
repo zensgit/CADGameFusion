@@ -13,6 +13,7 @@ High‑performance 2D CAD/geometry core with an optional Qt editor and export to
 - One‑Command Quick Check: `tools/quick_check.sh` or `make quick` / `make strict`
 - CMake package usage: [docs/CMake-Package-Usage.md](docs/CMake-Package-Usage.md)
 - Release notes: [docs/Release-Notes-2025-09-30.md](docs/Release-Notes-2025-09-30.md)
+- Qt app repo: https://github.com/zensgit/cadgf-app-qt
 
 ## Build (Quick Start)
 ```bash
@@ -22,7 +23,8 @@ ctest --test-dir build -V
 ```
 
 ## Editor (Qt)
-Enable with `-DBUILD_EDITOR_QT=ON` and build target `editor_qt`.
+The standalone Qt application now lives in https://github.com/zensgit/cadgf-app-qt.
+This repo still keeps `editor/qt` for now; enable with `-DBUILD_EDITOR_QT=ON` and build target `editor_qt`.
 
 ## API Stability (C ABI)
 - Stable binary boundary: C ABI in `core_c` (`cadgf_*` symbols in `core/include/core/core_c_api.h`).
@@ -83,7 +85,7 @@ For error-code regression, run `tools/plm_error_codes_smoke.sh`.
 
 ## Project Structure
 - `core/` — C++17 geometric core and C API
-- `editor/qt/` — Optional Qt-based editor
+- `editor/qt/` — Legacy Qt editor (standalone app lives in `cadgf-app-qt`)
 - `tools/` — Export CLI and helpers (includes `local_ci.sh`, `quick_check.sh`)
 - `tests/` — Core/tools tests (CMake + CTest)
 - `docs/` — Design notes and reports
