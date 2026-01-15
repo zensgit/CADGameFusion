@@ -38,11 +38,32 @@ curl -s -X POST "http://127.0.0.1:9000/convert" \
   -F "document_label=sample_dxf"
 ```
 
+Diff via router (left/right manifests or documents). If you send manifests, include the
+referenced document JSON as `left_document`/`right_document`:
+
+```bash
+curl -s -X POST "http://127.0.0.1:9000/diff" \
+  -F "left=@build_vcpkg/dwg_run_1/manifest.json" \
+  -F "left_document=@build_vcpkg/dwg_run_1/document.json" \
+  -F "right=@build_vcpkg/dwg_run_2/manifest.json" \
+  -F "right_document=@build_vcpkg/dwg_run_2/document.json"
+```
+
+For raw documents, send `left=@.../document.json` and `right=@.../document.json` only.
+
 ## plm_router_service.py
 Runs the HTTP router for uploads, history, and annotations.
 
 ```bash
 python3 tools/plm_router_service.py --port 9000
+```
+
+DWG uploads require an external DWG→DXF converter. Configure the command and allowlist:
+
+```bash
+export CADGF_ROUTER_DWG_CONVERT_CMD="/usr/local/bin/dwg2dxf {input} {output}"
+export CADGF_ROUTER_DWG_CONVERT_TIMEOUT=120
+export CADGF_ROUTER_CLI_ALLOWLIST="/usr/local/bin/dwg2dxf"
 ```
 
 ## plm_convert.py
@@ -68,12 +89,79 @@ python3 tools/plm_annotate.py \
   --author sam
 ```
 
+## document_diff.py
+Compares two document.json or manifest.json files and emits a diff report plus a diff document.
+
+```bash
+python3 tools/document_diff.py \
+  --left build_vcpkg/run_a/manifest.json \
+  --right build_vcpkg/run_b/manifest.json \
+  --out /tmp/cadgf_diff
+```
+
+## plm_diff.py
+Calls the router `/diff` endpoint with local inputs.
+
+```bash
+python3 tools/plm_diff.py \
+  --router http://localhost:9000 \
+  --left build_vcpkg/dwg_run_1/manifest.json \
+  --left-document build_vcpkg/dwg_run_1/document.json \
+  --right build_vcpkg/dwg_run_2/manifest.json \
+  --right-document build_vcpkg/dwg_run_2/document.json
+```
+
+Auto-resolve document.json from manifests:
+
+```bash
+python3 tools/plm_diff.py \
+  --router http://localhost:9000 \
+  --left build_vcpkg/dwg_run_1/manifest.json \
+  --right build_vcpkg/dwg_run_2/manifest.json
+```
+
 ## plm_smoke.sh
 Runs a local router plus convert + annotate in one script.
 
 ```bash
 tools/plm_smoke.sh
 ```
+
+## plm_diff_smoke.sh
+Runs a local router and posts a diff request using sample JSON inputs.
+
+```bash
+tools/plm_diff_smoke.sh
+```
+
+## web_viewer_desktop
+Electron wrapper for the Web Viewer.
+End-user setup guide: `docs/VEMCAD_DESKTOP_GUIDE.md`.
+
+```bash
+cd tools/web_viewer_desktop
+npm install
+npm run start
+```
+
+Build installers locally:
+```bash
+npm run dist
+```
+
+Windows installers are built via GitHub Actions (workflow: Web Viewer Desktop (Windows)).
+
+Desktop "Open CAD File" requires a running router:
+- Desktop Settings (button or Cmd/Ctrl+,) lets you edit router/DWG settings in-app.
+  Settings are stored locally and used as overrides for Open CAD File.
+  Test Router / Check DWG buttons validate connectivity and DWG setup (including /health version info).
+  When settings are empty, the app auto-fills local CADGameFusion paths and detected `dwg2dxf`.
+- `VEMCAD_ROUTER_URL` (default `http://127.0.0.1:9000`)
+- `VEMCAD_ROUTER_PLUGIN` / `VEMCAD_ROUTER_CONVERT_CLI` as needed (or configure router defaults).
+- `VEMCAD_DWG_CONVERT_CMD` to enable DWG -> DXF before upload.
+- `VEMCAD_ROUTER_AUTO_START=1` to auto-launch a local router (or set `VEMCAD_ROUTER_START_CMD`).
+- `VEMCAD_DWG_SERVICE_PATH` lets the desktop auto-detect `cadgf-dwg-service` when no command is set.
+- `VEMCAD_DWG2DXF_BIN` lets the desktop auto-pass LibreDWG `dwg2dxf` if installed.
 
 ```bash
 INPUT=tests/plugin_data/importer_sample.dxf \
@@ -92,6 +180,12 @@ Environment overrides:
 - `EMIT`: Comma-separated outputs (default `json,gltf,meta`).
 - `PROJECT_ID`: Project id (default `demo`).
 - `DOCUMENT_LABEL`: Document label (default `sample`).
+- `RUN_DIFF_SMOKE`: Set to `1` to also run diff smoke.
+- `DIFF_LEFT_INPUT`: Diff left file (default `tests/plugin_data/importer_sample.json`).
+- `DIFF_RIGHT_INPUT`: Diff right file (default `tests/plugin_data/importer_sample_p1.json`).
+- `DIFF_PLUGIN`: Diff JSON plugin (default `build_vcpkg/plugins/libcadgf_json_importer_plugin.dylib`).
+- `DIFF_CONVERT_CLI`: Diff convert_cli path (default `build_vcpkg/tools/convert_cli`).
+- `DIFF_EMIT`: Diff outputs (default `json,gltf,meta`).
 - `WAIT_TIMEOUT`: Wait timeout seconds (default `30`).
 - `VERIFY_ERRORS`: Set to `1` to run `tools/plm_error_codes_smoke.sh` after the main flow.
 

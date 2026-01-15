@@ -3,6 +3,7 @@
 VemCAD Desktop is a thin wrapper around the Web Viewer. It relies on the
 local router to convert CAD files into preview artifacts (document.json + glTF).
 Release notes: `docs/VEMCAD_RELEASE_NOTES_v0.1.0.md`.
+QA checklist: `docs/VEMCAD_QA_CHECKLIST.md`.
 
 ## Quickstart
 1) Start the router (default port 9000):
