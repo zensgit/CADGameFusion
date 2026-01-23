@@ -3,12 +3,20 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
 #include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#if defined(__APPLE__) || defined(__linux__)
+#include <iconv.h>
+#define CADGF_HAVE_ICONV 1
+#else
+#define CADGF_HAVE_ICONV 0
+#endif
 
 struct DxfStyle {
     std::string line_type;
@@ -46,7 +54,9 @@ struct DxfPolyline {
     std::string layer;
     std::vector<cadgf_vec2> points;
     bool closed = false;
+    std::string name;
     DxfStyle style;
+    int space = 0;
 };
 
 struct DxfLine {
@@ -58,6 +68,7 @@ struct DxfLine {
     bool has_bx = false;
     bool has_by = false;
     DxfStyle style;
+    int space = 0;
 };
 
 struct DxfCircle {
@@ -68,6 +79,7 @@ struct DxfCircle {
     bool has_cy = false;
     bool has_radius = false;
     DxfStyle style;
+    int space = 0;
 };
 
 struct DxfArc {
@@ -82,6 +94,7 @@ struct DxfArc {
     bool has_start = false;
     bool has_end = false;
     DxfStyle style;
+    int space = 0;
 };
 
 struct DxfEllipse {
@@ -99,6 +112,7 @@ struct DxfEllipse {
     bool has_start = false;
     bool has_end = false;
     DxfStyle style;
+    int space = 0;
 };
 
 struct DxfSpline {
@@ -107,17 +121,93 @@ struct DxfSpline {
     std::vector<cadgf_vec2> control_points;
     std::vector<double> knots;
     DxfStyle style;
+    int space = 0;
 };
 
 struct DxfText {
     std::string layer;
+    std::string style_name;
     cadgf_vec2 pos{};
+    cadgf_vec2 align_pos{};
     double height = 0.0;
     double rotation_deg = 0.0;
+    double width = 0.0;
     std::string text;
     bool has_x = false;
     bool has_y = false;
+    bool has_align_x = false;
+    bool has_align_y = false;
+    bool has_width = false;
+    int attachment = 0;
+    bool has_attachment = false;
+    int halign = 0;
+    int valign = 0;
+    bool has_halign = false;
+    bool has_valign = false;
+    bool is_mtext = false;
+    bool allow_extended_text = false;
     DxfStyle style;
+    int space = 0;
+};
+
+struct DxfSolidPoint {
+    cadgf_vec2 pos{};
+    bool has_x = false;
+    bool has_y = false;
+};
+
+struct DxfSolid {
+    std::string layer;
+    DxfSolidPoint points[4];
+    DxfStyle style;
+    int space = 0;
+};
+
+struct DxfHatch {
+    std::string layer;
+    std::vector<std::vector<cadgf_vec2>> boundaries;
+    bool closed = true;
+    int hatch_id = -1;
+    DxfStyle style;
+    int space = 0;
+};
+
+struct HatchEdgeLine {
+    cadgf_vec2 start{};
+    cadgf_vec2 end{};
+    bool has_start_x = false;
+    bool has_start_y = false;
+    bool has_end_x = false;
+    bool has_end_y = false;
+};
+
+struct HatchEdgeArc {
+    cadgf_vec2 center{};
+    double radius = 0.0;
+    double start_deg = 0.0;
+    double end_deg = 0.0;
+    int ccw = 1;
+    bool has_cx = false;
+    bool has_cy = false;
+    bool has_radius = false;
+    bool has_start = false;
+    bool has_end = false;
+};
+
+struct HatchEdgeEllipse {
+    cadgf_vec2 center{};
+    cadgf_vec2 major_axis{};
+    double ratio = 0.0;
+    double start_param = 0.0;
+    double end_param = 0.0;
+    int ccw = 1;
+    bool has_cx = false;
+    bool has_cy = false;
+    bool has_ax = false;
+    bool has_ay = false;
+    bool has_ratio = false;
+    bool has_start = false;
+    bool has_end = false;
 };
 
 struct DxfLayer {
@@ -128,6 +218,13 @@ struct DxfLayer {
     bool frozen = false;
     bool printable = true;
     DxfStyle style;
+};
+
+struct DxfTextStyle {
+    std::string name;
+    bool has_name = false;
+    double height = 0.0;
+    bool has_height = false;
 };
 
 struct DxfInsert {
@@ -141,7 +238,54 @@ struct DxfInsert {
     bool has_y = false;
     bool has_scale_x = false;
     bool has_scale_y = false;
+    bool is_dimension = false;
+    std::string dim_text;
+    std::string dim_style;
+    cadgf_vec2 dim_text_pos{};
+    bool has_dim_text_pos = false;
+    double dim_measurement = 0.0;
+    bool has_dim_measurement = false;
+    // DIMENSION geometry definition points (DXF codes 13/23 and 14/24)
+    cadgf_vec2 dim_defpoint1{};  // First extension line origin (code 13, 23)
+    cadgf_vec2 dim_defpoint2{};  // Second extension line origin (code 14, 24)
+    bool has_dim_defpoint1 = false;
+    bool has_dim_defpoint2 = false;
+    int dim_type = 0;  // Dimension type (code 70)
     DxfStyle style;
+    int space = 0;
+};
+
+struct DxfViewport {
+    int space = 0;
+    int id = -1;
+    cadgf_vec2 center{};
+    cadgf_vec2 view_center{};
+    double width = 0.0;
+    double height = 0.0;
+    double view_height = 0.0;
+    double twist_deg = 0.0;
+    bool has_center_x = false;
+    bool has_center_y = false;
+    bool has_view_center_x = false;
+    bool has_view_center_y = false;
+    bool has_width = false;
+    bool has_height = false;
+    bool has_view_height = false;
+    bool has_twist = false;
+    bool has_id = false;
+    std::string layout;
+};
+
+struct DxfView {
+    std::string name;
+    bool has_name = false;
+    cadgf_vec2 center{};
+    double view_height = 0.0;
+    double aspect = 0.0;
+    bool has_center_x = false;
+    bool has_center_y = false;
+    bool has_view_height = false;
+    bool has_aspect = false;
 };
 
 struct DxfBlock {
@@ -159,11 +303,93 @@ struct DxfBlock {
     std::vector<DxfInsert> inserts;
 };
 
+static constexpr double kPi = 3.14159265358979323846;
+static constexpr double kTwoPi = kPi * 2.0;
+static constexpr double kDegToRad = kPi / 180.0;
+
 static cadgf_string_view sv(const char* s) {
     cadgf_string_view v;
     v.data = s;
     v.size = s ? static_cast<int32_t>(std::strlen(s)) : 0;
     return v;
+}
+
+static bool nearly_equal(double a, double b, double eps = 1e-6) {
+    return std::fabs(a - b) <= eps;
+}
+
+static bool point_nearly_equal(const cadgf_vec2& a, const cadgf_vec2& b, double eps = 1e-6) {
+    return nearly_equal(a.x, b.x, eps) && nearly_equal(a.y, b.y, eps);
+}
+
+static void append_boundary_point(std::vector<cadgf_vec2>* boundary, const cadgf_vec2& p) {
+    if (!boundary) return;
+    if (boundary->empty() || !point_nearly_equal(boundary->back(), p)) {
+        boundary->push_back(p);
+    }
+}
+
+static int arc_segment_count(double delta) {
+    const double abs_delta = std::fabs(delta);
+    if (abs_delta <= 1e-6) return 0;
+    const double step = kPi / 12.0;
+    int segments = static_cast<int>(std::ceil(abs_delta / step));
+    if (segments < 4) segments = 4;
+    return segments;
+}
+
+static double normalize_param_angle(double angle) {
+    if (std::fabs(angle) > kTwoPi + 1e-6) {
+        return angle * kDegToRad;
+    }
+    return angle;
+}
+
+static void append_arc_points(std::vector<cadgf_vec2>* boundary, const cadgf_vec2& center,
+                              double radius, double start_rad, double end_rad, bool ccw) {
+    if (!boundary || !(radius > 0.0)) return;
+    double delta = end_rad - start_rad;
+    if (ccw) {
+        if (delta < 0.0) delta += kTwoPi;
+    } else {
+        if (delta > 0.0) delta -= kTwoPi;
+    }
+    const int segments = arc_segment_count(delta);
+    if (segments <= 0) return;
+    const double step = delta / static_cast<double>(segments);
+    for (int i = 0; i <= segments; ++i) {
+        const double ang = start_rad + step * static_cast<double>(i);
+        cadgf_vec2 p{};
+        p.x = center.x + std::cos(ang) * radius;
+        p.y = center.y + std::sin(ang) * radius;
+        append_boundary_point(boundary, p);
+    }
+}
+
+static void append_ellipse_points(std::vector<cadgf_vec2>* boundary, const cadgf_vec2& center,
+                                  const cadgf_vec2& major_axis, double ratio,
+                                  double start_param, double end_param, bool ccw) {
+    if (!boundary || !(ratio > 0.0)) return;
+    if (std::hypot(major_axis.x, major_axis.y) <= 0.0) return;
+    const cadgf_vec2 minor_axis{ -major_axis.y * ratio, major_axis.x * ratio };
+    const double start = normalize_param_angle(start_param);
+    const double end = normalize_param_angle(end_param);
+    double delta = end - start;
+    if (ccw) {
+        if (delta < 0.0) delta += kTwoPi;
+    } else {
+        if (delta > 0.0) delta -= kTwoPi;
+    }
+    const int segments = arc_segment_count(delta);
+    if (segments <= 0) return;
+    const double step = delta / static_cast<double>(segments);
+    for (int i = 0; i <= segments; ++i) {
+        const double t = start + step * static_cast<double>(i);
+        cadgf_vec2 p{};
+        p.x = center.x + major_axis.x * std::cos(t) + minor_axis.x * std::sin(t);
+        p.y = center.y + major_axis.y * std::cos(t) + minor_axis.y * std::sin(t);
+        append_boundary_point(boundary, p);
+    }
 }
 
 static void set_error(cadgf_error_v1* err, int32_t code, const char* msg) {
@@ -193,6 +419,198 @@ static bool parse_double(const std::string& s, double* out) {
     if (!end || *end != '\0') return false;
     *out = v;
     return true;
+}
+
+static void trim_code_line(std::string* line) {
+    if (!line) return;
+    while (!line->empty()) {
+        char ch = line->back();
+        if (ch == '\r' || ch == ' ' || ch == '\t') {
+            line->pop_back();
+            continue;
+        }
+        break;
+    }
+    size_t start = 0;
+    while (start < line->size()) {
+        char ch = (*line)[start];
+        if (ch == ' ' || ch == '\t') {
+            ++start;
+            continue;
+        }
+        break;
+    }
+    if (start > 0) {
+        line->erase(0, start);
+    }
+}
+
+static void strip_cr(std::string* line) {
+    if (!line || line->empty()) return;
+    if (line->back() == '\r') {
+        line->pop_back();
+    }
+}
+
+static std::string uppercase_ascii(const std::string& value) {
+    std::string out;
+    out.reserve(value.size());
+    for (char c : value) {
+        out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    }
+    return out;
+}
+
+static bool is_paper_block_name(const std::string& name) {
+    if (name.empty()) return false;
+    const std::string upper = uppercase_ascii(name);
+    return upper.rfind("*PAPER_SPACE", 0) == 0;
+}
+
+static bool is_model_layout_name(const std::string& name) {
+    if (name.empty()) return false;
+    const std::string upper = uppercase_ascii(name);
+    return upper == "MODEL" || upper == "MODEL_SPACE" || upper == "*MODEL_SPACE";
+}
+
+static bool is_valid_utf8(const std::string& value) {
+    const unsigned char* data = reinterpret_cast<const unsigned char*>(value.data());
+    size_t i = 0;
+    while (i < value.size()) {
+        unsigned char c = data[i];
+        if (c <= 0x7Fu) {
+            ++i;
+            continue;
+        }
+        if ((c >> 5) == 0x6) {
+            if (i + 1 >= value.size()) return false;
+            unsigned char c1 = data[i + 1];
+            if ((c1 & 0xC0u) != 0x80u) return false;
+            if (c < 0xC2u) return false;
+            i += 2;
+            continue;
+        }
+        if ((c >> 4) == 0xE) {
+            if (i + 2 >= value.size()) return false;
+            unsigned char c1 = data[i + 1];
+            unsigned char c2 = data[i + 2];
+            if ((c1 & 0xC0u) != 0x80u || (c2 & 0xC0u) != 0x80u) return false;
+            if (c == 0xE0u && c1 < 0xA0u) return false;
+            if (c == 0xEDu && c1 >= 0xA0u) return false;
+            i += 3;
+            continue;
+        }
+        if ((c >> 3) == 0x1E) {
+            if (i + 3 >= value.size()) return false;
+            unsigned char c1 = data[i + 1];
+            unsigned char c2 = data[i + 2];
+            unsigned char c3 = data[i + 3];
+            if ((c1 & 0xC0u) != 0x80u || (c2 & 0xC0u) != 0x80u || (c3 & 0xC0u) != 0x80u) return false;
+            if (c == 0xF0u && c1 < 0x90u) return false;
+            if (c == 0xF4u && c1 > 0x8Fu) return false;
+            if (c > 0xF4u) return false;
+            i += 4;
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
+static std::string latin1_to_utf8(const std::string& value) {
+    std::string out;
+    out.reserve(value.size() * 2);
+    for (unsigned char c : value) {
+        if (c < 0x80u) {
+            out.push_back(static_cast<char>(c));
+        } else {
+            out.push_back(static_cast<char>(0xC0u | (c >> 6)));
+            out.push_back(static_cast<char>(0x80u | (c & 0x3Fu)));
+        }
+    }
+    return out;
+}
+
+static bool all_digits(const std::string& value) {
+    if (value.empty()) return false;
+    for (char c : value) {
+        if (!std::isdigit(static_cast<unsigned char>(c))) return false;
+    }
+    return true;
+}
+
+static std::string normalize_dxf_codepage(const std::string& raw) {
+    std::string cleaned;
+    cleaned.reserve(raw.size());
+    for (char c : raw) {
+        if (std::isalnum(static_cast<unsigned char>(c))) {
+            cleaned.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+        }
+    }
+    if (cleaned.empty()) return {};
+    if (cleaned == "UTF8" || cleaned == "UTF") return "UTF-8";
+    if (cleaned == "GBK" || cleaned == "GB2312" || cleaned == "ANSI936") return "CP936";
+    if (cleaned == "BIG5" || cleaned == "BIG5HKSCS" || cleaned == "ANSI950") return "CP950";
+    if (cleaned == "ANSI949" || cleaned == "KSC5601") return "CP949";
+    if (cleaned == "ANSI932" || cleaned == "SJIS" || cleaned == "SHIFTJIS") return "CP932";
+    if (cleaned.rfind("ANSI", 0) == 0) {
+        const std::string digits = cleaned.substr(4);
+        if (all_digits(digits)) {
+            return "CP" + digits;
+        }
+    }
+    if (cleaned.rfind("DOS", 0) == 0) {
+        const std::string digits = cleaned.substr(3);
+        if (all_digits(digits)) {
+            return "CP" + digits;
+        }
+    }
+    if (cleaned.rfind("CP", 0) == 0) {
+        const std::string digits = cleaned.substr(2);
+        if (all_digits(digits)) {
+            return "CP" + digits;
+        }
+    }
+    return {};
+}
+
+static std::string convert_to_utf8_iconv(const std::string& value, const std::string& encoding) {
+#if CADGF_HAVE_ICONV
+    if (encoding.empty()) return {};
+    iconv_t cd = iconv_open("UTF-8", encoding.c_str());
+    if (cd == reinterpret_cast<iconv_t>(-1)) return {};
+    size_t in_left = value.size();
+    size_t out_left = value.size() * 4 + 8;
+    std::string out(out_left, '\0');
+    char* in_buf = const_cast<char*>(value.data());
+    char* out_buf = out.data();
+    size_t result = iconv(cd, &in_buf, &in_left, &out_buf, &out_left);
+    iconv_close(cd);
+    if (result == static_cast<size_t>(-1)) return {};
+    out.resize(out.size() - out_left);
+    return out;
+#else
+    (void)value;
+    (void)encoding;
+    return {};
+#endif
+}
+
+static std::string sanitize_utf8(const std::string& value, const std::string& codepage) {
+    if (value.empty()) {
+        return value;
+    }
+    if (is_valid_utf8(value)) {
+        return value;
+    }
+    const std::string encoding = normalize_dxf_codepage(codepage);
+    if (!encoding.empty() && encoding != "UTF-8") {
+        const std::string converted = convert_to_utf8_iconv(value, encoding);
+        if (!converted.empty() && is_valid_utf8(converted)) {
+            return converted;
+        }
+    }
+    return latin1_to_utf8(value);
 }
 
 static unsigned int aci_to_rgb(int index) {
@@ -282,7 +700,103 @@ static void write_color_metadata(cadgf_document* doc, cadgf_entity_id id, const 
     (void)cadgf_document_set_meta_value(doc, aci_key.c_str(), aci_value.c_str());
 }
 
-static bool parse_style_code(DxfStyle* style, int code, const std::string& value_line) {
+static void write_space_metadata(cadgf_document* doc, cadgf_entity_id id, int space) {
+    if (!doc || id == 0) return;
+    if (space != 0 && space != 1) return;
+    const std::string key = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id)) + ".space";
+    const std::string value = std::to_string(space);
+    (void)cadgf_document_set_meta_value(doc, key.c_str(), value.c_str());
+}
+
+static void write_text_metadata(cadgf_document* doc, cadgf_entity_id id, const DxfText& text) {
+    if (!doc || id == 0) return;
+    const std::string base = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id));
+    if (text.is_mtext) {
+        const std::string key = base + ".text_kind";
+        (void)cadgf_document_set_meta_value(doc, key.c_str(), "mtext");
+    }
+    if (text.has_width) {
+        const std::string key = base + ".text_width";
+        char buf[64]{};
+        std::snprintf(buf, sizeof(buf), "%.6f", text.width);
+        (void)cadgf_document_set_meta_value(doc, key.c_str(), buf);
+    }
+    if (text.has_attachment) {
+        const std::string key = base + ".text_attachment";
+        const std::string value = std::to_string(text.attachment);
+        (void)cadgf_document_set_meta_value(doc, key.c_str(), value.c_str());
+    }
+}
+
+static void write_viewport_metadata(cadgf_document* doc, size_t index, const DxfViewport& viewport) {
+    if (!doc) return;
+    char buf[64];
+    const std::string base = "dxf.viewport." + std::to_string(static_cast<unsigned long long>(index));
+    std::snprintf(buf, sizeof(buf), "%d", viewport.space);
+    (void)cadgf_document_set_meta_value(doc, (base + ".space").c_str(), buf);
+    if (viewport.has_id) {
+        std::snprintf(buf, sizeof(buf), "%d", viewport.id);
+        (void)cadgf_document_set_meta_value(doc, (base + ".id").c_str(), buf);
+    }
+    std::snprintf(buf, sizeof(buf), "%.6f", viewport.center.x);
+    (void)cadgf_document_set_meta_value(doc, (base + ".center_x").c_str(), buf);
+    std::snprintf(buf, sizeof(buf), "%.6f", viewport.center.y);
+    (void)cadgf_document_set_meta_value(doc, (base + ".center_y").c_str(), buf);
+    std::snprintf(buf, sizeof(buf), "%.6f", viewport.width);
+    (void)cadgf_document_set_meta_value(doc, (base + ".width").c_str(), buf);
+    std::snprintf(buf, sizeof(buf), "%.6f", viewport.height);
+    (void)cadgf_document_set_meta_value(doc, (base + ".height").c_str(), buf);
+    std::snprintf(buf, sizeof(buf), "%.6f", viewport.view_center.x);
+    (void)cadgf_document_set_meta_value(doc, (base + ".view_center_x").c_str(), buf);
+    std::snprintf(buf, sizeof(buf), "%.6f", viewport.view_center.y);
+    (void)cadgf_document_set_meta_value(doc, (base + ".view_center_y").c_str(), buf);
+    std::snprintf(buf, sizeof(buf), "%.6f", viewport.view_height);
+    (void)cadgf_document_set_meta_value(doc, (base + ".view_height").c_str(), buf);
+    if (viewport.has_twist) {
+        std::snprintf(buf, sizeof(buf), "%.6f", viewport.twist_deg);
+        (void)cadgf_document_set_meta_value(doc, (base + ".twist_deg").c_str(), buf);
+    }
+    if (!viewport.layout.empty()) {
+        (void)cadgf_document_set_meta_value(doc, (base + ".layout").c_str(), viewport.layout.c_str());
+    }
+}
+
+static void write_viewport_list_metadata(cadgf_document* doc, const std::vector<DxfViewport>& viewports) {
+    if (!doc || viewports.empty()) return;
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "%zu", viewports.size());
+    (void)cadgf_document_set_meta_value(doc, "dxf.viewport.count", buf);
+    for (size_t i = 0; i < viewports.size(); ++i) {
+        write_viewport_metadata(doc, i, viewports[i]);
+    }
+}
+
+static void write_active_view_metadata(cadgf_document* doc, const DxfView& view) {
+    if (!doc) return;
+    char buf[64];
+    if (view.has_center_x) {
+        std::snprintf(buf, sizeof(buf), "%.6f", view.center.x);
+        (void)cadgf_document_set_meta_value(doc, "dxf.vport.active.center_x", buf);
+    }
+    if (view.has_center_y) {
+        std::snprintf(buf, sizeof(buf), "%.6f", view.center.y);
+        (void)cadgf_document_set_meta_value(doc, "dxf.vport.active.center_y", buf);
+    }
+    if (view.has_view_height) {
+        std::snprintf(buf, sizeof(buf), "%.6f", view.view_height);
+        (void)cadgf_document_set_meta_value(doc, "dxf.vport.active.view_height", buf);
+    }
+    if (view.has_aspect) {
+        std::snprintf(buf, sizeof(buf), "%.6f", view.aspect);
+        (void)cadgf_document_set_meta_value(doc, "dxf.vport.active.aspect", buf);
+    }
+    if (view.has_name && !view.name.empty()) {
+        (void)cadgf_document_set_meta_value(doc, "dxf.vport.active.name", view.name.c_str());
+    }
+}
+
+static bool parse_style_code(DxfStyle* style, int code, const std::string& value_line,
+                             const std::string& codepage) {
     if (!style) return false;
     switch (code) {
         case 6: {
@@ -291,7 +805,7 @@ static bool parse_style_code(DxfStyle* style, int code, const std::string& value
                 return true;
             }
             if (!value_line.empty() && value_line != "BYLAYER") {
-                style->line_type = value_line;
+                style->line_type = sanitize_utf8(value_line, codepage);
                 style->has_line_type = true;
             }
             return true;
@@ -527,9 +1041,73 @@ static void finalize_spline(const DxfSpline& spline, std::vector<DxfSpline>& out
     out.push_back(spline);
 }
 
-static void finalize_text(const DxfText& text, std::vector<DxfText>& out) {
+static int map_text_attachment(int halign, int valign) {
+    int col = 0;
+    if (halign == 2) {
+        col = 2;
+    } else if (halign == 1 || halign == 3 || halign == 4 || halign == 5) {
+        col = 1;
+    }
+    int row = 2;
+    if (valign == 3) {
+        row = 0;
+    } else if (valign == 2) {
+        row = 1;
+    } else if (valign == 1) {
+        row = 2;
+    }
+    return row * 3 + col + 1;
+}
+
+static void finalize_text(DxfText& text, std::vector<DxfText>& out) {
     if (!(text.has_x && text.has_y)) return;
+    if (!text.is_mtext && (text.has_halign || text.has_valign)) {
+        if (text.has_align_x && text.has_align_y) {
+            text.pos = text.align_pos;
+            text.has_x = true;
+            text.has_y = true;
+        }
+        if (!text.has_attachment) {
+            text.attachment = map_text_attachment(text.halign, text.valign);
+            text.has_attachment = true;
+        }
+    }
     out.push_back(text);
+}
+
+static void finalize_solid(const DxfSolid& solid, std::vector<DxfPolyline>& out) {
+    std::vector<cadgf_vec2> points;
+    points.reserve(4);
+    for (const auto& p : solid.points) {
+        if (p.has_x && p.has_y) {
+            points.push_back(p.pos);
+        }
+    }
+    if (points.size() < 3) return;
+    DxfPolyline pl;
+    pl.layer = solid.layer;
+    pl.points = std::move(points);
+    pl.closed = true;
+    pl.space = solid.space;
+    pl.style = solid.style;
+    finalize_polyline(pl, out);
+}
+
+static void finalize_hatch(const DxfHatch& hatch, std::vector<DxfPolyline>& out) {
+    if (hatch.boundaries.empty()) return;
+    if (hatch.hatch_id < 0) return;
+    const std::string name = std::string("__cadgf_hatch:") + std::to_string(hatch.hatch_id);
+    for (const auto& boundary : hatch.boundaries) {
+        if (boundary.size() < 3) continue;
+        DxfPolyline pl;
+        pl.layer = hatch.layer;
+        pl.points = boundary;
+        pl.closed = true;
+        pl.name = name;
+        pl.space = hatch.space;
+        pl.style = hatch.style;
+        finalize_polyline(pl, out);
+    }
 }
 
 static void finalize_insert(DxfInsert& insert, std::vector<DxfInsert>& out) {
@@ -552,7 +1130,10 @@ enum class DxfEntityKind {
     Ellipse,
     Spline,
     Text,
-    Insert
+    Solid,
+    Hatch,
+    Insert,
+    Viewport
 };
 
 enum class DxfSection {
@@ -573,8 +1154,14 @@ static bool parse_dxf_entities(const std::string& path,
                                std::vector<DxfText>& texts,
                                std::unordered_map<std::string, DxfBlock>& blocks,
                                std::vector<DxfInsert>& inserts,
+                               std::vector<DxfViewport>& viewports,
                                std::unordered_map<std::string, DxfLayer>& layers,
+                               std::unordered_map<std::string, DxfTextStyle>& text_styles,
                                double* out_default_line_scale,
+                               double* out_default_text_height,
+                               bool* out_has_paperspace,
+                               bool* out_has_active_view,
+                               DxfView* out_active_view,
                                std::string* err) {
     std::ifstream in(path);
     if (!in.is_open()) {
@@ -592,28 +1179,68 @@ static bool parse_dxf_entities(const std::string& path,
     DxfEllipse current_ellipse;
     DxfSpline current_spline;
     DxfText current_text;
+    DxfSolid current_solid;
+    DxfHatch current_hatch;
     DxfInsert current_insert;
+    DxfViewport current_viewport;
     DxfBlock current_block;
     DxfLayer current_layer;
+    DxfTextStyle current_text_style;
+    DxfView current_vport;
+    DxfView active_view;
+    bool has_active_view = false;
     double pending_x = 0.0;
     bool has_x = false;
     double pending_spline_x = 0.0;
     bool has_spline_x = false;
     double pending_block_x = 0.0;
     bool has_block_x = false;
+    double pending_dim_text_x = 0.0;
+    bool has_dim_text_x = false;
     bool expect_section_name = false;
     bool expect_table_name = false;
     bool in_layer_table = false;
     bool in_layer_record = false;
+    bool in_style_table = false;
+    bool in_style_record = false;
+    bool in_vport_table = false;
+    bool in_vport_record = false;
     bool in_block = false;
     bool in_block_header = false;
+    bool hatch_in_polyline = false;
+    bool hatch_in_edge = false;
+    bool hatch_capture = false;
+    bool hatch_closed = true;
+    int hatch_vertex_expected = 0;
+    int hatch_vertex_seen = 0;
+    int hatch_loop_expected = 0;
+    int hatch_loop_seen = 0;
+    int hatch_edge_expected = 0;
+    int hatch_edge_seen = 0;
+    int hatch_edge_type = 0;
+    double hatch_pending_x = 0.0;
+    bool hatch_has_x = false;
+    HatchEdgeLine hatch_edge_line;
+    HatchEdgeArc hatch_edge_arc;
+    HatchEdgeEllipse hatch_edge_ellipse;
+    std::vector<cadgf_vec2> hatch_edge_spline_points;
+    int hatch_edge_spline_expected = 0;
+    double hatch_edge_spline_pending_x = 0.0;
+    bool hatch_edge_spline_has_x = false;
+    std::vector<cadgf_vec2>* hatch_active_boundary = nullptr;
+    int next_hatch_id = 1;
     DxfSection current_section = DxfSection::None;
     std::string current_table;
     std::string current_header_var;
     double header_ltscale = 1.0;
     double header_celtscale = 1.0;
+    double header_textsize = 0.0;
     bool has_header_ltscale = false;
     bool has_header_celtscale = false;
+    bool has_header_textsize = false;
+    std::string header_codepage;
+    bool has_header_codepage = false;
+    bool has_paperspace = false;
 
     auto reset_polyline = [&]() {
         current_polyline = DxfPolyline{};
@@ -628,12 +1255,138 @@ static bool parse_dxf_entities(const std::string& path,
         has_spline_x = false;
     };
     auto reset_text = [&]() { current_text = DxfText{}; };
-    auto reset_insert = [&]() { current_insert = DxfInsert{}; };
+    auto reset_solid = [&]() { current_solid = DxfSolid{}; };
+    auto reset_hatch_edge = [&]() {
+        hatch_edge_type = 0;
+        hatch_edge_line = HatchEdgeLine{};
+        hatch_edge_arc = HatchEdgeArc{};
+        hatch_edge_ellipse = HatchEdgeEllipse{};
+        hatch_edge_spline_points.clear();
+        hatch_edge_spline_expected = 0;
+        hatch_edge_spline_pending_x = 0.0;
+        hatch_edge_spline_has_x = false;
+    };
+    auto reset_hatch = [&]() {
+        current_hatch = DxfHatch{};
+        hatch_in_polyline = false;
+        hatch_in_edge = false;
+        hatch_capture = false;
+        hatch_closed = true;
+        hatch_vertex_expected = 0;
+        hatch_vertex_seen = 0;
+        hatch_loop_expected = 0;
+        hatch_loop_seen = 0;
+        hatch_edge_expected = 0;
+        hatch_edge_seen = 0;
+        reset_hatch_edge();
+        hatch_pending_x = 0.0;
+        hatch_has_x = false;
+        hatch_active_boundary = nullptr;
+    };
+    auto finalize_hatch_edge = [&](bool force) {
+        if (!hatch_active_boundary || hatch_edge_type == 0) return;
+        bool committed = false;
+        switch (hatch_edge_type) {
+            case 1:
+                if (hatch_edge_line.has_start_x && hatch_edge_line.has_start_y &&
+                    hatch_edge_line.has_end_x && hatch_edge_line.has_end_y) {
+                    append_boundary_point(hatch_active_boundary, hatch_edge_line.start);
+                    append_boundary_point(hatch_active_boundary, hatch_edge_line.end);
+                    committed = true;
+                }
+                break;
+            case 2:
+                if (hatch_edge_arc.has_cx && hatch_edge_arc.has_cy && hatch_edge_arc.has_radius &&
+                    hatch_edge_arc.has_start && hatch_edge_arc.has_end) {
+                    const double start_rad = hatch_edge_arc.start_deg * kDegToRad;
+                    const double end_rad = hatch_edge_arc.end_deg * kDegToRad;
+                    append_arc_points(hatch_active_boundary, hatch_edge_arc.center, hatch_edge_arc.radius,
+                                      start_rad, end_rad, hatch_edge_arc.ccw != 0);
+                    committed = true;
+                }
+                break;
+            case 3:
+                if (hatch_edge_ellipse.has_cx && hatch_edge_ellipse.has_cy &&
+                    hatch_edge_ellipse.has_ax && hatch_edge_ellipse.has_ay &&
+                    hatch_edge_ellipse.has_ratio && hatch_edge_ellipse.has_start &&
+                    hatch_edge_ellipse.has_end) {
+                    append_ellipse_points(hatch_active_boundary, hatch_edge_ellipse.center,
+                                          hatch_edge_ellipse.major_axis, hatch_edge_ellipse.ratio,
+                                          hatch_edge_ellipse.start_param, hatch_edge_ellipse.end_param,
+                                          hatch_edge_ellipse.ccw != 0);
+                    committed = true;
+                }
+                break;
+            case 4:
+                if ((force || (hatch_edge_spline_expected > 0 &&
+                               static_cast<int>(hatch_edge_spline_points.size()) >= hatch_edge_spline_expected)) &&
+                    hatch_edge_spline_points.size() >= 2) {
+                    for (const auto& p : hatch_edge_spline_points) {
+                        append_boundary_point(hatch_active_boundary, p);
+                    }
+                    committed = true;
+                }
+                break;
+            default:
+                break;
+        }
+        if (!committed) return;
+        hatch_edge_seen++;
+        reset_hatch_edge();
+        if (hatch_edge_expected > 0 && hatch_edge_seen >= hatch_edge_expected) {
+            hatch_capture = false;
+            hatch_active_boundary = nullptr;
+            hatch_in_edge = false;
+        }
+    };
+    auto reset_insert = [&]() {
+        current_insert = DxfInsert{};
+        has_dim_text_x = false;
+    };
     auto reset_block = [&]() {
         current_block = DxfBlock{};
         has_block_x = false;
     };
     auto reset_layer = [&]() { current_layer = DxfLayer{}; };
+    auto reset_text_style = [&]() { current_text_style = DxfTextStyle{}; };
+    auto reset_viewport = [&]() { current_viewport = DxfViewport{}; };
+    auto reset_vport = [&]() { current_vport = DxfView{}; };
+
+    auto finalize_viewport = [&](DxfViewport& viewport) {
+        if (!(viewport.has_center_x && viewport.has_center_y &&
+              viewport.has_view_center_x && viewport.has_view_center_y &&
+              viewport.has_width && viewport.has_height && viewport.has_view_height)) {
+            return;
+        }
+        if (!(viewport.width > 0.0) || !(viewport.height > 0.0) || !(viewport.view_height > 0.0)) {
+            return;
+        }
+        if (viewport.space != 1) {
+            bool is_paper = false;
+            if (!viewport.layout.empty() && !is_model_layout_name(viewport.layout)) {
+                is_paper = true;
+            }
+            if (!is_paper && in_block && is_paper_block_name(current_block.name)) {
+                is_paper = true;
+            }
+            if (is_paper) {
+                viewport.space = 1;
+                has_paperspace = true;
+            }
+        }
+        viewports.push_back(viewport);
+    };
+
+    auto finalize_vport = [&](DxfView& view) {
+        if (!view.has_name) return;
+        if (!(view.has_center_x && view.has_center_y && view.has_view_height)) return;
+        if (!(view.view_height > 0.0)) return;
+        const std::string upper = uppercase_ascii(view.name);
+        if (upper == "*ACTIVE") {
+            active_view = view;
+            has_active_view = true;
+        }
+    };
 
     auto flush_current = [&]() {
         switch (current_kind) {
@@ -693,6 +1446,23 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 reset_text();
                 break;
+            case DxfEntityKind::Solid:
+                if (in_block) {
+                    finalize_solid(current_solid, current_block.polylines);
+                } else {
+                    finalize_solid(current_solid, polylines);
+                }
+                reset_solid();
+                break;
+            case DxfEntityKind::Hatch:
+                finalize_hatch_edge(true);
+                if (in_block) {
+                    finalize_hatch(current_hatch, current_block.polylines);
+                } else {
+                    finalize_hatch(current_hatch, polylines);
+                }
+                reset_hatch();
+                break;
             case DxfEntityKind::Insert:
                 if (in_block) {
                     finalize_insert(current_insert, current_block.inserts);
@@ -700,6 +1470,10 @@ static bool parse_dxf_entities(const std::string& path,
                     finalize_insert(current_insert, inserts);
                 }
                 reset_insert();
+                break;
+            case DxfEntityKind::Viewport:
+                finalize_viewport(current_viewport);
+                reset_viewport();
                 break;
             case DxfEntityKind::None:
                 break;
@@ -715,13 +1489,30 @@ static bool parse_dxf_entities(const std::string& path,
         layers[layer.name] = layer;
     };
 
+    auto finalize_text_style = [&](DxfTextStyle& style) {
+        if (!style.has_name) return;
+        text_styles[style.name] = style;
+    };
+
     auto finalize_block = [&](DxfBlock& block) {
         if (!block.has_name) return;
         blocks[block.name] = block;
     };
 
+    auto parse_entity_space = [&](int code, const std::string& value, int* space_out) -> bool {
+        if (code != 67 || !space_out) return false;
+        int space = 0;
+        if (parse_int(value, &space)) {
+            *space_out = space;
+            if (space == 1) has_paperspace = true;
+        }
+        return true;
+    };
+
     while (std::getline(in, code_line)) {
         if (!std::getline(in, value_line)) break;
+        trim_code_line(&code_line);
+        strip_cr(&value_line);
 
         int code = 0;
         if (!parse_int(code_line, &code)) continue;
@@ -738,6 +1529,16 @@ static bool parse_dxf_entities(const std::string& path,
                     reset_layer();
                     in_layer_record = false;
                 }
+                if (in_style_table && in_style_record) {
+                    finalize_text_style(current_text_style);
+                    reset_text_style();
+                    in_style_record = false;
+                }
+                if (in_vport_table && in_vport_record) {
+                    finalize_vport(current_vport);
+                    reset_vport();
+                    in_vport_record = false;
+                }
                 if (in_block) {
                     finalize_block(current_block);
                     reset_block();
@@ -745,6 +1546,8 @@ static bool parse_dxf_entities(const std::string& path,
                     in_block_header = false;
                 }
                 in_layer_table = false;
+                in_style_table = false;
+                in_vport_table = false;
                 current_table.clear();
                 current_section = DxfSection::None;
                 continue;
@@ -759,7 +1562,19 @@ static bool parse_dxf_entities(const std::string& path,
                     reset_layer();
                     in_layer_record = false;
                 }
+                if (in_style_table && in_style_record) {
+                    finalize_text_style(current_text_style);
+                    reset_text_style();
+                    in_style_record = false;
+                }
+                if (in_vport_table && in_vport_record) {
+                    finalize_vport(current_vport);
+                    reset_vport();
+                    in_vport_record = false;
+                }
                 in_layer_table = false;
+                in_style_table = false;
+                in_vport_table = false;
                 current_table.clear();
                 continue;
             }
@@ -769,6 +1584,23 @@ static bool parse_dxf_entities(const std::string& path,
                     reset_layer();
                 }
                 in_layer_record = true;
+                continue;
+            }
+            if (in_style_table && value_line == "STYLE") {
+                if (in_style_record) {
+                    finalize_text_style(current_text_style);
+                    reset_text_style();
+                }
+                in_style_record = true;
+                continue;
+            }
+            if (in_vport_table && value_line == "VPORT") {
+                if (in_vport_record) {
+                    finalize_vport(current_vport);
+                    reset_vport();
+                }
+                reset_vport();
+                in_vport_record = true;
                 continue;
             }
             if (value_line == "BLOCK" && current_section == DxfSection::Blocks) {
@@ -819,9 +1651,42 @@ static bool parse_dxf_entities(const std::string& path,
             } else if (value_line == "SPLINE") {
                 current_kind = DxfEntityKind::Spline;
                 reset_spline();
-            } else if (value_line == "TEXT" || value_line == "MTEXT") {
+            } else if (value_line == "SOLID") {
+                current_kind = DxfEntityKind::Solid;
+                reset_solid();
+            } else if (value_line == "HATCH") {
+                current_kind = DxfEntityKind::Hatch;
+                reset_hatch();
+                current_hatch.hatch_id = next_hatch_id++;
+            } else if (value_line == "TEXT" || value_line == "MTEXT" || value_line == "ATTRIB" || value_line == "ATTDEF") {
                 current_kind = DxfEntityKind::Text;
                 reset_text();
+                if (value_line == "MTEXT") {
+                    current_text.allow_extended_text = true;
+                    current_text.is_mtext = true;
+                }
+            } else if (value_line == "LEADER" || value_line == "MLEADER") {
+                if (value_line == "MLEADER") {
+                    current_kind = DxfEntityKind::Text;
+                    reset_text();
+                    current_text.allow_extended_text = true;
+                    current_text.is_mtext = true;
+                } else {
+                    current_kind = DxfEntityKind::Polyline;
+                    reset_polyline();
+                }
+            } else if (value_line == "DIMENSION") {
+                current_kind = DxfEntityKind::Insert;
+                reset_insert();
+                current_insert.is_dimension = true;
+            } else if (value_line == "TABLE") {
+                current_kind = DxfEntityKind::Text;
+                reset_text();
+                current_text.allow_extended_text = true;
+                current_text.is_mtext = true;
+            } else if (value_line == "VIEWPORT") {
+                current_kind = DxfEntityKind::Viewport;
+                reset_viewport();
             } else {
                 current_kind = DxfEntityKind::None;
             }
@@ -859,12 +1724,19 @@ static bool parse_dxf_entities(const std::string& path,
             expect_table_name = false;
             current_table = value_line;
             in_layer_table = (current_section == DxfSection::Tables && current_table == "LAYER");
+            in_style_table = (current_section == DxfSection::Tables && current_table == "STYLE");
+            in_vport_table = (current_section == DxfSection::Tables && current_table == "VPORT");
             continue;
         }
 
         if (current_section == DxfSection::Header) {
             if (code == 9) {
                 current_header_var = value_line;
+                continue;
+            }
+            if ((code == 3 || code == 1) && current_header_var == "$DWGCODEPAGE") {
+                header_codepage = value_line;
+                has_header_codepage = true;
                 continue;
             }
             if (code == 40) {
@@ -876,6 +1748,9 @@ static bool parse_dxf_entities(const std::string& path,
                     } else if (current_header_var == "$CELTSCALE") {
                         header_celtscale = scale;
                         has_header_celtscale = true;
+                    } else if (current_header_var == "$TEXTSIZE") {
+                        header_textsize = scale;
+                        has_header_textsize = true;
                     }
                 }
             }
@@ -883,13 +1758,13 @@ static bool parse_dxf_entities(const std::string& path,
         }
 
         if (in_layer_table && in_layer_record) {
-            if (parse_style_code(&current_layer.style, code, value_line)) {
+            if (parse_style_code(&current_layer.style, code, value_line, header_codepage)) {
                 if (current_layer.style.hidden) current_layer.visible = false;
                 continue;
             }
             switch (code) {
                 case 2:
-                    current_layer.name = value_line;
+                    current_layer.name = sanitize_utf8(value_line, header_codepage);
                     current_layer.has_name = true;
                     break;
                 case 70: {
@@ -907,10 +1782,62 @@ static bool parse_dxf_entities(const std::string& path,
             continue;
         }
 
+        if (in_style_table && in_style_record) {
+            switch (code) {
+                case 2:
+                    current_text_style.name = sanitize_utf8(value_line, header_codepage);
+                    current_text_style.has_name = !current_text_style.name.empty();
+                    break;
+                case 40: {
+                    double height = 0.0;
+                    if (parse_double(value_line, &height)) {
+                        current_text_style.height = height;
+                        current_text_style.has_height = height > 0.0;
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+            continue;
+        }
+
+        if (in_vport_table && in_vport_record) {
+            switch (code) {
+                case 2:
+                    current_vport.name = sanitize_utf8(value_line, header_codepage);
+                    current_vport.has_name = !current_vport.name.empty();
+                    break;
+                case 12:
+                    if (parse_double(value_line, &current_vport.center.x)) {
+                        current_vport.has_center_x = true;
+                    }
+                    break;
+                case 22:
+                    if (parse_double(value_line, &current_vport.center.y)) {
+                        current_vport.has_center_y = true;
+                    }
+                    break;
+                case 40:
+                    if (parse_double(value_line, &current_vport.view_height)) {
+                        current_vport.has_view_height = true;
+                    }
+                    break;
+                case 41:
+                    if (parse_double(value_line, &current_vport.aspect)) {
+                        current_vport.has_aspect = current_vport.aspect > 0.0;
+                    }
+                    break;
+                default:
+                    break;
+            }
+            continue;
+        }
+
         if (in_block_header) {
             switch (code) {
                 case 2:
-                    current_block.name = value_line;
+                    current_block.name = sanitize_utf8(value_line, header_codepage);
                     current_block.has_name = true;
                     break;
                 case 10:
@@ -942,10 +1869,11 @@ static bool parse_dxf_entities(const std::string& path,
 
         switch (current_kind) {
             case DxfEntityKind::Polyline:
-                if (parse_style_code(&current_polyline.style, code, value_line)) break;
+                if (parse_entity_space(code, value_line, &current_polyline.space)) break;
+                if (parse_style_code(&current_polyline.style, code, value_line, header_codepage)) break;
                 switch (code) {
                     case 8:
-                        current_polyline.layer = value_line;
+                        current_polyline.layer = sanitize_utf8(value_line, header_codepage);
                         break;
                     case 70: {
                         int flags = 0;
@@ -976,10 +1904,11 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Line:
-                if (parse_style_code(&current_line.style, code, value_line)) break;
+                if (parse_entity_space(code, value_line, &current_line.space)) break;
+                if (parse_style_code(&current_line.style, code, value_line, header_codepage)) break;
                 switch (code) {
                     case 8:
-                        current_line.layer = value_line;
+                        current_line.layer = sanitize_utf8(value_line, header_codepage);
                         break;
                     case 10:
                         if (parse_double(value_line, &current_line.a.x)) {
@@ -1006,10 +1935,11 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Circle:
-                if (parse_style_code(&current_circle.style, code, value_line)) break;
+                if (parse_entity_space(code, value_line, &current_circle.space)) break;
+                if (parse_style_code(&current_circle.style, code, value_line, header_codepage)) break;
                 switch (code) {
                     case 8:
-                        current_circle.layer = value_line;
+                        current_circle.layer = sanitize_utf8(value_line, header_codepage);
                         break;
                     case 10:
                         if (parse_double(value_line, &current_circle.center.x)) {
@@ -1031,10 +1961,11 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Arc:
-                if (parse_style_code(&current_arc.style, code, value_line)) break;
+                if (parse_entity_space(code, value_line, &current_arc.space)) break;
+                if (parse_style_code(&current_arc.style, code, value_line, header_codepage)) break;
                 switch (code) {
                     case 8:
-                        current_arc.layer = value_line;
+                        current_arc.layer = sanitize_utf8(value_line, header_codepage);
                         break;
                     case 10:
                         if (parse_double(value_line, &current_arc.center.x)) {
@@ -1066,10 +1997,11 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Ellipse:
-                if (parse_style_code(&current_ellipse.style, code, value_line)) break;
+                if (parse_entity_space(code, value_line, &current_ellipse.space)) break;
+                if (parse_style_code(&current_ellipse.style, code, value_line, header_codepage)) break;
                 switch (code) {
                     case 8:
-                        current_ellipse.layer = value_line;
+                        current_ellipse.layer = sanitize_utf8(value_line, header_codepage);
                         break;
                     case 10:
                         if (parse_double(value_line, &current_ellipse.center.x)) {
@@ -1111,10 +2043,11 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Spline:
-                if (parse_style_code(&current_spline.style, code, value_line)) break;
+                if (parse_entity_space(code, value_line, &current_spline.space)) break;
+                if (parse_style_code(&current_spline.style, code, value_line, header_codepage)) break;
                 switch (code) {
                     case 8:
-                        current_spline.layer = value_line;
+                        current_spline.layer = sanitize_utf8(value_line, header_codepage);
                         break;
                     case 71: {
                         int degree = 0;
@@ -1152,10 +2085,14 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Text:
-                if (parse_style_code(&current_text.style, code, value_line)) break;
+                if (parse_entity_space(code, value_line, &current_text.space)) break;
+                if (parse_style_code(&current_text.style, code, value_line, header_codepage)) break;
                 switch (code) {
                     case 8:
-                        current_text.layer = value_line;
+                        current_text.layer = sanitize_utf8(value_line, header_codepage);
+                        break;
+                    case 7:
+                        current_text.style_name = sanitize_utf8(value_line, header_codepage);
                         break;
                     case 10:
                         if (parse_double(value_line, &current_text.pos.x)) {
@@ -1167,31 +2104,394 @@ static bool parse_dxf_entities(const std::string& path,
                             current_text.has_y = true;
                         }
                         break;
+                    case 11:
+                        if (parse_double(value_line, &current_text.align_pos.x)) {
+                            current_text.has_align_x = true;
+                            if (!current_text.has_x) {
+                                current_text.pos.x = current_text.align_pos.x;
+                                current_text.has_x = true;
+                            }
+                        }
+                        break;
+                    case 21:
+                        if (parse_double(value_line, &current_text.align_pos.y)) {
+                            current_text.has_align_y = true;
+                            if (!current_text.has_y) {
+                                current_text.pos.y = current_text.align_pos.y;
+                                current_text.has_y = true;
+                            }
+                        }
+                        break;
                     case 40:
                         (void)parse_double(value_line, &current_text.height);
+                        break;
+                    case 41:
+                        if (current_text.is_mtext && parse_double(value_line, &current_text.width)) {
+                            current_text.has_width = true;
+                        }
                         break;
                     case 50:
                         (void)parse_double(value_line, &current_text.rotation_deg);
                         break;
+                    case 71:
+                        if (current_text.is_mtext) {
+                            int attachment = 0;
+                            if (parse_int(value_line, &attachment)) {
+                                current_text.attachment = attachment;
+                                current_text.has_attachment = true;
+                            }
+                        }
+                        break;
+                    case 72:
+                        if (!current_text.is_mtext) {
+                            int align = 0;
+                            if (parse_int(value_line, &align)) {
+                                current_text.halign = align;
+                                current_text.has_halign = true;
+                            }
+                        }
+                        break;
+                    case 73:
+                        if (!current_text.is_mtext) {
+                            int align = 0;
+                            if (parse_int(value_line, &align)) {
+                                current_text.valign = align;
+                                current_text.has_valign = true;
+                            }
+                        }
+                        break;
                     case 1:
-                        current_text.text = value_line;
+                        current_text.text = sanitize_utf8(value_line, header_codepage);
                         break;
                     case 3:
                         if (!current_text.text.empty()) current_text.text += "\n";
-                        current_text.text += value_line;
+                        current_text.text += sanitize_utf8(value_line, header_codepage);
+                        break;
+                    case 302:
+                    case 303:
+                    case 304:
+                        if (!current_text.allow_extended_text) break;
+                        if (!current_text.text.empty()) current_text.text += "\n";
+                        current_text.text += sanitize_utf8(value_line, header_codepage);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case DxfEntityKind::Solid:
+                if (parse_entity_space(code, value_line, &current_solid.space)) break;
+                if (parse_style_code(&current_solid.style, code, value_line, header_codepage)) break;
+                switch (code) {
+                    case 8:
+                        current_solid.layer = sanitize_utf8(value_line, header_codepage);
+                        break;
+                    case 10:
+                        if (parse_double(value_line, &current_solid.points[0].pos.x)) {
+                            current_solid.points[0].has_x = true;
+                        }
+                        break;
+                    case 20:
+                        if (parse_double(value_line, &current_solid.points[0].pos.y)) {
+                            current_solid.points[0].has_y = true;
+                        }
+                        break;
+                    case 11:
+                        if (parse_double(value_line, &current_solid.points[1].pos.x)) {
+                            current_solid.points[1].has_x = true;
+                        }
+                        break;
+                    case 21:
+                        if (parse_double(value_line, &current_solid.points[1].pos.y)) {
+                            current_solid.points[1].has_y = true;
+                        }
+                        break;
+                    case 12:
+                        if (parse_double(value_line, &current_solid.points[2].pos.x)) {
+                            current_solid.points[2].has_x = true;
+                        }
+                        break;
+                    case 22:
+                        if (parse_double(value_line, &current_solid.points[2].pos.y)) {
+                            current_solid.points[2].has_y = true;
+                        }
+                        break;
+                    case 13:
+                        if (parse_double(value_line, &current_solid.points[3].pos.x)) {
+                            current_solid.points[3].has_x = true;
+                        }
+                        break;
+                    case 23:
+                        if (parse_double(value_line, &current_solid.points[3].pos.y)) {
+                            current_solid.points[3].has_y = true;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case DxfEntityKind::Hatch:
+                if (parse_entity_space(code, value_line, &current_hatch.space)) break;
+                if (parse_style_code(&current_hatch.style, code, value_line, header_codepage)) break;
+                switch (code) {
+                    case 8:
+                        current_hatch.layer = sanitize_utf8(value_line, header_codepage);
+                        break;
+                    case 91: {
+                        int loops = 0;
+                        if (parse_int(value_line, &loops)) {
+                            hatch_loop_expected = loops;
+                            hatch_loop_seen = 0;
+                        }
+                        break;
+                    }
+                    case 72: {
+                        if (hatch_in_edge && !hatch_in_polyline) {
+                            finalize_hatch_edge(true);
+                            int edge_type = 0;
+                            if (parse_int(value_line, &edge_type)) {
+                                reset_hatch_edge();
+                                hatch_edge_type = edge_type;
+                            }
+                        } else {
+                            int has_bulge = 0;
+                            (void)parse_int(value_line, &has_bulge);
+                        }
+                        break;
+                    }
+                    case 73: {
+                        if (hatch_in_edge && !hatch_in_polyline &&
+                            (hatch_edge_type == 2 || hatch_edge_type == 3)) {
+                            int ccw = 0;
+                            if (parse_int(value_line, &ccw)) {
+                                if (hatch_edge_type == 2) {
+                                    hatch_edge_arc.ccw = ccw;
+                                } else {
+                                    hatch_edge_ellipse.ccw = ccw;
+                                }
+                                finalize_hatch_edge(false);
+                            }
+                        } else {
+                            int closed = 0;
+                            if (parse_int(value_line, &closed)) {
+                                hatch_closed = (closed != 0);
+                                current_hatch.closed = hatch_closed;
+                            }
+                        }
+                        break;
+                    }
+                    case 92: {
+                        int flags = 0;
+                        if (parse_int(value_line, &flags)) {
+                            finalize_hatch_edge(true);
+                            hatch_in_polyline = (flags & 2) != 0;
+                            hatch_in_edge = !hatch_in_polyline;
+                            hatch_capture = hatch_in_polyline || hatch_in_edge;
+                            hatch_vertex_seen = 0;
+                            hatch_vertex_expected = 0;
+                            hatch_edge_expected = 0;
+                            hatch_edge_seen = 0;
+                            hatch_has_x = false;
+                            hatch_active_boundary = nullptr;
+                            reset_hatch_edge();
+                            if (hatch_in_polyline) {
+                                current_hatch.boundaries.emplace_back();
+                                hatch_active_boundary = &current_hatch.boundaries.back();
+                                hatch_loop_seen++;
+                            } else if (hatch_in_edge) {
+                                current_hatch.boundaries.emplace_back();
+                                hatch_active_boundary = &current_hatch.boundaries.back();
+                                hatch_loop_seen++;
+                            }
+                        }
+                        break;
+                    }
+                    case 93: {
+                        int count = 0;
+                        if (parse_int(value_line, &count)) {
+                            if (hatch_in_polyline) {
+                                hatch_vertex_expected = count;
+                                hatch_vertex_seen = 0;
+                                hatch_has_x = false;
+                            } else if (hatch_in_edge) {
+                                hatch_edge_expected = count;
+                                hatch_edge_seen = 0;
+                            }
+                        }
+                        break;
+                    }
+                    case 94: {
+                        if (hatch_in_edge && !hatch_in_polyline && hatch_edge_type == 4) {
+                            int count = 0;
+                            if (parse_int(value_line, &count)) {
+                                hatch_edge_spline_expected = count;
+                            }
+                        }
+                        break;
+                    }
+                    case 10:
+                        if (hatch_in_polyline && hatch_capture && hatch_active_boundary) {
+                            if (parse_double(value_line, &hatch_pending_x)) {
+                                hatch_has_x = true;
+                            }
+                        } else if (hatch_in_edge && hatch_active_boundary) {
+                            if (hatch_edge_type == 1) {
+                                if (parse_double(value_line, &hatch_edge_line.start.x)) {
+                                    hatch_edge_line.has_start_x = true;
+                                }
+                            } else if (hatch_edge_type == 2) {
+                                if (parse_double(value_line, &hatch_edge_arc.center.x)) {
+                                    hatch_edge_arc.has_cx = true;
+                                }
+                            } else if (hatch_edge_type == 3) {
+                                if (parse_double(value_line, &hatch_edge_ellipse.center.x)) {
+                                    hatch_edge_ellipse.has_cx = true;
+                                }
+                            } else if (hatch_edge_type == 4) {
+                                if (parse_double(value_line, &hatch_edge_spline_pending_x)) {
+                                    hatch_edge_spline_has_x = true;
+                                }
+                            }
+                        }
+                        break;
+                    case 20:
+                        if (hatch_in_polyline && hatch_has_x && hatch_capture && hatch_active_boundary) {
+                            double y = 0.0;
+                            if (parse_double(value_line, &y)) {
+                                hatch_active_boundary->push_back(cadgf_vec2{hatch_pending_x, y});
+                                hatch_vertex_seen++;
+                                if (hatch_vertex_expected > 0 && hatch_vertex_seen >= hatch_vertex_expected) {
+                                    hatch_capture = false;
+                                    hatch_active_boundary = nullptr;
+                                }
+                            }
+                            hatch_has_x = false;
+                        } else if (hatch_in_edge && hatch_active_boundary) {
+                            if (hatch_edge_type == 1) {
+                                if (parse_double(value_line, &hatch_edge_line.start.y)) {
+                                    hatch_edge_line.has_start_y = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            } else if (hatch_edge_type == 2) {
+                                if (parse_double(value_line, &hatch_edge_arc.center.y)) {
+                                    hatch_edge_arc.has_cy = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            } else if (hatch_edge_type == 3) {
+                                if (parse_double(value_line, &hatch_edge_ellipse.center.y)) {
+                                    hatch_edge_ellipse.has_cy = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            } else if (hatch_edge_type == 4) {
+                                if (hatch_edge_spline_has_x) {
+                                    double y = 0.0;
+                                    if (parse_double(value_line, &y)) {
+                                        hatch_edge_spline_points.push_back(
+                                            cadgf_vec2{hatch_edge_spline_pending_x, y});
+                                        hatch_edge_spline_has_x = false;
+                                        finalize_hatch_edge(false);
+                                    }
+                                }
+                            }
+                        }
+                        break;
+                    case 11:
+                        if (hatch_in_edge && hatch_active_boundary) {
+                            if (hatch_edge_type == 1) {
+                                if (parse_double(value_line, &hatch_edge_line.end.x)) {
+                                    hatch_edge_line.has_end_x = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            } else if (hatch_edge_type == 3) {
+                                if (parse_double(value_line, &hatch_edge_ellipse.major_axis.x)) {
+                                    hatch_edge_ellipse.has_ax = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            }
+                        }
+                        break;
+                    case 21:
+                        if (hatch_in_edge && hatch_active_boundary) {
+                            if (hatch_edge_type == 1) {
+                                if (parse_double(value_line, &hatch_edge_line.end.y)) {
+                                    hatch_edge_line.has_end_y = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            } else if (hatch_edge_type == 3) {
+                                if (parse_double(value_line, &hatch_edge_ellipse.major_axis.y)) {
+                                    hatch_edge_ellipse.has_ay = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            }
+                        }
+                        break;
+                    case 40:
+                        if (hatch_in_edge && hatch_active_boundary) {
+                            if (hatch_edge_type == 2) {
+                                if (parse_double(value_line, &hatch_edge_arc.radius)) {
+                                    hatch_edge_arc.has_radius = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            } else if (hatch_edge_type == 3) {
+                                if (parse_double(value_line, &hatch_edge_ellipse.ratio)) {
+                                    hatch_edge_ellipse.has_ratio = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            }
+                        }
+                        break;
+                    case 50:
+                        if (hatch_in_edge && hatch_active_boundary) {
+                            if (hatch_edge_type == 2) {
+                                if (parse_double(value_line, &hatch_edge_arc.start_deg)) {
+                                    hatch_edge_arc.has_start = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            } else if (hatch_edge_type == 3) {
+                                if (parse_double(value_line, &hatch_edge_ellipse.start_param)) {
+                                    hatch_edge_ellipse.has_start = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            }
+                        }
+                        break;
+                    case 51:
+                        if (hatch_in_edge && hatch_active_boundary) {
+                            if (hatch_edge_type == 2) {
+                                if (parse_double(value_line, &hatch_edge_arc.end_deg)) {
+                                    hatch_edge_arc.has_end = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            } else if (hatch_edge_type == 3) {
+                                if (parse_double(value_line, &hatch_edge_ellipse.end_param)) {
+                                    hatch_edge_ellipse.has_end = true;
+                                    finalize_hatch_edge(false);
+                                }
+                            }
+                        }
                         break;
                     default:
                         break;
                 }
                 break;
             case DxfEntityKind::Insert:
-                if (parse_style_code(&current_insert.style, code, value_line)) break;
+                if (parse_entity_space(code, value_line, &current_insert.space)) break;
+                if (parse_style_code(&current_insert.style, code, value_line, header_codepage)) break;
                 switch (code) {
                     case 2:
-                        current_insert.block_name = value_line;
+                        current_insert.block_name = sanitize_utf8(value_line, header_codepage);
+                        break;
+                    case 1:
+                        if (current_insert.is_dimension) {
+                            current_insert.dim_text = sanitize_utf8(value_line, header_codepage);
+                        }
+                        break;
+                    case 3:
+                        if (current_insert.is_dimension) {
+                            current_insert.dim_style = sanitize_utf8(value_line, header_codepage);
+                        }
                         break;
                     case 8:
-                        current_insert.layer = value_line;
+                        current_insert.layer = sanitize_utf8(value_line, header_codepage);
                         break;
                     case 10:
                         if (parse_double(value_line, &current_insert.pos.x)) {
@@ -1203,18 +2503,129 @@ static bool parse_dxf_entities(const std::string& path,
                             current_insert.has_y = true;
                         }
                         break;
+                    case 11:
+                        if (current_insert.is_dimension &&
+                            parse_double(value_line, &pending_dim_text_x)) {
+                            has_dim_text_x = true;
+                        }
+                        break;
+                    case 21: {
+                        if (!current_insert.is_dimension || !has_dim_text_x) break;
+                        double y = 0.0;
+                        if (parse_double(value_line, &y)) {
+                            current_insert.dim_text_pos = cadgf_vec2{pending_dim_text_x, y};
+                            current_insert.has_dim_text_pos = true;
+                        }
+                        has_dim_text_x = false;
+                        break;
+                    }
                     case 41:
-                        if (parse_double(value_line, &current_insert.scale_x)) {
+                        if (!current_insert.is_dimension &&
+                            parse_double(value_line, &current_insert.scale_x)) {
                             current_insert.has_scale_x = true;
                         }
                         break;
                     case 42:
-                        if (parse_double(value_line, &current_insert.scale_y)) {
+                        if (current_insert.is_dimension) {
+                            if (parse_double(value_line, &current_insert.dim_measurement)) {
+                                current_insert.has_dim_measurement = true;
+                            }
+                        } else if (parse_double(value_line, &current_insert.scale_y)) {
                             current_insert.has_scale_y = true;
                         }
                         break;
                     case 50:
                         (void)parse_double(value_line, &current_insert.rotation_deg);
+                        break;
+                    case 70:
+                        if (current_insert.is_dimension) {
+                            int dtype = 0;
+                            if (parse_int(value_line, &dtype)) {
+                                current_insert.dim_type = dtype;
+                            }
+                        }
+                        break;
+                    case 13:
+                        if (current_insert.is_dimension) {
+                            (void)parse_double(value_line, &current_insert.dim_defpoint1.x);
+                        }
+                        break;
+                    case 23:
+                        if (current_insert.is_dimension) {
+                            if (parse_double(value_line, &current_insert.dim_defpoint1.y)) {
+                                current_insert.has_dim_defpoint1 = true;
+                            }
+                        }
+                        break;
+                    case 14:
+                        if (current_insert.is_dimension) {
+                            (void)parse_double(value_line, &current_insert.dim_defpoint2.x);
+                        }
+                        break;
+                    case 24:
+                        if (current_insert.is_dimension) {
+                            if (parse_double(value_line, &current_insert.dim_defpoint2.y)) {
+                                current_insert.has_dim_defpoint2 = true;
+                            }
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case DxfEntityKind::Viewport:
+                if (parse_entity_space(code, value_line, &current_viewport.space)) break;
+                switch (code) {
+                    case 10:
+                        if (parse_double(value_line, &current_viewport.center.x)) {
+                            current_viewport.has_center_x = true;
+                        }
+                        break;
+                    case 20:
+                        if (parse_double(value_line, &current_viewport.center.y)) {
+                            current_viewport.has_center_y = true;
+                        }
+                        break;
+                    case 40:
+                        if (parse_double(value_line, &current_viewport.height)) {
+                            current_viewport.has_height = true;
+                        }
+                        break;
+                    case 41:
+                        if (parse_double(value_line, &current_viewport.width)) {
+                            current_viewport.has_width = true;
+                        }
+                        break;
+                    case 12:
+                        if (parse_double(value_line, &current_viewport.view_center.x)) {
+                            current_viewport.has_view_center_x = true;
+                        }
+                        break;
+                    case 22:
+                        if (parse_double(value_line, &current_viewport.view_center.y)) {
+                            current_viewport.has_view_center_y = true;
+                        }
+                        break;
+                    case 45:
+                        if (parse_double(value_line, &current_viewport.view_height)) {
+                            current_viewport.has_view_height = true;
+                        }
+                        break;
+                    case 51:
+                        if (parse_double(value_line, &current_viewport.twist_deg)) {
+                            current_viewport.has_twist = true;
+                        }
+                        break;
+                    case 69: {
+                        int id = 0;
+                        if (parse_int(value_line, &id)) {
+                            current_viewport.id = id;
+                            current_viewport.has_id = true;
+                        }
+                        break;
+                    }
+                    case 410:
+                        current_viewport.layout = sanitize_utf8(value_line, header_codepage);
                         break;
                     default:
                         break;
@@ -1250,6 +2661,18 @@ static bool parse_dxf_entities(const std::string& path,
         }
         *out_default_line_scale = scale;
     }
+    if (out_default_text_height) {
+        *out_default_text_height = has_header_textsize ? header_textsize : 0.0;
+    }
+    if (out_has_paperspace) {
+        *out_has_paperspace = has_paperspace;
+    }
+    if (out_has_active_view) {
+        *out_has_active_view = has_active_view;
+    }
+    if (out_active_view && has_active_view) {
+        *out_active_view = active_view;
+    }
     return true;
 }
 
@@ -1269,13 +2692,67 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
         std::vector<DxfText> texts;
         std::unordered_map<std::string, DxfBlock> blocks;
         std::vector<DxfInsert> inserts;
+        std::vector<DxfViewport> viewports;
         std::unordered_map<std::string, DxfLayer> layers;
+        std::unordered_map<std::string, DxfTextStyle> text_styles;
+        DxfView active_view;
         std::string err;
         double default_line_scale = 1.0;
+        double default_text_height = 0.0;
+        bool has_paperspace = false;
+        bool has_active_view = false;
         if (!parse_dxf_entities(path_utf8, polylines, lines, circles, arcs, ellipses, splines, texts,
-                                blocks, inserts, layers, &default_line_scale, &err)) {
+                                blocks, inserts, viewports, layers, text_styles,
+                                &default_line_scale, &default_text_height,
+                                &has_paperspace, &has_active_view, &active_view, &err)) {
             set_error(out_err, 2, err.empty() ? "parse failed" : err.c_str());
             return 0;
+        }
+
+        std::vector<DxfViewport> paper_viewports;
+        if (!viewports.empty()) {
+            paper_viewports.reserve(viewports.size());
+            for (const auto& viewport : viewports) {
+                if (viewport.space == 1) {
+                    paper_viewports.push_back(viewport);
+                }
+            }
+        }
+
+        auto count_entities_in_space = [&](int space) -> size_t {
+            size_t total = 0;
+            for (const auto& pl : polylines) total += (pl.space == space);
+            for (const auto& ln : lines) total += (ln.space == space);
+            for (const auto& circle : circles) total += (circle.space == space);
+            for (const auto& arc : arcs) total += (arc.space == space);
+            for (const auto& ellipse : ellipses) total += (ellipse.space == space);
+            for (const auto& spline : splines) total += (spline.space == space);
+            for (const auto& text : texts) total += (text.space == space);
+            for (const auto& insert : inserts) total += (insert.space == space);
+            return total;
+        };
+
+        const size_t count_space0 = count_entities_in_space(0);
+        const size_t count_space1 = count_entities_in_space(1);
+        const bool has_viewports = !paper_viewports.empty();
+        const bool include_all_spaces =
+            has_paperspace && count_space0 > 0 && (count_space1 > 0 || has_viewports);
+        int target_space = 0;
+        if (count_space1 > 0 && count_space0 == 0) {
+            target_space = 1;
+        } else if (has_paperspace && count_space1 > count_space0) {
+            target_space = 1;
+        }
+        if (has_viewports) {
+            target_space = 1;
+        }
+        const int default_space =
+            include_all_spaces ? (has_viewports ? 1 : ((count_space1 > count_space0) ? 1 : 0)) : target_space;
+        (void)cadgf_document_set_meta_value(doc, "dxf.default_space",
+                                            default_space == 1 ? "1" : "0");
+        write_viewport_list_metadata(doc, paper_viewports);
+        if (has_active_view) {
+            write_active_view_metadata(doc, active_view);
         }
 
         std::unordered_map<std::string, int> layer_ids;
@@ -1342,8 +2819,12 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
 
         constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
         constexpr double kTwoPi = 6.28318530717958647692;
+        auto include_space = [&](int space) -> bool {
+            return include_all_spaces || space == target_space;
+        };
 
         for (const auto& pl : polylines) {
+            if (!include_space(pl.space)) continue;
             int layer_id = 0;
             if (!resolve_layer_id(pl.layer, &layer_id)) {
                 set_error(out_err, 3, "failed to add layer");
@@ -1352,11 +2833,13 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             if (pl.points.size() < 2) continue;
             cadgf_entity_id id = cadgf_document_add_polyline_ex(doc, pl.points.data(),
                                                                 static_cast<int>(pl.points.size()),
-                                                                "", layer_id);
+                                                                pl.name.empty() ? "" : pl.name.c_str(), layer_id);
+            write_space_metadata(doc, id, pl.space);
             apply_line_style(doc, id, pl.style, layer_style_for(pl.layer), nullptr, default_line_scale);
         }
 
         for (const auto& ln : lines) {
+            if (!include_space(ln.space)) continue;
             int layer_id = 0;
             if (!resolve_layer_id(ln.layer, &layer_id)) {
                 set_error(out_err, 3, "failed to add layer");
@@ -1366,10 +2849,12 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             line.a = ln.a;
             line.b = ln.b;
             cadgf_entity_id id = cadgf_document_add_line(doc, &line, "", layer_id);
+            write_space_metadata(doc, id, ln.space);
             apply_line_style(doc, id, ln.style, layer_style_for(ln.layer), nullptr, default_line_scale);
         }
 
         for (const auto& circle_in : circles) {
+            if (!include_space(circle_in.space)) continue;
             int layer_id = 0;
             if (!resolve_layer_id(circle_in.layer, &layer_id)) {
                 set_error(out_err, 3, "failed to add layer");
@@ -1379,10 +2864,12 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             circle.center = circle_in.center;
             circle.radius = circle_in.radius;
             cadgf_entity_id id = cadgf_document_add_circle(doc, &circle, "", layer_id);
+            write_space_metadata(doc, id, circle_in.space);
             apply_line_style(doc, id, circle_in.style, layer_style_for(circle_in.layer), nullptr, default_line_scale);
         }
 
         for (const auto& arc_in : arcs) {
+            if (!include_space(arc_in.space)) continue;
             int layer_id = 0;
             if (!resolve_layer_id(arc_in.layer, &layer_id)) {
                 set_error(out_err, 3, "failed to add layer");
@@ -1395,10 +2882,12 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             arc.end_angle = arc_in.end_deg * kDegToRad;
             arc.clockwise = 0;
             cadgf_entity_id id = cadgf_document_add_arc(doc, &arc, "", layer_id);
+            write_space_metadata(doc, id, arc_in.space);
             apply_line_style(doc, id, arc_in.style, layer_style_for(arc_in.layer), nullptr, default_line_scale);
         }
 
         for (const auto& ellipse_in : ellipses) {
+            if (!include_space(ellipse_in.space)) continue;
             int layer_id = 0;
             if (!resolve_layer_id(ellipse_in.layer, &layer_id)) {
                 set_error(out_err, 3, "failed to add layer");
@@ -1416,10 +2905,12 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             ellipse.start_angle = ellipse_in.has_start ? ellipse_in.start_param : 0.0;
             ellipse.end_angle = ellipse_in.has_end ? ellipse_in.end_param : kTwoPi;
             cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
+            write_space_metadata(doc, id, ellipse_in.space);
             apply_line_style(doc, id, ellipse_in.style, layer_style_for(ellipse_in.layer), nullptr, default_line_scale);
         }
 
         for (const auto& spline_in : splines) {
+            if (!include_space(spline_in.space)) continue;
             int layer_id = 0;
             if (!resolve_layer_id(spline_in.layer, &layer_id)) {
                 set_error(out_err, 3, "failed to add layer");
@@ -1433,10 +2924,52 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                                                           spline_in.knots.empty() ? nullptr : spline_in.knots.data(),
                                                           static_cast<int>(spline_in.knots.size()),
                                                           degree, "", layer_id);
+            write_space_metadata(doc, id, spline_in.space);
             apply_line_style(doc, id, spline_in.style, layer_style_for(spline_in.layer), nullptr, default_line_scale);
         }
 
+        auto resolve_text_height = [&](const DxfText& text_in) -> double {
+            double text_height = text_in.height;
+            if (!(text_height > 0.0)) {
+                std::string style_name = text_in.style_name;
+                if (style_name.empty()) {
+                    style_name = "STANDARD";
+                }
+                auto it = text_styles.find(style_name);
+                if (it != text_styles.end() && it->second.has_height) {
+                    text_height = it->second.height;
+                }
+            }
+            if (!(text_height > 0.0)) {
+                text_height = default_text_height > 0.0 ? default_text_height : 1.0;
+            }
+            return text_height;
+        };
+
+        auto trim_ascii = [](const std::string& value) -> std::string {
+            const char* whitespace = " \t\r\n";
+            const size_t start = value.find_first_not_of(whitespace);
+            if (start == std::string::npos) return {};
+            const size_t end = value.find_last_not_of(whitespace);
+            return value.substr(start, end - start + 1);
+        };
+
+        auto format_measurement = [](double value) -> std::string {
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "%.3f", value);
+            std::string out(buf);
+            const size_t last_non_zero = out.find_last_not_of('0');
+            if (last_non_zero != std::string::npos) {
+                out.erase(last_non_zero + 1);
+            }
+            if (!out.empty() && out.back() == '.') {
+                out.pop_back();
+            }
+            return out;
+        };
+
         for (const auto& text_in : texts) {
+            if (!include_space(text_in.space)) continue;
             int layer_id = 0;
             if (!resolve_layer_id(text_in.layer, &layer_id)) {
                 set_error(out_err, 3, "failed to add layer");
@@ -1444,9 +2977,44 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             }
             cadgf_vec2 pos = text_in.pos;
             const double rotation = text_in.rotation_deg * kDegToRad;
-            cadgf_entity_id id = cadgf_document_add_text(doc, &pos, text_in.height, rotation,
+            double text_height = resolve_text_height(text_in);
+            cadgf_entity_id id = cadgf_document_add_text(doc, &pos, text_height, rotation,
                                                          text_in.text.c_str(), "", layer_id);
+            write_space_metadata(doc, id, text_in.space);
+            write_text_metadata(doc, id, text_in);
             apply_line_style(doc, id, text_in.style, layer_style_for(text_in.layer), nullptr, default_line_scale);
+        }
+
+        for (const auto& insert : inserts) {
+            if (!insert.is_dimension) continue;
+            if (!include_space(insert.space)) continue;
+
+            int layer_id = 0;
+            if (!resolve_layer_id(insert.layer, &layer_id)) {
+                set_error(out_err, 3, "failed to add layer");
+                return 0;
+            }
+
+            // NOTE: DIMENSION geometry (extension lines, dimension lines) comes from
+            // the associated *D block, which is rendered through the normal block
+            // rendering loop below. The defpoint coordinates in DIMENSION entities
+            // are in block definition space, not world coordinates.
+
+            // Generate dimension text
+            std::string dim_text = trim_ascii(insert.dim_text);
+            if (dim_text.empty() || dim_text == "<>") {
+                if (insert.has_dim_measurement) {
+                    dim_text = format_measurement(insert.dim_measurement);
+                }
+            }
+            if (!dim_text.empty()) {
+                cadgf_vec2 pos = insert.has_dim_text_pos ? insert.dim_text_pos : insert.pos;
+                const double text_height = default_text_height > 0.0 ? default_text_height : 1.0;
+                cadgf_entity_id id = cadgf_document_add_text(doc, &pos, text_height, 0.0,
+                                                             dim_text.c_str(), "", layer_id);
+                write_space_metadata(doc, id, insert.space);
+                apply_line_style(doc, id, insert.style, layer_style_for(insert.layer), nullptr, default_line_scale);
+            }
         }
 
         auto resolve_entity_layer_name = [&](const std::string& entity_layer,
@@ -1465,7 +3033,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
 
         auto emit_block = [&](auto&& self, const DxfBlock& block, const Transform2D& tr,
                               const std::string& insert_layer, const DxfStyle* insert_style, int group_id,
-                              std::vector<std::string>& stack, int depth) -> bool {
+                              int space, std::vector<std::string>& stack, int depth) -> bool {
             if (depth > kMaxBlockDepth) return true;
 
             double scale_x = 1.0;
@@ -1489,8 +3057,9 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 }
                 cadgf_entity_id id = cadgf_document_add_polyline_ex(doc, points.data(),
                                                                     static_cast<int>(points.size()),
-                                                                    "", layer_id);
+                                                                    pl.name.empty() ? "" : pl.name.c_str(), layer_id);
                 apply_group(id, group_id);
+                write_space_metadata(doc, id, space);
                 apply_line_style(doc, id, pl.style, layer_style_for(layer_name), insert_style, default_line_scale);
             }
 
@@ -1506,6 +3075,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 line.b = apply_transform(tr, ln.b);
                 cadgf_entity_id id = cadgf_document_add_line(doc, &line, "", layer_id);
                 apply_group(id, group_id);
+                write_space_metadata(doc, id, space);
                 apply_line_style(doc, id, ln.style, layer_style_for(layer_name), insert_style, default_line_scale);
             }
 
@@ -1522,6 +3092,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                     circle.radius = circle_in.radius * scale_x;
                     cadgf_entity_id id = cadgf_document_add_circle(doc, &circle, "", layer_id);
                     apply_group(id, group_id);
+                    write_space_metadata(doc, id, space);
                     apply_line_style(doc, id, circle_in.style, layer_style_for(layer_name), insert_style,
                                      default_line_scale);
                 } else {
@@ -1534,6 +3105,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                     ellipse.end_angle = kTwoPi;
                     cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
                     apply_group(id, group_id);
+                    write_space_metadata(doc, id, space);
                     apply_line_style(doc, id, circle_in.style, layer_style_for(layer_name), insert_style,
                                      default_line_scale);
                 }
@@ -1555,6 +3127,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                     arc.clockwise = 0;
                     cadgf_entity_id id = cadgf_document_add_arc(doc, &arc, "", layer_id);
                     apply_group(id, group_id);
+                    write_space_metadata(doc, id, space);
                     apply_line_style(doc, id, arc_in.style, layer_style_for(layer_name), insert_style,
                                      default_line_scale);
                 } else {
@@ -1567,6 +3140,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                     ellipse.end_angle = arc_in.end_deg * kDegToRad;
                     cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
                     apply_group(id, group_id);
+                    write_space_metadata(doc, id, space);
                     apply_line_style(doc, id, arc_in.style, layer_style_for(layer_name), insert_style,
                                      default_line_scale);
                 }
@@ -1599,6 +3173,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 ellipse.end_angle = ellipse_in.has_end ? ellipse_in.end_param : kTwoPi;
                 cadgf_entity_id id = cadgf_document_add_ellipse(doc, &ellipse, "", layer_id);
                 apply_group(id, group_id);
+                write_space_metadata(doc, id, space);
                 apply_line_style(doc, id, ellipse_in.style, layer_style_for(layer_name), insert_style,
                                  default_line_scale);
             }
@@ -1624,6 +3199,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                                                               static_cast<int>(spline_in.knots.size()),
                                                               degree, "", layer_id);
                 apply_group(id, group_id);
+                write_space_metadata(doc, id, space);
                 apply_line_style(doc, id, spline_in.style, layer_style_for(layer_name), insert_style,
                                  default_line_scale);
             }
@@ -1637,9 +3213,18 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 }
                 cadgf_vec2 pos_out = apply_transform(tr, text_in.pos);
                 const double rotation = text_in.rotation_deg * kDegToRad + rot;
-                cadgf_entity_id id = cadgf_document_add_text(doc, &pos_out, text_in.height * scale_y,
+                double text_height = resolve_text_height(text_in);
+                cadgf_entity_id id = cadgf_document_add_text(doc, &pos_out, text_height * scale_y,
                                                              rotation, text_in.text.c_str(), "", layer_id);
+                if (text_in.has_width) {
+                    DxfText layout = text_in;
+                    layout.width = std::fabs(text_in.width * scale_x);
+                    write_text_metadata(doc, id, layout);
+                } else {
+                    write_text_metadata(doc, id, text_in);
+                }
                 apply_group(id, group_id);
+                write_space_metadata(doc, id, space);
                 apply_line_style(doc, id, text_in.style, layer_style_for(layer_name), insert_style,
                                  default_line_scale);
             }
@@ -1652,10 +3237,16 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 const std::string nested_layer = (nested_insert.layer.empty() || nested_insert.layer == "0")
                                                     ? insert_layer
                                                     : nested_insert.layer;
-                const cadgf_vec2 nested_base = nested_block.has_base ? nested_block.base : cadgf_vec2{0.0, 0.0};
+                // For *D blocks (DIMENSION geometry), use pos=(0,0) and base=(0,0)
+                // because their content is already in world coordinates
+                const bool is_dim_block = nested_insert.is_dimension || nested_block.name.rfind("*D", 0) == 0;
+                const cadgf_vec2 nested_base = is_dim_block
+                                                   ? cadgf_vec2{0.0, 0.0}
+                                                   : (nested_block.has_base ? nested_block.base : cadgf_vec2{0.0, 0.0});
+                const cadgf_vec2 nested_pos = is_dim_block ? cadgf_vec2{0.0, 0.0} : nested_insert.pos;
                 const double nested_rot = nested_insert.rotation_deg * kDegToRad;
                 const Transform2D local = make_transform(nested_insert.scale_x, nested_insert.scale_y,
-                                                         nested_rot, nested_insert.pos, nested_base);
+                                                         nested_rot, nested_pos, nested_base);
                 const Transform2D combined = combine_transform(tr, local);
                 if (std::find(stack.begin(), stack.end(), nested_block.name) != stack.end()) {
                     continue;
@@ -1664,7 +3255,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 const int nested_group = cadgf_document_alloc_group_id(doc);
                 const DxfStyle nested_style = resolve_insert_byblock_style(nested_insert.style, insert_style);
                 if (!self(self, nested_block, combined, nested_layer, &nested_style,
-                          nested_group, stack, depth + 1)) {
+                          nested_group, space, stack, depth + 1)) {
                     return false;
                 }
                 stack.pop_back();
@@ -1675,24 +3266,76 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
 
         const Transform2D identity{};
         std::vector<std::string> stack;
+        const bool has_top_level_entities =
+            !(polylines.empty() && lines.empty() && circles.empty() && arcs.empty() &&
+              ellipses.empty() && splines.empty() && texts.empty() && inserts.empty());
+
+        if (!has_top_level_entities) {
+            auto block_has_entities = [](const DxfBlock& block) -> bool {
+                return !(block.polylines.empty() && block.lines.empty() && block.circles.empty() &&
+                         block.arcs.empty() && block.ellipses.empty() && block.splines.empty() &&
+                         block.texts.empty() && block.inserts.empty());
+            };
+            const DxfBlock* fallback_block = nullptr;
+            int fallback_space = 0;
+            auto find_block = [&](const char* name) -> const DxfBlock* {
+                auto it = blocks.find(name);
+                if (it == blocks.end()) return nullptr;
+                if (!block_has_entities(it->second)) return nullptr;
+                return &it->second;
+            };
+
+            fallback_block = find_block("*Model_Space");
+            if (!fallback_block) fallback_block = find_block("*MODEL_SPACE");
+            if (!fallback_block) {
+                fallback_block = find_block("*Paper_Space");
+                if (fallback_block) fallback_space = 1;
+            }
+            if (!fallback_block) {
+                fallback_block = find_block("*PAPER_SPACE");
+                if (fallback_block) fallback_space = 1;
+            }
+
+            if (fallback_block) {
+                const int root_group = cadgf_document_alloc_group_id(doc);
+                if (!emit_block(emit_block, *fallback_block, identity, "0", nullptr, root_group,
+                                fallback_space, stack, 0)) {
+                    set_error(out_err, 3, "failed to emit fallback block");
+                    return 0;
+                }
+            }
+        }
+
         for (const auto& insert : inserts) {
+            if (!include_space(insert.space)) continue;
             if (insert.block_name.empty()) continue;
+            // DIMENSION inserts have block_name pointing to *D blocks
+            // We need to render these blocks for complete dimension geometry
             auto block_it = blocks.find(insert.block_name);
             if (block_it == blocks.end()) continue;
             const DxfBlock& block = block_it->second;
-            const cadgf_vec2 base = block.has_base ? block.base : cadgf_vec2{0.0, 0.0};
+            // For DIMENSION inserts (*D blocks), the block content is already in world coordinates
+            // so we use pos=(0,0) AND base=(0,0) to avoid any offset transformation
+            const cadgf_vec2 base = (insert.is_dimension || block.name.rfind("*D", 0) == 0)
+                                        ? cadgf_vec2{0.0, 0.0}
+                                        : (block.has_base ? block.base : cadgf_vec2{0.0, 0.0});
             const std::string insert_layer = (insert.layer.empty() || insert.layer == "0")
                                                 ? std::string("0")
                                                 : insert.layer;
+            // For DIMENSION inserts (*D blocks), the block content is already in world coordinates
+            // so we use pos=(0,0) instead of the dimension's definition point
+            const cadgf_vec2 insert_pos = (insert.is_dimension || block.name.rfind("*D", 0) == 0)
+                                              ? cadgf_vec2{0.0, 0.0}
+                                              : insert.pos;
             const Transform2D local = make_transform(insert.scale_x, insert.scale_y,
                                                      insert.rotation_deg * kDegToRad,
-                                                     insert.pos, base);
+                                                     insert_pos, base);
             const Transform2D combined = combine_transform(identity, local);
             stack.clear();
             stack.push_back(block.name);
             const int group_id = cadgf_document_alloc_group_id(doc);
             if (!emit_block(emit_block, block, combined, insert_layer, &insert.style,
-                            group_id, stack, 0)) {
+                            group_id, insert.space, stack, 0)) {
                 return 0;
             }
         }
@@ -1728,7 +3371,7 @@ static cadgf_plugin_desc_v1 plugin_describe_impl(void) {
     d.size = static_cast<int32_t>(sizeof(cadgf_plugin_desc_v1));
     d.name = sv("CADGameFusion DXF Importer Plugin");
     d.version = sv("0.1.0");
-    d.description = sv("DXF importer (LWPOLYLINE/LINE/ARC/CIRCLE/ELLIPSE/SPLINE/TEXT) using cadgf_plugin_api_v1");
+    d.description = sv("DXF importer (LWPOLYLINE/LINE/ARC/CIRCLE/ELLIPSE/SPLINE/TEXT/MTEXT/ATTRIB/SOLID/HATCH/LEADER/DIMENSION/VIEWPORT) using cadgf_plugin_api_v1");
     return d;
 }
 

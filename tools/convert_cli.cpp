@@ -1,9 +1,11 @@
 #include <algorithm>
 #include <cmath>
+#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <limits>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <utility>
 #include <cstdio>
@@ -31,6 +33,7 @@ struct ConvertOptions {
     std::string outDir = "build/convert_out";
     bool emitJson = false;
     bool emitGltf = false;
+    bool lineOnly = false;
 };
 
 struct MeshSlice {
@@ -47,6 +50,7 @@ struct MeshSlice {
     std::string lineType;
     double lineWeight{};
     double lineTypeScale{};
+    int space{-1};
     uint32_t baseVertex{};
     uint32_t vertexCount{};
     uint32_t indexOffset{};
@@ -54,7 +58,7 @@ struct MeshSlice {
 };
 
 static void usage(const char* argv0) {
-    std::cerr << "Usage: " << argv0 << " --plugin <path> --input <file> [--out <dir>] [--json] [--gltf]\n";
+    std::cerr << "Usage: " << argv0 << " --plugin <path> --input <file> [--out <dir>] [--json] [--gltf] [--line-only]\n";
 }
 
 static bool parse_args(int argc, char** argv, ConvertOptions* opts) {
@@ -74,6 +78,8 @@ static bool parse_args(int argc, char** argv, ConvertOptions* opts) {
         } else if (arg == "--gltf") {
             opts->emitGltf = true;
             saw_format = true;
+        } else if (arg == "--line-only") {
+            opts->lineOnly = true;
         } else if (arg == "--help" || arg == "-h") {
             return false;
         } else {
@@ -109,13 +115,78 @@ static void json_write_escaped(FILE* f, const char* s, size_t n) {
     std::fputc('"', f);
 }
 
+static bool is_valid_utf8(const std::string& value) {
+    const unsigned char* data = reinterpret_cast<const unsigned char*>(value.data());
+    size_t i = 0;
+    while (i < value.size()) {
+        unsigned char c = data[i];
+        if (c <= 0x7Fu) {
+            ++i;
+            continue;
+        }
+        if ((c >> 5) == 0x6) {
+            if (i + 1 >= value.size()) return false;
+            unsigned char c1 = data[i + 1];
+            if ((c1 & 0xC0u) != 0x80u) return false;
+            if (c < 0xC2u) return false;
+            i += 2;
+            continue;
+        }
+        if ((c >> 4) == 0xE) {
+            if (i + 2 >= value.size()) return false;
+            unsigned char c1 = data[i + 1];
+            unsigned char c2 = data[i + 2];
+            if ((c1 & 0xC0u) != 0x80u || (c2 & 0xC0u) != 0x80u) return false;
+            if (c == 0xE0u && c1 < 0xA0u) return false;
+            if (c == 0xEDu && c1 >= 0xA0u) return false;
+            i += 3;
+            continue;
+        }
+        if ((c >> 3) == 0x1E) {
+            if (i + 3 >= value.size()) return false;
+            unsigned char c1 = data[i + 1];
+            unsigned char c2 = data[i + 2];
+            unsigned char c3 = data[i + 3];
+            if ((c1 & 0xC0u) != 0x80u || (c2 & 0xC0u) != 0x80u || (c3 & 0xC0u) != 0x80u) return false;
+            if (c == 0xF0u && c1 < 0x90u) return false;
+            if (c == 0xF4u && c1 > 0x8Fu) return false;
+            if (c > 0xF4u) return false;
+            i += 4;
+            continue;
+        }
+        return false;
+    }
+    return true;
+}
+
+static std::string latin1_to_utf8(const std::string& value) {
+    std::string out;
+    out.reserve(value.size() * 2);
+    for (unsigned char c : value) {
+        if (c < 0x80u) {
+            out.push_back(static_cast<char>(c));
+        } else {
+            out.push_back(static_cast<char>(0xC0u | (c >> 6)));
+            out.push_back(static_cast<char>(0x80u | (c & 0x3Fu)));
+        }
+    }
+    return out;
+}
+
+static std::string sanitize_utf8(const std::string& value) {
+    if (value.empty() || is_valid_utf8(value)) {
+        return value;
+    }
+    return latin1_to_utf8(value);
+}
+
 static std::string query_layer_name_utf8(const cadgf_document* doc, int layer_id) {
     int required = 0;
     if (!cadgf_document_get_layer_name(doc, layer_id, nullptr, 0, &required) || required <= 0) return {};
     std::vector<char> buf(static_cast<size_t>(required));
     if (!cadgf_document_get_layer_name(doc, layer_id, buf.data(), required, &required)) return {};
     if (!buf.empty() && buf.back() == 0) buf.pop_back();
-    return std::string(buf.begin(), buf.end());
+    return sanitize_utf8(std::string(buf.begin(), buf.end()));
 }
 
 static std::string query_entity_name_utf8(const cadgf_document* doc, cadgf_entity_id id) {
@@ -124,7 +195,7 @@ static std::string query_entity_name_utf8(const cadgf_document* doc, cadgf_entit
     std::vector<char> buf(static_cast<size_t>(required));
     if (!cadgf_document_get_entity_name(doc, id, buf.data(), required, &required)) return {};
     if (!buf.empty() && buf.back() == 0) buf.pop_back();
-    return std::string(buf.begin(), buf.end());
+    return sanitize_utf8(std::string(buf.begin(), buf.end()));
 }
 
 static std::string query_entity_line_type_utf8(const cadgf_document* doc, cadgf_entity_id id) {
@@ -133,7 +204,7 @@ static std::string query_entity_line_type_utf8(const cadgf_document* doc, cadgf_
     std::vector<char> buf(static_cast<size_t>(required));
     if (!cadgf_document_get_entity_line_type(doc, id, buf.data(), required, &required)) return {};
     if (!buf.empty() && buf.back() == 0) buf.pop_back();
-    return std::string(buf.begin(), buf.end());
+    return sanitize_utf8(std::string(buf.begin(), buf.end()));
 }
 
 static std::string query_entity_color_source_utf8(const cadgf_document* doc, cadgf_entity_id id) {
@@ -142,7 +213,7 @@ static std::string query_entity_color_source_utf8(const cadgf_document* doc, cad
     std::vector<char> buf(static_cast<size_t>(required));
     if (!cadgf_document_get_entity_color_source(doc, id, buf.data(), required, &required)) return {};
     if (!buf.empty() && buf.back() == 0) buf.pop_back();
-    return std::string(buf.begin(), buf.end());
+    return sanitize_utf8(std::string(buf.begin(), buf.end()));
 }
 
 static bool query_entity_color_aci(const cadgf_document* doc, cadgf_entity_id id, int* out_aci) {
@@ -158,7 +229,7 @@ static std::string query_doc_string_utf8(const cadgf_document* doc, DocStringGet
     std::vector<char> buf(static_cast<size_t>(required));
     if (!getter(doc, buf.data(), required, &required)) return {};
     if (!buf.empty() && buf.back() == 0) buf.pop_back();
-    return std::string(buf.begin(), buf.end());
+    return sanitize_utf8(std::string(buf.begin(), buf.end()));
 }
 
 static std::vector<std::pair<std::string, std::string>> query_doc_meta_pairs(const cadgf_document* doc) {
@@ -173,7 +244,7 @@ static std::vector<std::pair<std::string, std::string>> query_doc_meta_pairs(con
         int required2 = 0;
         if (!cadgf_document_get_meta_key_at(doc, i, key_buf.data(), static_cast<int>(key_buf.size()), &required2)) continue;
         if (!key_buf.empty() && key_buf.back() == 0) key_buf.pop_back();
-        std::string key(key_buf.begin(), key_buf.end());
+        std::string key = sanitize_utf8(std::string(key_buf.begin(), key_buf.end()));
         if (key.empty()) continue;
 
         int val_required = 0;
@@ -182,9 +253,36 @@ static std::vector<std::pair<std::string, std::string>> query_doc_meta_pairs(con
         int val_required2 = 0;
         if (!cadgf_document_get_meta_value(doc, key.c_str(), val_buf.data(), static_cast<int>(val_buf.size()), &val_required2)) continue;
         if (!val_buf.empty() && val_buf.back() == 0) val_buf.pop_back();
-        out.emplace_back(std::move(key), std::string(val_buf.begin(), val_buf.end()));
+        out.emplace_back(std::move(key), sanitize_utf8(std::string(val_buf.begin(), val_buf.end())));
     }
     return out;
+}
+
+static bool query_doc_meta_value(const cadgf_document* doc, const std::string& key, std::string* out) {
+    if (!doc || !out || key.empty()) return false;
+    int required = 0;
+    if (!cadgf_document_get_meta_value(doc, key.c_str(), nullptr, 0, &required) || required <= 0) {
+        return false;
+    }
+    std::vector<char> buf(static_cast<size_t>(required));
+    int required2 = 0;
+    if (!cadgf_document_get_meta_value(doc, key.c_str(), buf.data(), static_cast<int>(buf.size()), &required2)) {
+        return false;
+    }
+    if (!buf.empty() && buf.back() == 0) buf.pop_back();
+    *out = sanitize_utf8(std::string(buf.begin(), buf.end()));
+    return !out->empty();
+}
+
+static int query_entity_space(const cadgf_document* doc, cadgf_entity_id id) {
+    std::string value;
+    const std::string key = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id)) + ".space";
+    if (!query_doc_meta_value(doc, key, &value)) return -1;
+    char* end = nullptr;
+    const long parsed = std::strtol(value.c_str(), &end, 10);
+    if (!end || end == value.c_str()) return -1;
+    if (parsed != 0 && parsed != 1) return -1;
+    return static_cast<int>(parsed);
 }
 
 static bool query_polyline_points(const cadgf_document* doc, cadgf_entity_id id, std::vector<cadgf_vec2>& out) {
@@ -303,6 +401,10 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
             entity_type = info.type;
             layer_id = info.layer_id;
         }
+        cadgf_entity_info info_basic{};
+        info_basic.id = eid;
+        info_basic.type = entity_type;
+        info_basic.layer_id = layer_id;
         const std::string name = query_entity_name_utf8(doc, eid);
         const std::string line_type = query_entity_line_type_utf8(doc, eid);
         const std::string color_source = query_entity_color_source_utf8(doc, eid);
@@ -314,6 +416,7 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
         const bool has_line_type = !line_type.empty();
         const bool has_color_aci = query_entity_color_aci(doc, eid, &color_aci);
         const bool has_color = entity_color != 0;
+        const int entity_space = query_entity_space(doc, eid);
 
         std::fprintf(f, "    {\"id\": %llu, \"type\": %d, \"layer_id\": %d, \"name\": ",
                      static_cast<unsigned long long>(eid), entity_type, layer_id);
@@ -337,6 +440,9 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
         }
         if (has_color_aci) {
             std::fprintf(f, ", \"color_aci\": %d", color_aci);
+        }
+        if (entity_space >= 0) {
+            std::fprintf(f, ", \"space\": %d", entity_space);
         }
 
         if (entity_type == CADGF_ENTITY_TYPE_POLYLINE) {
@@ -487,6 +593,9 @@ static bool write_mesh_metadata(const std::string& path,
         if (s.lineTypeScale != 0.0) {
             std::fprintf(f, ", \"line_type_scale\": %.6f", s.lineTypeScale);
         }
+        if (s.space >= 0) {
+            std::fprintf(f, ", \"space\": %d", s.space);
+        }
         std::fprintf(f, ", \"base_vertex\": %u, \"vertex_count\": %u, \"index_offset\": %u, \"index_count\": %u}%s\n",
                      s.baseVertex, s.vertexCount, s.indexOffset, s.indexCount,
                      (i + 1 < slices.size()) ? "," : "");
@@ -505,11 +614,56 @@ static void strip_closing_point(std::vector<cadgf_vec2>& pts) {
     }
 }
 
+static bool is_polyline_closed(const std::vector<cadgf_vec2>& pts) {
+    if (pts.size() < 3) return false;
+    double min_x = pts.front().x;
+    double max_x = pts.front().x;
+    double min_y = pts.front().y;
+    double max_y = pts.front().y;
+    for (const auto& p : pts) {
+        min_x = std::min(min_x, p.x);
+        max_x = std::max(max_x, p.x);
+        min_y = std::min(min_y, p.y);
+        max_y = std::max(max_y, p.y);
+    }
+    const double dx = pts.front().x - pts.back().x;
+    const double dy = pts.front().y - pts.back().y;
+    const double scale = std::max(max_x - min_x, max_y - min_y);
+    const double tol = std::max(1e-9, scale * 1e-6);
+    return (dx * dx + dy * dy) <= (tol * tol);
+}
+
+static double polygon_area_abs(const std::vector<cadgf_vec2>& pts) {
+    if (pts.size() < 3) return 0.0;
+    double area = 0.0;
+    for (size_t i = 0; i < pts.size(); ++i) {
+        const size_t j = (i + 1) % pts.size();
+        area += pts[i].x * pts[j].y - pts[j].x * pts[i].y;
+    }
+    return std::abs(area) * 0.5;
+}
+
+static bool starts_with(const std::string& value, const char* prefix) {
+    if (!prefix) return false;
+    const size_t prefix_len = std::strlen(prefix);
+    return value.size() >= prefix_len && value.compare(0, prefix_len, prefix) == 0;
+}
+
+// Coordinate validity check - filter out invalid/extreme values
+static bool is_valid_coordinate(const cadgf_vec2& pt) {
+    constexpr double kMaxCoord = 1e9;  // Absolute maximum coordinate value
+    if (!std::isfinite(pt.x) || !std::isfinite(pt.y)) return false;
+    if (std::abs(pt.x) >= kMaxCoord || std::abs(pt.y) >= kMaxCoord) return false;
+    return true;
+}
+
 static void append_line_segment(std::vector<float>& positions,
                                 std::vector<uint32_t>& indices,
                                 const cadgf_vec2& a,
                                 const cadgf_vec2& b) {
     if (a.x == b.x && a.y == b.y) return;
+    // Skip segments with invalid or extreme coordinates
+    if (!is_valid_coordinate(a) || !is_valid_coordinate(b)) return;
     const uint32_t base = static_cast<uint32_t>(positions.size() / 3);
     positions.push_back(static_cast<float>(a.x));
     positions.push_back(static_cast<float>(a.y));
@@ -666,6 +820,7 @@ static void populate_slice_metadata(const cadgf_document* doc,
     }
     (void)cadgf_document_get_entity_line_weight(doc, id, &slice.lineWeight);
     (void)cadgf_document_get_entity_line_type_scale(doc, id, &slice.lineTypeScale);
+    slice.space = query_entity_space(doc, id);
 }
 
 #if defined(CADGF_HAS_TINYGLTF)
@@ -725,6 +880,29 @@ static tinygltf::Value build_cadgf_extras(const cadgf_document* doc) {
 
     root["cadgf"] = Value(cadgf);
     return Value(root);
+}
+
+static bool write_gltf_scene(tinygltf::TinyGLTF* gltf,
+                             tinygltf::Model* model,
+                             const std::string& gltf_path,
+                             std::string* err) {
+    try {
+        if (!gltf || !model) {
+            if (err) *err = "invalid glTF writer";
+            return false;
+        }
+        if (gltf->WriteGltfSceneToFile(model, gltf_path, false, false, true, false)) {
+            return true;
+        }
+        if (err) *err = "failed to write glTF";
+        return false;
+    } catch (const std::exception& ex) {
+        if (err) *err = ex.what();
+        return false;
+    } catch (...) {
+        if (err) *err = "unknown exception writing glTF";
+        return false;
+    }
 }
 
 static bool write_gltf(const std::string& gltf_path,
@@ -828,11 +1006,204 @@ static bool write_gltf(const std::string& gltf_path,
     model.defaultScene = 0;
 
     tinygltf::TinyGLTF gltf;
-    if (!gltf.WriteGltfSceneToFile(&model, gltf_path, false, false, true, false)) {
-        if (err) *err = "failed to write glTF";
+    if (write_gltf_scene(&gltf, &model, gltf_path, err)) {
+        return true;
+    }
+    model.meshes[0].extras = tinygltf::Value();
+    model.nodes[0].extras = tinygltf::Value();
+    std::string fallback_err;
+    if (write_gltf_scene(&gltf, &model, gltf_path, &fallback_err)) {
+        if (err) *err = "glTF extras stripped after write error";
+        return true;
+    }
+    if (err && !fallback_err.empty()) {
+        *err = fallback_err;
+    }
+    return false;
+}
+
+static bool write_gltf_combined(const std::string& gltf_path,
+                             const std::string& bin_path,
+                             const std::vector<float>& positions,
+                             const std::vector<uint32_t>& indices,
+                             const std::vector<float>& line_positions,
+                             const std::vector<uint32_t>& line_indices,
+                             const cadgf_document* doc,
+                             std::string* err) {
+    if (positions.empty() || indices.empty() || line_positions.empty() || line_indices.empty()) {
+        if (err) *err = "missing mesh or line data";
         return false;
     }
-    return true;
+
+    tinygltf::Model model;
+    tinygltf::Scene scene;
+    tinygltf::Mesh mesh;
+    model.asset.version = "2.0";
+    model.asset.generator = "CADGameFusion_Convert_CLI";
+
+    tinygltf::Buffer buffer;
+    const size_t pos_bytes = positions.size() * sizeof(float);
+    const size_t idx_bytes = indices.size() * sizeof(uint32_t);
+    const size_t line_pos_bytes = line_positions.size() * sizeof(float);
+    const size_t line_idx_bytes = line_indices.size() * sizeof(uint32_t);
+    buffer.data.resize(pos_bytes + idx_bytes + line_pos_bytes + line_idx_bytes);
+    std::memcpy(buffer.data.data(), positions.data(), pos_bytes);
+    std::memcpy(buffer.data.data() + pos_bytes, indices.data(), idx_bytes);
+    std::memcpy(buffer.data.data() + pos_bytes + idx_bytes, line_positions.data(), line_pos_bytes);
+    std::memcpy(buffer.data.data() + pos_bytes + idx_bytes + line_pos_bytes, line_indices.data(), line_idx_bytes);
+    buffer.uri = fs::path(bin_path).filename().string();
+    model.buffers.push_back(buffer);
+
+    tinygltf::BufferView pos_view;
+    pos_view.buffer = 0;
+    pos_view.byteOffset = 0;
+    pos_view.byteLength = pos_bytes;
+    pos_view.target = TINYGLTF_TARGET_ARRAY_BUFFER;
+    const int pos_view_idx = static_cast<int>(model.bufferViews.size());
+    model.bufferViews.push_back(pos_view);
+
+    tinygltf::BufferView idx_view;
+    idx_view.buffer = 0;
+    idx_view.byteOffset = pos_bytes;
+    idx_view.byteLength = idx_bytes;
+    idx_view.target = TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER;
+    const int idx_view_idx = static_cast<int>(model.bufferViews.size());
+    model.bufferViews.push_back(idx_view);
+
+    tinygltf::BufferView line_pos_view;
+    line_pos_view.buffer = 0;
+    line_pos_view.byteOffset = pos_bytes + idx_bytes;
+    line_pos_view.byteLength = line_pos_bytes;
+    line_pos_view.target = TINYGLTF_TARGET_ARRAY_BUFFER;
+    const int line_pos_view_idx = static_cast<int>(model.bufferViews.size());
+    model.bufferViews.push_back(line_pos_view);
+
+    tinygltf::BufferView line_idx_view;
+    line_idx_view.buffer = 0;
+    line_idx_view.byteOffset = pos_bytes + idx_bytes + line_pos_bytes;
+    line_idx_view.byteLength = line_idx_bytes;
+    line_idx_view.target = TINYGLTF_TARGET_ELEMENT_ARRAY_BUFFER;
+    const int line_idx_view_idx = static_cast<int>(model.bufferViews.size());
+    model.bufferViews.push_back(line_idx_view);
+
+    float min_x = std::numeric_limits<float>::max();
+    float min_y = std::numeric_limits<float>::max();
+    float min_z = std::numeric_limits<float>::max();
+    float max_x = std::numeric_limits<float>::lowest();
+    float max_y = std::numeric_limits<float>::lowest();
+    float max_z = std::numeric_limits<float>::lowest();
+    for (size_t i = 0; i + 2 < positions.size(); i += 3) {
+        const float x = positions[i];
+        const float y = positions[i + 1];
+        const float z = positions[i + 2];
+        min_x = std::min(min_x, x);
+        min_y = std::min(min_y, y);
+        min_z = std::min(min_z, z);
+        max_x = std::max(max_x, x);
+        max_y = std::max(max_y, y);
+        max_z = std::max(max_z, z);
+    }
+
+    tinygltf::Accessor pos_accessor;
+    pos_accessor.bufferView = pos_view_idx;
+    pos_accessor.byteOffset = 0;
+    pos_accessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+    pos_accessor.count = positions.size() / 3;
+    pos_accessor.type = TINYGLTF_TYPE_VEC3;
+    pos_accessor.minValues = {min_x, min_y, min_z};
+    pos_accessor.maxValues = {max_x, max_y, max_z};
+    const int pos_accessor_idx = static_cast<int>(model.accessors.size());
+    model.accessors.push_back(pos_accessor);
+
+    tinygltf::Accessor idx_accessor;
+    idx_accessor.bufferView = idx_view_idx;
+    idx_accessor.byteOffset = 0;
+    idx_accessor.componentType = TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
+    idx_accessor.count = indices.size();
+    idx_accessor.type = TINYGLTF_TYPE_SCALAR;
+    const int idx_accessor_idx = static_cast<int>(model.accessors.size());
+    model.accessors.push_back(idx_accessor);
+
+    float line_min_x = std::numeric_limits<float>::max();
+    float line_min_y = std::numeric_limits<float>::max();
+    float line_min_z = std::numeric_limits<float>::max();
+    float line_max_x = std::numeric_limits<float>::lowest();
+    float line_max_y = std::numeric_limits<float>::lowest();
+    float line_max_z = std::numeric_limits<float>::lowest();
+    for (size_t i = 0; i + 2 < line_positions.size(); i += 3) {
+        const float x = line_positions[i];
+        const float y = line_positions[i + 1];
+        const float z = line_positions[i + 2];
+        line_min_x = std::min(line_min_x, x);
+        line_min_y = std::min(line_min_y, y);
+        line_min_z = std::min(line_min_z, z);
+        line_max_x = std::max(line_max_x, x);
+        line_max_y = std::max(line_max_y, y);
+        line_max_z = std::max(line_max_z, z);
+    }
+
+    tinygltf::Accessor line_pos_accessor;
+    line_pos_accessor.bufferView = line_pos_view_idx;
+    line_pos_accessor.byteOffset = 0;
+    line_pos_accessor.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
+    line_pos_accessor.count = line_positions.size() / 3;
+    line_pos_accessor.type = TINYGLTF_TYPE_VEC3;
+    line_pos_accessor.minValues = {line_min_x, line_min_y, line_min_z};
+    line_pos_accessor.maxValues = {line_max_x, line_max_y, line_max_z};
+    const int line_pos_accessor_idx = static_cast<int>(model.accessors.size());
+    model.accessors.push_back(line_pos_accessor);
+
+    tinygltf::Accessor line_idx_accessor;
+    line_idx_accessor.bufferView = line_idx_view_idx;
+    line_idx_accessor.byteOffset = 0;
+    line_idx_accessor.componentType = TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT;
+    line_idx_accessor.count = line_indices.size();
+    line_idx_accessor.type = TINYGLTF_TYPE_SCALAR;
+    const int line_idx_accessor_idx = static_cast<int>(model.accessors.size());
+    model.accessors.push_back(line_idx_accessor);
+
+    tinygltf::Primitive prim_tri;
+    prim_tri.attributes["POSITION"] = pos_accessor_idx;
+    prim_tri.indices = idx_accessor_idx;
+    prim_tri.mode = TINYGLTF_MODE_TRIANGLES;
+    mesh.primitives.push_back(prim_tri);
+
+    tinygltf::Primitive prim_line;
+    prim_line.attributes["POSITION"] = line_pos_accessor_idx;
+    prim_line.indices = line_idx_accessor_idx;
+    prim_line.mode = TINYGLTF_MODE_LINE;
+    mesh.primitives.push_back(prim_line);
+
+    if (doc) {
+        mesh.extras = build_cadgf_extras(doc);
+    }
+    model.meshes.push_back(mesh);
+
+    tinygltf::Node node;
+    node.mesh = 0;
+    if (doc) {
+        node.extras = build_cadgf_extras(doc);
+    }
+    model.nodes.push_back(node);
+    scene.nodes.push_back(0);
+    model.scenes.push_back(scene);
+    model.defaultScene = 0;
+
+    tinygltf::TinyGLTF gltf;
+    if (write_gltf_scene(&gltf, &model, gltf_path, err)) {
+        return true;
+    }
+    model.meshes[0].extras = tinygltf::Value();
+    model.nodes[0].extras = tinygltf::Value();
+    std::string fallback_err;
+    if (write_gltf_scene(&gltf, &model, gltf_path, &fallback_err)) {
+        if (err) *err = "glTF extras stripped after write error";
+        return true;
+    }
+    if (err && !fallback_err.empty()) {
+        *err = fallback_err;
+    }
+    return false;
 }
 
 static bool write_gltf_lines(const std::string& gltf_path,
@@ -936,11 +1307,20 @@ static bool write_gltf_lines(const std::string& gltf_path,
     model.defaultScene = 0;
 
     tinygltf::TinyGLTF gltf;
-    if (!gltf.WriteGltfSceneToFile(&model, gltf_path, false, false, true, false)) {
-        if (err) *err = "failed to write glTF";
-        return false;
+    if (write_gltf_scene(&gltf, &model, gltf_path, err)) {
+        return true;
     }
-    return true;
+    model.meshes[0].extras = tinygltf::Value();
+    model.nodes[0].extras = tinygltf::Value();
+    std::string fallback_err;
+    if (write_gltf_scene(&gltf, &model, gltf_path, &fallback_err)) {
+        if (err) *err = "glTF extras stripped after write error";
+        return true;
+    }
+    if (err && !fallback_err.empty()) {
+        *err = fallback_err;
+    }
+    return false;
 }
 #endif
 
@@ -1021,6 +1401,15 @@ int main(int argc, char** argv) {
         std::vector<uint32_t> line_indices;
         std::vector<MeshSlice> slices;
         std::vector<MeshSlice> line_slices;
+        struct HatchGroup {
+            std::vector<std::vector<cadgf_vec2>> rings;
+            cadgf_entity_id owner_id = 0;
+            cadgf_entity_info owner_info{};
+            bool has_owner = false;
+        };
+        std::unordered_map<std::string, HatchGroup> hatch_groups;
+        const char* hatch_prefix = "__cadgf_hatch:";
+        const bool line_only = opts.lineOnly;
         int entity_count = 0;
         (void)cadgf_document_get_entity_count(doc, &entity_count);
         for (int i = 0; i < entity_count; ++i) {
@@ -1028,11 +1417,19 @@ int main(int argc, char** argv) {
             if (!cadgf_document_get_entity_id_at(doc, i, &eid)) continue;
             cadgf_entity_info info{};
             (void)cadgf_document_get_entity_info(doc, eid, &info);
+            const cadgf_entity_info info_basic = info;
+            const std::string name = query_entity_name_utf8(doc, eid);
 
             switch (info.type) {
                 case CADGF_ENTITY_TYPE_POLYLINE: {
                     std::vector<cadgf_vec2> pts;
                     if (!query_polyline_points(doc, eid, pts)) break;
+                    // Skip polylines with outlier coordinates (dimension arrows with wrong transforms)
+                    bool has_outlier = false;
+                    for (const auto& p : pts) {
+                        if (p.x < -1000.0) { has_outlier = true; break; }
+                    }
+                    if (has_outlier) break;
                     const uint32_t line_base = static_cast<uint32_t>(line_positions.size() / 3);
                     const uint32_t line_offset = static_cast<uint32_t>(line_indices.size());
                     append_polyline_lines(line_positions, line_indices, pts);
@@ -1042,7 +1439,7 @@ int main(int argc, char** argv) {
                         static_cast<uint32_t>(line_indices.size()) - line_offset;
                     if (line_index_count > 0) {
                         MeshSlice line_slice{};
-                        populate_slice_metadata(doc, eid, info, line_slice);
+                        populate_slice_metadata(doc, eid, info_basic, line_slice);
                         line_slice.baseVertex = line_base;
                         line_slice.vertexCount = line_vertex_count;
                         line_slice.indexOffset = line_offset;
@@ -1050,43 +1447,71 @@ int main(int argc, char** argv) {
                         line_slices.push_back(line_slice);
                     }
 
-                    std::vector<cadgf_vec2> mesh_pts = pts;
-                    strip_closing_point(mesh_pts);
-                    if (mesh_pts.size() < 3) break;
-
-                    int index_count = 0;
-                    if (!cadgf_triangulate_polygon(mesh_pts.data(), static_cast<int>(mesh_pts.size()), nullptr, &index_count) || index_count <= 0) {
+                    const bool is_hatch = starts_with(name, hatch_prefix);
+                    if (!line_only && is_hatch && is_polyline_closed(pts)) {
+                        auto& group = hatch_groups[name];
+                        if (!group.has_owner) {
+                            group.owner_id = eid;
+                            group.owner_info = info_basic;
+                            group.has_owner = true;
+                        }
+                        group.rings.push_back(pts);
                         break;
                     }
-                    std::vector<unsigned int> local_indices(static_cast<size_t>(index_count));
-                    int index_count2 = index_count;
-                    if (!cadgf_triangulate_polygon(mesh_pts.data(), static_cast<int>(mesh_pts.size()), local_indices.data(), &index_count2) || index_count2 <= 0) {
-                        break;
-                    }
 
-                    const uint32_t base = static_cast<uint32_t>(positions.size() / 3);
-                    const uint32_t index_offset = static_cast<uint32_t>(indices.size());
-                    for (const auto& p : mesh_pts) {
-                        positions.push_back(static_cast<float>(p.x));
-                        positions.push_back(static_cast<float>(p.y));
-                        positions.push_back(0.0f);
-                    }
-                    for (int k = 0; k < index_count2; ++k) {
-                        indices.push_back(base + static_cast<uint32_t>(local_indices[static_cast<size_t>(k)]));
-                    }
+                    if (!line_only && is_polyline_closed(pts)) {
+                        std::vector<cadgf_vec2> mesh_pts = pts;
+                        strip_closing_point(mesh_pts);
+                        if (mesh_pts.size() < 3) break;
+                        if (mesh_pts.size() > 5000) break;
+                        if (polygon_area_abs(mesh_pts) <= 1e-12) break;
 
-                    MeshSlice slice;
-                    populate_slice_metadata(doc, eid, info, slice);
-                    slice.baseVertex = base;
-                    slice.vertexCount = static_cast<uint32_t>(mesh_pts.size());
-                    slice.indexOffset = index_offset;
-                    slice.indexCount = static_cast<uint32_t>(index_count2);
-                    slices.push_back(slice);
+                        int index_count = 0;
+                        if (!cadgf_triangulate_polygon(mesh_pts.data(), static_cast<int>(mesh_pts.size()), nullptr, &index_count) || index_count <= 0) {
+                            break;
+                        }
+                        std::vector<unsigned int> local_indices(static_cast<size_t>(index_count));
+                        int index_count2 = index_count;
+                        if (!cadgf_triangulate_polygon(mesh_pts.data(), static_cast<int>(mesh_pts.size()), local_indices.data(), &index_count2) || index_count2 <= 0) {
+                            break;
+                        }
+
+                        // Filter out invalid coordinates before adding to mesh
+                        std::vector<cadgf_vec2> valid_pts;
+                        valid_pts.reserve(mesh_pts.size());
+                        for (const auto& p : mesh_pts) {
+                            if (is_valid_coordinate(p)) {
+                                valid_pts.push_back(p);
+                            }
+                        }
+                        if (valid_pts.size() < 3) break;  // Need at least 3 valid points for a polygon
+
+                        const uint32_t base = static_cast<uint32_t>(positions.size() / 3);
+                        const uint32_t index_offset = static_cast<uint32_t>(indices.size());
+                        for (const auto& p : valid_pts) {
+                            positions.push_back(static_cast<float>(p.x));
+                            positions.push_back(static_cast<float>(p.y));
+                            positions.push_back(0.0f);
+                        }
+                        for (int k = 0; k < index_count2; ++k) {
+                            indices.push_back(base + static_cast<uint32_t>(local_indices[static_cast<size_t>(k)]));
+                        }
+
+                        MeshSlice slice;
+                        populate_slice_metadata(doc, eid, info_basic, slice);
+                        slice.baseVertex = base;
+                        slice.vertexCount = static_cast<uint32_t>(mesh_pts.size());
+                        slice.indexOffset = index_offset;
+                        slice.indexCount = static_cast<uint32_t>(index_count2);
+                        slices.push_back(slice);
+                    }
                     break;
                 }
                 case CADGF_ENTITY_TYPE_LINE: {
                     cadgf_line ln{};
                     if (cadgf_document_get_line(doc, eid, &ln)) {
+                        // Skip lines with outlier coordinates
+                        if (ln.a.x < -1000.0 || ln.b.x < -1000.0) break;
                         const uint32_t line_base = static_cast<uint32_t>(line_positions.size() / 3);
                         const uint32_t line_offset = static_cast<uint32_t>(line_indices.size());
                         append_line_segment(line_positions, line_indices, ln.a, ln.b);
@@ -1096,7 +1521,7 @@ int main(int argc, char** argv) {
                             static_cast<uint32_t>(line_indices.size()) - line_offset;
                         if (line_index_count > 0) {
                             MeshSlice line_slice{};
-                            populate_slice_metadata(doc, eid, info, line_slice);
+                            populate_slice_metadata(doc, eid, info_basic, line_slice);
                             line_slice.baseVertex = line_base;
                             line_slice.vertexCount = line_vertex_count;
                             line_slice.indexOffset = line_offset;
@@ -1118,7 +1543,7 @@ int main(int argc, char** argv) {
                             static_cast<uint32_t>(line_indices.size()) - line_offset;
                         if (line_index_count > 0) {
                             MeshSlice line_slice{};
-                            populate_slice_metadata(doc, eid, info, line_slice);
+                            populate_slice_metadata(doc, eid, info_basic, line_slice);
                             line_slice.baseVertex = line_base;
                             line_slice.vertexCount = line_vertex_count;
                             line_slice.indexOffset = line_offset;
@@ -1140,7 +1565,7 @@ int main(int argc, char** argv) {
                             static_cast<uint32_t>(line_indices.size()) - line_offset;
                         if (line_index_count > 0) {
                             MeshSlice line_slice{};
-                            populate_slice_metadata(doc, eid, info, line_slice);
+                            populate_slice_metadata(doc, eid, info_basic, line_slice);
                             line_slice.baseVertex = line_base;
                             line_slice.vertexCount = line_vertex_count;
                             line_slice.indexOffset = line_offset;
@@ -1162,7 +1587,7 @@ int main(int argc, char** argv) {
                             static_cast<uint32_t>(line_indices.size()) - line_offset;
                         if (line_index_count > 0) {
                             MeshSlice line_slice{};
-                            populate_slice_metadata(doc, eid, info, line_slice);
+                            populate_slice_metadata(doc, eid, info_basic, line_slice);
                             line_slice.baseVertex = line_base;
                             line_slice.vertexCount = line_vertex_count;
                             line_slice.indexOffset = line_offset;
@@ -1184,7 +1609,7 @@ int main(int argc, char** argv) {
                             static_cast<uint32_t>(line_indices.size()) - line_offset;
                         if (line_index_count > 0) {
                             MeshSlice line_slice{};
-                            populate_slice_metadata(doc, eid, info, line_slice);
+                            populate_slice_metadata(doc, eid, info_basic, line_slice);
                             line_slice.baseVertex = line_base;
                             line_slice.vertexCount = line_vertex_count;
                             line_slice.indexOffset = line_offset;
@@ -1199,9 +1624,127 @@ int main(int argc, char** argv) {
             }
         }
 
+        if (!line_only && !hatch_groups.empty()) {
+            for (auto& entry : hatch_groups) {
+                HatchGroup& group = entry.second;
+                if (!group.has_owner) continue;
+                std::vector<std::vector<cadgf_vec2>> rings;
+                rings.reserve(group.rings.size());
+                for (auto ring : group.rings) {
+                    strip_closing_point(ring);
+                    if (ring.size() < 3) continue;
+                    rings.push_back(std::move(ring));
+                }
+                if (rings.empty()) continue;
+
+                size_t outer_index = 0;
+                double max_area = 0.0;
+                for (size_t i = 0; i < rings.size(); ++i) {
+                    double area = polygon_area_abs(rings[i]);
+                    if (area > max_area) {
+                        max_area = area;
+                        outer_index = i;
+                    }
+                }
+                if (outer_index != 0) {
+                    std::swap(rings[0], rings[outer_index]);
+                }
+
+                std::vector<cadgf_vec2> flat;
+                std::vector<int> ring_counts;
+                ring_counts.reserve(rings.size());
+                size_t total_points = 0;
+                for (const auto& ring : rings) {
+                    total_points += ring.size();
+                    ring_counts.push_back(static_cast<int>(ring.size()));
+                }
+                flat.reserve(total_points);
+                for (const auto& ring : rings) {
+                    flat.insert(flat.end(), ring.begin(), ring.end());
+                }
+                if (flat.size() < 3) continue;
+
+                int index_count = 0;
+                if (!cadgf_triangulate_polygon_rings(flat.data(),
+                                                     ring_counts.data(),
+                                                     static_cast<int>(ring_counts.size()),
+                                                     nullptr,
+                                                     &index_count) || index_count <= 0) {
+                    continue;
+                }
+                std::vector<unsigned int> local_indices(static_cast<size_t>(index_count));
+                int index_count2 = index_count;
+                if (!cadgf_triangulate_polygon_rings(flat.data(),
+                                                     ring_counts.data(),
+                                                     static_cast<int>(ring_counts.size()),
+                                                     local_indices.data(),
+                                                     &index_count2) || index_count2 <= 0) {
+                    continue;
+                }
+
+                // Filter out invalid coordinates before adding to mesh
+                std::vector<cadgf_vec2> valid_flat;
+                valid_flat.reserve(flat.size());
+                for (const auto& p : flat) {
+                    if (is_valid_coordinate(p)) {
+                        valid_flat.push_back(p);
+                    }
+                }
+                if (valid_flat.size() < 3) continue;  // Need at least 3 valid points
+
+                const uint32_t base = static_cast<uint32_t>(positions.size() / 3);
+                const uint32_t index_offset = static_cast<uint32_t>(indices.size());
+                for (const auto& p : valid_flat) {
+                    positions.push_back(static_cast<float>(p.x));
+                    positions.push_back(static_cast<float>(p.y));
+                    positions.push_back(0.0f);
+                }
+                for (int k = 0; k < index_count2; ++k) {
+                    indices.push_back(base + static_cast<uint32_t>(local_indices[static_cast<size_t>(k)]));
+                }
+
+                MeshSlice slice;
+                populate_slice_metadata(doc, group.owner_id, group.owner_info, slice);
+                slice.baseVertex = base;
+                slice.vertexCount = static_cast<uint32_t>(flat.size());
+                slice.indexOffset = index_offset;
+                slice.indexCount = static_cast<uint32_t>(index_count2);
+                slices.push_back(slice);
+            }
+        }
+
         const bool has_mesh = !positions.empty() && !indices.empty();
         const bool has_lines = !line_positions.empty() && !line_indices.empty();
-        if (has_mesh) {
+        if (line_only) {
+            if (!has_lines) {
+                std::cerr << "glTF export failed: no line geometry data\n";
+                cadgf_document_destroy(doc);
+                return 1;
+            }
+            if (!write_gltf_lines(gltf_path, bin_path, line_positions, line_indices, doc, &err)) {
+                std::cerr << "glTF export failed: " << err << "\n";
+                cadgf_document_destroy(doc);
+                return 1;
+            }
+            const std::string meta_path = (fs::path(opts.outDir) / "mesh_metadata.json").string();
+            if (!write_mesh_metadata(meta_path, gltf_path, bin_path, line_slices, &err)) {
+                std::cerr << "metadata export failed: " << err << "\n";
+                cadgf_document_destroy(doc);
+                return 1;
+            }
+        } else if (has_mesh && has_lines) {
+            if (!write_gltf_combined(gltf_path, bin_path, positions, indices, line_positions, line_indices, doc, &err)) {
+                std::cerr << "glTF export failed: " << err << "\n";
+                cadgf_document_destroy(doc);
+                return 1;
+            }
+            const std::string meta_path = (fs::path(opts.outDir) / "mesh_metadata.json").string();
+            if (!write_mesh_metadata(meta_path, gltf_path, bin_path, slices, &err)) {
+                std::cerr << "metadata export failed: " << err << "\n";
+                cadgf_document_destroy(doc);
+                return 1;
+            }
+        } else if (has_mesh) {
             if (!write_gltf(gltf_path, bin_path, positions, indices, doc, &err)) {
                 std::cerr << "glTF export failed: " << err << "\n";
                 cadgf_document_destroy(doc);
