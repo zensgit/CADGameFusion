@@ -3237,17 +3237,20 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 const std::string nested_layer = (nested_insert.layer.empty() || nested_insert.layer == "0")
                                                     ? insert_layer
                                                     : nested_insert.layer;
-                // For *D blocks (DIMENSION geometry), use pos=(0,0) and base=(0,0)
+                // For *D blocks (DIMENSION geometry), use identity transform
                 // because their content is already in world coordinates
                 const bool is_dim_block = nested_insert.is_dimension || nested_block.name.rfind("*D", 0) == 0;
-                const cadgf_vec2 nested_base = is_dim_block
-                                                   ? cadgf_vec2{0.0, 0.0}
-                                                   : (nested_block.has_base ? nested_block.base : cadgf_vec2{0.0, 0.0});
-                const cadgf_vec2 nested_pos = is_dim_block ? cadgf_vec2{0.0, 0.0} : nested_insert.pos;
-                const double nested_rot = nested_insert.rotation_deg * kDegToRad;
-                const Transform2D local = make_transform(nested_insert.scale_x, nested_insert.scale_y,
-                                                         nested_rot, nested_pos, nested_base);
-                const Transform2D combined = combine_transform(tr, local);
+                Transform2D combined;
+                if (is_dim_block) {
+                    // *D blocks: use identity transform - content is already in world coordinates
+                    combined = Transform2D{};  // identity transform
+                } else {
+                    const cadgf_vec2 nested_base = nested_block.has_base ? nested_block.base : cadgf_vec2{0.0, 0.0};
+                    const double nested_rot = nested_insert.rotation_deg * kDegToRad;
+                    const Transform2D local = make_transform(nested_insert.scale_x, nested_insert.scale_y,
+                                                             nested_rot, nested_insert.pos, nested_base);
+                    combined = combine_transform(tr, local);
+                }
                 if (std::find(stack.begin(), stack.end(), nested_block.name) != stack.end()) {
                     continue;
                 }
@@ -3315,22 +3318,22 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             if (block_it == blocks.end()) continue;
             const DxfBlock& block = block_it->second;
             // For DIMENSION inserts (*D blocks), the block content is already in world coordinates
-            // so we use pos=(0,0) AND base=(0,0) to avoid any offset transformation
-            const cadgf_vec2 base = (insert.is_dimension || block.name.rfind("*D", 0) == 0)
-                                        ? cadgf_vec2{0.0, 0.0}
-                                        : (block.has_base ? block.base : cadgf_vec2{0.0, 0.0});
+            // so we use identity transform (no scale, rotation, or translation)
+            const bool is_dim_block = insert.is_dimension || block.name.rfind("*D", 0) == 0;
             const std::string insert_layer = (insert.layer.empty() || insert.layer == "0")
                                                 ? std::string("0")
                                                 : insert.layer;
-            // For DIMENSION inserts (*D blocks), the block content is already in world coordinates
-            // so we use pos=(0,0) instead of the dimension's definition point
-            const cadgf_vec2 insert_pos = (insert.is_dimension || block.name.rfind("*D", 0) == 0)
-                                              ? cadgf_vec2{0.0, 0.0}
-                                              : insert.pos;
-            const Transform2D local = make_transform(insert.scale_x, insert.scale_y,
-                                                     insert.rotation_deg * kDegToRad,
-                                                     insert_pos, base);
-            const Transform2D combined = combine_transform(identity, local);
+            Transform2D combined;
+            if (is_dim_block) {
+                // *D blocks: use identity transform - content is already in world coordinates
+                combined = identity;
+            } else {
+                const cadgf_vec2 base = block.has_base ? block.base : cadgf_vec2{0.0, 0.0};
+                const Transform2D local = make_transform(insert.scale_x, insert.scale_y,
+                                                         insert.rotation_deg * kDegToRad,
+                                                         insert.pos, base);
+                combined = combine_transform(identity, local);
+            }
             stack.clear();
             stack.push_back(block.name);
             const int group_id = cadgf_document_alloc_group_id(doc);
