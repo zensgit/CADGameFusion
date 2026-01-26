@@ -227,6 +227,14 @@ struct DxfTextStyle {
     bool has_height = false;
 };
 
+struct DxfLineType {
+    std::string name;
+    bool has_name = false;
+    std::vector<double> pattern;
+    double total_length = 0.0;
+    bool has_total_length = false;
+};
+
 struct DxfInsert {
     std::string block_name;
     std::string layer;
@@ -286,6 +294,26 @@ struct DxfView {
     bool has_center_y = false;
     bool has_view_height = false;
     bool has_aspect = false;
+};
+
+struct DxfPaperSettings {
+    cadgf_vec2 plim_min{};
+    cadgf_vec2 plim_max{};
+    bool has_plim_min_x = false;
+    bool has_plim_min_y = false;
+    bool has_plim_max_x = false;
+    bool has_plim_max_y = false;
+    cadgf_vec2 lim_min{};
+    cadgf_vec2 lim_max{};
+    bool has_lim_min_x = false;
+    bool has_lim_min_y = false;
+    bool has_lim_max_x = false;
+    bool has_lim_max_y = false;
+    cadgf_vec2 pins_base{};
+    bool has_pins_base_x = false;
+    bool has_pins_base_y = false;
+    double psvpscale = 1.0;
+    bool has_psvpscale = false;
 };
 
 struct DxfBlock {
@@ -715,6 +743,11 @@ static void write_text_metadata(cadgf_document* doc, cadgf_entity_id id, const D
         const std::string key = base + ".text_kind";
         (void)cadgf_document_set_meta_value(doc, key.c_str(), "mtext");
     }
+    {
+        const std::string key = base + ".text_style";
+        const std::string value = text.style_name.empty() ? "STANDARD" : text.style_name;
+        (void)cadgf_document_set_meta_value(doc, key.c_str(), value.c_str());
+    }
     if (text.has_width) {
         const std::string key = base + ".text_width";
         char buf[64]{};
@@ -792,6 +825,52 @@ static void write_active_view_metadata(cadgf_document* doc, const DxfView& view)
     }
     if (view.has_name && !view.name.empty()) {
         (void)cadgf_document_set_meta_value(doc, "dxf.vport.active.name", view.name.c_str());
+    }
+}
+
+static void write_paper_settings_metadata(cadgf_document* doc, const DxfPaperSettings& paper) {
+    if (!doc) return;
+    char buf[64];
+    auto write_num = [&](const char* key, double value) {
+        std::snprintf(buf, sizeof(buf), "%.6f", value);
+        (void)cadgf_document_set_meta_value(doc, key, buf);
+    };
+    if (paper.has_plim_min_x) write_num("dxf.paper.plim_min_x", paper.plim_min.x);
+    if (paper.has_plim_min_y) write_num("dxf.paper.plim_min_y", paper.plim_min.y);
+    if (paper.has_plim_max_x) write_num("dxf.paper.plim_max_x", paper.plim_max.x);
+    if (paper.has_plim_max_y) write_num("dxf.paper.plim_max_y", paper.plim_max.y);
+    if (paper.has_lim_min_x) write_num("dxf.paper.lim_min_x", paper.lim_min.x);
+    if (paper.has_lim_min_y) write_num("dxf.paper.lim_min_y", paper.lim_min.y);
+    if (paper.has_lim_max_x) write_num("dxf.paper.lim_max_x", paper.lim_max.x);
+    if (paper.has_lim_max_y) write_num("dxf.paper.lim_max_y", paper.lim_max.y);
+    if (paper.has_pins_base_x) write_num("dxf.paper.pinsbase_x", paper.pins_base.x);
+    if (paper.has_pins_base_y) write_num("dxf.paper.pinsbase_y", paper.pins_base.y);
+    if (paper.has_psvpscale) write_num("dxf.paper.psvpscale", paper.psvpscale);
+}
+
+
+static void write_linetype_metadata(cadgf_document* doc,
+                                    const std::unordered_map<std::string, DxfLineType>& line_types) {
+    if (!doc) return;
+    char buf[64];
+    for (const auto& entry : line_types) {
+        const DxfLineType& line_type = entry.second;
+        if (!line_type.has_name) continue;
+        const std::string base = std::string("dxf.linetype.") + line_type.name;
+        if (!line_type.pattern.empty()) {
+            std::string pattern;
+            pattern.reserve(line_type.pattern.size() * 10);
+            for (size_t i = 0; i < line_type.pattern.size(); ++i) {
+                if (i > 0) pattern.push_back(',');
+                std::snprintf(buf, sizeof(buf), "%.6f", line_type.pattern[i]);
+                pattern += buf;
+            }
+            (void)cadgf_document_set_meta_value(doc, (base + ".pattern").c_str(), pattern.c_str());
+        }
+        if (line_type.has_total_length) {
+            std::snprintf(buf, sizeof(buf), "%.6f", line_type.total_length);
+            (void)cadgf_document_set_meta_value(doc, (base + ".length").c_str(), buf);
+        }
     }
 }
 
@@ -1157,9 +1236,11 @@ static bool parse_dxf_entities(const std::string& path,
                                std::vector<DxfViewport>& viewports,
                                std::unordered_map<std::string, DxfLayer>& layers,
                                std::unordered_map<std::string, DxfTextStyle>& text_styles,
+                               std::unordered_map<std::string, DxfLineType>& line_types,
                                double* out_default_line_scale,
                                double* out_default_text_height,
                                bool* out_has_paperspace,
+                               DxfPaperSettings* out_paper,
                                bool* out_has_active_view,
                                DxfView* out_active_view,
                                std::string* err) {
@@ -1186,9 +1267,11 @@ static bool parse_dxf_entities(const std::string& path,
     DxfBlock current_block;
     DxfLayer current_layer;
     DxfTextStyle current_text_style;
+    DxfLineType current_line_type;
     DxfView current_vport;
     DxfView active_view;
     bool has_active_view = false;
+    DxfPaperSettings paper_settings;
     double pending_x = 0.0;
     bool has_x = false;
     double pending_spline_x = 0.0;
@@ -1205,6 +1288,8 @@ static bool parse_dxf_entities(const std::string& path,
     bool in_style_record = false;
     bool in_vport_table = false;
     bool in_vport_record = false;
+    bool in_ltype_table = false;
+    bool in_ltype_record = false;
     bool in_block = false;
     bool in_block_header = false;
     bool hatch_in_polyline = false;
@@ -1349,6 +1434,7 @@ static bool parse_dxf_entities(const std::string& path,
     };
     auto reset_layer = [&]() { current_layer = DxfLayer{}; };
     auto reset_text_style = [&]() { current_text_style = DxfTextStyle{}; };
+    auto reset_line_type = [&]() { current_line_type = DxfLineType{}; };
     auto reset_viewport = [&]() { current_viewport = DxfViewport{}; };
     auto reset_vport = [&]() { current_vport = DxfView{}; };
 
@@ -1494,6 +1580,11 @@ static bool parse_dxf_entities(const std::string& path,
         text_styles[style.name] = style;
     };
 
+    auto finalize_line_type = [&](DxfLineType& line_type) {
+        if (!line_type.has_name) return;
+        line_types[line_type.name] = line_type;
+    };
+
     auto finalize_block = [&](DxfBlock& block) {
         if (!block.has_name) return;
         blocks[block.name] = block;
@@ -1534,6 +1625,11 @@ static bool parse_dxf_entities(const std::string& path,
                     reset_text_style();
                     in_style_record = false;
                 }
+                if (in_ltype_table && in_ltype_record) {
+                    finalize_line_type(current_line_type);
+                    reset_line_type();
+                    in_ltype_record = false;
+                }
                 if (in_vport_table && in_vport_record) {
                     finalize_vport(current_vport);
                     reset_vport();
@@ -1548,6 +1644,7 @@ static bool parse_dxf_entities(const std::string& path,
                 in_layer_table = false;
                 in_style_table = false;
                 in_vport_table = false;
+                in_ltype_table = false;
                 current_table.clear();
                 current_section = DxfSection::None;
                 continue;
@@ -1567,6 +1664,11 @@ static bool parse_dxf_entities(const std::string& path,
                     reset_text_style();
                     in_style_record = false;
                 }
+                if (in_ltype_table && in_ltype_record) {
+                    finalize_line_type(current_line_type);
+                    reset_line_type();
+                    in_ltype_record = false;
+                }
                 if (in_vport_table && in_vport_record) {
                     finalize_vport(current_vport);
                     reset_vport();
@@ -1575,6 +1677,7 @@ static bool parse_dxf_entities(const std::string& path,
                 in_layer_table = false;
                 in_style_table = false;
                 in_vport_table = false;
+                in_ltype_table = false;
                 current_table.clear();
                 continue;
             }
@@ -1592,6 +1695,15 @@ static bool parse_dxf_entities(const std::string& path,
                     reset_text_style();
                 }
                 in_style_record = true;
+                continue;
+            }
+            if (in_ltype_table && value_line == "LTYPE") {
+                if (in_ltype_record) {
+                    finalize_line_type(current_line_type);
+                    reset_line_type();
+                }
+                reset_line_type();
+                in_ltype_record = true;
                 continue;
             }
             if (in_vport_table && value_line == "VPORT") {
@@ -1726,6 +1838,7 @@ static bool parse_dxf_entities(const std::string& path,
             in_layer_table = (current_section == DxfSection::Tables && current_table == "LAYER");
             in_style_table = (current_section == DxfSection::Tables && current_table == "STYLE");
             in_vport_table = (current_section == DxfSection::Tables && current_table == "VPORT");
+            in_ltype_table = (current_section == DxfSection::Tables && current_table == "LTYPE");
             continue;
         }
 
@@ -1737,6 +1850,50 @@ static bool parse_dxf_entities(const std::string& path,
             if ((code == 3 || code == 1) && current_header_var == "$DWGCODEPAGE") {
                 header_codepage = value_line;
                 has_header_codepage = true;
+                continue;
+            }
+            if (code == 10) {
+                double val = 0.0;
+                if (parse_double(value_line, &val)) {
+                    if (current_header_var == "$PLIMMIN") {
+                        paper_settings.plim_min.x = val;
+                        paper_settings.has_plim_min_x = true;
+                    } else if (current_header_var == "$PLIMMAX") {
+                        paper_settings.plim_max.x = val;
+                        paper_settings.has_plim_max_x = true;
+                    } else if (current_header_var == "$LIMMIN") {
+                        paper_settings.lim_min.x = val;
+                        paper_settings.has_lim_min_x = true;
+                    } else if (current_header_var == "$LIMMAX") {
+                        paper_settings.lim_max.x = val;
+                        paper_settings.has_lim_max_x = true;
+                    } else if (current_header_var == "$PINSBASE") {
+                        paper_settings.pins_base.x = val;
+                        paper_settings.has_pins_base_x = true;
+                    }
+                }
+                continue;
+            }
+            if (code == 20) {
+                double val = 0.0;
+                if (parse_double(value_line, &val)) {
+                    if (current_header_var == "$PLIMMIN") {
+                        paper_settings.plim_min.y = val;
+                        paper_settings.has_plim_min_y = true;
+                    } else if (current_header_var == "$PLIMMAX") {
+                        paper_settings.plim_max.y = val;
+                        paper_settings.has_plim_max_y = true;
+                    } else if (current_header_var == "$LIMMIN") {
+                        paper_settings.lim_min.y = val;
+                        paper_settings.has_lim_min_y = true;
+                    } else if (current_header_var == "$LIMMAX") {
+                        paper_settings.lim_max.y = val;
+                        paper_settings.has_lim_max_y = true;
+                    } else if (current_header_var == "$PINSBASE") {
+                        paper_settings.pins_base.y = val;
+                        paper_settings.has_pins_base_y = true;
+                    }
+                }
                 continue;
             }
             if (code == 40) {
@@ -1751,6 +1908,9 @@ static bool parse_dxf_entities(const std::string& path,
                     } else if (current_header_var == "$TEXTSIZE") {
                         header_textsize = scale;
                         has_header_textsize = true;
+                    } else if (current_header_var == "$PSVPSCALE") {
+                        paper_settings.psvpscale = scale;
+                        paper_settings.has_psvpscale = true;
                     }
                 }
             }
@@ -1793,6 +1953,34 @@ static bool parse_dxf_entities(const std::string& path,
                     if (parse_double(value_line, &height)) {
                         current_text_style.height = height;
                         current_text_style.has_height = height > 0.0;
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+            continue;
+        }
+
+
+        if (in_ltype_table && in_ltype_record) {
+            switch (code) {
+                case 2:
+                    current_line_type.name = sanitize_utf8(value_line, header_codepage);
+                    current_line_type.has_name = !current_line_type.name.empty();
+                    break;
+                case 40: {
+                    double total = 0.0;
+                    if (parse_double(value_line, &total)) {
+                        current_line_type.total_length = total;
+                        current_line_type.has_total_length = true;
+                    }
+                    break;
+                }
+                case 49: {
+                    double seg = 0.0;
+                    if (parse_double(value_line, &seg)) {
+                        current_line_type.pattern.push_back(seg);
                     }
                     break;
                 }
@@ -2642,6 +2830,9 @@ static bool parse_dxf_entities(const std::string& path,
     if (in_layer_table && in_layer_record) {
         finalize_layer(current_layer);
     }
+    if (in_ltype_table && in_ltype_record) {
+        finalize_line_type(current_line_type);
+    }
     if (in_block) {
         finalize_block(current_block);
     }
@@ -2666,6 +2857,9 @@ static bool parse_dxf_entities(const std::string& path,
     }
     if (out_has_paperspace) {
         *out_has_paperspace = has_paperspace;
+    }
+    if (out_paper) {
+        *out_paper = paper_settings;
     }
     if (out_has_active_view) {
         *out_has_active_view = has_active_view;
@@ -2695,16 +2889,18 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
         std::vector<DxfViewport> viewports;
         std::unordered_map<std::string, DxfLayer> layers;
         std::unordered_map<std::string, DxfTextStyle> text_styles;
+        std::unordered_map<std::string, DxfLineType> line_types;
         DxfView active_view;
+        DxfPaperSettings paper_settings;
         std::string err;
         double default_line_scale = 1.0;
         double default_text_height = 0.0;
         bool has_paperspace = false;
         bool has_active_view = false;
         if (!parse_dxf_entities(path_utf8, polylines, lines, circles, arcs, ellipses, splines, texts,
-                                blocks, inserts, viewports, layers, text_styles,
+                                blocks, inserts, viewports, layers, text_styles, line_types,
                                 &default_line_scale, &default_text_height,
-                                &has_paperspace, &has_active_view, &active_view, &err)) {
+                                &has_paperspace, &paper_settings, &has_active_view, &active_view, &err)) {
             set_error(out_err, 2, err.empty() ? "parse failed" : err.c_str());
             return 0;
         }
@@ -2751,9 +2947,11 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
         (void)cadgf_document_set_meta_value(doc, "dxf.default_space",
                                             default_space == 1 ? "1" : "0");
         write_viewport_list_metadata(doc, paper_viewports);
+        write_paper_settings_metadata(doc, paper_settings);
         if (has_active_view) {
             write_active_view_metadata(doc, active_view);
         }
+        write_linetype_metadata(doc, line_types);
 
         std::unordered_map<std::string, int> layer_ids;
         layer_ids["0"] = 0;
@@ -3237,20 +3435,13 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 const std::string nested_layer = (nested_insert.layer.empty() || nested_insert.layer == "0")
                                                     ? insert_layer
                                                     : nested_insert.layer;
-                // For *D blocks (DIMENSION geometry), use identity transform
-                // because their content is already in world coordinates
-                const bool is_dim_block = nested_insert.is_dimension || nested_block.name.rfind("*D", 0) == 0;
-                Transform2D combined;
-                if (is_dim_block) {
-                    // *D blocks: use identity transform - content is already in world coordinates
-                    combined = Transform2D{};  // identity transform
-                } else {
-                    const cadgf_vec2 nested_base = nested_block.has_base ? nested_block.base : cadgf_vec2{0.0, 0.0};
-                    const double nested_rot = nested_insert.rotation_deg * kDegToRad;
-                    const Transform2D local = make_transform(nested_insert.scale_x, nested_insert.scale_y,
-                                                             nested_rot, nested_insert.pos, nested_base);
-                    combined = combine_transform(tr, local);
-                }
+                // All nested INSERT entities need proper transformation
+                // Following LibreCAD's approach for consistent block rendering
+                const cadgf_vec2 nested_base = nested_block.has_base ? nested_block.base : cadgf_vec2{0.0, 0.0};
+                const double nested_rot = nested_insert.rotation_deg * kDegToRad;
+                const Transform2D local = make_transform(nested_insert.scale_x, nested_insert.scale_y,
+                                                         nested_rot, nested_insert.pos, nested_base);
+                Transform2D combined = combine_transform(tr, local);
                 if (std::find(stack.begin(), stack.end(), nested_block.name) != stack.end()) {
                     continue;
                 }
@@ -3317,23 +3508,16 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             auto block_it = blocks.find(insert.block_name);
             if (block_it == blocks.end()) continue;
             const DxfBlock& block = block_it->second;
-            // For DIMENSION inserts (*D blocks), the block content is already in world coordinates
-            // so we use identity transform (no scale, rotation, or translation)
-            const bool is_dim_block = insert.is_dimension || block.name.rfind("*D", 0) == 0;
+            // All INSERT entities (including DIMENSION *D blocks) need proper transformation
+            // Following LibreCAD's approach: move to insertion point, subtract base point, scale, rotate
             const std::string insert_layer = (insert.layer.empty() || insert.layer == "0")
                                                 ? std::string("0")
                                                 : insert.layer;
-            Transform2D combined;
-            if (is_dim_block) {
-                // *D blocks: use identity transform - content is already in world coordinates
-                combined = identity;
-            } else {
-                const cadgf_vec2 base = block.has_base ? block.base : cadgf_vec2{0.0, 0.0};
-                const Transform2D local = make_transform(insert.scale_x, insert.scale_y,
-                                                         insert.rotation_deg * kDegToRad,
-                                                         insert.pos, base);
-                combined = combine_transform(identity, local);
-            }
+            const cadgf_vec2 base = block.has_base ? block.base : cadgf_vec2{0.0, 0.0};
+            const Transform2D local = make_transform(insert.scale_x, insert.scale_y,
+                                                     insert.rotation_deg * kDegToRad,
+                                                     insert.pos, base);
+            Transform2D combined = combine_transform(identity, local);
             stack.clear();
             stack.push_back(block.name);
             const int group_id = cadgf_document_alloc_group_id(doc);

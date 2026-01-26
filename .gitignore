@@ -62,3 +62,16 @@ verification_*.png
 
 # Git bundles
 *.bundle
+
+# Local build outputs
+build_vcpkg_local/
+build_vcpkg_gltf/
+
+# Web viewer artifacts
+.playwright-mcp/
+/tools/web_viewer/test_output/
+
+# ODA + glTF intermediates
+*.dxf
+*.gltf
+*.bin
