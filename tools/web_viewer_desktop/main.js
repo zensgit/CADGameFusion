@@ -893,24 +893,31 @@ async function maybeConvertDwg(filePath, settings = {}) {
 
 function resolveRouterConfig(overrides = {}) {
   const opts = normalizeSettings(overrides);
+  const detected = detectRouterPaths();
   const routerUrl =
     coerceString(opts.routerUrl) ||
     getArg("--router-url") ||
     process.env.VEMCAD_ROUTER_URL ||
     process.env.CADGF_ROUTER_URL ||
     DEFAULT_ROUTER_URL;
-  const plugin =
+  let plugin =
     coerceString(opts.routerPlugin) ||
     getArg("--router-plugin") ||
     process.env.VEMCAD_ROUTER_PLUGIN ||
     process.env.CADGF_ROUTER_PLUGIN ||
     "";
-  const convertCli =
+  let convertCli =
     coerceString(opts.routerConvertCli) ||
     getArg("--router-convert-cli") ||
     process.env.VEMCAD_ROUTER_CONVERT_CLI ||
     process.env.CADGF_ROUTER_CONVERT_CLI ||
     "";
+  if (!plugin || !fs.existsSync(plugin)) {
+    plugin = detected.pluginPath || "";
+  }
+  if (!convertCli || !fs.existsSync(convertCli)) {
+    convertCli = detected.convertCliPath || "";
+  }
   const emit =
     coerceString(opts.routerEmit) ||
     getArg("--router-emit") ||
