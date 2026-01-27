@@ -3585,8 +3585,8 @@ function applyOutlierClipping(material) {
   const prevIntersection = material.clipIntersection;
   const nextEnabled = !!planes;
   material.clippingPlanes = planes;
-  // Use union clipping so any plane excludes out-of-frame geometry.
-  material.clipIntersection = false;
+  // Use intersection clipping so geometry must be inside all planes (frame box).
+  material.clipIntersection = true;
   if (prevEnabled !== nextEnabled || prevIntersection !== material.clipIntersection) {
     material.needsUpdate = true;
   }
