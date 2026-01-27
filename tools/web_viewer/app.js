@@ -2632,6 +2632,74 @@ function appendPatternSegments(ax, ay, az, bx, by, bz, pattern, positions, color
   }
 }
 
+function clipSegmentToBounds(ax, ay, bx, by, bounds) {
+  if (!bounds || bounds.isEmpty()) return null;
+  const minX = bounds.min.x;
+  const maxX = bounds.max.x;
+  const minY = bounds.min.y;
+  const maxY = bounds.max.y;
+
+  const INSIDE = 0;
+  const LEFT = 1;
+  const RIGHT = 2;
+  const BOTTOM = 4;
+  const TOP = 8;
+
+  const computeOutCode = (x, y) => {
+    let code = INSIDE;
+    if (x < minX) code |= LEFT;
+    else if (x > maxX) code |= RIGHT;
+    if (y < minY) code |= BOTTOM;
+    else if (y > maxY) code |= TOP;
+    return code;
+  };
+
+  let x0 = ax;
+  let y0 = ay;
+  let x1 = bx;
+  let y1 = by;
+  let outcode0 = computeOutCode(x0, y0);
+  let outcode1 = computeOutCode(x1, y1);
+
+  while (true) {
+    if (!(outcode0 | outcode1)) {
+      return { ax: x0, ay: y0, bx: x1, by: y1 };
+    }
+    if (outcode0 & outcode1) {
+      return null;
+    }
+    const outcodeOut = outcode0 ? outcode0 : outcode1;
+    let x = 0;
+    let y = 0;
+    if (outcodeOut & TOP) {
+      if (y1 === y0) return null;
+      x = x0 + (x1 - x0) * (maxY - y0) / (y1 - y0);
+      y = maxY;
+    } else if (outcodeOut & BOTTOM) {
+      if (y1 === y0) return null;
+      x = x0 + (x1 - x0) * (minY - y0) / (y1 - y0);
+      y = minY;
+    } else if (outcodeOut & RIGHT) {
+      if (x1 === x0) return null;
+      y = y0 + (y1 - y0) * (maxX - x0) / (x1 - x0);
+      x = maxX;
+    } else if (outcodeOut & LEFT) {
+      if (x1 === x0) return null;
+      y = y0 + (y1 - y0) * (minX - x0) / (x1 - x0);
+      x = minX;
+    }
+    if (outcodeOut === outcode0) {
+      x0 = x;
+      y0 = y;
+      outcode0 = computeOutCode(x0, y0);
+    } else {
+      x1 = x;
+      y1 = y;
+      outcode1 = computeOutCode(x1, y1);
+    }
+  }
+}
+
 function buildWideLinesForSource(line) {
   const geometry = line?.geometry;
   const positionAttr = geometry?.attributes?.position;
@@ -2648,6 +2716,7 @@ function buildWideLinesForSource(line) {
   const stride = positionAttr.itemSize || 3;
   const indices = indexAttr.array;
   const buckets = new Map();
+  const clip = hideOutliers ? clipBounds : null;
 
   meshSlices.forEach((slice) => {
     if (!Number.isFinite(slice.index_offset) || !Number.isFinite(slice.index_count)) return;
@@ -2705,10 +2774,16 @@ function buildWideLinesForSource(line) {
       const bx = positions[ib * stride];
       const by = positions[ib * stride + 1];
       const bz = positions[ib * stride + 2] ?? 0;
+      const clipped = clip ? clipSegmentToBounds(ax, ay, bx, by, clip) : null;
+      const pax = clipped ? clipped.ax : ax;
+      const pay = clipped ? clipped.ay : ay;
+      const pbx = clipped ? clipped.bx : bx;
+      const pby = clipped ? clipped.by : by;
+      if (clip && !clipped) continue;
       if (bucket.pattern) {
-        appendPatternSegments(ax, ay, az, bx, by, bz, bucket.pattern, bucket.positions, bucket.colors, color);
+        appendPatternSegments(pax, pay, az, pbx, pby, bz, bucket.pattern, bucket.positions, bucket.colors, color);
       } else {
-        bucket.positions.push(ax, ay, az, bx, by, bz);
+        bucket.positions.push(pax, pay, az, pbx, pby, bz);
         bucket.colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
       }
     }
