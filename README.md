@@ -55,6 +55,46 @@ make quick   # offline quick subset
 make strict  # strict quick subset
 ```
 
+Notes:
+- `tools/local_ci.sh` runs a small set of DXF importer CTests and records their status in `build/local_ci_summary.json`:
+  - `test_dxf_hatch_dash_run` (`ctestHatchDashStatus`)
+  - `test_dxf_text_alignment_partial_run` (`ctestTextAlignPartialStatus`)
+  - `test_dxf_text_alignment_extended_run` (`ctestTextAlignExtendedStatus`)
+  - `test_dxf_hatch_dense_cap_run` (`ctestHatchDenseCapStatus`)
+  - `test_dxf_hatch_large_boundary_budget_run` (`ctestHatchLargeBoundaryBudgetStatus`)
+  - `test_dxf_nonfinite_numbers_run` (`ctestNonfiniteNumbersStatus`)
+- when `RUN_EDITOR_GATE=1`, `tools/local_ci.sh` also records STEP166 baseline-compare metadata from `editor_gate_summary.json` (for example `editorGateStep166BaselineCompared`, `editorGateStep166BaselineRunId`)
+- when `RUN_EDITOR_SMOKE_GATE=1`, `tools/local_ci.sh` defaults editor smoke to a larger gate sample (`EDITOR_SMOKE_GATE_LIMIT`, default `20`) and can run continuous gate checks (`EDITOR_SMOKE_GATE_RUNS`, strict default `3`), with run counters written to summary fields:
+  - `editorSmokeGateRunsTarget`, `editorSmokeGateRunCount`, `editorSmokeGatePassCount`, `editorSmokeGateFailCount`
+  - failure attribution fields: `editorSmokeFailureCodeCounts`, `editorSmokeFailureCodeCount`, `editorSmokeFirstFailureCode`, `editorSmokeRecentFailures`
+- when `RUN_EDITOR_UI_FLOW_SMOKE_GATE=1`, `tools/local_ci.sh` can run continuous UI-flow gate checks (`EDITOR_UI_FLOW_SMOKE_GATE_RUNS`, strict default `3`), with run counters written to summary fields:
+  - `editorUiFlowSmokeGateRunsTarget`, `editorUiFlowSmokeGateRunCount`, `editorUiFlowSmokeGatePassCount`, `editorUiFlowSmokeGateFailCount`
+  - failure attribution fields: `editorUiFlowSmokeFailureCodeCounts`, `editorUiFlowSmokeFailureCodeCount`, `editorUiFlowSmokeFirstFailureCode`
+- `tools/ci_editor_light.sh` runs UI-flow smoke by default only when the Codex Playwright wrapper exists at `${CODEX_HOME:-$HOME/.codex}/skills/playwright/scripts/playwright_cli.sh`; if missing, default UI-flow smoke is skipped (explicit `RUN_EDITOR_UI_FLOW_SMOKE(_GATE)=1` still fails fast).
+- `tools/editor_gate.sh` supports lightweight nightly mode via:
+  - `RUN_STEP166_GATE=0` (skip STEP166 stage)
+  - `EDITOR_SMOKE_NO_CONVERT=1` (round-trip smoke runs schema-only, no convert)
+- CI artifact summary helper: `tools/write_ci_artifact_summary.py` (renders run_id/failure-codes summary for GitHub job summary + uploaded artifacts).
+- `tools/editor_gate.sh` also supports UI-flow gate soak via `EDITOR_UI_FLOW_SMOKE_GATE_RUNS` (default local=`2`, CI=`3`; override allowed) and records counters in `build/editor_gate_summary.json`:
+  - `ui_flow_smoke.gate_runs_target`, `ui_flow_smoke.gate_run_count`, `ui_flow_smoke.gate_pass_count`, `ui_flow_smoke.gate_fail_count`
+  - failure attribution fields: `ui_flow_smoke.failure_code_counts`, `ui_flow_smoke.first_failure_code`, `ui_flow_smoke.runs[].failure_code|failure_detail`
+- `tools/editor_gate.sh` records round-trip smoke attribution from `editor_roundtrip_smoke.js`:
+  - `editor_smoke.status`, `editor_smoke.failure_code_counts`, `editor_smoke.first_failure_code`, `editor_smoke.failed_cases[]`
+- `tools/editor_gate.sh` supports optional UI-flow failure-injection health check (`RUN_UI_FLOW_FAILURE_INJECTION_GATE=1`, default timeout `UI_FLOW_FAILURE_INJECTION_TIMEOUT_MS=1`):
+  - default mode: local=`0` / CI=`1` (when `RUN_EDITOR_UI_FLOW_SMOKE_GATE=1`, and `RUN_UI_FLOW_FAILURE_INJECTION_GATE` is unset)
+  - summary fields: `ui_flow_failure_injection.status|run_id|failure_code|failure_detail|summary_json`
+  - strict mode (`UI_FLOW_FAILURE_INJECTION_STRICT=1`) turns injection health-check failure into gate failure.
+- `tools/editor_gate.sh` supports optional round-trip failure-injection health check (`RUN_EDITOR_SMOKE_FAILURE_INJECTION_GATE=1`):
+  - default mode: local=`0` / CI=`1` (when unset)
+  - default injection uses a missing plugin path (`EDITOR_SMOKE_FAILURE_INJECTION_PLUGIN`) with `EDITOR_SMOKE_FAILURE_INJECTION_LIMIT=1`
+  - summary fields: `editor_smoke_failure_injection.status|run_id|failure_code|failure_detail|summary_json`
+  - strict mode (`EDITOR_SMOKE_FAILURE_INJECTION_STRICT=1`) turns injection health-check failure into gate failure.
+- `tools/check_local_summary.sh` treats these CTest failures/missing tests as hard errors.
+- `tools/check_local_summary.sh` treats editor smoke gate run-count shortfall / gate-run failures as hard errors when `runEditorSmokeGate=true`.
+- `tools/check_local_summary.sh` requires non-empty `editorSmokeFailureCodeCounts` when `runEditorSmokeGate=true` and smoke gate has failing runs.
+- `tools/check_local_summary.sh` treats editor UI-flow gate run-count shortfall / gate-run failures as hard errors when `runEditorUiFlowSmokeGate=true`, and requires non-empty `failure_code_counts` when gate has failures.
+- `tools/check_local_summary.sh` also treats missing STEP166 baseline-compare metadata as hard errors when `runEditorGate=true` and `editorGateStatus=ok`.
+
 ## PLM Quickstart (Router + Convert + Annotate)
 Requires the PLM tools and importer plugins to be built (adjust plugin extension for your OS).
 
