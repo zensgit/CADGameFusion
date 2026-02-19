@@ -24,6 +24,10 @@ body {
   min-height: 100vh;
 }
 
+body.is-bg-black {
+  background: #000000;
+}
+
 .app {
   display: grid;
   grid-template-columns: minmax(280px, 360px) 1fr;
@@ -104,6 +108,38 @@ input[type="text"] {
 .btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 16px 40px rgba(255, 139, 74, 0.4);
+}
+
+.btn-toggle {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-primary);
+  border: 1px solid rgba(30, 35, 41, 0.12);
+  box-shadow: none;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.btn-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(30, 35, 41, 0.12);
+}
+
+.btn-toggle.is-active {
+  background: var(--accent);
+  border-color: transparent;
+  color: #231f1d;
+  box-shadow: 0 10px 22px rgba(255, 139, 74, 0.25);
+}
+
+.toggle-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toggle-row--sub {
+  margin-top: 8px;
 }
 
 .status {
@@ -256,6 +292,50 @@ input[type="text"] {
   display: block;
 }
 
+.text-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.text-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.text-label {
+  position: absolute;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  color: #1e2329;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(30, 35, 41, 0.12);
+  white-space: pre;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  transform-origin: 0 0;
+}
+
+.text-label[data-kind="dimension"] {
+  background: rgba(255, 139, 74, 0.18);
+  border-color: rgba(255, 139, 74, 0.45);
+}
+
+body.text-overlay-clean .text-label {
+  padding: 0;
+  background: transparent;
+  border: none;
+  text-shadow: none;
+}
+
+body.text-overlay-clean.is-bg-black .text-label {
+  color: #f5f5f5;
+}
+
 .hud {
   position: absolute;
   bottom: 24px;
@@ -269,6 +349,21 @@ input[type="text"] {
   border-radius: 999px;
   font-size: 0.75rem;
   letter-spacing: 0.02em;
+}
+
+.is-ui-hidden .panel,
+.is-ui-hidden .hud {
+  display: none;
+}
+
+.is-ui-hidden .app {
+  grid-template-columns: 1fr;
+  height: 100vh;
+}
+
+.is-ui-hidden .viewport {
+  min-height: 100vh;
+  height: 100vh;
 }
 
 @media (max-width: 900px) {
@@ -290,5 +385,311 @@ input[type="text"] {
   .hud {
     bottom: 16px;
     right: 16px;
+  }
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+.cad-editor-root {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(220, 230, 255, 0.35), transparent 45%),
+    radial-gradient(circle at 85% 8%, rgba(255, 214, 180, 0.35), transparent 42%),
+    #f4f7fb;
+  color: #1d2330;
+  font-family: "Space Grotesk", system-ui, -apple-system, sans-serif;
+}
+
+.cad-topbar {
+  display: grid;
+  grid-template-columns: 180px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(23, 31, 48, 0.15);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+}
+
+.cad-brand {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.86rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #2b4d74;
+}
+
+.cad-command {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.cad-command__label {
+  font-size: 0.84rem;
+  color: #4a5565;
+}
+
+.cad-command input,
+.cad-topbar__actions button,
+.cad-statusbar__toggles button,
+.cad-layer-actions input,
+.cad-layer-actions button {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.82rem;
+}
+
+.cad-command input,
+.cad-layer-actions input {
+  border: 1px solid rgba(23, 31, 48, 0.2);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #ffffff;
+}
+
+.cad-command button,
+.cad-topbar__actions button,
+.cad-statusbar__toggles button,
+.cad-layer-actions button {
+  border: 1px solid rgba(23, 31, 48, 0.2);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, #ffffff, #ebf1fb);
+  color: #1d2330;
+  cursor: pointer;
+}
+
+.cad-command button:hover,
+.cad-topbar__actions button:hover,
+.cad-statusbar__toggles button:hover,
+.cad-layer-actions button:hover {
+  background: linear-gradient(180deg, #fff8f0, #ffe1cc);
+}
+
+.cad-topbar__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.cad-shell {
+  display: grid;
+  grid-template-columns: 72px 1fr minmax(300px, 360px);
+  min-height: 0;
+}
+
+.cad-tools {
+  border-right: 1px solid rgba(23, 31, 48, 0.12);
+  padding: 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.86);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.cad-tool {
+  border: 1px solid rgba(23, 31, 48, 0.2);
+  border-radius: 10px;
+  min-height: 44px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #213049;
+  background: linear-gradient(180deg, #ffffff, #ebf1fb);
+  cursor: pointer;
+}
+
+.cad-tool.is-active {
+  background: linear-gradient(180deg, #ffd8bf, #ffb886);
+  border-color: rgba(215, 92, 28, 0.5);
+}
+
+.cad-canvas-wrap {
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+#cad-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.15), rgba(230, 237, 249, 0.65)),
+    #f4f7fb;
+}
+
+.cad-sidepanels {
+  border-left: 1px solid rgba(23, 31, 48, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+}
+
+.cad-panel {
+  border: 1px solid rgba(23, 31, 48, 0.12);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.cad-panel h2 {
+  font-size: 0.88rem;
+  font-weight: 700;
+  padding: 10px;
+  border-bottom: 1px solid rgba(23, 31, 48, 0.1);
+}
+
+.cad-panel__content {
+  font-size: 0.8rem;
+  color: #334059;
+  padding: 10px;
+}
+
+.cad-form {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.cad-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: #4a5565;
+}
+
+.cad-form .cad-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.cad-form input,
+.cad-form select {
+  border: 1px solid rgba(23, 31, 48, 0.18);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.8rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.cad-form input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border-radius: 4px;
+  accent-color: var(--accent);
+}
+
+.cad-layer-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  padding: 10px;
+}
+
+.cad-layer-list {
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  padding: 0 10px 10px;
+  margin: 0;
+}
+
+.cad-layer-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.cad-layer-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  border: 1px solid rgba(20, 24, 32, 0.2);
+}
+
+.cad-layer-name {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.cad-layer-item button {
+  border: 1px solid rgba(23, 31, 48, 0.2);
+  background: #f7f9fd;
+  border-radius: 8px;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-size: 0.72rem;
+}
+
+.cad-layer-item button.is-off {
+  opacity: 0.55;
+}
+
+.cad-statusbar {
+  border-top: 1px solid rgba(23, 31, 48, 0.12);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.cad-statusbar__toggles {
+  display: flex;
+  gap: 6px;
+}
+
+.cad-statusbar__message,
+.cad-statusbar__cursor {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.77rem;
+  color: #374256;
+}
+
+@media (max-width: 1180px) {
+  .cad-topbar {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .cad-shell {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+  }
+
+  .cad-tools {
+    border-right: none;
+    border-bottom: 1px solid rgba(23, 31, 48, 0.12);
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .cad-tool {
+    min-width: 90px;
+    min-height: 38px;
+  }
+
+  .cad-sidepanels {
+    border-left: none;
+    border-top: 1px solid rgba(23, 31, 48, 0.12);
+    max-height: 45vh;
+  }
+
+  .cad-statusbar {
+    grid-template-columns: 1fr;
   }
 }

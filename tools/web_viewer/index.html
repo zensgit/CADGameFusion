@@ -19,7 +19,7 @@
     </script>
   </head>
   <body>
-    <div class="app">
+    <div id="preview-root" class="app">
       <aside class="panel">
         <header class="panel__header">
           <div>
@@ -76,6 +76,42 @@
         </section>
 
         <section class="panel__section">
+          <div class="section__title">View</div>
+          <div class="toggle-row">
+            <button id="text-toggle" class="btn btn-toggle is-active" type="button">Text</button>
+          </div>
+          <div class="toggle-row toggle-row--sub">
+            <button id="text-filter-dimension" class="btn btn-toggle is-active" type="button">Dimension</button>
+            <button id="text-filter-text" class="btn btn-toggle" type="button">Text</button>
+            <button id="text-filter-all" class="btn btn-toggle" type="button">All</button>
+          </div>
+        </section>
+
+        <section class="panel__section">
+          <div class="section__title">Text Overlay</div>
+          <div class="metric">
+            <span>Overlay</span>
+            <strong id="text-overlay-state">On</strong>
+          </div>
+          <div class="metric">
+            <span>Filter</span>
+            <strong id="text-filter-state">dimension</strong>
+          </div>
+          <div class="metric">
+            <span>Total</span>
+            <strong id="text-entry-count">0</strong>
+          </div>
+          <div class="metric">
+            <span>Displayed</span>
+            <strong id="text-visible-count">0</strong>
+          </div>
+          <div class="metric">
+            <span>Capped</span>
+            <strong id="text-capped-count">0</strong>
+          </div>
+        </section>
+
+        <section class="panel__section">
           <div class="section__title">Layers</div>
           <ul id="layer-list" class="layer-list"></ul>
         </section>
@@ -96,10 +132,92 @@
 
       <main class="viewport">
         <canvas id="viewport"></canvas>
+        <canvas id="text-canvas" class="text-canvas"></canvas>
+        <div id="text-overlay" class="text-overlay"></div>
         <div class="hud">
           <div class="hud__chip">Scroll: zoom * Drag: orbit * Shift+click: annotate</div>
         </div>
       </main>
+    </div>
+
+    <div id="cad-editor-root" class="cad-editor-root is-hidden" aria-hidden="true">
+      <header class="cad-topbar">
+        <div class="cad-brand">VemCAD Web</div>
+        <div class="cad-command">
+          <label for="cad-command-input" class="cad-command__label">Command</label>
+          <input id="cad-command-input" type="text" placeholder="line, move, copy, offset, rotate, break, trim, extend, join, fillet, chamfer, undo, redo..." />
+          <button id="cad-command-run" type="button">Run</button>
+        </div>
+        <div class="cad-topbar__actions">
+          <button id="cad-import-json" type="button">Import JSON</button>
+          <button id="cad-export-json" type="button">Export JSON</button>
+          <button id="cad-export-cadgf" type="button">Export CADGF</button>
+          <button id="cad-fit-view" type="button">Fit</button>
+          <button id="cad-clear-doc" type="button">Clear</button>
+        </div>
+      </header>
+
+      <div class="cad-shell">
+        <aside class="cad-tools" aria-label="Tools">
+          <button data-tool="select" class="cad-tool is-active">Select</button>
+          <button data-tool="line" class="cad-tool">Line</button>
+          <button data-tool="polyline" class="cad-tool">Polyline</button>
+          <button data-tool="circle" class="cad-tool">Circle</button>
+          <button data-tool="arc" class="cad-tool">Arc</button>
+          <button data-tool="text" class="cad-tool">Text</button>
+          <button data-tool="move" class="cad-tool">Move</button>
+          <button data-tool="copy" class="cad-tool">Copy</button>
+          <button data-tool="offset" class="cad-tool">Offset</button>
+          <button data-tool="rotate" class="cad-tool">Rotate</button>
+          <button data-tool="break" class="cad-tool">Break</button>
+          <button data-tool="trim" class="cad-tool">Trim</button>
+          <button data-tool="extend" class="cad-tool">Extend</button>
+          <button data-tool="fillet" class="cad-tool">Fillet</button>
+          <button data-tool="chamfer" class="cad-tool">Chamfer</button>
+          <button data-tool="delete" class="cad-tool">Delete</button>
+        </aside>
+
+        <main class="cad-canvas-wrap">
+          <canvas id="cad-canvas"></canvas>
+        </main>
+
+        <aside class="cad-sidepanels" aria-label="Properties and Layers">
+          <section class="cad-panel">
+            <h2>Selection</h2>
+            <div id="cad-selection-summary" class="cad-panel__content">No selection</div>
+          </section>
+
+          <section class="cad-panel">
+            <h2>Properties</h2>
+            <form id="cad-property-form" class="cad-form"></form>
+          </section>
+
+          <section class="cad-panel">
+            <h2>Snap</h2>
+            <form id="cad-snap-form" class="cad-form"></form>
+          </section>
+
+          <section class="cad-panel">
+            <h2>Layers</h2>
+            <div class="cad-layer-actions">
+              <input id="cad-new-layer-name" type="text" placeholder="Layer name" />
+              <button id="cad-add-layer" type="button">Add</button>
+            </div>
+            <ul id="cad-layer-list" class="cad-layer-list"></ul>
+          </section>
+        </aside>
+      </div>
+
+      <footer class="cad-statusbar">
+        <div class="cad-statusbar__toggles">
+          <button id="cad-toggle-ortho" type="button">Ortho: Off</button>
+          <button id="cad-toggle-snap" type="button">Snap: On</button>
+          <button id="cad-toggle-grid" type="button">Grid: Off</button>
+          <button id="cad-toggle-break-keep" type="button">Break Keep: Auto</button>
+        </div>
+        <div id="cad-status-message" class="cad-statusbar__message">Ready</div>
+        <div id="cad-status-cursor" class="cad-statusbar__cursor">X: 0.00 Y: 0.00</div>
+      </footer>
     </div>
 
     <script type="module" src="app.js"></script>

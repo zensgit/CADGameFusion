@@ -11,6 +11,64 @@ Then open:
 http://localhost:8080/tools/web_viewer/
 ```
 
+## CAD editor mode (AutoCAD-like 2D workspace)
+Open:
+```
+http://localhost:8080/tools/web_viewer/?mode=editor
+```
+
+Open a CADGF `document.json` directly:
+```
+http://localhost:8080/tools/web_viewer/?mode=editor&cadgf=build/cad_regression/<run_id>/previews/<case>/document.json
+```
+
+Highlights:
+- Workspace layout: top command bar, left tools, right property/layer panels, bottom status bar, center canvas
+- Drawing tools: `Line`, `Polyline`, `Circle`, `Arc`, `Text`
+- Modify tools: `Select`, `Move`, `Copy`, `Offset`, `Rotate`, `Break`, `Trim`, `Extend`, `Delete`
+- Grips (Select tool):
+  - drag endpoints/vertices/centers/text position
+  - polyline midpoint grip inserts a new vertex (then drag)
+  - double-click polyline vertex grip deletes a vertex
+  - arc radius grip at mid-angle
+  - grip hover highlight (primary entity)
+- Drafting aids: `Ortho`, `Object Snap` (endpoint/midpoint/quadrant/center/intersection/tangent/nearest), `Grid`, `Undo/Redo`
+- Snap panel: per-snap toggles + `gridSize` / `snapRadiusPx`
+- JSON adapter:
+  - import/export editor document snapshots (`vemcad-web-2d-v1`)
+  - import/export CADGF `document.json` (aligns with `schemas/document.schema.json`, used by `plm_preview`)
+
+Command input examples:
+```
+line
+copy
+offset 5
+rotate
+break
+join
+ze
+undo
+redo
+tan
+nea
+quad
+grid
+ortho
+text NOTE_A
+exportcadgf
+```
+
+## Editor round-trip smoke (import -> edit -> export -> plm_convert)
+From repo root:
+```bash
+node tools/web_viewer/scripts/editor_roundtrip_smoke.js --mode observe --limit 5
+```
+Optional gate mode:
+```bash
+node tools/web_viewer/scripts/editor_roundtrip_smoke.js --mode gate --limit 5
+```
+Artifacts are written under `build/editor_roundtrip/<run_id>/`.
+
 You can also pass query params to auto-load artifacts:
 ```
 http://localhost:8080/tools/web_viewer/index.html?gltf=sample_exports/scene_sample/mesh_group_0.gltf
