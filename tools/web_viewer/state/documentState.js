@@ -226,13 +226,25 @@ function normalizeEntity(raw, id) {
   };
 }
 
+function normalizeConstraint(raw, id) {
+  const type = typeof raw?.type === 'string' ? raw.type : '';
+  const refs = Array.isArray(raw?.refs) ? raw.refs.filter((r) => typeof r === 'string') : [];
+  const constraint = { id, type, refs };
+  if (raw?.value !== undefined && raw?.value !== null && Number.isFinite(Number(raw.value))) {
+    constraint.value = Number(raw.value);
+  }
+  return constraint;
+}
+
 export class DocumentState extends EventTarget {
   constructor(initial = null) {
     super();
     this.nextEntityId = 1;
     this.nextLayerId = 1;
+    this.nextConstraintId = 1;
     this.layers = new Map([[DEFAULT_LAYER.id, cloneJson(DEFAULT_LAYER)]]);
     this.entities = new Map();
+    this.constraints = new Map();
     this.spatialIndex = new SpatialIndex({ cellSize: 50 });
     this.meta = {
       label: '',
@@ -255,6 +267,7 @@ export class DocumentState extends EventTarget {
           payload,
           entityCount: this.entities.size,
           layerCount: this.layers.size,
+          constraintCount: this.constraints.size,
         },
       }),
     );
@@ -511,12 +524,54 @@ export class DocumentState extends EventTarget {
     this.emitChange('entity-clear');
   }
 
+  // --- Constraint CRUD ---
+
+  getConstraint(id) {
+    return this.constraints.get(id) || null;
+  }
+
+  listConstraints() {
+    return [...this.constraints.values()];
+  }
+
+  addConstraint(raw) {
+    const id = typeof raw?.id === 'string' ? raw.id : `c${this.nextConstraintId}`;
+    const constraint = normalizeConstraint(raw, id);
+    this.constraints.set(id, constraint);
+    const numericId = parseInt(id.replace(/\D/g, ''), 10);
+    if (Number.isFinite(numericId) && numericId >= this.nextConstraintId) {
+      this.nextConstraintId = numericId + 1;
+    }
+    this.emitChange('constraint-add', { constraintId: id, constraint });
+    return constraint;
+  }
+
+  removeConstraint(id) {
+    if (!this.constraints.has(id)) {
+      return null;
+    }
+    const constraint = this.constraints.get(id);
+    this.constraints.delete(id);
+    this.emitChange('constraint-remove', { constraintId: id });
+    return constraint;
+  }
+
+  clearConstraints() {
+    if (this.constraints.size === 0) {
+      return;
+    }
+    this.constraints.clear();
+    this.emitChange('constraint-clear');
+  }
+
   snapshot() {
     return {
       nextEntityId: this.nextEntityId,
       nextLayerId: this.nextLayerId,
+      nextConstraintId: this.nextConstraintId,
       layers: cloneJson(this.listLayers()),
       entities: cloneJson(this.listEntities()),
+      constraints: cloneJson(this.listConstraints()),
       meta: cloneJson(this.meta),
     };
   }
@@ -525,9 +580,11 @@ export class DocumentState extends EventTarget {
     const input = snapshot || {};
     this.nextEntityId = Number.isFinite(input.nextEntityId) ? Number(input.nextEntityId) : 1;
     this.nextLayerId = Number.isFinite(input.nextLayerId) ? Number(input.nextLayerId) : 1;
+    this.nextConstraintId = Number.isFinite(input.nextConstraintId) ? Number(input.nextConstraintId) : 1;
 
     this.layers.clear();
     this.entities.clear();
+    this.constraints.clear();
 
     const incomingLayers = Array.isArray(input.layers) ? input.layers : [];
     if (incomingLayers.length === 0) {
@@ -560,6 +617,17 @@ export class DocumentState extends EventTarget {
       this.ensureLayer(entity.layerId);
     }
     this.spatialIndex.rebuild(this.listEntities());
+
+    const incomingConstraints = Array.isArray(input.constraints) ? input.constraints : [];
+    for (const raw of incomingConstraints) {
+      const id = typeof raw?.id === 'string' ? raw.id : `c${this.nextConstraintId}`;
+      const constraint = normalizeConstraint(raw, id);
+      this.constraints.set(id, constraint);
+      const numericId = parseInt(id.replace(/\D/g, ''), 10);
+      if (Number.isFinite(numericId) && numericId >= this.nextConstraintId) {
+        this.nextConstraintId = numericId + 1;
+      }
+    }
 
     this.meta = {
       ...this.meta,

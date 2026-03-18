@@ -611,6 +611,7 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
       statusApi.setMessage(message);
     }
   };
+  commandContext.setSolverDiagnostics = setSolverDiagnostics;
 
   const toolContext = createToolContext({
     document: documentState,

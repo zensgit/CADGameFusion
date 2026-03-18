@@ -2643,6 +2643,67 @@ export function registerCadCommands(commandBus, context) {
       canExecute: () => true,
       execute: (ctx) => runRedo(ctx),
     },
+    // --- Solver bridge commands ---
+    {
+      id: 'solver.export-project',
+      label: 'Export Solver Project',
+      canExecute: (ctx) => ctx.document.listConstraints().length > 0,
+      execute: (ctx) => {
+        const constraints = ctx.document.listConstraints();
+        if (constraints.length === 0) {
+          return commandResult(false, false, { message: 'No constraints to export', error_code: 'NO_CONSTRAINTS' });
+        }
+        const entities = ctx.document.listEntities();
+        const pointEntities = [];
+        for (const entity of entities) {
+          if (entity.type === 'line') {
+            pointEntities.push(
+              { id: `e${entity.id}_start`, type: 'point', params: { x: entity.start.x, y: entity.start.y } },
+              { id: `e${entity.id}_end`, type: 'point', params: { x: entity.end.x, y: entity.end.y } },
+            );
+          } else if (entity.type === 'circle') {
+            pointEntities.push(
+              { id: `e${entity.id}_center`, type: 'point', params: { x: entity.center.x, y: entity.center.y } },
+            );
+          } else if (entity.type === 'arc') {
+            pointEntities.push(
+              { id: `e${entity.id}_center`, type: 'point', params: { x: entity.center.x, y: entity.center.y } },
+            );
+          }
+        }
+        const project = {
+          header: { format: 'CADGF-PROJ', version: 1 },
+          project: { id: ctx.document.meta.label || 'web-editor', units: ctx.document.meta.unit || 'mm' },
+          scene: {
+            entities: pointEntities,
+            constraints: constraints.map((c) => {
+              const spec = { id: c.id, type: c.type, refs: c.refs };
+              if (c.value !== undefined) spec.value = c.value;
+              return spec;
+            }),
+          },
+          featureTree: { nodes: [], edges: [] },
+          resources: {},
+          meta: {},
+        };
+        return commandResult(true, false, { message: `Exported ${constraints.length} constraints`, project });
+      },
+    },
+    {
+      id: 'solver.import-diagnostics',
+      label: 'Import Solver Diagnostics',
+      canExecute: () => true,
+      execute: (ctx, payload) => {
+        if (!payload || typeof payload !== 'object') {
+          return commandResult(false, false, { message: 'Invalid diagnostics payload', error_code: 'INVALID_PAYLOAD' });
+        }
+        const setSolverDiagnostics = ctx.setSolverDiagnostics;
+        if (typeof setSolverDiagnostics === 'function') {
+          setSolverDiagnostics(payload, 'Solver diagnostics imported via command');
+        }
+        return commandResult(true, false, { message: 'Solver diagnostics imported', diagnostics: payload });
+      },
+    },
   ];
 
   for (const command of commands) {

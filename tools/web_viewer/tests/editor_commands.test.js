@@ -4162,3 +4162,103 @@ test('chamfer tool does not reuse stale preselection after Escape reset', () => 
     },
   });
 });
+
+// --- Constraint storage and solver bridge tests ---
+
+test('constraint CRUD: add, get, list, remove', () => {
+  const { document } = setup();
+
+  const c1 = document.addConstraint({ id: 'c0', type: 'horizontal', refs: ['p0.y', 'p1.y'] });
+  assert.equal(c1.id, 'c0');
+  assert.equal(c1.type, 'horizontal');
+  assert.deepEqual(c1.refs, ['p0.y', 'p1.y']);
+  assert.equal(c1.value, undefined);
+
+  const c2 = document.addConstraint({ id: 'c1', type: 'distance', refs: ['p0.x', 'p0.y', 'p1.x', 'p1.y'], value: 5.0 });
+  assert.equal(c2.value, 5.0);
+
+  assert.equal(document.listConstraints().length, 2);
+  assert.deepEqual(document.getConstraint('c0'), c1);
+  assert.deepEqual(document.getConstraint('c1'), c2);
+  assert.equal(document.getConstraint('c99'), null);
+
+  const removed = document.removeConstraint('c0');
+  assert.equal(removed.id, 'c0');
+  assert.equal(document.listConstraints().length, 1);
+  assert.equal(document.removeConstraint('c0'), null);
+});
+
+test('constraint snapshot/restore roundtrip', () => {
+  const { document } = setup();
+
+  document.addConstraint({ id: 'c0', type: 'horizontal', refs: ['p0.y', 'p1.y'] });
+  document.addConstraint({ id: 'c1', type: 'distance', refs: ['p0.x', 'p0.y', 'p1.x', 'p1.y'], value: 10 });
+
+  const snap = document.snapshot();
+  assert.equal(snap.constraints.length, 2);
+
+  document.clearConstraints();
+  assert.equal(document.listConstraints().length, 0);
+
+  document.restore(snap);
+  assert.equal(document.listConstraints().length, 2);
+  assert.equal(document.getConstraint('c0').type, 'horizontal');
+  assert.equal(document.getConstraint('c1').value, 10);
+});
+
+test('solver.export-project returns CADGF-PROJ JSON', () => {
+  const { document, bus } = setup();
+
+  // Add entities and constraints
+  bus.execute('entity.create', {
+    entity: { type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, layerId: 0 },
+  });
+  bus.execute('entity.create', {
+    entity: { type: 'line', start: { x: 10, y: 0 }, end: { x: 10, y: 5 }, layerId: 0 },
+  });
+  document.addConstraint({ id: 'c0', type: 'horizontal', refs: ['e1_start.y', 'e1_end.y'] });
+
+  const res = bus.execute('solver.export-project');
+  assert.equal(res.ok, true);
+  assert.ok(res.project);
+  assert.equal(res.project.header.format, 'CADGF-PROJ');
+  assert.equal(res.project.header.version, 1);
+  assert.ok(Array.isArray(res.project.scene.entities));
+  assert.ok(Array.isArray(res.project.scene.constraints));
+  assert.equal(res.project.scene.constraints.length, 1);
+  assert.equal(res.project.scene.constraints[0].type, 'horizontal');
+});
+
+test('solver.export-project fails with no constraints', () => {
+  const { bus } = setup();
+  const res = bus.execute('solver.export-project');
+  assert.equal(res.ok, false);
+  // canExecute returns false → CANNOT_EXECUTE
+  assert.equal(res.error_code, 'CANNOT_EXECUTE');
+});
+
+test('solver.import-diagnostics accepts payload', () => {
+  const { bus } = setup();
+  const ctx = bus.context;
+
+  let importedPayload = null;
+  ctx.setSolverDiagnostics = (payload) => { importedPayload = payload; };
+
+  const diagnostics = {
+    ok: true,
+    iterations: 3,
+    final_error: 0.0001,
+    analysis: { constraint_count: 1 },
+  };
+  const res = bus.execute('solver.import-diagnostics', diagnostics);
+  assert.equal(res.ok, true);
+  assert.deepEqual(importedPayload, diagnostics);
+});
+
+test('solver.import-diagnostics works without setSolverDiagnostics hook', () => {
+  const { bus } = setup();
+  // No setSolverDiagnostics set on context — should still succeed
+  const diagnostics = { ok: true, analysis: {} };
+  const res = bus.execute('solver.import-diagnostics', diagnostics);
+  assert.equal(res.ok, true);
+});
