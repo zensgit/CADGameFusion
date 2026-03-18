@@ -4305,3 +4305,49 @@ test('solver.export-project outputs valid CADGF-PROJ that solve_from_project can
     try { unlinkSync(tmpPath); } catch { /* ignore */ }
   }
 });
+
+test('selection-derived refs solve correctly with multiple constraint types', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { existsSync, writeFileSync, unlinkSync } = await import('node:fs');
+  const path = await import('node:path');
+
+  const repoRoot = path.resolve(import.meta.dirname, '../../..');
+  const binary = path.join(repoRoot, 'build_fix/tools/solve_from_project');
+  if (!existsSync(binary)) return;
+
+  const { document, bus } = setup();
+  // Create two lines and a circle
+  bus.execute('entity.create', {
+    entity: { type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, layerId: 0 },
+  });
+  bus.execute('entity.create', {
+    entity: { type: 'line', start: { x: 10, y: 0 }, end: { x: 10, y: 5 }, layerId: 0 },
+  });
+  bus.execute('entity.create', {
+    entity: { type: 'circle', center: { x: 5, y: 5 }, radius: 2, layerId: 0 },
+  });
+
+  // Add constraints using the same ref format deriveConstraintRefs would produce
+  // horizontal: two start.y refs
+  document.addConstraint({ id: 'c0', type: 'horizontal', refs: ['e1_start.y', 'e2_start.y'] });
+  // distance: two start points (x0,y0,x1,y1)
+  document.addConstraint({ id: 'c1', type: 'distance', refs: ['e1_start.x', 'e1_start.y', 'e2_start.x', 'e2_start.y'], value: 10 });
+  // coincident: line1 end = line2 start
+  document.addConstraint({ id: 'c2', type: 'coincident', refs: ['e1_end.x', 'e1_end.y', 'e2_start.x', 'e2_start.y'] });
+
+  const exportResult = bus.execute('solver.export-project');
+  assert.equal(exportResult.ok, true);
+  assert.equal(exportResult.project.scene.constraints.length, 3);
+
+  const tmpPath = path.join(repoRoot, 'build_fix', '_test_multi_constraint_project.json');
+  writeFileSync(tmpPath, JSON.stringify(exportResult.project, null, 2));
+
+  try {
+    const stdout = execFileSync(binary, ['--json', tmpPath], { encoding: 'utf-8' });
+    const result = JSON.parse(stdout);
+    assert.equal(result.analysis.constraint_count, 3);
+    assert.ok(result.analysis.evaluable_constraint_count >= 2);
+  } finally {
+    try { unlinkSync(tmpPath); } catch { /* ignore */ }
+  }
+});

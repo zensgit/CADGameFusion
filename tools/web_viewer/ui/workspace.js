@@ -897,19 +897,78 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
     if (clearConstraintsButton) clearConstraintsButton.disabled = constraints.length === 0;
   }
 
+  function deriveConstraintRefs(type, ids) {
+    if (!ids || ids.length === 0) return '';
+    const entities = ids.map((id) => documentState.getEntity(id)).filter(Boolean);
+    if (entities.length === 0) return '';
+
+    if (type === 'horizontal' && entities.length >= 2) {
+      // Two y-coords from two entities' start points
+      return entities.slice(0, 2).map((e) => {
+        if (e.type === 'line') return `e${e.id}_start.y`;
+        if (e.type === 'circle' || e.type === 'arc') return `e${e.id}_center.y`;
+        return '';
+      }).filter(Boolean).join(', ');
+    }
+    if (type === 'vertical' && entities.length >= 2) {
+      return entities.slice(0, 2).map((e) => {
+        if (e.type === 'line') return `e${e.id}_start.x`;
+        if (e.type === 'circle' || e.type === 'arc') return `e${e.id}_center.x`;
+        return '';
+      }).filter(Boolean).join(', ');
+    }
+    if ((type === 'distance' || type === 'coincident' || type === 'concentric') && entities.length >= 2) {
+      // Two points: x0,y0,x1,y1
+      const pts = entities.slice(0, 2).map((e) => {
+        if (e.type === 'line') return [`e${e.id}_start.x`, `e${e.id}_start.y`];
+        if (e.type === 'circle' || e.type === 'arc') return [`e${e.id}_center.x`, `e${e.id}_center.y`];
+        return [];
+      });
+      return pts.flat().join(', ');
+    }
+    if (type === 'angle' && entities.length >= 2) {
+      // Two line segments: 8 vars
+      const lines = entities.filter((e) => e.type === 'line').slice(0, 2);
+      if (lines.length < 2) return '';
+      return [
+        `e${lines[0].id}_start.x`, `e${lines[0].id}_start.y`,
+        `e${lines[0].id}_end.x`, `e${lines[0].id}_end.y`,
+        `e${lines[1].id}_start.x`, `e${lines[1].id}_start.y`,
+        `e${lines[1].id}_end.x`, `e${lines[1].id}_end.y`,
+      ].join(', ');
+    }
+    return '';
+  }
+
+  function syncConstraintRefsFromSelection() {
+    if (!constraintRefsInput || !constraintTypeSelect) return;
+    const type = constraintTypeSelect.value;
+    const ids = selectionState.entityIds;
+    const derived = deriveConstraintRefs(type, ids);
+    if (derived) {
+      constraintRefsInput.value = derived;
+      constraintRefsInput.placeholder = 'Auto-filled from selection';
+    }
+  }
+
   if (constraintTypeSelect && constraintValueInput) {
     const valueTypes = new Set(['distance', 'angle']);
     constraintTypeSelect.addEventListener('change', () => {
       constraintValueInput.style.display = valueTypes.has(constraintTypeSelect.value) ? '' : 'none';
+      syncConstraintRefsFromSelection();
     });
   }
+
+  selectionState.addEventListener('change', () => {
+    syncConstraintRefsFromSelection();
+  });
 
   if (addConstraintButton) {
     addConstraintButton.addEventListener('click', () => {
       const type = constraintTypeSelect?.value || 'horizontal';
       const refsRaw = (constraintRefsInput?.value || '').trim();
       if (!refsRaw) {
-        statusApi?.setMessage('Enter constraint refs (e.g. e1_start.y,e2_start.y)');
+        statusApi?.setMessage('Select 2 entities or enter refs manually');
         return;
       }
       const refs = refsRaw.split(',').map((r) => r.trim()).filter(Boolean);
