@@ -81,13 +81,14 @@ int main(int argc, char** argv) {
     int expected_count = 0;
     for (const auto& ent : srcDoc["entities"]) {
         int type = ent.value("type", -1);
-        if (type == 0 || type == 2 || type == 3 || type == 4 || type == 7) ++expected_count;
+        if (type == 0 || type == 2 || type == 3 || type == 4 || type == 5 || type == 6 || type == 7)
+            ++expected_count;
     }
     std::fprintf(stderr, "Entities: %d imported, %d expected\n", entity_count, expected_count);
     CHECK(entity_count == expected_count);
 
     // --- Step 5: Verify geometry ---
-    int lines = 0, circles = 0, arcs = 0, polylines = 0, texts = 0;
+    int lines = 0, circles = 0, arcs = 0, polylines = 0, texts = 0, ellipses = 0, splines = 0;
 
     for (int i = 0; i < entity_count; ++i) {
         cadgf_entity_id eid = 0;
@@ -141,15 +142,47 @@ int main(int argc, char** argv) {
             CHECK_NEAR(height, 0.5, 1e-4);
             CHECK(std::strcmp(text_buf, "Hello DXF") == 0);
             ++texts;
+        } else if (info.type == CADGF_ENTITY_TYPE_ELLIPSE) {
+            cadgf_ellipse ed{};
+            CHECK(cadgf_document_get_ellipse(doc, eid, &ed));
+            CHECK_NEAR(ed.center.x, 8.0, 1e-4);
+            CHECK_NEAR(ed.center.y, 8.0, 1e-4);
+            CHECK_NEAR(ed.rx, 2.0, 1e-4);
+            CHECK_NEAR(ed.ry, 1.0, 1e-4);
+            CHECK_NEAR(ed.rotation, 0.0, 1e-4);
+            CHECK_NEAR(ed.start_angle, 0.0, 1e-4);
+            CHECK_NEAR(ed.end_angle, 6.2832, 0.01);
+            ++ellipses;
+        } else if (info.type == CADGF_ENTITY_TYPE_SPLINE) {
+            int ctrl_count = 0, knot_count = 0, degree = 0;
+            CHECK(cadgf_document_get_spline(doc, eid, nullptr, 0, &ctrl_count,
+                                            nullptr, 0, &knot_count, &degree));
+            CHECK(ctrl_count == 3);
+            CHECK(knot_count == 6);
+            CHECK(degree == 3);
+            std::vector<cadgf_vec2> ctrl(static_cast<size_t>(ctrl_count));
+            std::vector<double> knots(static_cast<size_t>(knot_count));
+            int r_ctrl = 0, r_knots = 0, r_deg = 0;
+            CHECK(cadgf_document_get_spline(doc, eid, ctrl.data(), ctrl_count, &r_ctrl,
+                                            knots.data(), knot_count, &r_knots, &r_deg));
+            CHECK_NEAR(ctrl[0].x, 0.0, 1e-4);
+            CHECK_NEAR(ctrl[0].y, 0.0, 1e-4);
+            CHECK_NEAR(ctrl[1].x, 1.0, 1e-4);
+            CHECK_NEAR(ctrl[1].y, 2.0, 1e-4);
+            CHECK_NEAR(ctrl[2].x, 2.0, 1e-4);
+            CHECK_NEAR(ctrl[2].y, 0.0, 1e-4);
+            ++splines;
         }
     }
 
-    std::fprintf(stderr, "Summary: %d lines, %d circles, %d arcs, %d polylines, %d texts\n",
-                 lines, circles, arcs, polylines, texts);
+    std::fprintf(stderr, "Summary: %d lines, %d circles, %d arcs, %d polylines, %d ellipses, %d splines, %d texts\n",
+                 lines, circles, arcs, polylines, ellipses, splines, texts);
     CHECK(lines == 1);
     CHECK(circles == 1);
     CHECK(arcs == 1);
     CHECK(polylines == 1);
+    CHECK(ellipses == 1);
+    CHECK(splines == 1);
     CHECK(texts == 1);
 
     // --- Step 6: Verify layers ---

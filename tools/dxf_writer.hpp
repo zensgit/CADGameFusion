@@ -131,7 +131,46 @@ inline std::string writeDxf(const json& doc) {
             }
             emit(1, t.value("value", ""));
         }
-        // Types 5 (ellipse) and 6 (spline) are skipped for now
+        else if (type == 5 && ent.contains("ellipse")) {
+            // ELLIPSE: ellipse = {c:[x,y], rx, ry, rot, a0, a1}
+            // DXF ELLIPSE: 10/20=center, 11/21=major axis endpoint (relative),
+            //              40=ratio (minor/major), 41=start_param, 42=end_param
+            const auto& e = ent["ellipse"];
+            double rx = e.value("rx", 1.0);
+            double ry = e.value("ry", 1.0);
+            double rot = e.value("rot", 0.0);
+            if (rx <= 0.0) rx = 1.0;
+            emit(0, "ELLIPSE");
+            emit(8, layerName);
+            emitd(10, e["c"][0].get<double>());
+            emitd(20, e["c"][1].get<double>());
+            emitd(11, rx * std::cos(rot));
+            emitd(21, rx * std::sin(rot));
+            emitd(40, ry / rx);
+            emitd(41, e.value("a0", 0.0));
+            emitd(42, e.value("a1", 6.283185307179586));
+        }
+        else if (type == 6 && ent.contains("spline")) {
+            // SPLINE: spline = {degree, control:[[x,y],...], knots:[...]}
+            // DXF SPLINE: 71=degree, 40=knots (repeated), 10/20=control pts (repeated)
+            const auto& sp = ent["spline"];
+            const auto& ctrl = sp.value("control", json::array());
+            const auto& knots = sp.value("knots", json::array());
+            if (ctrl.size() >= 2) {
+                emit(0, "SPLINE");
+                emit(8, layerName);
+                emiti(71, sp.value("degree", 3));
+                emiti(74, static_cast<int>(ctrl.size()));
+                emiti(72, static_cast<int>(knots.size()));
+                for (const auto& k : knots) {
+                    emitd(40, k.get<double>());
+                }
+                for (const auto& pt : ctrl) {
+                    emitd(10, pt[0].get<double>());
+                    emitd(20, pt[1].get<double>());
+                }
+            }
+        }
     }
 
     emit(0, "ENDSEC");
