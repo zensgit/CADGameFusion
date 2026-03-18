@@ -16,6 +16,17 @@ cd "$ROOT_DIR"
 
 CODEX_HOME_DEFAULT="${CODEX_HOME:-$HOME/.codex}"
 PWCLI_DEFAULT="$CODEX_HOME_DEFAULT/skills/playwright/scripts/playwright_cli.sh"
+EDITOR_SMOKE_LIMIT="${EDITOR_SMOKE_LIMIT:-1}"
+EDITOR_SMOKE_CASES="${EDITOR_SMOKE_CASES:-tools/web_viewer/tests/fixtures/editor_roundtrip_smoke_cases.json}"
+EDITOR_SMOKE_CASE_SOURCE="${EDITOR_SMOKE_CASE_SOURCE:-fixture}"
+EDITOR_SMOKE_PRIORITY_SET="${EDITOR_SMOKE_PRIORITY_SET:-}"
+EDITOR_SMOKE_TAG_ANY="${EDITOR_SMOKE_TAG_ANY:-}"
+EDITOR_SMOKE_NO_CONVERT="${EDITOR_SMOKE_NO_CONVERT:-1}"
+
+if ! [[ "$EDITOR_SMOKE_LIMIT" =~ ^[0-9]+$ ]] || [[ "$EDITOR_SMOKE_LIMIT" -le 0 ]]; then
+  echo "[CI-EDITOR-LIGHT] WARN invalid EDITOR_SMOKE_LIMIT=$EDITOR_SMOKE_LIMIT, fallback to 1"
+  EDITOR_SMOKE_LIMIT="1"
+fi
 
 pick_free_port() {
   python3 - <<'PY'
@@ -63,12 +74,24 @@ except Exception as e:
 print("jsonschema=ok")
 PY
 
-echo "[CI-EDITOR-LIGHT] 3) Editor round-trip smoke (gate, --no-convert, fixture cases)"
-node tools/web_viewer/scripts/editor_roundtrip_smoke.js \
-  --mode gate \
-  --limit 1 \
-  --no-convert \
-  --cases tools/web_viewer/tests/fixtures/editor_roundtrip_smoke_cases.json
+echo "[CI-EDITOR-LIGHT] 3) Editor round-trip smoke (gate)"
+echo "[CI-EDITOR-LIGHT] editor_smoke_cases=$EDITOR_SMOKE_CASES source=$EDITOR_SMOKE_CASE_SOURCE limit=$EDITOR_SMOKE_LIMIT no_convert=$EDITOR_SMOKE_NO_CONVERT"
+ROUNDTRIP_CMD=(
+  node tools/web_viewer/scripts/editor_roundtrip_smoke.js
+  --mode gate
+  --limit "$EDITOR_SMOKE_LIMIT"
+  --cases "$EDITOR_SMOKE_CASES"
+)
+if [[ "$EDITOR_SMOKE_NO_CONVERT" == "1" ]]; then
+  ROUNDTRIP_CMD+=(--no-convert)
+fi
+if [[ -n "$EDITOR_SMOKE_PRIORITY_SET" ]]; then
+  ROUNDTRIP_CMD+=(--priority-set "$EDITOR_SMOKE_PRIORITY_SET")
+fi
+if [[ -n "$EDITOR_SMOKE_TAG_ANY" ]]; then
+  ROUNDTRIP_CMD+=(--tag-any "$EDITOR_SMOKE_TAG_ANY")
+fi
+"${ROUNDTRIP_CMD[@]}"
 
 if [[ "${RUN_EDITOR_UI_SMOKE:-0}" == "1" || "${RUN_EDITOR_UI_SMOKE_GATE:-0}" == "1" ]]; then
   MODE="observe"
