@@ -23,6 +23,27 @@ inline std::string writeDxf(const json& doc) {
         emit(code, std::to_string(val));
     };
 
+    // Emit entity style group codes (6=linetype, 48=ltscale, 62=color_aci, 370=lineweight)
+    auto emitStyle = [&](const json& ent) {
+        if (ent.contains("line_type")) {
+            const std::string lt = ent["line_type"].get<std::string>();
+            if (!lt.empty()) emit(6, lt);
+        }
+        if (ent.contains("line_type_scale")) {
+            double lts = ent["line_type_scale"].get<double>();
+            if (std::abs(lts - 1.0) > 1e-9) emitd(48, lts);
+        }
+        if (ent.contains("color_aci")) {
+            emiti(62, ent["color_aci"].get<int>());
+        } else if (ent.contains("color") && ent.value("color_source", "") == "TRUECOLOR") {
+            emiti(420, ent["color"].get<int>());
+        }
+        if (ent.contains("line_weight")) {
+            int lw = static_cast<int>(std::round(ent["line_weight"].get<double>() * 100.0));
+            if (lw > 0) emiti(370, lw);
+        }
+    };
+
     // --- TABLES section (layers) ---
     emit(0, "SECTION");
     emit(2, "TABLES");
@@ -35,8 +56,15 @@ inline std::string writeDxf(const json& doc) {
     for (const auto& layer : layers) {
         emit(0, "LAYER");
         emit(2, layer.value("name", "0"));
-        emiti(70, 0);
-        emiti(62, layer.value("color_aci", 7));
+        // Layer flags: 1=frozen, 4=locked
+        int flags = 0;
+        if (layer.value("frozen", 0)) flags |= 1;
+        if (layer.value("locked", 0)) flags |= 4;
+        emiti(70, flags);
+        // Color: negative ACI = layer off (not visible)
+        int aci = layer.value("color_aci", 7);
+        if (!layer.value("visible", 1)) aci = -std::abs(aci);
+        emiti(62, aci);
     }
 
     emit(0, "ENDTAB");
@@ -64,6 +92,7 @@ inline std::string writeDxf(const json& doc) {
             if (l.is_array() && l.size() >= 2) {
                 emit(0, "LINE");
                 emit(8, layerName);
+                emitStyle(ent);
                 emitd(10, l[0][0].get<double>());
                 emitd(20, l[0][1].get<double>());
                 emitd(11, l[1][0].get<double>());
@@ -76,6 +105,7 @@ inline std::string writeDxf(const json& doc) {
             if (pts.is_array() && pts.size() >= 2) {
                 emit(0, "LWPOLYLINE");
                 emit(8, layerName);
+                emitStyle(ent);
                 // Check closed: first point == last point
                 bool closed = false;
                 if (pts.size() >= 3) {
@@ -99,6 +129,7 @@ inline std::string writeDxf(const json& doc) {
             const auto& c = ent["circle"];
             emit(0, "CIRCLE");
             emit(8, layerName);
+            emitStyle(ent);
             emitd(10, c["c"][0].get<double>());
             emitd(20, c["c"][1].get<double>());
             emitd(40, c["r"].get<double>());
@@ -108,6 +139,7 @@ inline std::string writeDxf(const json& doc) {
             const auto& a = ent["arc"];
             emit(0, "ARC");
             emit(8, layerName);
+            emitStyle(ent);
             emitd(10, a["c"][0].get<double>());
             emitd(20, a["c"][1].get<double>());
             emitd(40, a["r"].get<double>());
@@ -122,6 +154,7 @@ inline std::string writeDxf(const json& doc) {
             const auto& t = ent["text"];
             emit(0, "TEXT");
             emit(8, layerName);
+            emitStyle(ent);
             emitd(10, t["pos"][0].get<double>());
             emitd(20, t["pos"][1].get<double>());
             emitd(40, t.value("h", 2.5));
@@ -142,6 +175,7 @@ inline std::string writeDxf(const json& doc) {
             if (rx <= 0.0) rx = 1.0;
             emit(0, "ELLIPSE");
             emit(8, layerName);
+            emitStyle(ent);
             emitd(10, e["c"][0].get<double>());
             emitd(20, e["c"][1].get<double>());
             emitd(11, rx * std::cos(rot));
@@ -159,6 +193,7 @@ inline std::string writeDxf(const json& doc) {
             if (ctrl.size() >= 2) {
                 emit(0, "SPLINE");
                 emit(8, layerName);
+                emitStyle(ent);
                 emiti(71, sp.value("degree", 3));
                 emiti(74, static_cast<int>(ctrl.size()));
                 emiti(72, static_cast<int>(knots.size()));
