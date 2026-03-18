@@ -127,6 +127,8 @@ let documentData = null;
 let entityIndex = new Map();
 let layerColors = new Map();
 let layerNames = new Map();
+let instanceIndex = new Map();
+let blockIndex = new Map();
 let meshSlices = [];
 let lineSlices = [];
 let lineGroup = null;
@@ -146,11 +148,66 @@ let textLabels = [];
 let textFiltered = [];
 let textFilteredCount = 0;
 let textFilter = "dimension";
+let selectedTextEntryKey = null;
+let highlightedTextSiblingKeys = new Set();
+let currentHighlightInfo = null;
+let lastFocusState = null;
 let orthoHalfHeight = 1;
 const textProject = new THREE.Vector3();
 const textProject2 = new THREE.Vector3();
 const textProject3 = new THREE.Vector3();
 const textProject4 = new THREE.Vector3();
+
+if (typeof window !== "undefined") {
+  window.__cadgfPreviewDebug = {
+    getVisibleTextEntries() {
+      return textFiltered
+        .filter((entry) => entry?.screenBounds)
+        .map((entry) => ({
+          id: Number.isFinite(entry?.id) ? entry.id : null,
+          value: entry?.value || "",
+          kind: entry?.kind || "text",
+          minX: entry?.screenBounds?.minX ?? null,
+          minY: entry?.screenBounds?.minY ?? null,
+          maxX: entry?.screenBounds?.maxX ?? null,
+          maxY: entry?.screenBounds?.maxY ?? null,
+        }));
+    },
+    getHighlightState() {
+      return {
+        selectedId: currentHighlightInfo?.selectedId ?? null,
+        groupId: currentHighlightInfo?.groupId ?? null,
+        highlightedSiblingCount: currentHighlightInfo?.siblingIds?.length ?? 0,
+        highlightedSiblingIds: Array.isArray(currentHighlightInfo?.siblingIds)
+          ? [...currentHighlightInfo.siblingIds]
+          : [],
+      };
+    },
+    selectEntityById(entityId, navKind = "debug-select") {
+      return focusSelectionEntityId(entityId, navKind);
+    },
+    focusGroupById(groupId, navKind = "debug-group") {
+      return focusSelectionGroupId(groupId, navKind);
+    },
+    hasEntityId(entityId) {
+      return Boolean(resolveSelectionTargetByEntityId(entityId));
+    },
+    hasGroupId(groupId) {
+      return resolveSelectionTargetsByGroupId(groupId).length > 0;
+    },
+    getLastFocusState() {
+      return lastFocusState ? JSON.parse(JSON.stringify(lastFocusState)) : null;
+    },
+    getLineOverlayState() {
+      return (lineGroup?.children || []).map((child) => ({
+        name: child?.name || "",
+        id: parsePreviewInt(child?.userData?.cadgfSlice?.id ?? child?.userData?.cadgfEntity?.id),
+        color: child?.material?.color?.getHexString?.() ?? null,
+        linewidth: Number.isFinite(child?.material?.linewidth) ? Number(child.material.linewidth.toFixed(3)) : null,
+      }));
+    },
+  };
+}
 
 const CADGF_ENTITY_TYPE_TEXT = 7;
 const TEXT_MIN_PX = 7;
@@ -168,10 +225,34 @@ const TEXT_LINE_HEIGHT = 1.1;
 const LINE_WEIGHT_DEFAULT = 0.18;
 const LINE_WEIGHT_MIN = 0.05;
 const LINE_WEIGHT_MAX = 2.0;
+const HIGHLIGHT_SELECTED_COLOR = 0xff8b4a;
+const HIGHLIGHT_SELECTED_EMISSIVE = 0x5a2400;
+const HIGHLIGHT_SIBLING_COLOR = 0x2f80ed;
+const HIGHLIGHT_SIBLING_EMISSIVE = 0x103a66;
+const HIGHLIGHT_SELECTED_LINEWIDTH_MULTIPLIER = 1.7;
+const HIGHLIGHT_SIBLING_LINEWIDTH_MULTIPLIER = 1.35;
 
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
   statusEl.style.color = isError ? "#c0392b" : "#5f6b73";
+}
+
+function rebuildSelectableObjects() {
+  selectable = [];
+  if (activeScene) {
+    activeScene.traverse((child) => {
+      if (child.isMesh && child.visible !== false) {
+        selectable.push(child);
+      }
+    });
+  }
+  if (lineGroup?.children?.length) {
+    lineGroup.children.forEach((child) => {
+      if (child && child.visible !== false) {
+        selectable.push(child);
+      }
+    });
+  }
 }
 
 function resetMetadataState() {
@@ -180,6 +261,8 @@ function resetMetadataState() {
   entityIndex = new Map();
   layerColors = new Map();
   layerNames = new Map();
+  instanceIndex = new Map();
+  blockIndex = new Map();
   meshSlices = [];
   lineSlices = [];
   metadataApplied = false;
@@ -274,10 +357,93 @@ function parseMetaInt(meta, key) {
   return Number.isFinite(num) ? num : null;
 }
 
-function parseViewportMeta(meta) {
+function parsePreviewInt(value) {
+  const num = Number.parseInt(value, 10);
+  return Number.isFinite(num) ? num : null;
+}
+
+function parsePreviewNumber(value) {
+  const num = Number.parseFloat(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+function getMeshMetadataSummary() {
+  const summary = meshMetadata?.summary;
+  return summary && typeof summary === "object" ? summary : null;
+}
+
+function getMeshMetadataLayouts() {
+  if (!Array.isArray(meshMetadata?.layouts)) return [];
+  return meshMetadata.layouts.filter((layout) => layout && typeof layout === "object");
+}
+
+function normalizeLayoutName(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getSyntheticPaperLayoutFallback() {
+  const paperLayouts = getMeshMetadataLayouts().filter((layout) => {
+    const space = parsePreviewInt(layout.space);
+    return space === 1 && layout.synthetic === true && normalizeLayoutName(layout.name);
+  });
+  if (paperLayouts.length !== 1) return "";
+  return normalizeLayoutName(paperLayouts[0].name);
+}
+
+function matchesLayoutFilter(layoutName) {
+  if (!layoutMode) return true;
+  const filter = layoutMode.toLowerCase();
+  const normalized = normalizeLayoutName(layoutName);
+  if (normalized && normalized.toLowerCase() === filter) {
+    return true;
+  }
+  const fallback = getSyntheticPaperLayoutFallback();
+  return Boolean(fallback) && fallback.toLowerCase() === filter && !normalized;
+}
+
+function parseMeshViewportMeta() {
+  if (!Array.isArray(meshMetadata?.viewports)) return [];
+  const fallbackLayout = getSyntheticPaperLayoutFallback();
+  const viewports = [];
+  meshMetadata.viewports.forEach((rawViewport) => {
+    if (!rawViewport || typeof rawViewport !== "object") return;
+    const space = parsePreviewInt(rawViewport.space);
+    const centerX = parsePreviewNumber(rawViewport.center_x);
+    const centerY = parsePreviewNumber(rawViewport.center_y);
+    const viewCenterX = parsePreviewNumber(rawViewport.view_center_x);
+    const viewCenterY = parsePreviewNumber(rawViewport.view_center_y);
+    const width = parsePreviewNumber(rawViewport.width);
+    const height = parsePreviewNumber(rawViewport.height);
+    const viewHeight = parsePreviewNumber(rawViewport.view_height);
+    const twistDeg = parsePreviewNumber(rawViewport.twist_deg) ?? 0;
+    const id = parsePreviewInt(rawViewport.id);
+    const layout = normalizeLayoutName(rawViewport.layout_name ?? rawViewport.layout) || fallbackLayout;
+    if (space !== 1) return;
+    if (!Number.isFinite(centerX) || !Number.isFinite(centerY) ||
+        !Number.isFinite(viewCenterX) || !Number.isFinite(viewCenterY) ||
+        !Number.isFinite(width) || !Number.isFinite(height) || !Number.isFinite(viewHeight)) {
+      return;
+    }
+    if (width <= 0 || height <= 0 || viewHeight <= 0) return;
+    if (!matchesLayoutFilter(layout)) return;
+    viewports.push({
+      space,
+      id,
+      layout,
+      center: { x: centerX, y: centerY },
+      viewCenter: { x: viewCenterX, y: viewCenterY },
+      width,
+      height,
+      viewHeight,
+      twistDeg
+    });
+  });
+  return viewports;
+}
+
+function parseDocumentViewportMeta(meta) {
   const count = parseMetaInt(meta, "dxf.viewport.count") || 0;
   if (count <= 0) return [];
-  const layoutFilter = layoutMode ? layoutMode.toLowerCase() : "";
   const viewports = [];
   for (let i = 0; i < count; i += 1) {
     const base = `dxf.viewport.${i}`;
@@ -299,7 +465,7 @@ function parseViewportMeta(meta) {
       continue;
     }
     if (width <= 0 || height <= 0 || viewHeight <= 0) continue;
-    if (layoutFilter && layout.toLowerCase() !== layoutFilter) continue;
+    if (!matchesLayoutFilter(layout)) continue;
     viewports.push({
       space,
       id,
@@ -341,11 +507,13 @@ function buildViewportTransforms(viewports) {
 
 function updateDocumentMetaState() {
   documentMeta = getDocumentMeta();
-  const space = parseMetaInt(documentMeta, "dxf.default_space");
+  const summary = getMeshMetadataSummary();
+  const space = parsePreviewInt(summary?.default_space) ?? parseMetaInt(documentMeta, "dxf.default_space");
   defaultSpace = (space === 0 || space === 1) ? space : null;
   const textHeight = parseMetaNumber(documentMeta, "dxf.default_text_height");
   defaultTextHeight = Number.isFinite(textHeight) && textHeight > 0 ? textHeight : 0;
-  viewportEntries = parseViewportMeta(documentMeta);
+  const normalizedViewports = parseMeshViewportMeta();
+  viewportEntries = normalizedViewports.length > 0 ? normalizedViewports : parseDocumentViewportMeta(documentMeta);
   viewportTransforms = buildViewportTransforms(viewportEntries);
 }
 
@@ -437,6 +605,278 @@ function resolveLineWidth(slice) {
   return Math.min(LINE_WEIGHT_MAX, Math.max(LINE_WEIGHT_MIN, scaled));
 }
 
+function captureMeshMaterialBase(material) {
+  if (!material) return;
+  const data = material.userData ?? (material.userData = {});
+  if (!Number.isFinite(data.cadgfBaseColor) && material.color) {
+    data.cadgfBaseColor = material.color.getHex();
+  }
+  if (!Number.isFinite(data.cadgfBaseEmissive) && material.emissive) {
+    data.cadgfBaseEmissive = material.emissive.getHex();
+  }
+  if (!Number.isFinite(data.cadgfBaseEmissiveIntensity)) {
+    data.cadgfBaseEmissiveIntensity = Number.isFinite(material.emissiveIntensity) ? material.emissiveIntensity : 1;
+  }
+  if (!Number.isFinite(data.cadgfBaseOpacity)) {
+    data.cadgfBaseOpacity = Number.isFinite(material.opacity) ? material.opacity : 1;
+  }
+  if (typeof data.cadgfBaseTransparent !== "boolean") {
+    data.cadgfBaseTransparent = Boolean(material.transparent);
+  }
+}
+
+function resetMeshMaterialHighlight(material) {
+  if (!material) return;
+  captureMeshMaterialBase(material);
+  const data = material.userData ?? {};
+  if (material.color && Number.isFinite(data.cadgfBaseColor)) {
+    material.color.setHex(data.cadgfBaseColor);
+  }
+  if (material.emissive && Number.isFinite(data.cadgfBaseEmissive)) {
+    material.emissive.setHex(data.cadgfBaseEmissive);
+  }
+  if (Number.isFinite(data.cadgfBaseEmissiveIntensity)) {
+    material.emissiveIntensity = data.cadgfBaseEmissiveIntensity;
+  }
+  if (Number.isFinite(data.cadgfBaseOpacity)) {
+    material.opacity = data.cadgfBaseOpacity;
+  }
+  material.transparent = Boolean(data.cadgfBaseTransparent);
+}
+
+function applyMeshMaterialHighlight(material, mode) {
+  resetMeshMaterialHighlight(material);
+  if (!material || !mode) return;
+  if (material.color) {
+    material.color.setHex(mode === "selected" ? HIGHLIGHT_SELECTED_COLOR : HIGHLIGHT_SIBLING_COLOR);
+  }
+  if (material.emissive) {
+    material.emissive.setHex(mode === "selected" ? HIGHLIGHT_SELECTED_EMISSIVE : HIGHLIGHT_SIBLING_EMISSIVE);
+    material.emissiveIntensity = mode === "selected" ? 0.4 : 0.25;
+  }
+}
+
+function captureLineMaterialBase(material) {
+  if (!material) return;
+  const data = material.userData ?? (material.userData = {});
+  if (!Number.isFinite(data.cadgfBaseColor) && material.color) {
+    data.cadgfBaseColor = material.color.getHex();
+  }
+  if (!Number.isFinite(data.cadgfBaseLinewidth)) {
+    data.cadgfBaseLinewidth = Number.isFinite(material.linewidth) ? material.linewidth : resolveLineWidth(null);
+  }
+  if (!Number.isFinite(data.cadgfBaseOpacity)) {
+    data.cadgfBaseOpacity = Number.isFinite(material.opacity) ? material.opacity : 1;
+  }
+}
+
+function resetLineMaterialHighlight(material) {
+  if (!material) return;
+  captureLineMaterialBase(material);
+  const data = material.userData ?? {};
+  if (material.color && Number.isFinite(data.cadgfBaseColor)) {
+    material.color.setHex(data.cadgfBaseColor);
+  }
+  if (Number.isFinite(data.cadgfBaseLinewidth)) {
+    material.linewidth = data.cadgfBaseLinewidth;
+  }
+  if (Number.isFinite(data.cadgfBaseOpacity)) {
+    material.opacity = data.cadgfBaseOpacity;
+  }
+  material.transparent = false;
+  material.needsUpdate = true;
+}
+
+function applyLineMaterialHighlight(material, mode) {
+  resetLineMaterialHighlight(material);
+  if (!material || !mode) return;
+  const data = material.userData ?? {};
+  if (material.color) {
+    material.color.setHex(mode === "selected" ? HIGHLIGHT_SELECTED_COLOR : HIGHLIGHT_SIBLING_COLOR);
+  }
+  const baseWidth = Number.isFinite(data.cadgfBaseLinewidth) ? data.cadgfBaseLinewidth : material.linewidth;
+  material.linewidth = baseWidth * (mode === "selected"
+    ? HIGHLIGHT_SELECTED_LINEWIDTH_MULTIPLIER
+    : HIGHLIGHT_SIBLING_LINEWIDTH_MULTIPLIER);
+  material.opacity = 1;
+  material.transparent = false;
+  material.needsUpdate = true;
+}
+
+function clearFragmentHighlights() {
+  if (activeScene) {
+    activeScene.traverse((child) => {
+      if (!child?.isMesh || !child.material) return;
+      if (Array.isArray(child.material)) {
+        child.material.forEach((material) => resetMeshMaterialHighlight(material));
+      } else {
+        resetMeshMaterialHighlight(child.material);
+      }
+    });
+  }
+  if (lineGroup?.children?.length) {
+    lineGroup.children.forEach((child) => {
+      if (child?.material) {
+        resetLineMaterialHighlight(child.material);
+      }
+    });
+  }
+  highlightedTextSiblingKeys = new Set();
+  currentHighlightInfo = null;
+}
+
+function collectVisibleFragmentEntityIds() {
+  const ids = new Set();
+  if (activeScene) {
+    activeScene.traverse((child) => {
+      if (!child?.isMesh || child.visible === false) return;
+      const slices = Array.isArray(child.userData?.cadgfSlices) ? child.userData.cadgfSlices : [];
+      slices.forEach((slice) => {
+        const id = parsePreviewInt(slice?.id);
+        if (id !== null) {
+          ids.add(id);
+        }
+      });
+    });
+  }
+  if (lineGroup?.children?.length) {
+    lineGroup.children.forEach((child) => {
+      if (!child || child.visible === false) return;
+      const id = parsePreviewInt(child.userData?.cadgfSlice?.id ?? child.userData?.cadgfEntity?.id);
+      if (id !== null) {
+        ids.add(id);
+      }
+    });
+  }
+  if (textOverlayEnabled) {
+    textFiltered.forEach((entry) => {
+      const id = parsePreviewInt(entry?.id);
+      if (id !== null) {
+        ids.add(id);
+      }
+    });
+  }
+  return ids;
+}
+
+function collectGroupEntityIds(groupId, instance = null) {
+  const ids = new Set();
+  if (groupId === null) return ids;
+  if (Array.isArray(instance?.entity_ids)) {
+    instance.entity_ids.forEach((value) => {
+      const id = parsePreviewInt(value);
+      if (id !== null) {
+        ids.add(id);
+      }
+    });
+  }
+  if (ids.size > 0) return ids;
+
+  entityIndex.forEach((entity, id) => {
+    if (selectionGroupId(entity, null) === groupId) {
+      ids.add(id);
+    }
+  });
+  if (ids.size > 0) return ids;
+
+  const appendSliceIds = (slices) => {
+    slices.forEach((slice) => {
+      if (selectionGroupId(null, slice) !== groupId) return;
+      const id = parsePreviewInt(slice?.id);
+      if (id !== null) {
+        ids.add(id);
+      }
+    });
+  };
+  appendSliceIds(meshSlices);
+  appendSliceIds(lineSlices);
+  return ids;
+}
+
+function isExplodedInsertFragment(entity, slice) {
+  return selectionValue(entity, slice, "source_type") === "INSERT"
+    && selectionValue(entity, slice, "edit_mode") === "exploded"
+    && selectionValue(entity, slice, "proxy_kind") === "insert";
+}
+
+function buildHighlightInfo(entity, slice) {
+  const selectedId = parsePreviewInt(entity?.id ?? slice?.id);
+  const groupId = selectionGroupId(entity, slice);
+  const info = {
+    selectedId,
+    groupId,
+    visibleEntityIds: [],
+    siblingIds: [],
+    siblingIdSet: new Set(),
+    linkedInsertSelection: false,
+  };
+  if (selectedId === null || groupId === null || !isExplodedInsertFragment(entity, slice)) {
+    return info;
+  }
+  const instance = findSelectionInstance(entity, slice);
+  const groupEntityIds = collectGroupEntityIds(groupId, instance);
+  const visibleEntityIds = collectVisibleFragmentEntityIds();
+  info.visibleEntityIds = [...groupEntityIds].filter((id) => visibleEntityIds.has(id));
+  info.siblingIds = info.visibleEntityIds.filter((id) => id !== selectedId);
+  info.siblingIdSet = new Set(info.siblingIds);
+  info.linkedInsertSelection = true;
+  return info;
+}
+
+function refreshTextSiblingHighlights(highlightInfo, selectedEntryKey = null) {
+  highlightedTextSiblingKeys = new Set();
+  if (!highlightInfo?.siblingIdSet?.size) return;
+  textFiltered.forEach((entry) => {
+    const id = parsePreviewInt(entry?.id);
+    if (id === null || !highlightInfo.siblingIdSet.has(id)) return;
+    const key = entrySelectionKey(entry);
+    if (selectedEntryKey && key === selectedEntryKey) return;
+    highlightedTextSiblingKeys.add(key);
+  });
+}
+
+function applySelectionHighlights(highlightInfo, selectedObject = null, selectedEntryKey = null) {
+  clearFragmentHighlights();
+  currentHighlightInfo = highlightInfo;
+  if (activeScene) {
+    activeScene.traverse((child) => {
+      if (!child?.isMesh || !child.material) return;
+      const slices = Array.isArray(child.userData?.cadgfSlices) ? child.userData.cadgfSlices : [];
+      if (!Array.isArray(child.material) || slices.length === 0) {
+        const mode = child === selectedObject ? "selected" : null;
+        applyMeshMaterialHighlight(child.material, mode);
+        return;
+      }
+      child.material.forEach((material, index) => {
+        const slice = slices[index];
+        const entityId = parsePreviewInt(slice?.id);
+        let mode = null;
+        if (entityId !== null && highlightInfo?.selectedId === entityId) {
+          mode = "selected";
+        } else if (entityId !== null && highlightInfo?.siblingIdSet?.has(entityId)) {
+          mode = "sibling";
+        }
+        applyMeshMaterialHighlight(material, mode);
+      });
+    });
+  }
+  if (lineGroup?.children?.length) {
+    lineGroup.children.forEach((child) => {
+      const entityId = parsePreviewInt(child.userData?.cadgfSlice?.id ?? child.userData?.cadgfEntity?.id);
+      let mode = null;
+      if (entityId !== null && highlightInfo?.selectedId === entityId) {
+        mode = "selected";
+      } else if (entityId !== null && highlightInfo?.siblingIdSet?.has(entityId)) {
+        mode = "sibling";
+      } else if (entityId === null && child === selectedObject) {
+        mode = "selected";
+      }
+      applyLineMaterialHighlight(child.material, mode);
+    });
+  }
+  refreshTextSiblingHighlights(highlightInfo, selectedEntryKey);
+}
+
 function resetLineOverlay(keepSource = false) {
   if (!keepSource) {
     lineGeometryData = null;
@@ -505,8 +945,27 @@ function ingestDocumentData(doc) {
 
 function ingestMeshMetadata(meta) {
   meshMetadata = meta;
+  instanceIndex = new Map();
+  blockIndex = new Map();
   meshSlices = Array.isArray(meta?.entities) ? meta.entities : [];
   lineSlices = Array.isArray(meta?.line_entities) ? meta.line_entities : [];
+  if (Array.isArray(meta?.instances)) {
+    meta.instances.forEach((instance) => {
+      const groupId = parsePreviewInt(instance?.group_id);
+      if (groupId !== null) {
+        instanceIndex.set(groupId, instance);
+      }
+    });
+  }
+  if (Array.isArray(meta?.blocks)) {
+    meta.blocks.forEach((block) => {
+      const name = typeof block?.name === "string" ? block.name.trim() : "";
+      if (name) {
+        blockIndex.set(name, block);
+      }
+    });
+  }
+  updateDocumentMetaState();
 }
 
 function buildLayerInfoFromSlices() {
@@ -569,6 +1028,8 @@ function resetTextOverlay() {
   textLabels = [];
   textFiltered = [];
   textFilteredCount = 0;
+  selectedTextEntryKey = null;
+  highlightedTextSiblingKeys = new Set();
   if (textOverlayEl) {
     textOverlayEl.innerHTML = "";
   }
@@ -697,6 +1158,7 @@ function collectTextEntries() {
       id: entity.id,
       kind,
       value: textValue,
+      entity,
       position: new THREE.Vector3(posX, posY, 0),
       height: baseHeight,
       rotation,
@@ -704,7 +1166,8 @@ function collectTextEntries() {
       width: baseWidth,
       widthFactor,
       valign: Number.isFinite(entity.text_valign) ? entity.text_valign : null,
-      lines: textValue.split("\n").length || 1
+      lines: textValue.split("\n").length || 1,
+      screenBounds: null
     };
     if (useViewports && Number.isFinite(entity.space) && entity.space === 0) {
       viewports.forEach((vp) => {
@@ -742,6 +1205,9 @@ function buildTextOverlay(entries) {
     textOverlayEl.innerHTML = "";
   }
   textLabels = [];
+  entries.forEach((entry) => {
+    if (entry) entry.screenBounds = null;
+  });
 }
 
 function updateTextStats() {
@@ -810,6 +1276,7 @@ function updateTextOverlayPositions() {
   const width = canvas.clientWidth || window.innerWidth || 1;
   const height = canvas.clientHeight || window.innerHeight || 1;
   const margin = 0.02;
+  const textOnlyFallback = selectable.length === 0 && lineSlices.length === 0;
   if (!textCanvas) return;
   if (!textCanvasCtx) {
     textCanvasCtx = textCanvas.getContext("2d");
@@ -825,6 +1292,7 @@ function updateTextOverlayPositions() {
   textCanvasCtx.save();
   textCanvasCtx.textBaseline = "alphabetic";
   textFiltered.forEach((entry, idx) => {
+    entry.screenBounds = null;
     if (entry.clip) {
       if (entry.position.x < entry.clip.minX || entry.position.x > entry.clip.maxX ||
           entry.position.y < entry.clip.minY || entry.position.y > entry.clip.maxY) {
@@ -862,13 +1330,14 @@ function updateTextOverlayPositions() {
       upScreenY = y2 - y;
       size = Math.hypot(upScreenX, upScreenY);
     }
-    if (size < TEXT_MIN_SCREEN_PX) {
+    if (size < TEXT_MIN_SCREEN_PX && !textOnlyFallback) {
       return;
     }
     size = Math.min(TEXT_MAX_PX, Math.max(TEXT_MIN_PX, size));
 
     const fontFamily = "IBM Plex Mono, ui-monospace, monospace";
     textCanvasCtx.font = `${size.toFixed(2)}px ${fontFamily}`;
+    const measured = textCanvasCtx.measureText(entry.value || "");
 
     let widthPx = 0;
     let heightPx = 0;
@@ -886,7 +1355,6 @@ function updateTextOverlayPositions() {
       }
     }
     if (Number.isFinite(widthPx) && widthPx > 0) {
-      const measured = textCanvasCtx.measureText(entry.value || "");
       if (Number.isFinite(measured.width) && measured.width > 0) {
         const ratio = widthPx / measured.width;
         if (ratio > 0.25 && ratio < 4) {
@@ -910,6 +1378,15 @@ function updateTextOverlayPositions() {
         heightPx = dist;
       }
     }
+    if (textOnlyFallback) {
+      if (!Number.isFinite(widthPx) || widthPx <= 0 || widthPx < measured.width * 0.6) {
+        widthPx = Math.max(measured.width, 1);
+      }
+      const fallbackHeightPx = size * Math.max(1, entry.lines || 1) * TEXT_LINE_HEIGHT;
+      if (!Number.isFinite(heightPx) || heightPx <= 0 || heightPx < fallbackHeightPx * 0.6) {
+        heightPx = Math.max(fallbackHeightPx, 1);
+      }
+    }
     if (!Number.isFinite(widthPx) || widthPx <= 0) widthPx = 1;
     if (!Number.isFinite(heightPx) || heightPx <= 0) heightPx = 1;
 
@@ -924,9 +1401,39 @@ function updateTextOverlayPositions() {
         offsetX += (upScreenX / upLen) * shift;
       }
     }
+    const drawX = x + offsetX;
+    const drawY = y + offsetY;
+    entry.screenBounds = {
+      minX: drawX - 4,
+      minY: drawY - 4,
+      maxX: drawX + widthPx + 4,
+      maxY: drawY + heightPx + 4
+    };
     textCanvasCtx.fillStyle = (TEXT_STYLE_CLEAN && BG_BLACK) ? "#f5f5f5" : "#1e2329";
+    const isSelected = selectedTextEntryKey && selectedTextEntryKey === entrySelectionKey(entry);
+    const isSiblingHighlighted = highlightedTextSiblingKeys.has(entrySelectionKey(entry));
+    if (isSiblingHighlighted && !isSelected) {
+      textCanvasCtx.save();
+      textCanvasCtx.fillStyle = "rgba(47, 128, 237, 0.14)";
+      textCanvasCtx.strokeStyle = "rgba(47, 128, 237, 0.9)";
+      textCanvasCtx.lineWidth = 1.25;
+      textCanvasCtx.fillRect(entry.screenBounds.minX, entry.screenBounds.minY, widthPx + 8, heightPx + 8);
+      textCanvasCtx.strokeRect(entry.screenBounds.minX, entry.screenBounds.minY, widthPx + 8, heightPx + 8);
+      textCanvasCtx.restore();
+      textCanvasCtx.fillStyle = (TEXT_STYLE_CLEAN && BG_BLACK) ? "#f5f5f5" : "#1e2329";
+    }
+    if (isSelected) {
+      textCanvasCtx.save();
+      textCanvasCtx.fillStyle = "rgba(255, 139, 74, 0.16)";
+      textCanvasCtx.strokeStyle = "rgba(255, 139, 74, 0.85)";
+      textCanvasCtx.lineWidth = 1.5;
+      textCanvasCtx.fillRect(entry.screenBounds.minX, entry.screenBounds.minY, widthPx + 8, heightPx + 8);
+      textCanvasCtx.strokeRect(entry.screenBounds.minX, entry.screenBounds.minY, widthPx + 8, heightPx + 8);
+      textCanvasCtx.restore();
+      textCanvasCtx.fillStyle = (TEXT_STYLE_CLEAN && BG_BLACK) ? "#f5f5f5" : "#1e2329";
+    }
     textCanvasCtx.save();
-    textCanvasCtx.translate(x + offsetX, y + offsetY);
+    textCanvasCtx.translate(drawX, drawY);
     textCanvasCtx.rotate(rot);
     const lines = entry.value ? entry.value.split("\n") : [""];
     const lineHeight = size * TEXT_LINE_HEIGHT;
@@ -936,6 +1443,19 @@ function updateTextOverlayPositions() {
     textCanvasCtx.restore();
   });
   textCanvasCtx.restore();
+}
+
+function resolveTextEntryHit(localX, localY) {
+  if (!textOverlayEnabled || textFiltered.length === 0) return null;
+  for (let i = textFiltered.length - 1; i >= 0; i -= 1) {
+    const entry = textFiltered[i];
+    const bounds = entry?.screenBounds;
+    if (!bounds) continue;
+    if (localX >= bounds.minX && localX <= bounds.maxX && localY >= bounds.minY && localY <= bounds.maxY) {
+      return entry;
+    }
+  }
+  return null;
 }
 
 async function loadJson(url) {
@@ -1072,7 +1592,14 @@ async function loadManifestArtifacts(manifestUrl, manifest) {
     tasks.push(loadJson(metaUrl).then(ingestMeshMetadata));
   }
   if (tasks.length === 0) return;
-  await Promise.allSettled(tasks);
+  const results = await Promise.allSettled(tasks);
+  const rejected = results.find((one) => one && one.status === "rejected");
+  if (rejected?.reason) {
+    throw rejected.reason;
+  }
+  if (rejected) {
+    throw new Error("Manifest artifact loading failed.");
+  }
   buildLayerInfoFromSlices();
   renderLayerList();
   tryApplyMetadata();
@@ -1087,12 +1614,18 @@ async function loadFromManifest(manifestUrl, params) {
   }
   const manifest = await response.json();
   updateDocumentMeta(params, extractManifestMeta(manifest));
-  loadManifestArtifacts(manifestUrl, manifest).catch((error) => {
-    console.error(error);
-  });
+  await loadManifestArtifacts(manifestUrl, manifest);
   const gltfName = manifest?.artifacts?.mesh_gltf;
   if (!gltfName) {
-    throw new Error("Manifest missing artifacts.mesh_gltf.");
+    gltfUrlInput.value = "";
+    resetScene();
+    activeScene = new THREE.Group();
+    scene.add(activeScene);
+    rebuildSelectableObjects();
+    frameTextEntries();
+    updateCounts();
+    setStatus("Loaded document successfully.");
+    return;
   }
   const resolved = resolveUrl(manifestUrl, gltfName);
   gltfUrlInput.value = resolved;
@@ -1121,28 +1654,467 @@ function updateCounts() {
 }
 
 function clearSelection() {
-  if (!selected) return;
-  if (selected.userData.originalMaterial) {
+  if (selected?.userData?.originalMaterial) {
     selected.material = selected.userData.originalMaterial;
     selected.userData.originalMaterial = null;
   }
+  clearFragmentHighlights();
   selected = null;
-  selectionInfoEl.innerHTML = "<div class=\"selection__empty\">Click a surface to inspect.</div>";
+  selectedTextEntryKey = null;
+  selectionInfoEl.innerHTML = "<div class=\"selection__empty\">Click a surface or text label to inspect.</div>";
+}
+
+function selectionValue(entity, slice, key) {
+  const raw = entity?.[key] ?? slice?.[key];
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    return trimmed || null;
+  }
+  if (Number.isFinite(raw)) {
+    return String(raw);
+  }
+  return raw ?? null;
+}
+
+function pushSelectionRow(rows, label, value) {
+  if (value === null || value === undefined || value === "") return;
+  rows.push(`<div class="selection__row"><span>${label}</span><strong>${value}</strong></div>`);
+}
+
+function buildSelectionOrigin(entity, slice) {
+  const sourceType = selectionValue(entity, slice, "source_type");
+  const proxyKind = selectionValue(entity, slice, "proxy_kind");
+  const editMode = selectionValue(entity, slice, "edit_mode");
+  const parts = [];
+  if (sourceType && proxyKind) {
+    parts.push(`${sourceType}/${proxyKind}`);
+  } else if (sourceType) {
+    parts.push(sourceType);
+  }
+  if (editMode) {
+    parts.push(editMode);
+  }
+  return parts.join(" | ");
+}
+
+function selectionGroupId(entity, slice) {
+  return parsePreviewInt(entity?.group_id ?? slice?.group_id);
+}
+
+function findSelectionInstance(entity, slice) {
+  const groupId = selectionGroupId(entity, slice);
+  if (groupId !== null && instanceIndex.has(groupId)) {
+    return instanceIndex.get(groupId);
+  }
+  return null;
+}
+
+function findSelectionBlock(entity, slice, instance = null) {
+  const blockName = selectionValue(entity, slice, "block_name")
+    || (typeof instance?.block_name === "string" ? instance.block_name.trim() : "");
+  if (!blockName) return null;
+  return blockIndex.get(blockName) || null;
+}
+
+function formatInstanceSummary(instance) {
+  if (!instance || typeof instance !== "object") return null;
+  const blockName = typeof instance.block_name === "string" ? instance.block_name.trim() : "";
+  const groupId = parsePreviewInt(instance.group_id);
+  const docCount = parsePreviewInt(instance.document_entity_count);
+  const meshCount = parsePreviewInt(instance.mesh_entity_count);
+  const lineCount = parsePreviewInt(instance.line_entity_count);
+  const parts = [];
+  if (blockName) parts.push(blockName);
+  if (groupId !== null) parts.push(`group ${groupId}`);
+  if (docCount !== null) parts.push(`doc ${docCount}`);
+  if (meshCount !== null) parts.push(`mesh ${meshCount}`);
+  if (lineCount !== null) parts.push(`line ${lineCount}`);
+  return parts.length > 0 ? parts.join(" | ") : null;
+}
+
+function formatBlockSummary(block) {
+  if (!block || typeof block !== "object") return null;
+  const instanceCount = parsePreviewInt(block.instance_count);
+  const docCount = parsePreviewInt(block.document_entity_count);
+  const meshCount = parsePreviewInt(block.mesh_entity_count);
+  const lineCount = parsePreviewInt(block.line_entity_count);
+  const proxyCount = parsePreviewInt(block.proxy_entity_count);
+  const parts = [];
+  if (instanceCount !== null) parts.push(`instances ${instanceCount}`);
+  if (docCount !== null) parts.push(`doc ${docCount}`);
+  if (meshCount !== null) parts.push(`mesh ${meshCount}`);
+  if (lineCount !== null) parts.push(`line ${lineCount}`);
+  if (proxyCount !== null) parts.push(`proxy ${proxyCount}`);
+  return parts.length > 0 ? parts.join(" | ") : null;
+}
+
+function formatEntityIdList(values, maxItems = 8) {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  const ids = values.filter((value) => Number.isFinite(value)).map((value) => String(value));
+  if (ids.length === 0) return null;
+  if (ids.length <= maxItems) return ids.join(", ");
+  return `${ids.slice(0, maxItems).join(", ")} +${ids.length - maxItems} more`;
+}
+
+function formatEntityIdChips(values, navKind = "entity", maxItems = 8) {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  const ids = values
+    .filter((value) => Number.isFinite(value))
+    .map((value) => Number.parseInt(value, 10));
+  if (ids.length === 0) return null;
+  const visibleIds = ids.slice(0, maxItems);
+  const chips = visibleIds
+    .map((id) => `<button type="button" class="selection__chip" data-nav-kind="${navKind}" data-entity-id="${id}">${id}</button>`)
+    .join("");
+  if (ids.length <= maxItems) return chips;
+  return `${chips}<span class="selection__chip-more">+${ids.length - maxItems} more</span>`;
+}
+
+function pushHighlightSummary(rows, highlightInfo) {
+  if (!highlightInfo?.linkedInsertSelection) return;
+  rows.push(
+    `<div class="selection__row"><span>Highlighted Sibling Count</span><strong>${highlightInfo.siblingIds.length}</strong></div>`
+  );
+  const siblingChips = formatEntityIdChips(highlightInfo.siblingIds, "highlighted-sibling");
+  if (siblingChips) {
+    rows.push(`<div class="selection__row"><span>Highlighted Sibling IDs</span><strong class="selection__chips">${siblingChips}</strong></div>`);
+  }
+}
+
+function ensureNonZeroBox(box, padding = 0.5) {
+  if (!box || box.isEmpty()) return null;
+  const size = box.getSize(new THREE.Vector3());
+  if (size.lengthSq() > 0) return box;
+  box.expandByVector(new THREE.Vector3(padding, padding, padding));
+  return box;
+}
+
+function buildTextEntryBox(entry) {
+  if (!entry?.position) return null;
+  const width = estimateTextWidthWorld(entry);
+  const height = (entry.height > 0 ? entry.height : TEXT_DEFAULT_HEIGHT_WORLD) * Math.max(1, entry.lines || 1) * TEXT_LINE_HEIGHT;
+  const box = new THREE.Box3();
+  box.expandByPoint(entry.position);
+  box.expandByPoint(new THREE.Vector3(entry.position.x + width, entry.position.y + height, entry.position.z || 0));
+  return ensureNonZeroBox(box, Math.max(entry.height || TEXT_DEFAULT_HEIGHT_WORLD, 0.5));
+}
+
+function buildSliceBox(slice) {
+  if (!slice || !lineGeometryData?.positions || !lineGeometryData?.indices) return null;
+  if (!Number.isFinite(slice.index_offset) || !Number.isFinite(slice.index_count)) return null;
+  const box = new THREE.Box3();
+  const start = slice.index_offset;
+  const end = slice.index_offset + slice.index_count;
+  for (let i = start; i < end; i += 1) {
+    const index = lineGeometryData.indices[i];
+    if (!Number.isFinite(index)) continue;
+    const x = lineGeometryData.positions[index * 3];
+    const y = lineGeometryData.positions[index * 3 + 1];
+    const z = lineGeometryData.positions[index * 3 + 2];
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    box.expandByPoint(new THREE.Vector3(x, y, Number.isFinite(z) ? z : 0));
+  }
+  return ensureNonZeroBox(box, 0.5);
+}
+
+function buildSelectionTargetBox(target) {
+  if (!target) return null;
+  if (target.type === "text") {
+    return buildTextEntryBox(target.entry);
+  }
+  if (target.object) {
+    const objectBox = ensureNonZeroBox(new THREE.Box3().setFromObject(target.object), 0.5);
+    if (objectBox) return objectBox;
+  }
+  if (target.slice) {
+    return buildSliceBox(target.slice);
+  }
+  return null;
+}
+
+function selectionTargetEntityId(target) {
+  if (!target) return null;
+  return parsePreviewInt(target.entity?.id ?? target.slice?.id ?? target.entry?.id);
+}
+
+function snapshotFocusCameraState() {
+  return {
+    position: {
+      x: Number(camera.position.x.toFixed(4)),
+      y: Number(camera.position.y.toFixed(4)),
+      z: Number(camera.position.z.toFixed(4)),
+    },
+    target: {
+      x: Number(controls.target.x.toFixed(4)),
+      y: Number(controls.target.y.toFixed(4)),
+      z: Number(controls.target.z.toFixed(4)),
+    },
+    orthoHalfHeight: Number.isFinite(orthoHalfHeight) ? Number(orthoHalfHeight.toFixed(4)) : null,
+  };
+}
+
+function serializeFocusBox(box) {
+  if (!box || box.isEmpty()) return null;
+  const center = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  return {
+    min: {
+      x: Number(box.min.x.toFixed(4)),
+      y: Number(box.min.y.toFixed(4)),
+      z: Number(box.min.z.toFixed(4)),
+    },
+    max: {
+      x: Number(box.max.x.toFixed(4)),
+      y: Number(box.max.y.toFixed(4)),
+      z: Number(box.max.z.toFixed(4)),
+    },
+    center: {
+      x: Number(center.x.toFixed(4)),
+      y: Number(center.y.toFixed(4)),
+      z: Number(center.z.toFixed(4)),
+    },
+    size: {
+      x: Number(size.x.toFixed(4)),
+      y: Number(size.y.toFixed(4)),
+      z: Number(size.z.toFixed(4)),
+    },
+  };
+}
+
+function frameSelectionTargets(targets, navKind = "entity", options = {}) {
+  const normalizedTargets = Array.isArray(targets) ? targets.filter(Boolean) : [];
+  if (normalizedTargets.length === 0) return false;
+  let box = null;
+  for (const target of normalizedTargets) {
+    const targetBox = buildSelectionTargetBox(target);
+    if (!targetBox) continue;
+    if (!box) {
+      box = targetBox.clone();
+    } else {
+      box.union(targetBox);
+    }
+  }
+  if (!box) return false;
+  const focusBefore = snapshotFocusCameraState();
+  const anchor = new THREE.Object3D();
+  anchor.position.copy(box.getCenter(new THREE.Vector3()));
+  anchor.updateMatrixWorld(true);
+  frameScene(anchor, box);
+  const primaryTarget = options.primaryTarget || normalizedTargets[0];
+  const entity = primaryTarget?.entity ?? null;
+  const slice = primaryTarget?.slice ?? null;
+  const entry = primaryTarget?.entry ?? null;
+  const groupMemberIds = Array.isArray(options.groupMemberIds)
+    ? options.groupMemberIds.filter((value) => Number.isFinite(value)).map((value) => Number.parseInt(value, 10))
+    : null;
+  lastFocusState = {
+    navKind,
+    targetType: options.targetType || primaryTarget?.type || "object",
+    entityId: Number.isFinite(options.entityId) ? Number.parseInt(options.entityId, 10) : selectionTargetEntityId(primaryTarget),
+    groupId: Number.isFinite(options.groupId) ? Number.parseInt(options.groupId, 10) : selectionGroupId(entity, slice),
+    groupMemberIds,
+    box: serializeFocusBox(box),
+    cameraBefore: focusBefore,
+    cameraAfter: snapshotFocusCameraState(),
+  };
+  return true;
+}
+
+function frameSelectionTarget(target, navKind = "entity") {
+  if (!target) return false;
+  return frameSelectionTargets([target], navKind, { primaryTarget: target });
+}
+
+function resolveSelectionTargetByEntityId(entityId) {
+  const normalizedId = parsePreviewInt(entityId);
+  if (normalizedId === null) return null;
+
+  if (lineGroup?.children?.length) {
+    for (const child of lineGroup.children) {
+      if (!child || child.visible === false) continue;
+      const id = parsePreviewInt(child.userData?.cadgfSlice?.id ?? child.userData?.cadgfEntity?.id);
+      if (id === normalizedId) {
+        return {
+          type: "object",
+          object: child,
+          entity: child.userData?.cadgfEntity ?? entityIndex.get(normalizedId) ?? null,
+          slice: child.userData?.cadgfSlice ?? null,
+        };
+      }
+    }
+  }
+
+  let meshTarget = null;
+  if (activeScene) {
+    activeScene.traverse((child) => {
+      if (meshTarget || !child?.isMesh || child.visible === false) return;
+      const slices = Array.isArray(child.userData?.cadgfSlices) ? child.userData.cadgfSlices : [];
+      const targetSlice = slices.find((slice) => parsePreviewInt(slice?.id) === normalizedId) || null;
+      if (!targetSlice) return;
+      meshTarget = {
+        type: "object",
+        object: child,
+        entity: entityIndex.get(normalizedId) || null,
+        slice: targetSlice,
+      };
+    });
+  }
+  if (meshTarget) return meshTarget;
+
+  const textEntry = textFiltered.find((entry) => parsePreviewInt(entry?.id) === normalizedId)
+    || textEntries.find((entry) => parsePreviewInt(entry?.id) === normalizedId);
+  if (textEntry) {
+    return { type: "text", entry: textEntry };
+  }
+  return null;
+}
+
+function getCurrentSelectionEntityId() {
+  if (!selected) return null;
+  if (selected?.isMesh) {
+    return parsePreviewInt(selected.userData?.cadgfEntity?.id ?? selected.userData?.cadgfSlice?.id);
+  }
+  return parsePreviewInt(selected?.entity?.id ?? selected?.id);
+}
+
+function resolveSelectionTargetsByGroupId(groupId) {
+  const normalizedGroupId = parsePreviewInt(groupId);
+  if (normalizedGroupId === null) return [];
+  const instance = instanceIndex.get(normalizedGroupId);
+  const uniqueIds = instance && Array.isArray(instance.entity_ids)
+    ? [...new Set(
+      instance.entity_ids
+        .map((value) => parsePreviewInt(value))
+        .filter((value) => value !== null)
+    )]
+    : [...collectGroupEntityIds(normalizedGroupId, instance)].sort((a, b) => a - b);
+  return uniqueIds
+    .map((entityId) => resolveSelectionTargetByEntityId(entityId))
+    .filter(Boolean);
+}
+
+function focusSelectionEntityId(entityId, navKind = "entity") {
+  const target = resolveSelectionTargetByEntityId(entityId);
+  if (!target) return false;
+  if (target.type === "text") {
+    setSelectionTextEntry(target.entry);
+    frameSelectionTarget(target, navKind);
+    return true;
+  }
+  target.object.userData.cadgfEntity = target.entity;
+  target.object.userData.cadgfSlice = target.slice;
+  setSelection(target.object);
+  frameSelectionTarget(target, navKind);
+  return true;
+}
+
+function focusSelectionGroupId(groupId, navKind = "group") {
+  const normalizedGroupId = parsePreviewInt(groupId);
+  if (normalizedGroupId === null) return false;
+  const targets = resolveSelectionTargetsByGroupId(normalizedGroupId);
+  if (targets.length === 0) return false;
+  const currentEntityId = getCurrentSelectionEntityId();
+  const primaryTarget = targets.find((target) => selectionTargetEntityId(target) === currentEntityId) || targets[0];
+  if (primaryTarget.type === "text") {
+    setSelectionTextEntry(primaryTarget.entry);
+  } else {
+    primaryTarget.object.userData.cadgfEntity = primaryTarget.entity;
+    primaryTarget.object.userData.cadgfSlice = primaryTarget.slice;
+    setSelection(primaryTarget.object);
+  }
+  const groupMemberIds = targets
+    .map((target) => selectionTargetEntityId(target))
+    .filter((value) => value !== null);
+  return frameSelectionTargets(targets, navKind, {
+    primaryTarget,
+    targetType: "group",
+    entityId: selectionTargetEntityId(primaryTarget),
+    groupId: normalizedGroupId,
+    groupMemberIds,
+  });
+}
+
+function pushSelectionDetails(rows, entity, slice) {
+  if (!entity && !slice) return;
+  const entityId = entity?.id ?? slice?.id;
+  const layerId = Number.isFinite(entity?.layer_id) ? entity.layer_id : slice?.layer_id;
+  const groupId = selectionGroupId(entity, slice);
+  const instance = findSelectionInstance(entity, slice);
+  const block = findSelectionBlock(entity, slice, instance);
+  if (Number.isFinite(entityId)) {
+    rows.push(`<div class="selection__row"><span>Entity ID</span><strong>${entityId}</strong></div>`);
+  }
+  if (entity?.name) {
+    rows.push(`<div class="selection__row"><span>Entity Name</span><strong>${entity.name}</strong></div>`);
+  }
+  if (Number.isFinite(layerId)) {
+    rows.push(`<div class="selection__row"><span>Layer ID</span><strong>${layerId}</strong></div>`);
+  }
+  const layerName = (Number.isFinite(layerId) && layerNames.get(layerId)) || slice?.layer_name;
+  if (layerName) {
+    rows.push(`<div class="selection__row"><span>Layer Name</span><strong>${layerName}</strong></div>`);
+  }
+  if (groupId !== null) {
+    rows.push(
+      `<div class="selection__row"><span>Group ID</span><strong class="selection__chips"><button type="button" class="selection__chip" data-nav-kind="group" data-group-id="${groupId}">${groupId}</button></strong></div>`
+    );
+  }
+  pushSelectionRow(rows, "Instance Summary", formatInstanceSummary(instance));
+  const instanceEntityCount = Array.isArray(instance?.entity_ids) ? instance.entity_ids.filter((value) => Number.isFinite(value)).length : null;
+  if (instanceEntityCount !== null) {
+    rows.push(`<div class="selection__row"><span>Instance Fragment Count</span><strong>${instanceEntityCount}</strong></div>`);
+  }
+  pushSelectionRow(rows, "Instance Entity IDs", formatEntityIdList(instance?.entity_ids));
+  const instanceMemberChips = formatEntityIdChips(instance?.entity_ids, "instance-member");
+  if (instanceMemberChips) {
+    rows.push(`<div class="selection__row"><span>Instance Member IDs</span><strong class="selection__chips">${instanceMemberChips}</strong></div>`);
+  }
+  pushSelectionRow(rows, "Block Summary", formatBlockSummary(block));
+  const blockInstanceCount = parsePreviewInt(block?.instance_count);
+  if (blockInstanceCount !== null) {
+    rows.push(`<div class="selection__row"><span>Block Instance Count</span><strong>${blockInstanceCount}</strong></div>`);
+  }
+  const colorSource = entity?.color_source ?? slice?.color_source;
+  if (colorSource) {
+    rows.push(`<div class="selection__row"><span>Color Source</span><strong>${colorSource}</strong></div>`);
+  }
+  const colorAci = Number.isFinite(entity?.color_aci) ? entity.color_aci : slice?.color_aci;
+  if (Number.isFinite(colorAci)) {
+    rows.push(`<div class="selection__row"><span>Color ACI</span><strong>${colorAci}</strong></div>`);
+  }
+  if (entity || slice || layerId != null) {
+    const fallbackLayerColor = Number.isFinite(slice?.layer_color) ? slice.layer_color : null;
+    const resolved = resolveEntityColor(entity ?? slice ?? {}, layerId, fallbackLayerColor);
+    rows.push(`<div class="selection__row"><span>Resolved Color</span><strong>${colorIntToHex(resolved)}</strong></div>`);
+  }
+  pushSelectionRow(rows, "Line Type", selectionValue(entity, slice, "line_type"));
+  pushSelectionRow(rows, "Line Weight", selectionValue(entity, slice, "line_weight"));
+  pushSelectionRow(rows, "Line Type Scale", selectionValue(entity, slice, "line_type_scale"));
+  const origin = buildSelectionOrigin(entity, slice);
+  pushSelectionRow(rows, "Origin", origin);
+  const editMode = selectionValue(entity, slice, "edit_mode");
+  if (editMode === "proxy") {
+    rows.push("<div class=\"selection__note\">Derived proxy from DWG/DXF source; preview only.</div>");
+  } else if (editMode === "exploded") {
+    rows.push("<div class=\"selection__note\">Exploded source fragment; provenance retained in metadata.</div>");
+  }
+  pushSelectionRow(rows, "Block Name", selectionValue(entity, slice, "block_name"));
+  pushSelectionRow(rows, "Hatch ID", selectionValue(entity, slice, "hatch_id"));
+  pushSelectionRow(rows, "Hatch Pattern", selectionValue(entity, slice, "hatch_pattern"));
+  pushSelectionRow(rows, "Text Kind", selectionValue(entity, slice, "text_kind"));
+  pushSelectionRow(rows, "Dim Type", selectionValue(entity, slice, "dim_type"));
+  pushSelectionRow(rows, "Dim Style", selectionValue(entity, slice, "dim_style"));
+  pushSelectionRow(rows, "Space", selectionValue(entity, slice, "space"));
+  pushSelectionRow(rows, "Layout", selectionValue(entity, slice, "layout") ?? selectionValue(entity, slice, "layout_name"));
 }
 
 function setSelection(mesh) {
   clearSelection();
   selected = mesh;
-  selected.userData.originalMaterial = mesh.material;
-  if (Array.isArray(mesh.material)) {
-    mesh.material = mesh.material.map((mat) => mat.clone());
-    mesh.material.forEach((mat) => mat.color?.set("#ff8b4a"));
-  } else if (mesh.material) {
-    mesh.material = mesh.material.clone();
-    if (mesh.material.color) {
-      mesh.material.color.set("#ff8b4a");
-    }
-  }
+  const entity = mesh?.userData?.cadgfEntity ?? null;
+  const slice = mesh?.userData?.cadgfSlice ?? null;
+  const highlightInfo = buildHighlightInfo(entity, slice);
+  applySelectionHighlights(highlightInfo, mesh, null);
 
   const geometry = mesh.geometry;
   const verts = geometry?.attributes?.position?.count ?? 0;
@@ -1153,41 +2125,62 @@ function setSelection(mesh) {
     `<div class="selection__row"><span>Triangles</span><strong>${Math.round(tris)}</strong></div>`
   ];
 
-  const entity = mesh?.userData?.cadgfEntity;
-  const slice = mesh?.userData?.cadgfSlice;
-  if (entity || slice) {
-    const entityId = entity?.id ?? slice?.id;
-    const layerId = Number.isFinite(entity?.layer_id) ? entity.layer_id : slice?.layer_id;
-    if (Number.isFinite(entityId)) {
-      rows.push(`<div class="selection__row"><span>Entity ID</span><strong>${entityId}</strong></div>`);
-    }
-    if (entity?.name) {
-      rows.push(`<div class="selection__row"><span>Entity Name</span><strong>${entity.name}</strong></div>`);
-    }
-    if (Number.isFinite(layerId)) {
-      rows.push(`<div class="selection__row"><span>Layer ID</span><strong>${layerId}</strong></div>`);
-    }
-    const layerName = (Number.isFinite(layerId) && layerNames.get(layerId)) || slice?.layer_name;
-    if (layerName) {
-      rows.push(`<div class="selection__row"><span>Layer Name</span><strong>${layerName}</strong></div>`);
-    }
-    const colorSource = entity?.color_source ?? slice?.color_source;
-    if (colorSource) {
-      rows.push(`<div class="selection__row"><span>Color Source</span><strong>${colorSource}</strong></div>`);
-    }
-    const colorAci = Number.isFinite(entity?.color_aci) ? entity.color_aci : slice?.color_aci;
-    if (Number.isFinite(colorAci)) {
-      rows.push(`<div class="selection__row"><span>Color ACI</span><strong>${colorAci}</strong></div>`);
-    }
-    if (entity || slice || layerId != null) {
-      const fallbackLayerColor = Number.isFinite(slice?.layer_color) ? slice.layer_color : null;
-      const resolved = resolveEntityColor(entity ?? slice ?? {}, layerId, fallbackLayerColor);
-      rows.push(`<div class="selection__row"><span>Resolved Color</span><strong>${colorIntToHex(resolved)}</strong></div>`);
-    }
-  }
-
+  pushHighlightSummary(rows, highlightInfo);
+  pushSelectionDetails(rows, entity, slice);
   selectionInfoEl.innerHTML = rows.join("");
 }
+
+function entrySelectionKey(entry) {
+  if (!entry) return "";
+  const x = Number.isFinite(entry.position?.x) ? entry.position.x.toFixed(4) : "na";
+  const y = Number.isFinite(entry.position?.y) ? entry.position.y.toFixed(4) : "na";
+  const clip = entry.clip
+    ? `${entry.clip.minX.toFixed(3)}:${entry.clip.minY.toFixed(3)}:${entry.clip.maxX.toFixed(3)}:${entry.clip.maxY.toFixed(3)}`
+    : "none";
+  return `${entry.id ?? "na"}:${entry.kind ?? "text"}:${x}:${y}:${clip}`;
+}
+
+function setSelectionTextEntry(entry) {
+  clearSelection();
+  if (!entry) return;
+  selected = entry;
+  selectedTextEntryKey = entrySelectionKey(entry);
+  const entity = entry.entity ?? entityIndex.get(entry.id) ?? null;
+  const highlightInfo = buildHighlightInfo(entity, null);
+  applySelectionHighlights(highlightInfo, null, selectedTextEntryKey);
+  const rows = [
+    `<div class="selection__row"><span>Name</span><strong>${entity?.name || `text_${entry.id ?? "entry"}`}</strong></div>`,
+    `<div class="selection__row"><span>Value</span><strong>${entry.value || ""}</strong></div>`,
+    `<div class="selection__row"><span>Kind</span><strong>${entry.kind || "text"}</strong></div>`
+  ];
+  if (Number.isFinite(entry.height) && entry.height > 0) {
+    rows.push(`<div class="selection__row"><span>Height</span><strong>${entry.height.toFixed(3)}</strong></div>`);
+  }
+  pushHighlightSummary(rows, highlightInfo);
+  pushSelectionDetails(rows, entity, null);
+  selectionInfoEl.innerHTML = rows.join("");
+}
+
+selectionInfoEl?.addEventListener("click", (event) => {
+  const groupButton = event.target instanceof HTMLElement
+    ? event.target.closest("[data-group-id]")
+    : null;
+  if (groupButton) {
+    const groupId = Number.parseInt(groupButton.getAttribute("data-group-id") || "", 10);
+    if (!Number.isFinite(groupId)) return;
+    const navKind = groupButton.getAttribute("data-nav-kind") || "group";
+    focusSelectionGroupId(groupId, navKind);
+    return;
+  }
+  const button = event.target instanceof HTMLElement
+    ? event.target.closest("[data-entity-id]")
+    : null;
+  if (!button) return;
+  const entityId = Number.parseInt(button.getAttribute("data-entity-id") || "", 10);
+  if (!Number.isFinite(entityId)) return;
+  const navKind = button.getAttribute("data-nav-kind") || "entity";
+  focusSelectionEntityId(entityId, navKind);
+});
 
 function resetScene() {
   if (activeScene) {
@@ -1209,6 +2202,7 @@ function resetScene() {
   annotationListEl.innerHTML = "";
   selectable = [];
   activeScene = null;
+  lastFocusState = null;
   clearSelection();
   updateCounts();
 }
@@ -1241,6 +2235,7 @@ function applyEntityMaterials(mesh) {
       roughness: 0.7,
       wireframe: RENDER_WIREFRAME
     });
+    captureMeshMaterialBase(material);
     materials.push(material);
     geometry.addGroup(slice.index_offset, slice.index_count, materials.length - 1);
   });
@@ -1346,8 +2341,12 @@ function buildLineOverlay() {
       material.dashScale = 1;
     }
     material.resolution.set(width, height);
+    captureLineMaterialBase(material);
     lineMaterials.push(material);
     const line = new LineSegments2Ref(geometry, material);
+    line.name = slice?.name || `line_${slice?.id ?? lineGroup.children.length + 1}`;
+    line.userData.cadgfSlice = slice;
+    line.userData.cadgfEntity = entity;
     line.computeLineDistances();
     lineGroup.add(line);
   };
@@ -1372,6 +2371,7 @@ function buildLineOverlay() {
   });
   if (lineGroup.children.length > 0) {
     activeScene.add(lineGroup);
+    rebuildSelectableObjects();
     if (lineSource) {
       lineSource.visible = false;
     }
@@ -1400,6 +2400,7 @@ function tryApplyMetadata() {
     lineSlices = meshSlices;
   }
   buildLineOverlay();
+  rebuildSelectableObjects();
   metadataApplied = true;
 }
 
@@ -1416,6 +2417,11 @@ function applyRenderOverrides(mesh) {
 
 function resolveEntityFromHit(hit) {
   if (!hit || !hit.object) return null;
+  const directSlice = hit.object.userData?.cadgfSlice;
+  if (directSlice && typeof directSlice === "object") {
+    const directEntity = hit.object.userData?.cadgfEntity ?? entityIndex.get(directSlice.id) ?? null;
+    return { entity: directEntity, slice: directSlice };
+  }
   const slices = hit.object.userData?.cadgfSlices;
   if (!Array.isArray(slices) || !Number.isFinite(hit.faceIndex)) return null;
   const indexStart = hit.faceIndex * 3;
@@ -1430,10 +2436,34 @@ function resolveEntityFromHit(hit) {
   return { entity, slice };
 }
 
-function frameScene(object) {
-  const box = new THREE.Box3().setFromObject(object);
+function frameTextEntries() {
+  if (!textEntries.length) return;
+  const box = new THREE.Box3();
+  let hasBounds = false;
+  textEntries.forEach((entry) => {
+    if (!entry?.position) return;
+    const width = estimateTextWidthWorld(entry);
+    const height = (entry.height > 0 ? entry.height : TEXT_DEFAULT_HEIGHT_WORLD) * Math.max(1, entry.lines || 1) * TEXT_LINE_HEIGHT;
+    box.expandByPoint(entry.position);
+    box.expandByPoint(new THREE.Vector3(entry.position.x + width, entry.position.y + height, entry.position.z || 0));
+    hasBounds = true;
+  });
+  if (!hasBounds) return;
   const sizeVec = box.getSize(new THREE.Vector3());
-  const size = sizeVec.length();
+  if (sizeVec.lengthSq() === 0) {
+    box.expandByPoint(box.min.clone().addScalar(1));
+  }
+  const anchor = new THREE.Object3D();
+  const center = box.getCenter(new THREE.Vector3());
+  anchor.position.copy(center);
+  anchor.updateMatrixWorld(true);
+  frameScene(anchor, box);
+}
+
+function frameScene(object, providedBox = null) {
+  const box = providedBox ?? new THREE.Box3().setFromObject(object);
+  const sizeVec = box.getSize(new THREE.Vector3());
+  const size = Math.max(sizeVec.length(), 1);
   const center = box.getCenter(new THREE.Vector3());
   controls.reset();
   controls.target.copy(center);
@@ -1478,10 +2508,8 @@ function loadScene(url) {
     (gltf) => {
       activeScene = gltf.scene;
       scene.add(activeScene);
-      selectable = [];
       activeScene.traverse((child) => {
         if (child.isMesh) {
-          selectable.push(child);
           child.castShadow = true;
           child.receiveShadow = true;
           applyRenderOverrides(child);
@@ -1493,6 +2521,7 @@ function loadScene(url) {
           captureLineGeometry(child);
         }
       });
+      rebuildSelectableObjects();
       frameScene(activeScene);
       updateCounts();
       tryApplyMetadata();
@@ -1540,12 +2569,19 @@ function renderAnnotationList() {
 
 function onPointerDown(event) {
   const rect = canvas.getBoundingClientRect();
-  pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-  pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+  const localX = event.clientX - rect.left;
+  const localY = event.clientY - rect.top;
+  pointer.x = (localX / rect.width) * 2 - 1;
+  pointer.y = -(localY / rect.height) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
 
   const hits = raycaster.intersectObjects(selectable, true);
   if (hits.length === 0) {
+    const textHit = resolveTextEntryHit(localX, localY);
+    if (textHit) {
+      setSelectionTextEntry(textHit);
+      return;
+    }
     clearSelection();
     return;
   }
@@ -1637,7 +2673,9 @@ async function bootstrapScene() {
       return;
     } catch (error) {
       console.error(error);
+      gltfUrlInput.value = "";
       setStatus("Failed to load manifest.", true);
+      return;
     }
   }
   if (gltfParam) {

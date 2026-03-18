@@ -212,6 +212,45 @@ input[type="text"] {
   margin-bottom: 4px;
 }
 
+.selection__chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 55%;
+}
+
+.selection__chip {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.82);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.selection__chip:hover {
+  border-color: rgba(255, 139, 74, 0.45);
+  background: rgba(255, 139, 74, 0.12);
+}
+
+.selection__chip-more {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  align-self: center;
+}
+
+.selection__note {
+  margin: 6px 0;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: rgba(255, 139, 74, 0.12);
+  color: #8a4b1f;
+  font-size: 0.75rem;
+}
+
 .hint {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -590,6 +629,634 @@ body.text-overlay-clean.is-bg-black .text-label {
   accent-color: var(--accent);
 }
 
+.cad-readonly-note {
+  font-size: 0.76rem;
+  color: #8a4b1f;
+  background: rgba(255, 139, 74, 0.12);
+  border: 1px solid rgba(214, 95, 32, 0.24);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.cad-readonly-meta {
+  font-size: 0.75rem;
+  color: #5c4938;
+  padding: 2px 2px 0;
+}
+
+.cad-solver-panels {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.cad-solver-actions-bar {
+  padding: 0 10px 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cad-solver-actions-bar__button {
+  appearance: none;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 999px;
+  background: #fff;
+  color: #1f2937;
+  padding: 6px 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cad-solver-actions-bar__button:hover:not(:disabled) {
+  background: #eef6ff;
+  border-color: rgba(37, 99, 235, 0.24);
+}
+
+.cad-solver-actions-bar__button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.cad-solver-flow-banner {
+  padding: 0 10px 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.cad-solver-flow-banner__empty {
+  font-size: 0.76rem;
+  color: #5d6778;
+  padding: 2px 0;
+}
+
+.cad-solver-flow-banner__header,
+.cad-solver-flow-banner__recent,
+.cad-solver-flow-banner__info-grid,
+.cad-solver-flow-banner__controls {
+  border: 1px solid rgba(23, 31, 48, 0.12);
+  border-radius: 10px;
+  background: rgba(247, 249, 253, 0.94);
+}
+
+.cad-solver-flow-banner__header {
+  padding: 9px 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.cad-solver-flow-banner__title-wrap {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.cad-solver-flow-banner__title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.cad-solver-flow-banner__subtitle {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: #5d6778;
+  word-break: break-word;
+}
+
+.cad-solver-flow-banner__badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cad-solver-flow-banner__badge.is-warning {
+  background: rgba(255, 139, 74, 0.18);
+  color: #8a4b1f;
+}
+
+.cad-solver-flow-banner__badge.is-notice {
+  background: rgba(88, 101, 242, 0.12);
+  color: #3949ab;
+}
+
+.cad-solver-flow-banner__badge.is-info {
+  background: rgba(15, 118, 110, 0.14);
+  color: #0f766e;
+}
+
+.cad-solver-flow-banner__badge.is-neutral {
+  background: rgba(148, 163, 184, 0.16);
+  color: #475569;
+}
+
+.cad-solver-flow-banner__description {
+  font-size: 0.74rem;
+  color: #465164;
+  padding: 0 2px;
+}
+
+.cad-solver-flow-banner__info-grid {
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.cad-solver-flow-banner__info {
+  display: grid;
+  gap: 2px;
+}
+
+.cad-solver-flow-banner__info.is-actionable {
+  appearance: none;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  padding: 7px 8px;
+  text-align: left;
+}
+
+.cad-solver-flow-banner__info.is-actionable:hover {
+  background: #eef6ff;
+  border-color: rgba(37, 99, 235, 0.24);
+}
+
+.cad-solver-flow-banner__info.is-actionable:focus-visible {
+  outline: 2px solid rgba(37, 99, 235, 0.32);
+  outline-offset: 2px;
+}
+
+.cad-solver-flow-banner__info-label,
+.cad-solver-flow-banner__recent-label {
+  font-size: 0.68rem;
+  color: #5d6778;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cad-solver-flow-banner__info-value {
+  font-size: 0.74rem;
+  color: #324056;
+  word-break: break-word;
+}
+
+.cad-solver-flow-banner__controls {
+  padding: 8px 10px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.cad-solver-flow-banner__steps {
+  padding: 8px 10px 0;
+  display: grid;
+  gap: 6px;
+}
+
+.cad-solver-flow-banner__step-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cad-solver-flow-banner__button,
+.cad-solver-flow-banner__recent-button,
+.cad-solver-flow-banner__step {
+  appearance: none;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 999px;
+  background: #fff;
+  color: #1f2937;
+  padding: 5px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cad-solver-flow-banner__button:hover:not(:disabled),
+.cad-solver-flow-banner__recent-button.is-actionable:hover,
+.cad-solver-flow-banner__step:hover {
+  background: #eef6ff;
+  border-color: rgba(37, 99, 235, 0.24);
+}
+
+.cad-solver-flow-banner__button:disabled,
+.cad-solver-flow-banner__step:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.cad-solver-flow-banner__step {
+  text-align: left;
+  font-weight: 600;
+  max-width: 100%;
+}
+
+.cad-solver-flow-banner__step.is-active {
+  background: #e0efff;
+  border-color: rgba(37, 99, 235, 0.34);
+  color: #0f3b91;
+}
+
+.cad-solver-flow-banner__recent {
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.cad-solver-flow-banner__recent-button {
+  text-align: left;
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+.cad-solver-flow-console {
+  padding: 0 10px 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.cad-solver-flow-console__empty {
+  font-size: 0.76rem;
+  color: #5d6778;
+  padding: 2px 0;
+}
+
+.cad-solver-flow-console__metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.cad-solver-flow-console__metric,
+.cad-solver-flow-console__card,
+.cad-solver-flow-console__recent {
+  border: 1px solid rgba(23, 31, 48, 0.12);
+  border-radius: 10px;
+  background: rgba(247, 249, 253, 0.9);
+}
+
+.cad-solver-flow-console__metric {
+  padding: 8px 10px;
+  display: grid;
+  gap: 2px;
+}
+
+.cad-solver-flow-console__metric-label,
+.cad-solver-flow-console__info-label,
+.cad-solver-flow-console__recent-label {
+  font-size: 0.68rem;
+  color: #5d6778;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cad-solver-flow-console__metric-value {
+  font-size: 0.82rem;
+  color: #1f2937;
+}
+
+.cad-solver-flow-console__card,
+.cad-solver-flow-console__recent {
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.cad-solver-flow-console__card[data-kind="active"] {
+  border-color: rgba(15, 118, 110, 0.18);
+  background: rgba(15, 118, 110, 0.06);
+}
+
+.cad-solver-flow-console__card[data-kind="request"] {
+  border-color: rgba(37, 99, 235, 0.18);
+  background: rgba(238, 246, 255, 0.9);
+}
+
+.cad-solver-flow-console__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cad-solver-flow-console__control {
+  appearance: none;
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  border-radius: 999px;
+  background: #fff;
+  color: #1f2937;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  padding: 7px 10px;
+}
+
+.cad-solver-flow-console__control:hover:not(:disabled) {
+  background: #eef6ff;
+  border-color: rgba(37, 99, 235, 0.24);
+}
+
+.cad-solver-flow-console__control:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.cad-solver-flow-console__info {
+  display: grid;
+  gap: 1px;
+}
+
+.cad-solver-flow-console__info-action {
+  appearance: none;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  display: grid;
+  gap: 1px;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.cad-solver-flow-console__info-action:hover:not(:disabled) {
+  background: #eef6ff;
+  border-color: rgba(37, 99, 235, 0.24);
+}
+
+.cad-solver-flow-console__info-action:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.cad-solver-flow-console__info-value,
+.cad-solver-flow-console__recent-item {
+  font-size: 0.74rem;
+  color: #324056;
+  word-break: break-word;
+}
+
+.cad-solver-flow-console__recent-item.is-actionable {
+  appearance: none;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 8px;
+  background: #fff;
+  text-align: left;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.cad-solver-flow-console__recent-item.is-actionable:hover {
+  background: #eef6ff;
+  border-color: rgba(37, 99, 235, 0.24);
+}
+
+.cad-solver-flow-console__recent-item.is-selected {
+  background: #dbeafe;
+  border-color: rgba(37, 99, 235, 0.44);
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.18);
+  color: #163253;
+}
+
+.cad-solver-panel__empty {
+  font-size: 0.76rem;
+  color: #5d6778;
+  padding: 2px 0;
+}
+
+.cad-solver-panel__focus {
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: 10px;
+  background: rgba(15, 118, 110, 0.08);
+  padding: 8px 10px;
+  display: grid;
+  gap: 3px;
+}
+
+.cad-solver-panel__focus-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #0f766e;
+}
+
+.cad-solver-panel__focus-body {
+  font-size: 0.72rem;
+  color: #36526a;
+}
+
+.cad-solver-panel__flow {
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 10px;
+  background: rgba(238, 246, 255, 0.9);
+  padding: 8px 10px;
+  display: grid;
+  gap: 3px;
+}
+
+.cad-solver-panel__flow-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+.cad-solver-panel__flow-body {
+  font-size: 0.72rem;
+  color: #36526a;
+}
+
+.cad-solver-panel {
+  border: 1px solid rgba(23, 31, 48, 0.12);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(247, 249, 253, 0.95), rgba(255, 255, 255, 1));
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.cad-solver-panel.is-active {
+  border-color: rgba(15, 118, 110, 0.4);
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.08);
+}
+
+.cad-solver-panel:focus-visible {
+  outline: none;
+  border-color: rgba(37, 99, 235, 0.42);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16);
+}
+
+.cad-solver-panel.is-disabled {
+  opacity: 0.65;
+}
+
+.cad-solver-panel__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.cad-solver-panel__title-wrap {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.cad-solver-panel__title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+.cad-solver-panel__subtitle {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  color: #5d6778;
+  word-break: break-word;
+}
+
+.cad-solver-panel__badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cad-solver-panel__badge.is-warning {
+  background: rgba(255, 139, 74, 0.18);
+  color: #8a4b1f;
+}
+
+.cad-solver-panel__badge.is-notice {
+  background: rgba(88, 101, 242, 0.12);
+  color: #3949ab;
+}
+
+.cad-solver-panel__badge.is-info {
+  background: rgba(15, 118, 110, 0.14);
+  color: #0f766e;
+}
+
+.cad-solver-panel__badge.is-neutral {
+  background: rgba(148, 163, 184, 0.16);
+  color: #475569;
+}
+
+.cad-solver-panel__description,
+.cad-solver-panel__meta,
+.cad-solver-panel__chip-label {
+  font-size: 0.74rem;
+  color: #465164;
+}
+
+.cad-solver-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.cad-solver-panel__chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(23, 31, 48, 0.12);
+  border-radius: 999px;
+  background: rgba(247, 249, 253, 0.9);
+  padding: 2px 8px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  color: #324056;
+}
+
+.cad-solver-panel__chip.is-actionable {
+  appearance: none;
+  cursor: pointer;
+}
+
+.cad-solver-panel__chip.is-actionable:hover {
+  border-color: rgba(37, 99, 235, 0.24);
+  background: rgba(238, 246, 255, 0.96);
+}
+
+.cad-solver-panel__chip.is-active {
+  background: rgba(15, 118, 110, 0.14);
+  border-color: rgba(15, 118, 110, 0.34);
+  color: #0f766e;
+}
+
+.cad-solver-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.cad-solver-panel__flow-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.cad-solver-panel__cta {
+  appearance: none;
+  border: 1px solid rgba(23, 31, 48, 0.14);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #1f2937;
+  padding: 5px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cad-solver-panel__cta:hover:not(:disabled) {
+  background: #eef6ff;
+  border-color: rgba(37, 99, 235, 0.24);
+}
+
+.cad-solver-panel__cta.is-active {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #fff;
+}
+
+.cad-solver-panel__cta:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.cad-solver-panel__flow-button {
+  appearance: none;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 999px;
+  background: #fff;
+  color: #1f2937;
+  padding: 5px 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cad-solver-panel__flow-button:hover:not(:disabled) {
+  background: #eef6ff;
+  border-color: rgba(37, 99, 235, 0.24);
+}
+
+.cad-solver-panel__flow-button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 .cad-layer-actions {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -642,7 +1309,7 @@ body.text-overlay-clean.is-bg-black .text-label {
   background: rgba(255, 255, 255, 0.9);
   padding: 8px 12px;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto auto auto 1fr auto;
   align-items: center;
   gap: 10px;
 }
@@ -652,11 +1319,36 @@ body.text-overlay-clean.is-bg-black .text-label {
   gap: 6px;
 }
 
+.cad-statusbar__selection,
+.cad-statusbar__solver,
 .cad-statusbar__message,
 .cad-statusbar__cursor {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.77rem;
   color: #374256;
+}
+
+.cad-statusbar__selection {
+  color: #6b4627;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cad-statusbar__solver {
+  color: #1f4f46;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cad-statusbar__solver.is-clickable {
+  cursor: pointer;
+}
+
+.cad-statusbar__solver.is-clickable:focus-visible {
+  outline: 2px solid rgba(31, 79, 70, 0.35);
+  outline-offset: 2px;
 }
 
 @media (max-width: 1180px) {

@@ -213,6 +213,69 @@ function drawEntity(ctx, viewState, entity, selected = false, layer = null) {
   ctx.restore();
 }
 
+function drawUnsupportedDisplayProxy(ctx, viewState, entity, layer = null, selected = false) {
+  if (!entity || entity.type !== 'unsupported' || !entity.display_proxy) return;
+  if (layer && layer.visible === false) return;
+
+  const proxy = entity.display_proxy;
+  const color = entity.color || layer?.color || '#64748b';
+
+  ctx.save();
+  ctx.strokeStyle = selected ? '#fb923c' : color;
+  ctx.fillStyle = selected ? '#ea580c' : color;
+  ctx.globalAlpha = selected ? 0.9 : 0.55;
+  ctx.lineWidth = selected ? 2.0 : 1.3;
+  ctx.setLineDash([6, 4]);
+
+  if (proxy.kind === 'point' && proxy.point) {
+    const p = viewState.worldToScreen(proxy.point);
+    ctx.beginPath();
+    ctx.moveTo(p.x - 4, p.y);
+    ctx.lineTo(p.x + 4, p.y);
+    ctx.moveTo(p.x, p.y - 4);
+    ctx.lineTo(p.x, p.y + 4);
+    ctx.stroke();
+    if (selected) {
+      ctx.setLineDash([]);
+      ctx.fillRect(p.x - 3, p.y - 3, 6, 6);
+    }
+  } else if (proxy.kind === 'polyline' && Array.isArray(proxy.points) && proxy.points.length >= 2) {
+    const p0 = viewState.worldToScreen(proxy.points[0]);
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    for (let i = 1; i < proxy.points.length; i += 1) {
+      const pi = viewState.worldToScreen(proxy.points[i]);
+      ctx.lineTo(pi.x, pi.y);
+    }
+    ctx.stroke();
+    if (selected) {
+      ctx.setLineDash([]);
+      for (const point of proxy.points) {
+        const p = viewState.worldToScreen(point);
+        ctx.fillRect(p.x - 2.5, p.y - 2.5, 5, 5);
+      }
+    }
+  } else if (proxy.kind === 'ellipse' && proxy.center) {
+    const center = viewState.worldToScreen(proxy.center);
+    const rx = Math.max(0.001, Number(proxy.rx || 0)) * viewState.zoom;
+    const ry = Math.max(0.001, Number(proxy.ry || 0)) * viewState.zoom;
+    const rotation = Number.isFinite(proxy.rotation) ? proxy.rotation : 0;
+    const start = Number.isFinite(proxy.startAngle) ? proxy.startAngle : 0;
+    const end = Number.isFinite(proxy.endAngle) ? proxy.endAngle : Math.PI * 2;
+    const fullSweep = Math.abs(normalizeAngle(end) - normalizeAngle(start)) < 1e-6;
+    const sweepEnd = fullSweep ? (start + Math.PI * 2) : end;
+    ctx.beginPath();
+    ctx.ellipse(center.x, center.y, rx, ry, rotation, start, sweepEnd, false);
+    ctx.stroke();
+    if (selected) {
+      ctx.setLineDash([]);
+      ctx.fillRect(center.x - 3, center.y - 3, 6, 6);
+    }
+  }
+
+  ctx.restore();
+}
+
 function drawOverlay(ctx, viewState, overlays, documentState) {
   const selectionBox = overlays.selectionBox;
   if (selectionBox) {
@@ -601,6 +664,16 @@ export class CanvasView {
 
     for (const entity of this.document.listEntities()) {
       drawEntity(this.ctx, this.viewport, entity, selectedIds.has(entity.id), layers.get(entity.layerId));
+    }
+
+    for (const proxyEntity of this.document.listDisplayProxyEntities()) {
+      drawUnsupportedDisplayProxy(
+        this.ctx,
+        this.viewport,
+        proxyEntity,
+        layers.get(proxyEntity.layerId),
+        selectedIds.has(proxyEntity.id),
+      );
     }
 
     drawOverlay(this.ctx, this.viewport, this.overlays, this.document);

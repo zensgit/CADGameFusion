@@ -36,23 +36,99 @@ function normalizePoints(points) {
   return points.map((point) => normalizePoint(point));
 }
 
+function normalizeDisplayProxy(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const kind = typeof raw.kind === 'string' ? raw.kind.toLowerCase() : '';
+
+  if (kind === 'point') {
+    return {
+      kind: 'point',
+      point: normalizePoint(raw.point),
+    };
+  }
+
+  if (kind === 'polyline') {
+    const points = Array.isArray(raw.points)
+      ? raw.points
+        .filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y))
+        .map((point) => normalizePoint(point))
+      : [];
+    if (points.length < 2) return null;
+    return {
+      kind: 'polyline',
+      points,
+    };
+  }
+
+  if (kind === 'ellipse') {
+    const center = normalizePoint(raw.center);
+    const rx = Number(raw.rx);
+    const ry = Number(raw.ry);
+    const rotation = Number(raw.rotation);
+    const startAngle = Number(raw.startAngle);
+    const endAngle = Number(raw.endAngle);
+    if (!Number.isFinite(rx) || !Number.isFinite(ry) || !Number.isFinite(rotation)
+      || !Number.isFinite(startAngle) || !Number.isFinite(endAngle)) {
+      return null;
+    }
+    return {
+      kind: 'ellipse',
+      center,
+      rx: Math.max(0.001, Math.abs(rx)),
+      ry: Math.max(0.001, Math.abs(ry)),
+      rotation,
+      startAngle,
+      endAngle,
+    };
+  }
+
+  return null;
+}
+
+function normalizeEntityMetadata(raw) {
+  const meta = {};
+  if (Number.isFinite(raw?.groupId)) meta.groupId = Math.trunc(raw.groupId);
+  if (Number.isFinite(raw?.space)) meta.space = Math.trunc(raw.space);
+  if (typeof raw?.layout === 'string' && raw.layout.trim()) meta.layout = raw.layout.trim();
+  if (typeof raw?.sourceType === 'string' && raw.sourceType.trim()) meta.sourceType = raw.sourceType.trim();
+  if (typeof raw?.editMode === 'string' && raw.editMode.trim()) meta.editMode = raw.editMode.trim();
+  if (typeof raw?.proxyKind === 'string' && raw.proxyKind.trim()) meta.proxyKind = raw.proxyKind.trim();
+  if (typeof raw?.blockName === 'string' && raw.blockName.trim()) meta.blockName = raw.blockName.trim();
+  if (typeof raw?.hatchPattern === 'string' && raw.hatchPattern.trim()) meta.hatchPattern = raw.hatchPattern.trim();
+  if (Number.isFinite(raw?.hatchId)) meta.hatchId = Math.trunc(raw.hatchId);
+  if (typeof raw?.textKind === 'string' && raw.textKind.trim()) meta.textKind = raw.textKind.trim();
+  if (typeof raw?.dimStyle === 'string' && raw.dimStyle.trim()) meta.dimStyle = raw.dimStyle.trim();
+  if (Number.isFinite(raw?.dimType)) meta.dimType = Math.trunc(raw.dimType);
+  if (raw?.dimTextPos && Number.isFinite(raw.dimTextPos.x) && Number.isFinite(raw.dimTextPos.y)) {
+    meta.dimTextPos = normalizePoint(raw.dimTextPos);
+  }
+  if (Number.isFinite(raw?.dimTextRotation)) meta.dimTextRotation = Number(raw.dimTextRotation);
+  return meta;
+}
+
 function normalizeEntity(raw, id) {
   const type = typeof raw?.type === 'string' ? raw.type : 'line';
   const layerId = Number.isFinite(raw?.layerId) ? Number(raw.layerId) : 0;
   const visible = raw?.visible !== false;
   const color = sanitizeColor(raw?.color || '', '#2c3e50');
   const name = typeof raw?.name === 'string' ? raw.name : '';
+  const metadata = normalizeEntityMetadata(raw);
 
   if (type === 'unsupported') {
+    const displayProxy = normalizeDisplayProxy(raw?.display_proxy);
+    const explicitVisible = raw?.visible;
     return {
       id,
       type,
       layerId,
-      visible: raw?.visible === true,
+      // Unsupported placeholders are visible by default when a proxy exists unless caller overrides.
+      visible: typeof explicitVisible === 'boolean' ? explicitVisible : !!displayProxy,
       color,
       name,
       readOnly: raw?.readOnly === true,
+      display_proxy: displayProxy,
       cadgf: raw?.cadgf ? cloneJson(raw.cadgf) : null,
+      ...metadata,
     };
   }
 
@@ -66,6 +142,7 @@ function normalizeEntity(raw, id) {
       name,
       start: normalizePoint(raw?.start),
       end: normalizePoint(raw?.end),
+      ...metadata,
     };
   }
 
@@ -79,6 +156,7 @@ function normalizeEntity(raw, id) {
       name,
       closed: raw?.closed === true,
       points: normalizePoints(raw?.points),
+      ...metadata,
     };
   }
 
@@ -93,6 +171,7 @@ function normalizeEntity(raw, id) {
       name,
       center: normalizePoint(raw?.center),
       radius,
+      ...metadata,
     };
   }
 
@@ -112,6 +191,7 @@ function normalizeEntity(raw, id) {
       startAngle,
       endAngle,
       cw: raw?.cw === true,
+      ...metadata,
     };
   }
 
@@ -129,6 +209,7 @@ function normalizeEntity(raw, id) {
       value: typeof raw?.value === 'string' ? raw.value : 'TEXT',
       height,
       rotation,
+      ...metadata,
     };
   }
 
@@ -141,6 +222,7 @@ function normalizeEntity(raw, id) {
     name,
     start: { x: 0, y: 0 },
     end: { x: 10, y: 0 },
+    ...metadata,
   };
 }
 
@@ -247,6 +329,18 @@ export class DocumentState extends EventTarget {
 
   listEntities() {
     return [...this.entities.values()];
+  }
+
+  listDisplayProxyEntities() {
+    const out = [];
+    for (const entity of this.entities.values()) {
+      if (!entity || entity.type !== 'unsupported' || !entity.display_proxy) continue;
+      const layer = this.layers.get(entity.layerId);
+      if (layer && layer.visible === false) continue;
+      out.push(entity);
+    }
+    out.sort((a, b) => a.id - b.id);
+    return out;
   }
 
   listVisibleEntities() {

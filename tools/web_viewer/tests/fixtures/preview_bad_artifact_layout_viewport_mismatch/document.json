@@ -1,0 +1,20 @@
+{
+  "entities": [],
+  "metadata": {
+    "meta": {
+      "dxf.default_space": 1,
+      "dxf.viewport.count": 1,
+      "dxf.viewport.0.id": 7,
+      "dxf.viewport.0.layout": "LayoutA",
+      "dxf.viewport.0.space": 1,
+      "dxf.viewport.0.center_x": 0,
+      "dxf.viewport.0.center_y": 0,
+      "dxf.viewport.0.width": 10,
+      "dxf.viewport.0.height": 10,
+      "dxf.viewport.0.view_center_x": 0,
+      "dxf.viewport.0.view_center_y": 0,
+      "dxf.viewport.0.view_height": 10,
+      "dxf.viewport.0.twist_deg": 0
+    }
+  }
+}

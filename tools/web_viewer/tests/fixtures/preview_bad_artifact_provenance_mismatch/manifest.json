@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "cadgf_version": "1.0.0",
+  "document_schema_version": 1,
+  "artifacts": {
+    "document_json": "document.json",
+    "mesh_metadata": "mesh_metadata.json"
+  },
+  "outputs": [
+    "json"
+  ],
+  "status": "ok"
+}

@@ -14,6 +14,17 @@ import { createStatusBar } from './statusbar.js';
 import { createLayerPanel } from './layer_panel.js';
 import { createPropertyPanel } from './property_panel.js';
 import { createSnapPanel } from './snap_panel.js';
+import { createSolverActionPanel } from './solver_action_panel.js';
+import { createSolverActionFlowBanner } from './solver_action_flow_banner.js';
+import { createSolverActionFlowConsole } from './solver_action_flow_console.js';
+
+function cloneJson(value) {
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return null;
+  }
+}
 
 function downloadJson(filename, payload) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -27,10 +38,13 @@ function downloadJson(filename, payload) {
   URL.revokeObjectURL(url);
 }
 
-function createImporter(onLoad) {
+function createImporter(onLoad, { id = '', accept = '.json,application/json', onError = null } = {}) {
   const input = document.createElement('input');
   input.type = 'file';
-  input.accept = '.json,application/json';
+  input.accept = accept;
+  if (id) {
+    input.id = id;
+  }
   input.style.display = 'none';
   input.addEventListener('change', async () => {
     const file = input.files?.[0];
@@ -41,6 +55,9 @@ function createImporter(onLoad) {
       onLoad(payload);
     } catch (error) {
       console.error('Failed to import JSON', error);
+      if (typeof onError === 'function') {
+        onError(error);
+      }
     } finally {
       input.value = '';
     }
@@ -94,6 +111,22 @@ function computeDocumentExtents(documentState) {
     }
     if (entity.type === 'text') {
       include(entity.position);
+      continue;
+    }
+    if (entity.type === 'unsupported' && entity.display_proxy) {
+      const proxy = entity.display_proxy;
+      if (proxy.kind === 'point') {
+        include(proxy.point);
+      } else if (proxy.kind === 'polyline' && Array.isArray(proxy.points)) {
+        for (const point of proxy.points) include(point);
+      } else if (proxy.kind === 'ellipse' && proxy.center) {
+        const r = Math.max(
+          Math.max(0.001, Number(proxy.rx || 0)),
+          Math.max(0.001, Number(proxy.ry || 0)),
+        );
+        include({ x: proxy.center.x - r, y: proxy.center.y - r });
+        include({ x: proxy.center.x + r, y: proxy.center.y + r });
+      }
     }
   }
 
@@ -150,14 +183,153 @@ function parseCommandInput(raw) {
   return { verb: verb.toLowerCase(), args };
 }
 
+function isReadOnlySelectionEntity(entity) {
+  return !!entity && (entity.readOnly === true || entity.type === 'unsupported' || entity.editMode === 'proxy');
+}
+
+function describeSelectionOrigin(entity) {
+  if (!entity) return '';
+  const sourceType = typeof entity.sourceType === 'string' ? entity.sourceType.trim() : '';
+  const proxyKind = typeof entity.proxyKind === 'string' ? entity.proxyKind.trim() : '';
+  const editMode = typeof entity.editMode === 'string' ? entity.editMode.trim() : '';
+  const parts = [];
+  if (sourceType && proxyKind) {
+    parts.push(`${sourceType}/${proxyKind}`);
+  } else if (sourceType) {
+    parts.push(sourceType);
+  }
+  if (editMode) {
+    parts.push(editMode);
+  }
+  if (isReadOnlySelectionEntity(entity) && editMode !== 'proxy') {
+    parts.push('read-only');
+  }
+  return parts.join(' | ');
+}
+
+function formatSelectionStatus(entities, primaryId) {
+  if (!Array.isArray(entities) || entities.length === 0) {
+    return 'Selection: none';
+  }
+  const primary = entities.find((entity) => entity && entity.id === primaryId) || entities[0];
+  if (!primary) {
+    return 'Selection: none';
+  }
+  if (entities.length === 1) {
+    const detail = describeSelectionOrigin(primary);
+    return detail
+      ? `Selection: ${primary.type} | ${detail}`
+      : `Selection: ${primary.type}`;
+  }
+  const typeSummary = [...new Set(entities.map((entity) => entity?.type).filter(Boolean))].slice(0, 3).join(',');
+  const readOnlyCount = entities.filter((entity) => isReadOnlySelectionEntity(entity)).length;
+  let summary = `Selection: ${entities.length} entities`;
+  if (typeSummary) {
+    summary += ` | ${typeSummary}`;
+  }
+  if (readOnlyCount > 0) {
+    summary += ` | ${readOnlyCount} read-only`;
+  }
+  return summary;
+}
+
 export function bootstrapCadWorkspace({ params = new URLSearchParams(window.location.search) } = {}) {
   const canvas = document.getElementById('cad-canvas');
+  const solverImportButton = document.getElementById('cad-import-solver');
+  const solverClearButton = document.getElementById('cad-clear-solver');
   if (!canvas) {
     throw new Error('CAD canvas not found');
   }
 
   const debugEnabled = params.get('debug') === '1';
   let cadgfBaseDocument = null;
+  let solverDiagnostics = null;
+  let solverActionState = {
+    activePanelId: '',
+    lastInvokedPanelId: '',
+    invocationCount: 0,
+    activePanel: null,
+    lastInvokedPanel: null,
+    availablePanelIds: [],
+    activeFocus: null,
+  };
+  let solverActionRequestState = {
+    requestCount: 0,
+    invokeRequestCount: 0,
+    focusRequestCount: 0,
+    flowRequestCount: 0,
+    replayRequestCount: 0,
+    lastRequest: null,
+    history: [],
+  };
+  let solverActionEventState = {
+    eventCount: 0,
+    invokeEventCount: 0,
+    focusEventCount: 0,
+    flowEventCount: 0,
+    replayEventCount: 0,
+    lastEvent: null,
+    history: [],
+  };
+  let solverActionDomEventState = {
+    eventCount: 0,
+    requestEventCount: 0,
+    actionEventCount: 0,
+    focusEventCount: 0,
+    flowEventCount: 0,
+    replayEventCount: 0,
+    lastEvent: null,
+    history: [],
+  };
+
+  const recordSolverActionDomEvent = (type, detail = {}) => {
+    const eventType = String(type || '').trim();
+    if (!eventType) return;
+    let eventKind = '';
+    if (eventType === 'cad:solver-action-request') eventKind = 'request';
+    else if (eventType === 'cad:solver-action') eventKind = 'action';
+    else if (eventType === 'cad:solver-action-focus') eventKind = 'focus';
+    else if (eventType === 'cad:solver-action-flow-step') eventKind = 'flow';
+    else if (eventType === 'cad:solver-action-replay') eventKind = 'replay';
+    else return;
+    const event = {
+      historyIndex: Array.isArray(solverActionDomEventState.history) ? solverActionDomEventState.history.length : 0,
+      eventType,
+      eventKind,
+      panelId: typeof detail?.panelId === 'string' ? detail.panelId : '',
+      flowAction: typeof detail?.flowAction === 'string' ? detail.flowAction : '',
+      focusKind: typeof detail?.focusKind === 'string' ? detail.focusKind : '',
+      focusValue: detail?.focusValue === undefined || detail?.focusValue === null ? '' : String(detail.focusValue),
+      invocationCount: Number.isFinite(detail?.invocationCount) ? Math.trunc(Number(detail.invocationCount)) : 0,
+    };
+    const nextHistory = [
+      ...(Array.isArray(solverActionDomEventState.history) ? solverActionDomEventState.history : []),
+      event,
+    ].slice(-64);
+    solverActionDomEventState = {
+      eventCount: nextHistory.length,
+      requestEventCount: nextHistory.filter((one) => one?.eventKind === 'request').length,
+      actionEventCount: nextHistory.filter((one) => one?.eventKind === 'action').length,
+      focusEventCount: nextHistory.filter((one) => one?.eventKind === 'focus').length,
+      flowEventCount: nextHistory.filter((one) => one?.eventKind === 'flow').length,
+      replayEventCount: nextHistory.filter((one) => one?.eventKind === 'replay').length,
+      lastEvent: nextHistory.length > 0 ? cloneJson(nextHistory[nextHistory.length - 1]) : null,
+      history: nextHistory,
+    };
+  };
+
+  const solverActionDomEventTypes = [
+    'cad:solver-action-request',
+    'cad:solver-action',
+    'cad:solver-action-focus',
+    'cad:solver-action-flow-step',
+    'cad:solver-action-replay',
+  ];
+  for (const eventType of solverActionDomEventTypes) {
+    window.addEventListener(eventType, (event) => {
+      recordSolverActionDomEvent(eventType, event?.detail);
+    });
+  }
 
   const documentState = new DocumentState();
   const selectionState = new SelectionState();
@@ -197,13 +369,6 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
   if (debugEnabled) {
     // UI-flow smoke (Playwright) inspects overlays via this hook to assert gripHover and snapHint can coexist.
     // Only enabled with ?debug=1 to avoid exposing internals by default.
-    const cloneJson = (value) => {
-      try {
-        return JSON.parse(JSON.stringify(value));
-      } catch {
-        return null;
-      }
-    };
     window.__cadDebug = {
       getOverlays: () => ({ ...canvasView.overlays }),
       getState: () => ({
@@ -211,6 +376,32 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
         selectionCount: Array.isArray(selectionState.entityIds) ? selectionState.entityIds.length : 0,
         primaryId: selectionState.primaryId,
       }),
+      getView: () => ({
+        zoom: Number(viewState.zoom),
+        pan: { ...viewState.pan },
+      }),
+      worldToCanvas: (point) => {
+        if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+        return viewState.worldToScreen(point);
+      },
+      runCommand: (id, payload) => {
+        if (typeof id !== 'string' || id.length === 0) return null;
+        const result = commandBus.execute(id, payload ?? undefined);
+        return cloneJson(result);
+      },
+      setLayerVisibility: (id, visible) => {
+        const layerId = Number.parseInt(String(id), 10);
+        if (!Number.isFinite(layerId)) return false;
+        return documentState.updateLayer(layerId, { visible: visible !== false });
+      },
+      getLayer: (id) => {
+        const layerId = Number.parseInt(String(id), 10);
+        if (!Number.isFinite(layerId)) return null;
+        const layer = documentState.getLayer(layerId);
+        return layer ? cloneJson(layer) : null;
+      },
+      listLayers: () => cloneJson(documentState.listLayers()),
+      listEntities: () => cloneJson(documentState.listEntities()),
       getSelectionIds: () => cloneJson(Array.isArray(selectionState.entityIds) ? selectionState.entityIds : []),
       getEntity: (id) => {
         const entityId = Number.parseInt(String(id), 10);
@@ -218,11 +409,208 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
         const entity = documentState.getEntity(entityId);
         return entity ? cloneJson(entity) : null;
       },
+      getSolverActionState: () => cloneJson(solverActionState),
+      getSolverActionRequestState: () => cloneJson(solverActionRequestState),
+      getSolverActionEventState: () => cloneJson(solverActionEventState),
+      getSolverActionDomEventState: () => cloneJson(solverActionDomEventState),
     };
   }
 
   let statusApi = null;
   let toolbar = null;
+  let solverActionPanel = null;
+  let solverActionFlowBanner = null;
+  let solverActionFlowConsole = null;
+
+  const formatSolverFocusLabel = (focus) => {
+    if (!focus || typeof focus !== 'object') return '';
+    const kind = String(focus.kind || '').trim();
+    const value = String(focus.value || '').trim();
+    if (!kind || !value) return '';
+    switch (kind) {
+      case 'constraint':
+        return `Constraint ${value}`;
+      case 'basis-constraint':
+        return `Basis ${value}`;
+      case 'redundant-constraint':
+        return `Redundant ${value}`;
+      case 'variable':
+        return `Variable ${value}`;
+      case 'free-variable':
+        return `Free variable ${value}`;
+      default:
+        return `${kind} ${value}`;
+    }
+  };
+
+  const buildSolverStatusText = ({ actionState, requestState, eventState } = {}) => {
+    const activePanelId = String(actionState?.activePanelId || '').trim();
+    const activePanel = actionState?.activePanel && typeof actionState.activePanel === 'object'
+      ? actionState.activePanel
+      : null;
+    const activeFlow = actionState?.activeFlow && typeof actionState.activeFlow === 'object'
+      ? actionState.activeFlow
+      : null;
+    const activeFocus = actionState?.activeFocus && typeof actionState.activeFocus === 'object'
+      ? actionState.activeFocus
+      : null;
+    const requestCount = Number.isFinite(requestState?.requestCount) ? Math.trunc(Number(requestState.requestCount)) : 0;
+    const eventCount = Number.isFinite(eventState?.eventCount) ? Math.trunc(Number(eventState.eventCount)) : 0;
+
+    if (!activePanelId) {
+      if (requestCount > 0 || eventCount > 0) {
+        return `Solver: idle | requests ${requestCount} | events ${eventCount}`;
+      }
+      return 'Solver: idle';
+    }
+
+    const title = String(activePanel?.ui?.title || activePanel?.label || activePanel?.id || activePanelId).trim();
+    const focusLabel = formatSolverFocusLabel(activeFocus);
+    const stepIndex = Number.isFinite(activeFlow?.stepIndex) ? Math.trunc(Number(activeFlow.stepIndex)) : -1;
+    const stepCount = Number.isFinite(activeFlow?.stepCount) ? Math.trunc(Number(activeFlow.stepCount)) : 0;
+    const progressLabel = stepIndex >= 0 && stepCount > 0 ? `${stepIndex + 1}/${stepCount}` : '';
+    const parts = ['Solver:', title];
+    if (focusLabel) parts.push('|', focusLabel);
+    if (progressLabel) parts.push('|', progressLabel);
+    return parts.join(' ');
+  };
+
+  const syncSolverActionViews = () => {
+    solverActionState = cloneJson(solverActionPanel?.getState?.() || solverActionState) || solverActionState;
+    solverActionRequestState = cloneJson(solverActionPanel?.getRequestState?.() || solverActionRequestState) || solverActionRequestState;
+    solverActionEventState = cloneJson(solverActionPanel?.getEventState?.() || solverActionEventState) || solverActionEventState;
+    solverActionFlowBanner?.setState({
+      actionState: solverActionState,
+      requestState: solverActionRequestState,
+      eventState: solverActionEventState,
+      normalized: cloneJson(solverActionPanel?.getNormalized?.() || null),
+    });
+    solverActionFlowConsole?.setState({
+      actionState: solverActionState,
+      requestState: solverActionRequestState,
+      eventState: solverActionEventState,
+      normalized: cloneJson(solverActionPanel?.getNormalized?.() || null),
+    });
+    statusApi?.setSolver(buildSolverStatusText({
+      actionState: solverActionState,
+      requestState: solverActionRequestState,
+      eventState: solverActionEventState,
+    }));
+  };
+
+  const focusRecentSolverEvent = () => {
+    const recentEvent = solverActionFlowBanner?.getState?.()?.recentEvent || null;
+    const panelId = String(recentEvent?.panelId || '').trim();
+    if (!panelId) return false;
+    const focusKind = String(recentEvent?.focusKind || '').trim();
+    const focusValue = String(recentEvent?.focusValue || '').trim();
+    return focusKind && focusValue
+      ? !!solverActionPanel?.invokeFocus?.(panelId, focusKind, focusValue)
+      : !!solverActionPanel?.invoke?.(panelId);
+  };
+
+  const activateSolverStatusFlow = () => {
+    if (focusRecentSolverEvent()) {
+      syncSolverActionViews();
+      statusApi?.setMessage('Solver recent event focused');
+      return true;
+    }
+    const activePanelId = String(solverActionState?.activePanelId || '').trim();
+    if (!activePanelId) {
+      return false;
+    }
+    const ok = !!solverActionPanel?.invoke?.(activePanelId);
+    if (ok) {
+      syncSolverActionViews();
+      statusApi?.setMessage('Solver panel refocused');
+    }
+    return ok;
+  };
+
+  const cycleSolverActionPanel = (direction = 1) => {
+    if (!solverActionPanel) return false;
+    const normalized = solverActionPanel?.getNormalized?.() || null;
+    const panelIds = Array.isArray(normalized?.panels)
+      ? normalized.panels
+        .filter((panel) => panel && panel.enabled === true)
+        .map((panel) => String(panel.id || '').trim())
+        .filter((id) => id.length > 0)
+      : [];
+    if (panelIds.length === 0) {
+      return false;
+    }
+    const activePanelId = String(solverActionState?.activePanelId || '').trim();
+    let index = panelIds.indexOf(activePanelId);
+    if (index < 0) {
+      index = direction >= 0 ? -1 : 0;
+    }
+    const nextIndex = (index + (direction >= 0 ? 1 : -1) + panelIds.length) % panelIds.length;
+    const nextPanelId = panelIds[nextIndex];
+    if (!nextPanelId) {
+      return false;
+    }
+    const ok = !!solverActionPanel?.invoke?.(nextPanelId);
+    if (ok) {
+      solverActionPanel?.focusPanelCard?.(nextPanelId);
+      syncSolverActionViews();
+      const nextPanel = normalized?.panels?.find((panel) => String(panel?.id || '').trim() === nextPanelId) || null;
+      const label = nextPanel?.ui?.title || nextPanel?.label || nextPanelId;
+      statusApi?.setMessage(`Solver panel cycled: ${label}`);
+    }
+    return ok;
+  };
+
+  const runGlobalSolverFlowShortcut = (event) => {
+    if (!solverActionPanel) return false;
+    if (!event.altKey || !event.shiftKey || event.metaKey || event.ctrlKey) {
+      return false;
+    }
+    let ok = false;
+    switch (event.key) {
+      case 'ArrowUp':
+        ok = cycleSolverActionPanel(-1);
+        break;
+      case 'ArrowDown':
+        ok = cycleSolverActionPanel(1);
+        break;
+      case 'ArrowLeft':
+        ok = !!solverActionPanel?.rewindFlow?.();
+        break;
+      case 'ArrowRight':
+        ok = !!solverActionPanel?.advanceFlow?.();
+        break;
+      case 'Home':
+        ok = !!solverActionPanel?.restartFlow?.();
+        break;
+      case 'End':
+        ok = focusRecentSolverEvent();
+        break;
+      default:
+        return false;
+    }
+    if (!ok) {
+      return false;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    syncSolverActionViews();
+    return true;
+  };
+
+  const setSolverDiagnostics = (payload, message = '') => {
+    solverDiagnostics = payload && typeof payload === 'object' ? cloneJson(payload) : null;
+    solverActionPanel?.setDiagnostics(solverDiagnostics);
+    syncSolverActionViews();
+    if (solverClearButton) {
+      solverClearButton.disabled = !solverDiagnostics;
+    }
+    if (solverImportButton) {
+      solverImportButton.setAttribute('aria-pressed', solverDiagnostics ? 'true' : 'false');
+    }
+    if (message && statusApi) {
+      statusApi.setMessage(message);
+    }
+  };
 
   const toolContext = createToolContext({
     document: documentState,
@@ -291,6 +679,14 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
       cha: 'chamfer',
     };
     const verb = alias[parsed.verb] || parsed.verb;
+
+    if (verb === 'join' && args.length > 0) {
+      const tolerance = Number.parseFloat(args[0]);
+      const payload = Number.isFinite(tolerance) ? { tolerance } : undefined;
+      const result = commandBus.execute('selection.join', payload);
+      statusApi?.setMessage(result.message || 'Join');
+      return;
+    }
 
     if (toolIds.has(verb)) {
       setActiveTool(verb);
@@ -390,14 +786,6 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
       return;
     }
 
-    if (verb === 'join') {
-      const tolerance = args.length > 0 ? Number.parseFloat(args[0]) : undefined;
-      const payload = Number.isFinite(tolerance) ? { tolerance } : undefined;
-      const result = commandBus.execute('selection.join', payload);
-      statusApi?.setMessage(result.message || 'Join');
-      return;
-    }
-
     if (verb === 'fillet') {
       const radius = args.length > 0 ? Number.parseFloat(args[0]) : 1.0;
       const result = commandBus.execute('selection.fillet', { radius });
@@ -446,6 +834,28 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
       statusApi?.setMessage(`Import failed: ${error?.message || String(error)}`);
     }
   });
+  const solverImporter = createImporter((payload) => {
+    setSolverDiagnostics(payload, 'Solver diagnostics imported');
+  }, {
+    id: 'cad-solver-json-input',
+    onError: (error) => {
+      statusApi?.setMessage(`Solver diagnostics import failed: ${error?.message || String(error)}`);
+    },
+  });
+
+  if (solverImportButton) {
+    solverImportButton.addEventListener('click', () => solverImporter.open());
+  }
+  if (solverClearButton) {
+    solverClearButton.disabled = true;
+    solverClearButton.addEventListener('click', () => {
+      if (!solverDiagnostics) {
+        statusApi?.setMessage('Solver diagnostics already cleared');
+        return;
+      }
+      setSolverDiagnostics(null, 'Solver diagnostics cleared');
+    });
+  }
 
   function exportCadgf() {
     const payload = exportCadgfDocument(documentState, { baseCadgfJson: cadgfBaseDocument });
@@ -482,31 +892,37 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
     },
   });
 
+  function toggleOrtho() {
+    snapState.toggle('ortho');
+    statusApi.setMessage(`Ortho ${snapState.toJSON().ortho ? 'On' : 'Off'}`);
+  }
+
+  function toggleSnap() {
+    const options = snapState.toJSON();
+    const enabled = options.endpoint || options.midpoint || options.quadrant || options.center || options.intersection || options.nearest || options.tangent;
+    const next = !enabled;
+    snapState.setOption('endpoint', next);
+    snapState.setOption('midpoint', next);
+    snapState.setOption('quadrant', next);
+    snapState.setOption('center', next);
+    snapState.setOption('intersection', next);
+    snapState.setOption('nearest', next);
+    snapState.setOption('tangent', next);
+    statusApi.setMessage(`Snap ${next ? 'On' : 'Off'}`);
+  }
+
+  function toggleGrid() {
+    snapState.toggle('grid');
+    viewState.setShowGrid(snapState.toJSON().grid);
+    statusApi.setMessage(`Grid ${snapState.toJSON().grid ? 'On' : 'Off'}`);
+  }
+
   statusApi = createStatusBar({
     snapState,
     toolOptions,
-    onToggleOrtho: () => {
-      snapState.toggle('ortho');
-      statusApi.setMessage(`Ortho ${snapState.toJSON().ortho ? 'On' : 'Off'}`);
-    },
-    onToggleSnap: () => {
-      const options = snapState.toJSON();
-      const enabled = options.endpoint || options.midpoint || options.quadrant || options.center || options.intersection || options.nearest || options.tangent;
-      const next = !enabled;
-      snapState.setOption('endpoint', next);
-      snapState.setOption('midpoint', next);
-      snapState.setOption('quadrant', next);
-      snapState.setOption('center', next);
-      snapState.setOption('intersection', next);
-      snapState.setOption('nearest', next);
-      snapState.setOption('tangent', next);
-      statusApi.setMessage(`Snap ${next ? 'On' : 'Off'}`);
-    },
-    onToggleGrid: () => {
-      snapState.toggle('grid');
-      viewState.setShowGrid(snapState.toJSON().grid);
-      statusApi.setMessage(`Grid ${snapState.toJSON().grid ? 'On' : 'Off'}`);
-    },
+    onToggleOrtho: () => toggleOrtho(),
+    onToggleSnap: () => toggleSnap(),
+    onToggleGrid: () => toggleGrid(),
     onToggleBreakKeep: () => {
       const order = ['auto', 'short', 'long'];
       const current = typeof toolOptions.breakKeep === 'string' ? toolOptions.breakKeep : 'auto';
@@ -515,6 +931,7 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
       statusApi.refreshToggleLabels();
       statusApi.setMessage(`Break keep: ${toolOptions.breakKeep}`);
     },
+    onActivateSolver: () => activateSolverStatusFlow(),
   });
 
   // Keep the canvas grid renderer in sync with snapState.grid regardless of which UI toggles it.
@@ -548,13 +965,279 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
     setStatus: (message) => statusApi.setMessage(message),
   });
 
+  solverActionFlowBanner = createSolverActionFlowBanner({
+    onPrev: () => {
+      const ok = !!solverActionPanel?.rewindFlow?.();
+      if (ok) syncSolverActionViews();
+      return ok;
+    },
+    onNext: () => {
+      const ok = !!solverActionPanel?.advanceFlow?.();
+      if (ok) syncSolverActionViews();
+      return ok;
+    },
+    onRestart: () => {
+      const ok = !!solverActionPanel?.restartFlow?.();
+      if (ok) syncSolverActionViews();
+      return ok;
+    },
+    onJump: (panelId, stepIndex) => {
+      if (String(panelId || '').trim() !== String(solverActionState?.activePanelId || '').trim()) {
+        return false;
+      }
+      const ok = !!solverActionPanel?.jumpFlow?.(stepIndex);
+      if (ok) syncSolverActionViews();
+      return ok;
+    },
+    onEventFocus: (event) => {
+      const panelId = String(event?.panelId || '').trim();
+      if (!panelId) return false;
+      const focusKind = String(event?.focusKind || '').trim();
+      const focusValue = String(event?.focusValue || '').trim();
+      const ok = focusKind && focusValue
+        ? !!solverActionPanel?.invokeFocus?.(panelId, focusKind, focusValue)
+        : !!solverActionPanel?.invoke?.(panelId);
+      if (ok) syncSolverActionViews();
+      return ok;
+    },
+    onFocusCurrent: (focus) => {
+      const panelId = String(focus?.panelId || '').trim();
+      const focusKind = String(focus?.focusKind || '').trim();
+      const focusValue = String(focus?.focusValue || '').trim();
+      if (!panelId || !focusKind || !focusValue) return false;
+      const ok = !!solverActionPanel?.invokeFocus?.(panelId, focusKind, focusValue);
+      if (ok) syncSolverActionViews();
+      return ok;
+    },
+  });
+
+  solverActionFlowConsole = createSolverActionFlowConsole({
+    onPrev: () => {
+      const ok = !!solverActionPanel?.rewindFlow?.();
+      if (ok) {
+        syncSolverActionViews();
+      }
+      return ok;
+    },
+    onNext: () => {
+      const ok = !!solverActionPanel?.advanceFlow?.();
+      if (ok) {
+        syncSolverActionViews();
+      }
+      return ok;
+    },
+    onRestart: () => {
+      const ok = !!solverActionPanel?.restartFlow?.();
+      if (ok) {
+        syncSolverActionViews();
+      }
+      return ok;
+    },
+    onReplayRequest: (historyIndex) => {
+      const ok = !!solverActionPanel?.replayRequestHistoryIndex?.(historyIndex);
+      if (ok) {
+        syncSolverActionViews();
+      }
+      return ok;
+    },
+    onFocusEvent: (event) => {
+      const panelId = String(event?.panelId || '').trim();
+      if (!panelId) return false;
+      const focusKind = String(event?.focusKind || '').trim();
+      const focusValue = String(event?.focusValue || '').trim();
+      const ok = focusKind && focusValue
+        ? !!solverActionPanel?.invokeFocus?.(panelId, focusKind, focusValue)
+        : !!solverActionPanel?.invoke?.(panelId);
+      if (ok) {
+        syncSolverActionViews();
+      }
+      return ok;
+    },
+    onFocusCurrent: (focus) => {
+      const panelId = String(focus?.panelId || '').trim();
+      const focusKind = String(focus?.focusKind || '').trim();
+      const focusValue = String(focus?.focusValue || '').trim();
+      if (!panelId || !focusKind || !focusValue) return false;
+      const ok = !!solverActionPanel?.invokeFocus?.(panelId, focusKind, focusValue);
+      if (ok) {
+        syncSolverActionViews();
+      }
+      return ok;
+    },
+  });
+
+  solverActionPanel = createSolverActionPanel({
+    getDiagnostics: () => solverDiagnostics,
+    onAction: (panel, context = {}) => {
+      solverActionState = cloneJson(solverActionPanel?.getState?.() || {
+        activePanelId: panel?.id || '',
+        lastInvokedPanelId: panel?.id || '',
+        invocationCount: Number(context?.invocationCount || 0),
+        activePanel: panel || null,
+        lastInvokedPanel: panel || null,
+        availablePanelIds: context?.normalized?.panels?.map((one) => one.id) || [],
+        activeFocus: context?.focusKind ? {
+          panelId: panel?.id || '',
+          kind: String(context.focusKind || ''),
+          value: String(context.focusValue || ''),
+        } : null,
+      }) || solverActionState;
+      solverActionRequestState = cloneJson(context?.requestState || solverActionPanel?.getRequestState?.() || solverActionRequestState) || solverActionRequestState;
+      solverActionEventState = cloneJson(context?.eventState || solverActionPanel?.getEventState?.() || solverActionEventState) || solverActionEventState;
+      solverActionFlowBanner?.setState({
+        actionState: solverActionState,
+        requestState: solverActionRequestState,
+        eventState: solverActionEventState,
+        normalized: cloneJson(context?.normalized || solverActionPanel?.getNormalized?.() || null),
+      });
+      solverActionFlowConsole?.setState({
+        actionState: solverActionState,
+        requestState: solverActionRequestState,
+        eventState: solverActionEventState,
+        normalized: cloneJson(context?.normalized || solverActionPanel?.getNormalized?.() || null),
+      });
+      const label = panel?.ui?.ctaLabel || panel?.label || panel?.id || 'Solver action';
+      if (context?.focusKind && context?.focusValue) {
+        const flowSuffix = Number.isFinite(context?.flowStepIndex) && Number.isFinite(context?.flowStepCount) && context.flowStepIndex >= 0 && context.flowStepCount > 0
+          ? ` (${context.flowStepIndex + 1}/${context.flowStepCount})`
+          : '';
+        statusApi?.setMessage(`${label}${flowSuffix}: ${context.focusKind} ${context.focusValue}`);
+        statusApi?.setSolver(buildSolverStatusText({
+          actionState: solverActionState,
+          requestState: solverActionRequestState,
+          eventState: solverActionEventState,
+        }));
+        return;
+      }
+      const summary = panel?.selectionExplanation || panel?.summary || panel?.tag || '';
+      statusApi?.setMessage(summary ? `${label}: ${summary}` : label);
+      statusApi?.setSolver(buildSolverStatusText({
+        actionState: solverActionState,
+        requestState: solverActionRequestState,
+        eventState: solverActionEventState,
+      }));
+    },
+  });
+  solverActionPanel.render();
+  syncSolverActionViews();
+
   createSnapPanel({
     snapState,
   });
 
+  if (debugEnabled && window.__cadDebug) {
+    window.__cadDebug.getSolverDiagnostics = () => cloneJson(solverDiagnostics);
+    window.__cadDebug.getSolverActionPanels = () => cloneJson(solverActionPanel?.getNormalized() || null);
+    window.__cadDebug.getSolverActionState = () => cloneJson(solverActionState);
+    window.__cadDebug.getSolverActionFlowBannerState = () => cloneJson(solverActionFlowBanner?.getState?.() || null);
+    window.__cadDebug.getSolverActionRequestState = () => cloneJson(solverActionRequestState);
+    window.__cadDebug.getSolverActionEventState = () => cloneJson(solverActionEventState);
+    window.__cadDebug.getSolverActionDomEventState = () => cloneJson(solverActionDomEventState);
+    window.__cadDebug.getSolverActionFlowState = () => cloneJson(solverActionFlowConsole?.getState?.() || null);
+    window.__cadDebug.setSolverDiagnostics = (payload) => {
+      setSolverDiagnostics(payload, 'Solver diagnostics loaded');
+      return true;
+    };
+    window.__cadDebug.clearSolverDiagnostics = () => {
+      setSolverDiagnostics(null, 'Solver diagnostics cleared');
+      return true;
+    };
+    window.__cadDebug.invokeSolverActionPanel = (id) => {
+      const ok = !!solverActionPanel?.invoke?.(String(id || '').trim());
+      syncSolverActionViews();
+      return ok;
+    };
+    window.__cadDebug.invokeSolverActionFocus = (panelId, kind, value) => {
+      const ok = !!solverActionPanel?.invokeFocus?.(
+        String(panelId || '').trim(),
+        String(kind || '').trim(),
+        value
+      );
+      syncSolverActionViews();
+      return ok;
+    };
+    window.__cadDebug.advanceSolverActionFlow = () => {
+      const ok = !!solverActionPanel?.advanceFlow?.();
+      syncSolverActionViews();
+      return ok;
+    };
+    window.__cadDebug.jumpSolverActionFlow = (stepIndex) => {
+      const ok = !!solverActionPanel?.jumpFlow?.(stepIndex);
+      syncSolverActionViews();
+      return ok;
+    };
+    window.__cadDebug.rewindSolverActionFlow = () => {
+      const ok = !!solverActionPanel?.rewindFlow?.();
+      syncSolverActionViews();
+      return ok;
+    };
+    window.__cadDebug.replaySolverActionRequest = (historyIndex) => {
+      const ok = !!solverActionPanel?.replayRequestHistoryIndex?.(historyIndex);
+      syncSolverActionViews();
+      return ok;
+    };
+    window.__cadDebug.restartSolverActionFlow = () => {
+      const ok = !!solverActionPanel?.restartFlow?.();
+      syncSolverActionViews();
+      return ok;
+    };
+    window.__cadDebug.clearSolverActionSelection = () => {
+      solverActionPanel?.clearActiveAction?.();
+      syncSolverActionViews();
+      statusApi?.setMessage('Solver action selection cleared');
+      return true;
+    };
+    window.__cadDebug.clearSolverActionFocus = () => {
+      solverActionPanel?.clearActiveFocus?.();
+      syncSolverActionViews();
+      statusApi?.setMessage('Solver action focus cleared');
+      return true;
+    };
+    window.__cadDebug.clearSolverActionRequests = () => {
+      solverActionRequestState = cloneJson(solverActionPanel?.clearRequestHistory?.() || solverActionRequestState) || solverActionRequestState;
+      syncSolverActionViews();
+      statusApi?.setMessage('Solver action requests cleared');
+      return true;
+    };
+    window.__cadDebug.clearSolverActionEvents = () => {
+      solverActionEventState = cloneJson(solverActionPanel?.clearEventHistory?.() || solverActionEventState) || solverActionEventState;
+      syncSolverActionViews();
+      statusApi?.setMessage('Solver action events cleared');
+      return true;
+    };
+  }
+
+  const solverJsonParam = (params.get('solver') || params.get('solver_json') || '').trim();
+  if (solverJsonParam) {
+    const resolvedSolverUrl = new URL(solverJsonParam, window.location.href);
+    fetch(resolvedSolverUrl)
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        return response.json();
+      })
+      .then((payload) => {
+        setSolverDiagnostics(payload, 'Solver diagnostics loaded');
+      })
+      .catch((error) => {
+        console.error('Failed to load solver diagnostics', error);
+        statusApi?.setMessage(`Solver diagnostics load failed: ${error?.message || String(error)}`);
+      });
+  }
+
   canvasView.onCursorMove((worldPoint) => {
     statusApi.setCursor(worldPoint);
   });
+
+  const refreshSelectionStatus = () => {
+    const entities = (selectionState.entityIds || [])
+      .map((id) => documentState.getEntity(id))
+      .filter((entity) => !!entity);
+    statusApi?.setSelection(formatSelectionStatus(entities, selectionState.primaryId));
+  };
+  selectionState.addEventListener('change', refreshSelectionStatus);
+  documentState.addEventListener('change', refreshSelectionStatus);
 
   commandBus.addEventListener('executed', (event) => {
     const detail = event.detail;
@@ -568,6 +1251,9 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
     const typing = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
 
     if (!typing) {
+      if (runGlobalSolverFlowShortcut(event)) {
+        return;
+      }
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
         event.preventDefault();
         if (event.shiftKey) {
@@ -590,6 +1276,21 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
     }
 
     if (!typing) {
+      if (event.key === 'F8') {
+        event.preventDefault();
+        if (!event.repeat) toggleOrtho();
+        return;
+      }
+      if (event.key === 'F3') {
+        event.preventDefault();
+        if (!event.repeat) toggleSnap();
+        return;
+      }
+      if (event.key === 'F7') {
+        event.preventDefault();
+        if (!event.repeat) toggleGrid();
+        return;
+      }
       canvasView.dispatchKeyDown(event);
     }
   };
@@ -602,6 +1303,7 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
   }
 
   setActiveTool('select');
+  refreshSelectionStatus();
   statusApi.setMessage('VemCAD Web editor ready');
 
   const cadgfUrl = params.get('cadgf');

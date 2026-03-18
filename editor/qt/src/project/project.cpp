@@ -113,6 +113,9 @@ bool Project::save(const QString& path, const core::Document& doc, CanvasWidget*
             QJsonObject snapJson;
             snapJson.insert("endpoints", snap->snapEndpoints());
             snapJson.insert("midpoints", snap->snapMidpoints());
+            snapJson.insert("centers", snap->snapCenters());
+            snapJson.insert("intersections", snap->snapIntersections());
+            snapJson.insert("ortho", snap->orthoEnabled());
             snapJson.insert("grid", snap->snapGrid());
             snapJson.insert("radiusPx", snap->snapRadiusPixels());
             snapJson.insert("gridPixelSpacing", snap->gridPixelSpacing());
@@ -297,6 +300,9 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
             if (!snapJson.isEmpty()) {
                 snap->setSnapEndpoints(snapJson.value("endpoints").toBool(snap->snapEndpoints()));
                 snap->setSnapMidpoints(snapJson.value("midpoints").toBool(snap->snapMidpoints()));
+                snap->setSnapCenters(snapJson.value("centers").toBool(snap->snapCenters()));
+                snap->setSnapIntersections(snapJson.value("intersections").toBool(snap->snapIntersections()));
+                snap->setOrthoEnabled(snapJson.value("ortho").toBool(snap->orthoEnabled()));
                 snap->setSnapGrid(snapJson.value("grid").toBool(snap->snapGrid()));
                 snap->setSnapRadiusPixels(snapJson.value("radiusPx").toDouble(snap->snapRadiusPixels()));
                 snap->setGridPixelSpacing(snapJson.value("gridPixelSpacing").toDouble(snap->gridPixelSpacing()));

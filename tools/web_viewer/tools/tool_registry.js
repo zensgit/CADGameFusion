@@ -11,6 +11,7 @@ import { createRotateTool } from './rotate_tool.js';
 import { createBreakTool } from './break_tool.js';
 import { createTrimTool } from './trim_tool.js';
 import { createExtendTool } from './extend_tool.js';
+import { createJoinTool } from './join_tool.js';
 import { createFilletTool } from './fillet_tool.js';
 import { createChamferTool } from './chamfer_tool.js';
 import { createDeleteTool } from './delete_tool.js';
@@ -30,6 +31,7 @@ export function createToolRegistry(ctx) {
     createBreakTool(ctx),
     createTrimTool(ctx),
     createExtendTool(ctx),
+    createJoinTool(ctx),
     createFilletTool(ctx),
     createChamferTool(ctx),
     createDeleteTool(ctx),

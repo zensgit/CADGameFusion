@@ -18,6 +18,38 @@ void SnapSettings::setSnapMidpoints(bool enabled) {
     emit settingsChanged();
 }
 
+void SnapSettings::setSnapCenters(bool enabled) {
+    if (snapCenters_ == enabled) return;
+    snapCenters_ = enabled;
+    emit settingsChanged();
+}
+
+void SnapSettings::setSnapIntersections(bool enabled) {
+    if (snapIntersections_ == enabled) return;
+    snapIntersections_ = enabled;
+    emit settingsChanged();
+}
+
+void SnapSettings::setObjectSnapEnabled(bool enabled) {
+    if (snapEndpoints_ == enabled
+        && snapMidpoints_ == enabled
+        && snapCenters_ == enabled
+        && snapIntersections_ == enabled) {
+        return;
+    }
+    snapEndpoints_ = enabled;
+    snapMidpoints_ = enabled;
+    snapCenters_ = enabled;
+    snapIntersections_ = enabled;
+    emit settingsChanged();
+}
+
+void SnapSettings::setOrthoEnabled(bool enabled) {
+    if (orthoEnabled_ == enabled) return;
+    orthoEnabled_ = enabled;
+    emit settingsChanged();
+}
+
 void SnapSettings::setSnapGrid(bool enabled) {
     if (snapGrid_ == enabled) return;
     snapGrid_ = enabled;

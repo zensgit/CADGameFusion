@@ -91,13 +91,59 @@ function selectedEntities(ctx) {
     .filter((entity) => !!entity);
 }
 
+function isReadOnlyEntity(entity) {
+  return !!entity && (entity.readOnly === true || entity.type === 'unsupported' || entity.editMode === 'proxy');
+}
+
+function stripImportedProvenanceForCreatedEntity(entity) {
+  if (!entity || typeof entity !== 'object') return entity;
+  const next = { ...entity };
+  delete next.groupId;
+  delete next.sourceType;
+  delete next.editMode;
+  delete next.proxyKind;
+  delete next.blockName;
+  delete next.hatchId;
+  delete next.hatchPattern;
+  delete next.dimType;
+  delete next.dimStyle;
+  delete next.dimTextPos;
+  delete next.dimTextRotation;
+  return next;
+}
+
 function runDeleteSelection(ctx) {
   const ids = [...ctx.selection.entityIds];
   if (ids.length === 0) {
     return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to delete' };
   }
-  const removed = ctx.document.removeEntities(ids);
-  ctx.selection.clear();
+  const editableIds = [];
+  const readOnlyIds = [];
+  for (const id of ids) {
+    const entity = ctx.document.getEntity(id);
+    if (!entity) continue;
+    if (isReadOnlyEntity(entity)) {
+      readOnlyIds.push(id);
+      continue;
+    }
+    editableIds.push(id);
+  }
+  if (editableIds.length === 0 && readOnlyIds.length > 0) {
+    return { ok: false, changed: false, error_code: 'UNSUPPORTED_READ_ONLY', message: 'Selected entities are read-only proxies' };
+  }
+  const removed = ctx.document.removeEntities(editableIds);
+  if (readOnlyIds.length > 0) {
+    ctx.selection.setSelection(readOnlyIds, readOnlyIds[0]);
+  } else {
+    ctx.selection.clear();
+  }
+  if (readOnlyIds.length > 0) {
+    return {
+      ok: true,
+      changed: removed.length > 0,
+      message: `Deleted ${removed.length} entities (skipped ${readOnlyIds.length} read-only)`,
+    };
+  }
   return {
     ok: true,
     changed: removed.length > 0,
@@ -114,11 +160,28 @@ function runMoveSelection(ctx, payload) {
     return { ok: false, changed: false, error_code: 'INVALID_DELTA', message: 'Missing move delta' };
   }
   let changed = false;
+  let attempted = 0;
+  let readOnlySkipped = 0;
   for (const id of ids) {
     const entity = ctx.document.getEntity(id);
     if (!entity) continue;
+    attempted += 1;
+    if (isReadOnlyEntity(entity)) {
+      readOnlySkipped += 1;
+      continue;
+    }
     const next = transformEntityByDelta(entity, payload.delta);
     changed = ctx.document.updateEntity(id, next) || changed;
+  }
+  if (!changed && attempted > 0 && readOnlySkipped === attempted) {
+    return { ok: false, changed: false, error_code: 'UNSUPPORTED_READ_ONLY', message: 'Selected entities are read-only proxies' };
+  }
+  if (readOnlySkipped > 0) {
+    return {
+      ok: true,
+      changed,
+      message: `Moved ${Math.max(0, attempted - readOnlySkipped)}/${attempted} entities (skipped ${readOnlySkipped} read-only)`,
+    };
   }
   return { ok: true, changed, message: `Moved ${ids.length} entities` };
 }
@@ -132,16 +195,33 @@ function runCopySelection(ctx, payload) {
     return { ok: false, changed: false, error_code: 'INVALID_DELTA', message: 'Missing copy delta' };
   }
   const copied = [];
+  let attempted = 0;
+  let readOnlySkipped = 0;
   for (const id of ids) {
     const entity = ctx.document.getEntity(id);
     if (!entity) continue;
-    const next = transformEntityByDelta(entity, payload.delta);
+    attempted += 1;
+    if (isReadOnlyEntity(entity)) {
+      readOnlySkipped += 1;
+      continue;
+    }
+    const next = stripImportedProvenanceForCreatedEntity(transformEntityByDelta(entity, payload.delta));
     delete next.id;
     const created = ctx.document.addEntity(next);
     if (created) copied.push(created.id);
   }
+  if (copied.length === 0 && attempted > 0 && readOnlySkipped === attempted) {
+    return { ok: false, changed: false, error_code: 'UNSUPPORTED_READ_ONLY', message: 'Selected entities are read-only proxies' };
+  }
   if (copied.length > 0) {
     ctx.selection.setSelection(copied, copied[0]);
+  }
+  if (readOnlySkipped > 0) {
+    return {
+      ok: true,
+      changed: copied.length > 0,
+      message: `Copied ${copied.length}/${attempted} entities (skipped ${readOnlySkipped} read-only)`,
+    };
   }
   return { ok: true, changed: copied.length > 0, message: `Copied ${copied.length} entities` };
 }
@@ -162,11 +242,19 @@ function runOffsetSelection(ctx, payload) {
 
   const createdPayloads = [];
   let skipped = 0;
+  let attempted = 0;
+  let readOnlySkipped = 0;
   const reasons = {};
   for (const id of ids) {
     const entity = ctx.document.getEntity(id);
     if (!entity) {
       skipped += 1;
+      continue;
+    }
+    attempted += 1;
+    if (isReadOnlyEntity(entity)) {
+      skipped += 1;
+      readOnlySkipped += 1;
       continue;
     }
     const diag = {};
@@ -177,11 +265,15 @@ function runOffsetSelection(ctx, payload) {
       reasons[code] = (reasons[code] || 0) + 1;
       continue;
     }
-    delete next.id;
-    createdPayloads.push(next);
+    const detached = stripImportedProvenanceForCreatedEntity(next);
+    delete detached.id;
+    createdPayloads.push(detached);
   }
 
   if (createdPayloads.length === 0) {
+    if (attempted > 0 && readOnlySkipped === attempted) {
+      return { ok: false, changed: false, error_code: 'UNSUPPORTED_READ_ONLY', message: 'Selected entities are read-only proxies' };
+    }
     // Prefer specific reasons when available.
     const pickReason = () => {
       if (reasons.SELF_INTERSECT) return 'SELF_INTERSECT';
@@ -201,10 +293,20 @@ function runOffsetSelection(ctx, payload) {
   if (created.length > 0) {
     ctx.selection.setSelection(created.map((entity) => entity.id), created[0].id);
   }
+  let message = `Offset created ${created.length} entities`;
+  if (skipped > 0) {
+    if (readOnlySkipped > 0 && skipped === readOnlySkipped && attempted > 0) {
+      message = `Offset created ${created.length}/${attempted} entities (skipped ${readOnlySkipped} read-only)`;
+    } else if (readOnlySkipped > 0) {
+      message = `Offset created ${created.length} entities (skipped ${skipped}, read-only ${readOnlySkipped})`;
+    } else {
+      message = `Offset created ${created.length} entities (skipped ${skipped})`;
+    }
+  }
   return {
     ok: true,
     changed: created.length > 0,
-    message: `Offset created ${created.length} entities${skipped > 0 ? ` (skipped ${skipped})` : ''}`,
+    message,
   };
 }
 
@@ -724,6 +826,28 @@ function resolvePickSegmentRef(entity, pick) {
   return null;
 }
 
+function makePolylineSegmentRef(baseTarget, points, segIndex, closed) {
+  if (!baseTarget || baseTarget.kind !== 'polyline') return null;
+  if (!Array.isArray(points) || points.length < 2) return null;
+  if (!Number.isFinite(segIndex) || segIndex < 0) return null;
+  const n = points.length;
+  if (segIndex >= n) return null;
+  const startIndex = segIndex;
+  const endIndex = closed ? ((segIndex + 1) % n) : (segIndex + 1);
+  if (!Number.isFinite(endIndex) || endIndex < 0 || endIndex >= n) return null;
+  return {
+    kind: 'polyline',
+    entity: baseTarget.entity,
+    layerId: baseTarget.layerId,
+    segStart: points[startIndex],
+    segEnd: points[endIndex],
+    segIndex,
+    startIndex,
+    endIndex,
+    closed,
+  };
+}
+
 function isOpenPolylineEndpointIndex(entity, index) {
   if (!entity || entity.type !== 'polyline' || entity.closed === true) return false;
   if (!Array.isArray(entity.points) || entity.points.length < 2) return false;
@@ -782,17 +906,35 @@ function runFilletSelectionByPick(ctx, payload) {
 
   const ent1 = ctx.document.getEntity(firstId);
   const ent2 = ctx.document.getEntity(secondId);
-  const target1 = resolvePickSegmentRef(ent1, pick1);
-  const target2 = resolvePickSegmentRef(ent2, pick2);
+  let target1 = resolvePickSegmentRef(ent1, pick1);
+  let target2 = resolvePickSegmentRef(ent2, pick2);
   if (!target1 || !target2) {
     return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: unsupported target type' };
   }
-  if (target1.layerId !== target2.layerId) {
-    return { ok: false, changed: false, error_code: 'LAYER_MISMATCH', message: 'Fillet: targets must be on same layer' };
+  if (firstId === secondId
+      && target1.kind === 'polyline'
+      && target2.kind === 'polyline'
+      && target1.entity.closed !== true
+      && Array.isArray(target1.entity.points)
+      && target1.entity.points.length === 3
+      && target1.segIndex === target2.segIndex) {
+    const forcedSeg = Number(target1.segIndex) === 0 ? 1 : 0;
+    const forcedRef = makePolylineSegmentRef(target1, target1.entity.points, forcedSeg, false);
+    if (forcedRef) {
+      target2 = forcedRef;
+    }
   }
-  const layer = ctx.document.getLayer(target1.layerId);
-  if (layer?.locked) {
-    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  const layer1 = ctx.document.getLayer(target1.layerId);
+  if (layer1?.locked) {
+    const name = layer1?.name || `L${target1.layerId}`;
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Fillet: layer ${name} is locked` };
+  }
+  if (target2.layerId !== target1.layerId) {
+    const layer2 = ctx.document.getLayer(target2.layerId);
+    if (layer2?.locked) {
+      const name = layer2?.name || `L${target2.layerId}`;
+      return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Fillet: layer ${name} is locked` };
+    }
   }
   const inter = lineLineIntersection(target1.segStart, target1.segEnd, target2.segStart, target2.segEnd, false, false);
   if (!inter) {
@@ -808,34 +950,63 @@ function runFilletSelectionByPick(ctx, payload) {
     if (target1.closed !== target2.closed || target1.entity.points.length !== target2.entity.points.length) {
       return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Fillet: inconsistent polyline state' };
     }
-    if (target1.segIndex === target2.segIndex) {
-      return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'Fillet: pick two different polyline segments' };
-    }
     const before = cloneValue(target1.entity);
     const points = before.points.map((p) => ({ ...p }));
     const n = points.length;
     const closed = before.closed === true;
+    let segA = Number(target1.segIndex);
+    let segB = Number(target2.segIndex);
+    const canAutoPairTwoSegment = !closed && n === 3;
+    const initiallyAdjacent = closed
+      ? (((segA + 1) % n) === segB || ((segB + 1) % n) === segA)
+      : (Math.abs(segA - segB) === 1);
+    let usedAutoPair = false;
+    if (canAutoPairTwoSegment && (segA === segB || !initiallyAdjacent)) {
+      // Two-segment L polylines are common in editing. If both clicks land on one leg
+      // (or resolve ambiguously), pair the only possible corner segments automatically.
+      segA = 0;
+      segB = 1;
+      usedAutoPair = true;
+    }
+    if (segA === segB) {
+      return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'Fillet: pick two different polyline segments' };
+    }
     const adjacent = closed
-      ? (((target1.segIndex + 1) % n) === target2.segIndex || ((target2.segIndex + 1) % n) === target1.segIndex)
-      : (Math.abs(target1.segIndex - target2.segIndex) === 1);
+      ? (((segA + 1) % n) === segB || ((segB + 1) % n) === segA)
+      : (Math.abs(segA - segB) === 1);
     if (!adjacent) {
       return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: only adjacent polyline corners are supported' };
     }
 
     const corner = closed
-      ? (((target1.segIndex + 1) % n) === target2.segIndex ? target2.segIndex : target1.segIndex)
-      : (target1.segIndex < target2.segIndex ? target2.segIndex : target1.segIndex);
+      ? (((segA + 1) % n) === segB ? segB : segA)
+      : (segA < segB ? segB : segA);
     const prevSeg = (corner - 1 + n) % n;
     const nextSeg = corner;
 
-    const prevRef = target1.segIndex === prevSeg ? target1 : target2;
-    const nextRef = target1.segIndex === nextSeg ? target1 : target2;
+    const prevRef = usedAutoPair
+      ? makePolylineSegmentRef(target1, points, prevSeg, closed)
+      : (target1.segIndex === prevSeg ? target1 : target2);
+    const nextRef = usedAutoPair
+      ? makePolylineSegmentRef(target1, points, nextSeg, closed)
+      : (target1.segIndex === nextSeg ? target1 : target2);
     if (!prevRef || !nextRef) {
       return { ok: false, changed: false, error_code: 'INVALID_GEOMETRY', message: 'Fillet: failed to resolve corner segments' };
     }
 
-    const prevPick = prevRef === target1 ? pick1 : pick2;
-    const nextPick = nextRef === target1 ? pick1 : pick2;
+    let prevPick = prevRef === target1 ? pick1 : pick2;
+    let nextPick = nextRef === target1 ? pick1 : pick2;
+    if (usedAutoPair) {
+      const defaultScore = pointOnSegmentDistance(pick1, prevRef.segStart, prevRef.segEnd) + pointOnSegmentDistance(pick2, nextRef.segStart, nextRef.segEnd);
+      const swappedScore = pointOnSegmentDistance(pick1, nextRef.segStart, nextRef.segEnd) + pointOnSegmentDistance(pick2, prevRef.segStart, prevRef.segEnd);
+      if (swappedScore + 1e-9 < defaultScore) {
+        prevPick = pick2;
+        nextPick = pick1;
+      } else {
+        prevPick = pick1;
+        nextPick = pick2;
+      }
+    }
     const ePrev = pickLineKeepTrimEndpointsByPick({ start: prevRef.segStart, end: prevRef.segEnd }, I, prevPick);
     const eNext = pickLineKeepTrimEndpointsByPick({ start: nextRef.segStart, end: nextRef.segEnd }, I, nextPick);
     if (!ePrev || !eNext) {
@@ -1055,12 +1226,17 @@ function runFilletSelection(ctx, payload) {
   if (!l1 || !l2 || l1.type !== 'line' || l2.type !== 'line') {
     return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: only line-line is supported' };
   }
-  if (l1.layerId !== l2.layerId) {
-    return { ok: false, changed: false, error_code: 'LAYER_MISMATCH', message: 'Fillet: lines must be on same layer' };
+  const layer1 = ctx.document.getLayer(l1.layerId);
+  if (layer1?.locked) {
+    const name = layer1?.name || `L${l1.layerId}`;
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Fillet: layer ${name} is locked` };
   }
-  const layer = ctx.document.getLayer(l1.layerId);
-  if (layer?.locked) {
-    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  if (l2.layerId !== l1.layerId) {
+    const layer2 = ctx.document.getLayer(l2.layerId);
+    if (layer2?.locked) {
+      const name = layer2?.name || `L${l2.layerId}`;
+      return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Fillet: layer ${name} is locked` };
+    }
   }
   const inter = lineLineIntersection(l1.start, l1.end, l2.start, l2.end, false, false);
   if (!inter) {
@@ -1143,17 +1319,35 @@ function runChamferSelectionByPick(ctx, payload) {
 
   const ent1 = ctx.document.getEntity(firstId);
   const ent2 = ctx.document.getEntity(secondId);
-  const target1 = resolvePickSegmentRef(ent1, pick1);
-  const target2 = resolvePickSegmentRef(ent2, pick2);
+  let target1 = resolvePickSegmentRef(ent1, pick1);
+  let target2 = resolvePickSegmentRef(ent2, pick2);
   if (!target1 || !target2) {
     return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: unsupported target type' };
   }
-  if (target1.layerId !== target2.layerId) {
-    return { ok: false, changed: false, error_code: 'LAYER_MISMATCH', message: 'Chamfer: targets must be on same layer' };
+  if (firstId === secondId
+      && target1.kind === 'polyline'
+      && target2.kind === 'polyline'
+      && target1.entity.closed !== true
+      && Array.isArray(target1.entity.points)
+      && target1.entity.points.length === 3
+      && target1.segIndex === target2.segIndex) {
+    const forcedSeg = Number(target1.segIndex) === 0 ? 1 : 0;
+    const forcedRef = makePolylineSegmentRef(target1, target1.entity.points, forcedSeg, false);
+    if (forcedRef) {
+      target2 = forcedRef;
+    }
   }
-  const layer = ctx.document.getLayer(target1.layerId);
-  if (layer?.locked) {
-    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Chamfer: layer is locked' };
+  const layer1 = ctx.document.getLayer(target1.layerId);
+  if (layer1?.locked) {
+    const name = layer1?.name || `L${target1.layerId}`;
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Chamfer: layer ${name} is locked` };
+  }
+  if (target2.layerId !== target1.layerId) {
+    const layer2 = ctx.document.getLayer(target2.layerId);
+    if (layer2?.locked) {
+      const name = layer2?.name || `L${target2.layerId}`;
+      return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Chamfer: layer ${name} is locked` };
+    }
   }
   const inter = lineLineIntersection(target1.segStart, target1.segEnd, target2.segStart, target2.segEnd, false, false);
   if (!inter) {
@@ -1169,34 +1363,62 @@ function runChamferSelectionByPick(ctx, payload) {
     if (target1.closed !== target2.closed || target1.entity.points.length !== target2.entity.points.length) {
       return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Chamfer: inconsistent polyline state' };
     }
-    if (target1.segIndex === target2.segIndex) {
-      return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'Chamfer: pick two different polyline segments' };
-    }
     const before = cloneValue(target1.entity);
     const points = before.points.map((p) => ({ ...p }));
     const n = points.length;
     const closed = before.closed === true;
+    let segA = Number(target1.segIndex);
+    let segB = Number(target2.segIndex);
+    const canAutoPairTwoSegment = !closed && n === 3;
+    const initiallyAdjacent = closed
+      ? (((segA + 1) % n) === segB || ((segB + 1) % n) === segA)
+      : (Math.abs(segA - segB) === 1);
+    let usedAutoPair = false;
+    if (canAutoPairTwoSegment && (segA === segB || !initiallyAdjacent)) {
+      // Two-segment L polylines have one valid corner pair; auto-pair when picks are ambiguous.
+      segA = 0;
+      segB = 1;
+      usedAutoPair = true;
+    }
+    if (segA === segB) {
+      return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'Chamfer: pick two different polyline segments' };
+    }
     const adjacent = closed
-      ? (((target1.segIndex + 1) % n) === target2.segIndex || ((target2.segIndex + 1) % n) === target1.segIndex)
-      : (Math.abs(target1.segIndex - target2.segIndex) === 1);
+      ? (((segA + 1) % n) === segB || ((segB + 1) % n) === segA)
+      : (Math.abs(segA - segB) === 1);
     if (!adjacent) {
       return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: only adjacent polyline corners are supported' };
     }
 
     const corner = closed
-      ? (((target1.segIndex + 1) % n) === target2.segIndex ? target2.segIndex : target1.segIndex)
-      : (target1.segIndex < target2.segIndex ? target2.segIndex : target1.segIndex);
+      ? (((segA + 1) % n) === segB ? segB : segA)
+      : (segA < segB ? segB : segA);
     const prevSeg = (corner - 1 + n) % n;
     const nextSeg = corner;
 
-    const prevRef = target1.segIndex === prevSeg ? target1 : target2;
-    const nextRef = target1.segIndex === nextSeg ? target1 : target2;
+    const prevRef = usedAutoPair
+      ? makePolylineSegmentRef(target1, points, prevSeg, closed)
+      : (target1.segIndex === prevSeg ? target1 : target2);
+    const nextRef = usedAutoPair
+      ? makePolylineSegmentRef(target1, points, nextSeg, closed)
+      : (target1.segIndex === nextSeg ? target1 : target2);
     if (!prevRef || !nextRef) {
       return { ok: false, changed: false, error_code: 'INVALID_GEOMETRY', message: 'Chamfer: failed to resolve corner segments' };
     }
 
-    const prevPick = prevRef === target1 ? pick1 : pick2;
-    const nextPick = nextRef === target1 ? pick1 : pick2;
+    let prevPick = prevRef === target1 ? pick1 : pick2;
+    let nextPick = nextRef === target1 ? pick1 : pick2;
+    if (usedAutoPair) {
+      const defaultScore = pointOnSegmentDistance(pick1, prevRef.segStart, prevRef.segEnd) + pointOnSegmentDistance(pick2, nextRef.segStart, nextRef.segEnd);
+      const swappedScore = pointOnSegmentDistance(pick1, nextRef.segStart, nextRef.segEnd) + pointOnSegmentDistance(pick2, prevRef.segStart, prevRef.segEnd);
+      if (swappedScore + 1e-9 < defaultScore) {
+        prevPick = pick2;
+        nextPick = pick1;
+      } else {
+        prevPick = pick1;
+        nextPick = pick2;
+      }
+    }
     const ePrev = pickLineKeepTrimEndpointsByPick({ start: prevRef.segStart, end: prevRef.segEnd }, I, prevPick);
     const eNext = pickLineKeepTrimEndpointsByPick({ start: nextRef.segStart, end: nextRef.segEnd }, I, nextPick);
     if (!ePrev || !eNext) {
@@ -1379,12 +1601,17 @@ function runChamferSelection(ctx, payload) {
   if (!l1 || !l2 || l1.type !== 'line' || l2.type !== 'line') {
     return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: only line-line is supported' };
   }
-  if (l1.layerId !== l2.layerId) {
-    return { ok: false, changed: false, error_code: 'LAYER_MISMATCH', message: 'Chamfer: lines must be on same layer' };
+  const layer1 = ctx.document.getLayer(l1.layerId);
+  if (layer1?.locked) {
+    const name = layer1?.name || `L${l1.layerId}`;
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Chamfer: layer ${name} is locked` };
   }
-  const layer = ctx.document.getLayer(l1.layerId);
-  if (layer?.locked) {
-    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Chamfer: layer is locked' };
+  if (l2.layerId !== l1.layerId) {
+    const layer2 = ctx.document.getLayer(l2.layerId);
+    if (layer2?.locked) {
+      const name = layer2?.name || `L${l2.layerId}`;
+      return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Chamfer: layer ${name} is locked` };
+    }
   }
   const inter = lineLineIntersection(l1.start, l1.end, l2.start, l2.end, false, false);
   if (!inter) {
@@ -1548,11 +1775,28 @@ function runRotateSelection(ctx, payload) {
     return { ok: false, changed: false, error_code: 'INVALID_ROTATE', message: 'Missing rotate center/angle' };
   }
   let changed = false;
+  let attempted = 0;
+  let readOnlySkipped = 0;
   for (const id of ids) {
     const entity = ctx.document.getEntity(id);
     if (!entity) continue;
+    attempted += 1;
+    if (isReadOnlyEntity(entity)) {
+      readOnlySkipped += 1;
+      continue;
+    }
     const next = rotateEntity(entity, center, angle);
     changed = ctx.document.updateEntity(id, next) || changed;
+  }
+  if (!changed && attempted > 0 && readOnlySkipped === attempted) {
+    return { ok: false, changed: false, error_code: 'UNSUPPORTED_READ_ONLY', message: 'Selected entities are read-only proxies' };
+  }
+  if (readOnlySkipped > 0) {
+    return {
+      ok: true,
+      changed,
+      message: `Rotated ${Math.max(0, attempted - readOnlySkipped)}/${attempted} entities (skipped ${readOnlySkipped} read-only)`,
+    };
   }
   return { ok: true, changed, message: `Rotated ${ids.length} entities` };
 }
@@ -2046,11 +2290,17 @@ function runPropertyPatch(ctx, payload) {
   let changed = false;
   let attempted = 0;
   let lockedSkipped = 0;
+  let readOnlySkipped = 0;
 
   for (const id of ids) {
     const entity = ctx.document.getEntity(id);
     if (!entity) continue;
     attempted += 1;
+
+    if (isReadOnlyEntity(entity)) {
+      readOnlySkipped += 1;
+      continue;
+    }
 
     const targetLayerId = Number.isFinite(patch?.layerId) ? Number(patch.layerId) : entity.layerId;
     const layer = ctx.document.getLayer(targetLayerId);
@@ -2063,6 +2313,9 @@ function runPropertyPatch(ctx, payload) {
   }
 
   if (!changed) {
+    if (attempted > 0 && readOnlySkipped === attempted) {
+      return { ok: false, changed: false, error_code: 'UNSUPPORTED_READ_ONLY', message: 'Selected entities are read-only proxies' };
+    }
     if (attempted > 0 && lockedSkipped === attempted) {
       if (attempted === 1) {
         const id = ids.find((entityId) => !!ctx.document.getEntity(entityId));
@@ -2074,14 +2327,26 @@ function runPropertyPatch(ctx, payload) {
       }
       return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'All selected entities are on locked layers' };
     }
+    if (attempted > 0 && (lockedSkipped + readOnlySkipped === attempted) && readOnlySkipped > 0) {
+      return {
+        ok: false,
+        changed: false,
+        error_code: 'UNSUPPORTED_READ_ONLY',
+        message: 'All selected entities are read-only or locked',
+      };
+    }
     return { ok: true, changed: false, message: 'selection.propertyPatch: no changes' };
   }
 
-  if (lockedSkipped > 0) {
+  if (lockedSkipped > 0 || readOnlySkipped > 0) {
+    const applied = Math.max(0, attempted - lockedSkipped - readOnlySkipped);
+    const skippedParts = [];
+    if (lockedSkipped > 0) skippedParts.push(`${lockedSkipped} locked`);
+    if (readOnlySkipped > 0) skippedParts.push(`${readOnlySkipped} read-only`);
     return {
       ok: true,
       changed: true,
-      message: `Patched ${attempted - lockedSkipped}/${attempted} entities (skipped ${lockedSkipped} locked)`,
+      message: `Patched ${applied}/${attempted} entities (skipped ${skippedParts.join(', ')})`,
     };
   }
   return { ok: true, changed: true, message: `Patched ${attempted} entities` };

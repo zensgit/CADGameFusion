@@ -90,6 +90,33 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_snapPanel = new SnapPanel(this);
     addDockWidget(Qt::RightDockWidgetArea, m_snapPanel);
     m_snapPanel->setSettings(m_snapSettings);
+    auto* actToggleOrtho = new QAction("Toggle Ortho", this);
+    actToggleOrtho->setShortcut(QKeySequence("F8"));
+    addAction(actToggleOrtho);
+    connect(actToggleOrtho, &QAction::triggered, this, [this]() {
+        if (!m_snapSettings) return;
+        const bool next = !m_snapSettings->orthoEnabled();
+        m_snapSettings->setOrthoEnabled(next);
+        statusBar()->showMessage(QString("Ortho %1").arg(next ? "On" : "Off"), 1200);
+    });
+    auto* actToggleGridSnap = new QAction("Toggle Grid Snap", this);
+    actToggleGridSnap->setShortcut(QKeySequence("F7"));
+    addAction(actToggleGridSnap);
+    connect(actToggleGridSnap, &QAction::triggered, this, [this]() {
+        if (!m_snapSettings) return;
+        const bool next = !m_snapSettings->snapGrid();
+        m_snapSettings->setSnapGrid(next);
+        statusBar()->showMessage(QString("Grid Snap %1").arg(next ? "On" : "Off"), 1200);
+    });
+    auto* actToggleObjectSnap = new QAction("Toggle Object Snap", this);
+    actToggleObjectSnap->setShortcut(QKeySequence("F3"));
+    addAction(actToggleObjectSnap);
+    connect(actToggleObjectSnap, &QAction::triggered, this, [this]() {
+        if (!m_snapSettings) return;
+        const bool next = !m_snapSettings->objectSnapEnabled();
+        m_snapSettings->setObjectSnapEnabled(next);
+        statusBar()->showMessage(QString("Snap %1").arg(next ? "On" : "Off"), 1200);
+    });
 
     // Properties dock (initially shows empty selection)
     auto* prop = new PropertyPanel(this);

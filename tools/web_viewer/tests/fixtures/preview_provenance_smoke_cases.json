@@ -1,0 +1,781 @@
+[
+  {
+    "id": "insert_exploded",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_origin_blocks/manifest.json&mesh=0",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 8,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Group ID\n6",
+      "Instance Summary\nBlockF | group 6 | doc 1 | mesh 1 | line 1",
+      "Instance Fragment Count\n1",
+      "Instance Entity IDs\n8",
+      "Instance Member IDs\n8",
+      "Block Summary\ninstances 1 | doc 1 | mesh 1 | line 1 | proxy 1",
+      "Block Instance Count\n1",
+      "Line Type\nPHANTOM",
+      "Line Weight\n0.9",
+      "Line Type Scale\n0.4",
+      "Origin\nINSERT/insert | exploded",
+      "Exploded source fragment; provenance retained in metadata.",
+      "Block Name\nBlockF"
+    ]
+  },
+  {
+    "id": "insert_blocka_group_focus",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_origin_blocks/manifest.json&mesh=0",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 2,
+    "initialNavKind": "initial-entity",
+    "gridCols": 24,
+    "gridRows": 20,
+    "expectSelection": [
+      "Group ID\n1",
+      "Block Name\nBlockA",
+      "Instance Fragment Count\n2",
+      "Instance Entity IDs\n2, 3",
+      "Instance Member IDs\n2\n3",
+      "Highlighted Sibling IDs\n3",
+      "Origin\nINSERT/insert | exploded"
+    ],
+    "focusChecks": [
+      {
+        "clickEntityId": 3,
+        "clickNavKind": "highlighted-sibling",
+        "expectNavKind": "highlighted-sibling",
+        "expectEntityId": 3,
+        "expectGroupId": 1,
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Entity ID\n3",
+          "Highlighted Sibling IDs\n2",
+          "Color Source\nBYLAYER",
+          "Line Type\nCONTINUOUS",
+          "Line Weight\n0.05",
+          "Line Type Scale\n3"
+        ]
+      },
+      {
+        "clickGroupId": 1,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 3,
+        "expectGroupId": 1,
+        "expectGroupMemberIds": [
+          2,
+          3
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Group ID\n1",
+          "Instance Member IDs\n2\n3"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed_block_group_focus",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_origin_mixed/manifest.json&mesh=0&space=0",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 8,
+    "initialNavKind": "initial-entity",
+    "gridCols": 24,
+    "gridRows": 20,
+    "expectSelection": [
+      "Group ID\n2",
+      "Block Name\nBlockMixed",
+      "Instance Fragment Count\n2",
+      "Instance Entity IDs\n8, 9",
+      "Instance Member IDs\n8\n9",
+      "Highlighted Sibling IDs\n9",
+      "Origin\nINSERT/insert | exploded"
+    ],
+    "focusChecks": [
+      {
+        "clickEntityId": 9,
+        "clickNavKind": "highlighted-sibling",
+        "expectNavKind": "highlighted-sibling",
+        "expectEntityId": 9,
+        "expectGroupId": 2,
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Entity ID\n9",
+          "Highlighted Sibling IDs\n8",
+          "Color Source\nBYLAYER",
+          "Line Type\nContinuous",
+          "Line Type Scale\n1"
+        ]
+      },
+      {
+        "clickGroupId": 2,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 9,
+        "expectGroupId": 2,
+        "expectGroupMemberIds": [
+          8,
+          9
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Group ID\n2",
+          "Instance Member IDs\n8\n9"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "mixed_dimension_group_focus",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_origin_mixed/manifest.json&mesh=0&space=0",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 14,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\n20",
+      "Group ID\n3",
+      "Block Name\n*D1",
+      "Instance Fragment Count\n5",
+      "Instance Entity IDs\n10, 11, 12, 13, 14",
+      "Origin\nDIMENSION/dimension | proxy"
+    ],
+    "focusChecks": [
+      {
+        "clickGroupId": 3,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 14,
+        "expectGroupId": 3,
+        "expectGroupMemberIds": [
+          11,
+          12,
+          13,
+          14
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Group ID\n3",
+          "Origin\nDIMENSION/dimension | proxy",
+          "Block Name\n*D1"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "triad_group_focus",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_insert_triad/manifest.json&mesh=0&space=0",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 2,
+    "initialNavKind": "initial-entity",
+    "gridCols": 24,
+    "gridRows": 20,
+    "expectSelection": [
+      "Group ID\n1",
+      "Block Name\nBlockTriad",
+      "Instance Fragment Count\n3",
+      "Instance Entity IDs\n1, 2, 3",
+      "Instance Member IDs\n1\n2\n3",
+      "Highlighted Sibling Count\n2",
+      "Origin\nINSERT/insert | exploded"
+    ],
+    "focusChecks": [
+      {
+        "clickGroupId": 1,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 2,
+        "expectGroupId": 1,
+        "expectGroupMemberIds": [
+          1,
+          2,
+          3
+        ],
+        "expectSelection": [
+          "Group ID\n1",
+          "Block Name\nBlockTriad",
+          "Instance Member IDs\n1\n2\n3"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "paperspace_combo_insert_group_focus",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_combo/manifest.json&mesh=0&space=1",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 17,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Group ID\n2",
+      "Layout\nLayoutCombo",
+      "Block Name\nPaperComboBlock",
+      "Instance Fragment Count\n3",
+      "Instance Entity IDs\n16, 17, 18",
+      "Instance Member IDs\n16\n17\n18",
+      "Highlighted Sibling Count\n2",
+      "Origin\nINSERT/insert | exploded"
+    ],
+    "focusChecks": [
+      {
+        "clickGroupId": 2,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 17,
+        "expectGroupId": 2,
+        "expectGroupMemberIds": [
+          16,
+          17,
+          18
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Group ID\n2",
+          "Layout\nLayoutCombo",
+          "Instance Member IDs\n16\n17\n18"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "paperspace_combo_dimension_group_focus",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_combo/manifest.json&mesh=0&space=1",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 22,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\n78",
+      "Group ID\n3",
+      "Layout\nLayoutCombo",
+      "Space\n1",
+      "Block Name\n*D1",
+      "Origin\nDIMENSION/dimension | proxy"
+    ],
+    "focusChecks": [
+      {
+        "clickGroupId": 3,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 22,
+        "expectGroupId": 3,
+        "expectGroupMemberIds": [
+          19,
+          20,
+          21,
+          22
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Group ID\n3",
+          "Layout\nLayoutCombo",
+          "Block Name\n*D1",
+          "Origin\nDIMENSION/dimension | proxy"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "paperspace_combo_dimension_group_focus_secondary",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_combo/manifest.json&mesh=0&space=1",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 31,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\n58",
+      "Group ID\n7",
+      "Layout\nLayoutCombo",
+      "Space\n1",
+      "Block Name\n*D2",
+      "Origin\nDIMENSION/dimension | proxy"
+    ],
+    "focusChecks": [
+      {
+        "clickGroupId": 7,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 31,
+        "expectGroupId": 7,
+        "expectGroupMemberIds": [
+          28,
+          29,
+          30,
+          31
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Group ID\n7",
+          "Layout\nLayoutCombo",
+          "Block Name\n*D2",
+          "Origin\nDIMENSION/dimension | proxy"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "paperspace_combo_leader_proxy",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_combo/manifest.json&mesh=0&space=1",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 3,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Entity ID\n3",
+      "Group ID\n1",
+      "Origin\nLEADER/leader | proxy",
+      "Derived proxy from DWG/DXF source; preview only.",
+      "Space\n1",
+      "Layout\nLayoutCombo"
+    ]
+  },
+  {
+    "id": "paperspace_combo_hatch_proxy",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_combo/manifest.json&mesh=0&space=1",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 7,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Entity ID\n7",
+      "Group ID\n1",
+      "Origin\nHATCH/hatch | proxy",
+      "Derived proxy from DWG/DXF source; preview only.",
+      "Hatch ID\n2",
+      "Hatch Pattern\nANSI31",
+      "Space\n1",
+      "Layout\nLayoutCombo"
+    ]
+  },
+  {
+    "id": "paperspace_combo_hatch_group_focus",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_combo/manifest.json&mesh=0&space=1",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 7,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Entity ID\n7",
+      "Group ID\n1",
+      "Origin\nHATCH/hatch | proxy",
+      "Hatch Pattern\nANSI31",
+      "Layout\nLayoutCombo"
+    ],
+    "focusChecks": [
+      {
+        "clickGroupId": 1,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 7,
+        "expectGroupId": 1,
+        "expectGroupMemberIds": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Group ID\n1",
+          "Origin\nHATCH/hatch | proxy",
+          "Layout\nLayoutCombo"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "annotation_bundle_hatch_proxy_secondary",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_annotation_bundle/manifest.json&mesh=0&space=1",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 6,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Entity ID\n6",
+      "Group ID\n1",
+      "Origin\nHATCH/hatch | proxy",
+      "Derived proxy from DWG/DXF source; preview only.",
+      "Hatch ID\n2",
+      "Hatch Pattern\nSOLID",
+      "Space\n1",
+      "Layout\nLayoutStyle"
+    ]
+  },
+  {
+    "id": "annotation_bundle_dimension_group_focus",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_annotation_bundle/manifest.json&mesh=0&space=1",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 17,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\n20",
+      "Group ID\n3",
+      "Layout\nLayoutStyle",
+      "Space\n1",
+      "Block Name\n*D1",
+      "Origin\nDIMENSION/dimension | proxy"
+    ],
+    "focusChecks": [
+      {
+        "clickGroupId": 3,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 17,
+        "expectGroupId": 3,
+        "expectGroupMemberIds": [
+          14,
+          15,
+          16,
+          17
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Group ID\n3",
+          "Layout\nLayoutStyle",
+          "Block Name\n*D1",
+          "Origin\nDIMENSION/dimension | proxy"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "annotation_bundle_insert_group_focus_secondary",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_annotation_bundle/manifest.json&mesh=0&space=1",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 20,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Group ID\n6",
+      "Layout\nLayoutStyle",
+      "Block Name\nPaperStyledBlock",
+      "Instance Fragment Count\n2",
+      "Instance Entity IDs\n20, 21",
+      "Instance Member IDs\n20\n21",
+      "Highlighted Sibling Count\n1",
+      "Origin\nINSERT/insert | exploded"
+    ],
+    "focusChecks": [
+      {
+        "clickGroupId": 6,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 20,
+        "expectGroupId": 6,
+        "expectGroupMemberIds": [
+          20,
+          21
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Group ID\n6",
+          "Layout\nLayoutStyle",
+          "Instance Member IDs\n20\n21"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "dimension_doc_only",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_origin_dimension/manifest.json&text_filter=all",
+    "expectStatus": "Loaded document successfully.",
+    "initialEntityId": 2,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Origin\nDIMENSION/dimension | proxy",
+      "Dim Style\nSTANDARD",
+      "Value\n123.45"
+    ]
+  },
+  {
+    "id": "hatch_line_only",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_origin_hatch/manifest.json&mesh=0",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 1,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Origin\nHATCH/hatch | proxy",
+      "Hatch Pattern\nANSI31"
+    ]
+  },
+  {
+    "id": "text_kind_attrib",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_text_kinds/manifest.json&text_filter=all",
+    "expectStatus": "Loaded document successfully.",
+    "initialEntityId": 3,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\nATTRIB_FULL_ALIGN",
+      "Text Kind\nattrib"
+    ]
+  },
+  {
+    "id": "text_kind_attdef",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_text_kinds/manifest.json&text_filter=all",
+    "expectStatus": "Loaded document successfully.",
+    "initialEntityId": 4,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\nATTDEF_PARTIAL_ALIGN_Y_ONLY",
+      "Text Kind\nattdef"
+    ]
+  },
+  {
+    "id": "text_kind_mtext",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_text_kinds/manifest.json&text_filter=all",
+    "expectStatus": "Loaded document successfully.",
+    "initialEntityId": 5,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\nMTEXT_PARTIAL_ALIGN_X_ONLY",
+      "Text Kind\nmtext"
+    ]
+  },
+  {
+    "id": "text_kind_mleader",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_mleader/manifest.json&text_filter=all",
+    "expectStatus": "Loaded document successfully.",
+    "initialEntityId": 1,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\nMLEADER_STEP186 SECOND_LINE",
+      "Text Kind\nmleader"
+    ]
+  },
+  {
+    "id": "text_kind_table",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_table/manifest.json&text_filter=all",
+    "expectStatus": "Loaded document successfully.",
+    "initialEntityId": 1,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\nTABLE_STEP186 ROW_2",
+      "Text Kind\ntable"
+    ]
+  },
+  {
+    "id": "leader_line_only",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_leader/manifest.json&mesh=0",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 1,
+    "initialNavKind": "initial-entity",
+    "gridCols": 20,
+    "gridRows": 18,
+    "expectSelection": [
+      "Origin\nLEADER/leader | proxy",
+      "Space\n0"
+    ]
+  },
+  {
+    "id": "mixed_paperspace_text",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_origin_mixed/manifest.json&mesh=0&text_filter=all&space=1&layout=LayoutMixed",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 7,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\nPAPER NOTE",
+      "Space\n1",
+      "Layout\nLayoutMixed"
+    ]
+  },
+  {
+    "id": "multi_layout_layout_b_text",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_multi_layout/manifest.json&mesh=0&text_filter=all&space=1&layout=LayoutB",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 4,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\nLAYOUT B NOTE",
+      "Space\n1",
+      "Layout\nLayoutB"
+    ]
+  },
+  {
+    "id": "paperspace_insert_style",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_insert_styles/manifest.json&mesh=0&space=1&layout=LayoutStyle",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 3,
+    "initialNavKind": "initial-entity",
+    "gridCols": 24,
+    "gridRows": 20,
+    "expectSelection": [
+      "Entity ID\n3",
+      "Instance Fragment Count\n2",
+      "Instance Entity IDs\n3, 4",
+      "Instance Member IDs\n3\n4",
+      "Block Instance Count\n1",
+      "Highlighted Sibling Count\n1",
+      "Highlighted Sibling IDs\n4",
+      "Line Type\nCENTER",
+      "Line Weight\n0.5",
+      "Line Type Scale\n0.25",
+      "Color Source\nBYBLOCK",
+      "Origin\nINSERT/insert | exploded",
+      "Block Name\nPaperStyledBlock"
+    ],
+    "focusChecks": [
+      {
+        "clickEntityId": 4,
+        "clickNavKind": "instance-member",
+        "expectNavKind": "instance-member",
+        "expectEntityId": 4,
+        "expectGroupId": 2,
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Entity ID\n4",
+          "Color Source\nBYLAYER",
+          "Line Type\nCENTER2",
+          "Line Weight\n0.25",
+          "Line Type Scale\n0.6",
+          "Highlighted Sibling IDs\n3"
+        ]
+      },
+      {
+        "clickEntityId": 3,
+        "clickNavKind": "highlighted-sibling",
+        "expectNavKind": "highlighted-sibling",
+        "expectEntityId": 3,
+        "expectGroupId": 2,
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Entity ID\n3",
+          "Color Source\nBYBLOCK",
+          "Line Type\nCENTER",
+          "Line Weight\n0.5",
+          "Line Type Scale\n0.25",
+          "Highlighted Sibling IDs\n4"
+        ]
+      },
+      {
+        "clickGroupId": 2,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 3,
+        "expectGroupId": 2,
+        "expectGroupMemberIds": [
+          3,
+          4
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Entity ID\n3",
+          "Group ID\n2",
+          "Instance Member IDs\n3\n4"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "paperspace_leader_proxy",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_insert_leader/manifest.json&mesh=0&space=1&layout=LayoutStyle",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 2,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Entity ID\n2",
+      "Group ID\n1",
+      "Origin\nLEADER/leader | proxy",
+      "Space\n1",
+      "Layout\nLayoutStyle"
+    ]
+  },
+  {
+    "id": "paperspace_annotation_bundle_dimension_group_focus",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_annotation_bundle/manifest.json&space=1&layout=LayoutStyle",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 14,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Entity ID\n14",
+      "Group ID\n3",
+      "Origin\nDIMENSION/dimension | proxy",
+      "Block Name\n*D1",
+      "Layout\nLayoutStyle"
+    ],
+    "focusChecks": [
+      {
+        "clickGroupId": 3,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 14,
+        "expectGroupId": 3,
+        "expectGroupMemberIds": [
+          14,
+          15,
+          16,
+          17
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Group ID\n3",
+          "Origin\nDIMENSION/dimension | proxy",
+          "Block Name\n*D1",
+          "Dim Style\nStandard"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "paperspace_insert_dimension_hatch_dimension_group_focus",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_paperspace_insert_dimension_hatch/manifest.json&mesh=0&text_filter=all&space=1&layout=LayoutStyle",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 13,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\n20",
+      "Group ID\n3",
+      "Layout\nLayoutStyle",
+      "Space\n1",
+      "Block Name\n*D1",
+      "Origin\nDIMENSION/dimension | proxy"
+    ],
+    "focusChecks": [
+      {
+        "clickGroupId": 3,
+        "clickNavKind": "group",
+        "expectNavKind": "group",
+        "expectTargetType": "group",
+        "expectEntityId": 13,
+        "expectGroupId": 3,
+        "expectGroupMemberIds": [
+          10,
+          11,
+          12,
+          13
+        ],
+        "requireTargetChange": true,
+        "expectSelection": [
+          "Group ID\n3",
+          "Layout\nLayoutStyle",
+          "Block Name\n*D1",
+          "Origin\nDIMENSION/dimension | proxy"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "viewport_sample_paperspace_line_only",
+    "query": "tools/web_viewer/index.html?manifest=build/step186_viewport_sample/manifest.json&mesh=0&space=1&layout=PaperSpace",
+    "expectStatus": "Loaded successfully.",
+    "initialEntityId": 2,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Entity ID\n2",
+      "Color Source\nBYLAYER",
+      "Line Type Scale\n1",
+      "Space\n1",
+      "Layout\nPaperSpace"
+    ]
+  }
+]

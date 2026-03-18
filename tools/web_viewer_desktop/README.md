@@ -90,6 +90,28 @@ Auto-start example (explicit command):
 export VEMCAD_ROUTER_START_CMD="python3 tools/plm_router_service.py --default-plugin build_vcpkg/plugins/libcadgf_dxf_importer_plugin.dylib --default-convert-cli build_vcpkg/tools/convert_cli --port 9000"
 ```
 
+## CLI smoke for DWG open
+The Electron main process also supports a smoke-only mode that reuses the real
+desktop open path without showing the window:
+
+```bash
+npm run start -- \
+  --smoke-dwg "/absolute/path/to/file.dwg" \
+  --smoke-summary "/tmp/vemcad_dwg_desktop_summary.json" \
+  --router-url "http://127.0.0.1:9060" \
+  --router-plugin "/absolute/path/to/libcadgf_dxf_importer_plugin.dylib" \
+  --router-convert-cli "/absolute/path/to/convert_cli" \
+  --router-auto-start on
+```
+
+For a repo-level wrapper that also runs the existing validators, use:
+
+```bash
+cd ..
+python3 tools/plm_dwg_open_desktop_smoke.py \
+  --input-dwg "/absolute/path/to/file.dwg"
+```
+
 ## Package
 ```bash
 npm run pack

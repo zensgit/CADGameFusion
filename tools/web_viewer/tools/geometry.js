@@ -198,6 +198,69 @@ export function extractLineSegments(entity) {
   return [];
 }
 
+function ellipsePoint(center, rx, ry, rotation, angle) {
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  const cosR = Math.cos(rotation);
+  const sinR = Math.sin(rotation);
+  return {
+    x: center.x + (rx * cosA * cosR - ry * sinA * sinR),
+    y: center.y + (rx * cosA * sinR + ry * sinA * cosR),
+  };
+}
+
+function ellipseSweepForRender(startRaw, endRaw) {
+  const start = normalizeAngle(startRaw);
+  const end = normalizeAngle(endRaw);
+  if (Math.abs(start - end) <= 1e-6) return Math.PI * 2;
+  let sweep = end - start;
+  if (sweep <= 0) sweep += Math.PI * 2;
+  return sweep;
+}
+
+function hitTestUnsupportedProxy(proxy, worldPoint, tolerance) {
+  if (!proxy || !Number.isFinite(worldPoint?.x) || !Number.isFinite(worldPoint?.y)) return false;
+
+  if (proxy.kind === 'point' && proxy.point) {
+    return distance(worldPoint, proxy.point) <= tolerance * 2.0;
+  }
+
+  if (proxy.kind === 'polyline' && Array.isArray(proxy.points) && proxy.points.length >= 2) {
+    for (let i = 0; i < proxy.points.length - 1; i += 1) {
+      if (pointOnSegmentDistance(worldPoint, proxy.points[i], proxy.points[i + 1]) <= tolerance) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  if (proxy.kind === 'ellipse' && proxy.center) {
+    const center = proxy.center;
+    const rx = Math.max(0.001, Number(proxy.rx || 0));
+    const ry = Math.max(0.001, Number(proxy.ry || 0));
+    const rotation = Number.isFinite(proxy.rotation) ? proxy.rotation : 0;
+    const start = Number.isFinite(proxy.startAngle) ? proxy.startAngle : 0;
+    const end = Number.isFinite(proxy.endAngle) ? proxy.endAngle : (Math.PI * 2);
+    if (!Number.isFinite(center.x) || !Number.isFinite(center.y)) return false;
+
+    const sweep = ellipseSweepForRender(start, end);
+    const segments = Math.max(24, Math.min(144, Math.ceil((sweep / (Math.PI * 2)) * 120)));
+    let prev = ellipsePoint(center, rx, ry, rotation, start);
+    for (let i = 1; i <= segments; i += 1) {
+      const t = i / segments;
+      const angle = start + sweep * t;
+      const next = ellipsePoint(center, rx, ry, rotation, angle);
+      if (pointOnSegmentDistance(worldPoint, prev, next) <= tolerance) {
+        return true;
+      }
+      prev = next;
+    }
+    return false;
+  }
+
+  return false;
+}
+
 export function hitTestEntity(entity, worldPoint, toleranceWorld) {
   if (!entity || entity.visible === false) return false;
   const tolerance = Math.max(toleranceWorld, 0.001);
@@ -237,6 +300,10 @@ export function hitTestEntity(entity, worldPoint, toleranceWorld) {
   if (entity.type === 'text') {
     const pos = entity.position || { x: 0, y: 0 };
     return distance(worldPoint, pos) <= tolerance * 2.2;
+  }
+
+  if (entity.type === 'unsupported') {
+    return hitTestUnsupportedProxy(entity.display_proxy, worldPoint, tolerance);
   }
 
   return false;

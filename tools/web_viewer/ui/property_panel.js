@@ -29,6 +29,20 @@ function parseNumber(value, fallback = 0) {
   return Number.isFinite(num) ? num : fallback;
 }
 
+function isReadOnlyEntity(entity) {
+  return !!entity && (entity.readOnly === true || entity.type === 'unsupported' || entity.editMode === 'proxy');
+}
+
+function describeReadOnlyEntity(entity) {
+  if (!entity) return 'read-only proxy';
+  if (entity.type === 'unsupported') return 'unsupported proxy';
+  const sourceType = typeof entity.sourceType === 'string' ? entity.sourceType.trim() : '';
+  const proxyKind = typeof entity.proxyKind === 'string' ? entity.proxyKind.trim() : '';
+  if (sourceType && proxyKind) return `${sourceType} ${proxyKind} proxy`;
+  if (sourceType) return `${sourceType} derived proxy`;
+  return 'read-only proxy';
+}
+
 function buildPatch(entity, key, rawValue) {
   const patch = {};
 
@@ -120,6 +134,33 @@ export function createPropertyPanel({ documentState, selectionState, commandBus,
     form.appendChild(wrapper);
   }
 
+  function addInfo(label, value) {
+    if (value === null || value === undefined || value === '') return;
+    const row = document.createElement('div');
+    row.className = 'cad-readonly-meta';
+    row.textContent = `${label}: ${value}`;
+    form.appendChild(row);
+  }
+
+  function renderEntityMetadata(entity) {
+    if (!entity) return;
+    addInfo('Source Type', entity.sourceType);
+    addInfo('Edit Mode', entity.editMode);
+    addInfo('Proxy Kind', entity.proxyKind);
+    addInfo('Block Name', entity.blockName);
+    if (Number.isFinite(entity.hatchId)) addInfo('Hatch ID', String(entity.hatchId));
+    addInfo('Hatch Pattern', entity.hatchPattern);
+    addInfo('Text Kind', entity.textKind);
+    if (Number.isFinite(entity.dimType)) addInfo('Dim Type', String(entity.dimType));
+    addInfo('Dim Style', entity.dimStyle);
+    if (entity.dimTextPos && Number.isFinite(entity.dimTextPos.x) && Number.isFinite(entity.dimTextPos.y)) {
+      addInfo('Dim Text Pos', `${entity.dimTextPos.x}, ${entity.dimTextPos.y}`);
+    }
+    if (Number.isFinite(entity.dimTextRotation)) {
+      addInfo('Dim Text Rotation', String(entity.dimTextRotation));
+    }
+  }
+
   function patchSelection(patch, message = 'Property updated') {
     const result = commandBus.execute('selection.propertyPatch', { patch });
     setStatus(result.ok ? message : (result.message || 'Property update failed'));
@@ -145,6 +186,29 @@ export function createPropertyPanel({ documentState, selectionState, commandBus,
     }
 
     const primary = documentState.getEntity(selectionState.primaryId) || entities[0];
+    const readOnlyCount = entities.filter((entity) => isReadOnlyEntity(entity)).length;
+    if (readOnlyCount > 0) {
+      const note = document.createElement('div');
+      note.className = 'cad-readonly-note';
+      if (readOnlyCount === entities.length) {
+        note.textContent = entities.length === 1
+          ? `Selected entity is read-only (${describeReadOnlyEntity(primary)}); editing disabled.`
+          : 'Selected entities are read-only proxies; editing disabled.';
+      } else {
+        note.textContent = `Contains ${readOnlyCount} read-only derived/proxy entities; edits apply only to editable entities.`;
+      }
+      form.appendChild(note);
+      if (entities.length === 1) {
+        renderEntityMetadata(primary);
+      }
+      if (readOnlyCount === entities.length) {
+        return;
+      }
+    }
+
+    if (entities.length === 1) {
+      renderEntityMetadata(primary);
+    }
 
     addField({ label: 'Layer ID', name: 'layerId', type: 'number', value: String(primary.layerId) }, (value) => {
       const layerId = Number.parseInt(value, 10);

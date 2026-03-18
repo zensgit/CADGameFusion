@@ -1,0 +1,30 @@
+{
+  "entities": [],
+  "line_entities": [],
+  "summary": {
+    "default_space": 1,
+    "layout_count": 2,
+    "document_entity_count": 0,
+    "mesh_entity_count": 0,
+    "line_entity_count": 0
+  },
+  "layouts": [
+    {
+      "name": "PaperSpace",
+      "space": 1,
+      "is_default": true,
+      "mesh_entity_count": 0,
+      "line_entity_count": 0,
+      "viewport_count": 0
+    },
+    {
+      "name": "PaperSpace",
+      "space": 1,
+      "is_default": true,
+      "mesh_entity_count": 0,
+      "line_entity_count": 0,
+      "viewport_count": 0
+    }
+  ],
+  "viewports": []
+}

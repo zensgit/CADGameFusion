@@ -1,0 +1,17 @@
+{
+  "entities": [
+    {
+      "id": 1,
+      "space": 0
+    },
+    {
+      "id": 2,
+      "space": 1
+    }
+  ],
+  "metadata": {
+    "meta": {
+      "dxf.default_space": 0
+    }
+  }
+}

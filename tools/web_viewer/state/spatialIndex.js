@@ -54,6 +54,25 @@ export function computeEntityAabb(entity) {
     const halfH = h * 0.6;
     return { minX: x - halfW, minY: y - halfH, maxX: x + halfW, maxY: y + halfH };
   }
+  if (entity.type === 'unsupported' && entity.display_proxy) {
+    const proxy = entity.display_proxy;
+    if (proxy.kind === 'point') {
+      return aabbFromPoints([proxy.point]);
+    }
+    if (proxy.kind === 'polyline') {
+      return aabbFromPoints(proxy.points);
+    }
+    if (proxy.kind === 'ellipse') {
+      const cx = asNumber(proxy.center?.x, NaN);
+      const cy = asNumber(proxy.center?.y, NaN);
+      const rx = Math.max(0.001, asNumber(proxy.rx, 0));
+      const ry = Math.max(0.001, asNumber(proxy.ry, 0));
+      if (!Number.isFinite(cx) || !Number.isFinite(cy)) return null;
+      // Conservative bounds regardless of rotation for robust spatial query coverage.
+      const r = Math.max(rx, ry);
+      return { minX: cx - r, minY: cy - r, maxX: cx + r, maxY: cy + r };
+    }
+  }
   return null;
 }
 

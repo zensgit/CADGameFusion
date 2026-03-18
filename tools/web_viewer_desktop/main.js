@@ -12,6 +12,7 @@ const DEFAULT_ROUTER_TIMEOUT_MS = 60000;
 const DEFAULT_DWG_TIMEOUT_MS = 60000;
 const DEFAULT_ROUTER_START_TIMEOUT_MS = 15000;
 const DEFAULT_ROUTER_HEALTH_TIMEOUT_MS = 1500;
+const DEFAULT_SMOKE_VIEWER_TIMEOUT_MS = 30000;
 
 let routerProcess = null;
 let routerStartPromise = null;
@@ -780,11 +781,136 @@ async function convertWithRouter(filePath, labelOverride = "", settings = {}) {
     ok: true,
     viewer_url: viewerUrl,
     manifest_url: parsed.manifestUrl,
+    manifest_path: data?.manifest_path || "",
+    output_dir: data?.output_dir || "",
     project_id: parsed.projectId || config.projectId,
     document_label: parsed.documentLabel || documentLabel,
     document_id: parsed.documentId || "",
     status_url: data?.status_url || ""
   };
+}
+
+async function fetchTextWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const text = await response.text();
+    return { ok: response.ok, status: response.status, text };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      text: "",
+      error: error?.message || "request failed",
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function writeSmokeSummary(summary, targetPath) {
+  if (!targetPath) {
+    return;
+  }
+  try {
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.writeFileSync(targetPath, `${JSON.stringify(summary, null, 2)}\n`, "utf-8");
+  } catch (error) {
+    summary.summary_write_error = error?.message || "failed to write summary";
+  }
+}
+
+async function maybeRunSmokeDwgMode() {
+  const smokeDwg = getArg("--smoke-dwg");
+  if (!smokeDwg) {
+    return false;
+  }
+
+  const smokeSummaryPath = getArg("--smoke-summary") || "";
+  const smokeViewerTimeout =
+    coerceNumber(getArg("--smoke-viewer-timeout-ms")) || DEFAULT_SMOKE_VIEWER_TIMEOUT_MS;
+  const selection = path.resolve(smokeDwg);
+  const overrides = {};
+  const routerConfig = resolveRouterConfig(overrides);
+  const dwgConfig = resolveDwgConfig(overrides);
+  const detectedRouter = detectRouterPaths();
+
+  const summary = {
+    ok: false,
+    smoke_mode: "desktop-open-cad-file",
+    input_dwg: selection,
+    router_url: normalizeBaseUrl(routerConfig.routerUrl),
+    router_plugin: routerConfig.plugin || detectedRouter.pluginPath || "",
+    router_convert_cli: routerConfig.convertCli || detectedRouter.convertCliPath || "",
+    router_emit: routerConfig.emit || "",
+    project_id: routerConfig.projectId || "",
+    dwg_convert_cmd: dwgConfig.dwgConvertCmd || "",
+    dwg2dxf_bin: resolveDwg2DxfBinary(overrides) || "",
+    convert: {},
+    viewer: {},
+  };
+
+  let prepared = null;
+  let exitCode = 1;
+  try {
+    if (!fs.existsSync(selection)) {
+      throw new Error(`DWG file not found: ${selection}`);
+    }
+    prepared = await maybeConvertDwg(selection, overrides);
+    summary.prepared = {
+      ok: !!prepared.ok,
+      path: prepared.path || "",
+      cleanup_dir: prepared.cleanupDir || "",
+      label_override: prepared.labelOverride || "",
+      error: prepared.error || "",
+      error_code: prepared.error_code || "",
+    };
+    if (!prepared.ok) {
+      throw new Error(prepared.error || "DWG prepare failed");
+    }
+
+    const converted = await convertWithRouter(prepared.path, prepared.labelOverride || "", overrides);
+    summary.convert = converted;
+    if (!converted.ok) {
+      throw new Error(converted.error || "router convert failed");
+    }
+
+    const viewer = await fetchTextWithTimeout(converted.viewer_url, smokeViewerTimeout);
+    summary.viewer = {
+      url: converted.viewer_url || "",
+      status_code: viewer.status,
+      ok: viewer.ok,
+      contains_statusbar: viewer.text.includes('id="cad-status-message"'),
+      contains_solver_panel: viewer.text.includes('id="cad-solver-actions"'),
+      error: viewer.error || "",
+    };
+    if (!viewer.ok) {
+      throw new Error(summary.viewer.error || `viewer URL returned ${viewer.status}`);
+    }
+    if (!summary.viewer.contains_statusbar) {
+      throw new Error("viewer page missing expected statusbar marker");
+    }
+
+    summary.ok = true;
+    exitCode = 0;
+  } catch (error) {
+    summary.ok = false;
+    summary.error = error?.message || "desktop DWG smoke failed";
+  } finally {
+    if (prepared?.cleanupDir) {
+      try {
+        await fs.promises.rm(prepared.cleanupDir, { recursive: true, force: true });
+      } catch {
+        // best-effort cleanup
+      }
+    }
+  }
+
+  writeSmokeSummary(summary, smokeSummaryPath);
+  process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  setImmediate(() => app.exit(exitCode));
+  return true;
 }
 
 function resolveLocalViewerPath() {
@@ -982,7 +1108,10 @@ ipcMain.handle("vemcad:test-dwg", async (_event, settings) => {
   };
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (await maybeRunSmokeDwgMode()) {
+    return;
+  }
   createWindow();
   installAppMenu();
   app.on("activate", () => {

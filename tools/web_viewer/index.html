@@ -119,7 +119,7 @@
         <section class="panel__section">
           <div class="section__title">Selection</div>
           <div class="selection" id="selection-info">
-            <div class="selection__empty">Click a surface to inspect.</div>
+            <div class="selection__empty">Click a surface or text label to inspect.</div>
           </div>
         </section>
 
@@ -172,6 +172,7 @@
           <button data-tool="break" class="cad-tool">Break</button>
           <button data-tool="trim" class="cad-tool">Trim</button>
           <button data-tool="extend" class="cad-tool">Extend</button>
+          <button data-tool="join" class="cad-tool">Join</button>
           <button data-tool="fillet" class="cad-tool">Fillet</button>
           <button data-tool="chamfer" class="cad-tool">Chamfer</button>
           <button data-tool="delete" class="cad-tool">Delete</button>
@@ -190,6 +191,17 @@
           <section class="cad-panel">
             <h2>Properties</h2>
             <form id="cad-property-form" class="cad-form"></form>
+          </section>
+
+          <section class="cad-panel">
+            <h2>Diagnostics</h2>
+            <div class="cad-solver-actions-bar">
+              <button id="cad-import-solver" type="button" class="cad-solver-actions-bar__button">Import Solver JSON</button>
+              <button id="cad-clear-solver" type="button" class="cad-solver-actions-bar__button" disabled>Clear Solver</button>
+            </div>
+            <div id="cad-solver-actions" class="cad-solver-panels"></div>
+            <div id="cad-solver-action-flow-banner" class="cad-solver-flow-banner"></div>
+            <div id="cad-solver-action-flow" class="cad-solver-flow-console"></div>
           </section>
 
           <section class="cad-panel">
@@ -215,6 +227,8 @@
           <button id="cad-toggle-grid" type="button">Grid: Off</button>
           <button id="cad-toggle-break-keep" type="button">Break Keep: Auto</button>
         </div>
+        <div id="cad-status-selection" class="cad-statusbar__selection">Selection: none</div>
+        <div id="cad-status-solver" class="cad-statusbar__solver">Solver: idle</div>
         <div id="cad-status-message" class="cad-statusbar__message">Ready</div>
         <div id="cad-status-cursor" class="cad-statusbar__cursor">X: 0.00 Y: 0.00</div>
       </footer>

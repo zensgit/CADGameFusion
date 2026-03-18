@@ -72,6 +72,63 @@ function pointToVec2(point) {
   return [Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 0];
 }
 
+function extractEntityMetadata(raw) {
+  const meta = {};
+
+  const groupId = Number(raw?.group_id);
+  if (Number.isFinite(groupId)) meta.groupId = Math.trunc(groupId);
+
+  if (Object.prototype.hasOwnProperty.call(raw || {}, 'space')) {
+    const space = Number(raw?.space);
+    if (Number.isFinite(space)) meta.space = Math.trunc(space);
+  }
+
+  if (typeof raw?.layout === 'string' && raw.layout.trim()) meta.layout = raw.layout.trim();
+  if (!meta.layout && typeof raw?.layout_name === 'string' && raw.layout_name.trim()) meta.layout = raw.layout_name.trim();
+
+  if (typeof raw?.source_type === 'string' && raw.source_type.trim()) meta.sourceType = raw.source_type.trim();
+  if (typeof raw?.edit_mode === 'string' && raw.edit_mode.trim()) meta.editMode = raw.edit_mode.trim();
+  if (typeof raw?.proxy_kind === 'string' && raw.proxy_kind.trim()) meta.proxyKind = raw.proxy_kind.trim();
+  if (typeof raw?.block_name === 'string' && raw.block_name.trim()) meta.blockName = raw.block_name.trim();
+  if (typeof raw?.hatch_pattern === 'string' && raw.hatch_pattern.trim()) meta.hatchPattern = raw.hatch_pattern.trim();
+
+  const hatchId = Number(raw?.hatch_id);
+  if (Number.isFinite(hatchId)) meta.hatchId = Math.trunc(hatchId);
+
+  if (typeof raw?.text_kind === 'string' && raw.text_kind.trim()) meta.textKind = raw.text_kind.trim();
+  if (typeof raw?.dim_style === 'string' && raw.dim_style.trim()) meta.dimStyle = raw.dim_style.trim();
+  if (Number.isFinite(raw?.dim_type)) meta.dimType = Math.trunc(raw.dim_type);
+
+  const dimTextPos = vec2ToPoint(raw?.dim_text_pos);
+  if (dimTextPos) meta.dimTextPos = dimTextPos;
+
+  const dimTextRotation = Number(raw?.dim_text_rotation);
+  if (Number.isFinite(dimTextRotation)) meta.dimTextRotation = dimTextRotation;
+
+  return meta;
+}
+
+function applyEntityMetadataPatch(target, entity) {
+  if (!target || !entity) return target;
+  if (Number.isFinite(entity.groupId)) target.group_id = Math.trunc(entity.groupId);
+  if (Number.isFinite(entity.space)) target.space = Math.trunc(entity.space);
+  if (typeof entity.layout === 'string' && entity.layout.trim()) target.layout = entity.layout.trim();
+  if (typeof entity.sourceType === 'string' && entity.sourceType.trim()) target.source_type = entity.sourceType.trim();
+  if (typeof entity.editMode === 'string' && entity.editMode.trim()) target.edit_mode = entity.editMode.trim();
+  if (typeof entity.proxyKind === 'string' && entity.proxyKind.trim()) target.proxy_kind = entity.proxyKind.trim();
+  if (typeof entity.blockName === 'string' && entity.blockName.trim()) target.block_name = entity.blockName.trim();
+  if (typeof entity.hatchPattern === 'string' && entity.hatchPattern.trim()) target.hatch_pattern = entity.hatchPattern.trim();
+  if (Number.isFinite(entity.hatchId)) target.hatch_id = Math.trunc(entity.hatchId);
+  if (typeof entity.textKind === 'string' && entity.textKind.trim()) target.text_kind = entity.textKind.trim();
+  if (typeof entity.dimStyle === 'string' && entity.dimStyle.trim()) target.dim_style = entity.dimStyle.trim();
+  if (Number.isFinite(entity.dimType)) target.dim_type = Math.trunc(entity.dimType);
+  if (entity.dimTextPos && Number.isFinite(entity.dimTextPos.x) && Number.isFinite(entity.dimTextPos.y)) {
+    target.dim_text_pos = pointToVec2(entity.dimTextPos);
+  }
+  if (Number.isFinite(entity.dimTextRotation)) target.dim_text_rotation = Number(entity.dimTextRotation);
+  return target;
+}
+
 function approxEqual(a, b, eps = 1e-9) {
   return Math.abs(a - b) <= eps;
 }
@@ -87,16 +144,69 @@ function coerceId(raw, fallback = 0) {
   return Math.trunc(value);
 }
 
-function makeUnsupportedEntity(rawEntity, { id, layerId, name, color }) {
+function makeUnsupportedDisplayProxy(rawEntity) {
+  if (!rawEntity || typeof rawEntity !== 'object') return null;
+  const rawType = coerceId(rawEntity.type, -1);
+
+  if (rawType === CADGF_ENTITY_TYPES.POINT) {
+    const point = vec2ToPoint(rawEntity.point);
+    if (!point) return null;
+    return {
+      kind: 'point',
+      point,
+    };
+  }
+
+  if (rawType === CADGF_ENTITY_TYPES.ELLIPSE) {
+    const center = vec2ToPoint(rawEntity?.ellipse?.c);
+    const rx = Number(rawEntity?.ellipse?.rx);
+    const ry = Number(rawEntity?.ellipse?.ry);
+    const rotation = Number(rawEntity?.ellipse?.rot);
+    const startAngle = Number(rawEntity?.ellipse?.a0);
+    const endAngle = Number(rawEntity?.ellipse?.a1);
+    if (!center || !Number.isFinite(rx) || !Number.isFinite(ry) || !Number.isFinite(rotation)
+      || !Number.isFinite(startAngle) || !Number.isFinite(endAngle)) {
+      return null;
+    }
+    return {
+      kind: 'ellipse',
+      center,
+      rx: Math.max(0.001, Math.abs(rx)),
+      ry: Math.max(0.001, Math.abs(ry)),
+      rotation,
+      startAngle,
+      endAngle,
+    };
+  }
+
+  if (rawType === CADGF_ENTITY_TYPES.SPLINE) {
+    const points = Array.isArray(rawEntity?.spline?.control)
+      ? rawEntity.spline.control.map(vec2ToPoint).filter(Boolean)
+      : [];
+    if (points.length < 2) return null;
+    return {
+      kind: 'polyline',
+      points,
+    };
+  }
+
+  return null;
+}
+
+function makeUnsupportedEntity(rawEntity, { id, layerId, name, color, metadata = {} }) {
+  const displayProxy = makeUnsupportedDisplayProxy(rawEntity);
   return {
     id,
     type: 'unsupported',
     layerId,
-    visible: false,
+    // Keep unsupported placeholders visible/selectable when we can synthesize a display proxy.
+    visible: !!displayProxy,
     color,
     name,
     readOnly: true,
+    display_proxy: displayProxy,
     cadgf: cloneJson(rawEntity),
+    ...metadata,
   };
 }
 
@@ -149,6 +259,7 @@ export function importCadgfDocument(cadgfJson) {
     const layerId = coerceId(raw?.layer_id, 0);
     const layer = layerIndex.get(layerId) || layerIndex.get(0) || null;
     const name = typeof raw?.name === 'string' ? raw.name : '';
+    const metadata = extractEntityMetadata(raw);
 
     const colorSource = typeof raw?.color_source === 'string' ? raw.color_source : '';
     const byLayer = colorSource.toUpperCase() === 'BYLAYER';
@@ -162,7 +273,7 @@ export function importCadgfDocument(cadgfJson) {
       const p1 = vec2ToPoint(raw?.line?.[1]);
       if (!p0 || !p1) {
         warnings.push(`entity:${id} invalid line geometry`);
-        entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color }));
+        entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color, metadata }));
         continue;
       }
       entities.push({
@@ -174,6 +285,7 @@ export function importCadgfDocument(cadgfJson) {
         name,
         start: p0,
         end: p1,
+        ...metadata,
       });
       continue;
     }
@@ -183,7 +295,7 @@ export function importCadgfDocument(cadgfJson) {
       const points = rawPoints.map(vec2ToPoint).filter(Boolean);
       if (points.length < 2) {
         warnings.push(`entity:${id} invalid polyline geometry`);
-        entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color }));
+        entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color, metadata }));
         continue;
       }
       const closed = points.length >= 3 && approxEqualPoint(points[0], points[points.length - 1]);
@@ -197,6 +309,7 @@ export function importCadgfDocument(cadgfJson) {
         name,
         closed,
         points: normalizedPoints,
+        ...metadata,
       });
       continue;
     }
@@ -206,7 +319,7 @@ export function importCadgfDocument(cadgfJson) {
       const radius = Number(raw?.circle?.r);
       if (!center || !Number.isFinite(radius)) {
         warnings.push(`entity:${id} invalid circle geometry`);
-        entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color }));
+        entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color, metadata }));
         continue;
       }
       entities.push({
@@ -218,6 +331,7 @@ export function importCadgfDocument(cadgfJson) {
         name,
         center,
         radius: Math.max(0.001, radius),
+        ...metadata,
       });
       continue;
     }
@@ -230,7 +344,7 @@ export function importCadgfDocument(cadgfJson) {
       const cw = normalizeBoolInt(raw?.arc?.cw, false);
       if (!center || !Number.isFinite(radius) || !Number.isFinite(a0) || !Number.isFinite(a1)) {
         warnings.push(`entity:${id} invalid arc geometry`);
-        entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color }));
+        entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color, metadata }));
         continue;
       }
       entities.push({
@@ -245,6 +359,7 @@ export function importCadgfDocument(cadgfJson) {
         startAngle: a0,
         endAngle: a1,
         cw,
+        ...metadata,
       });
       continue;
     }
@@ -256,7 +371,7 @@ export function importCadgfDocument(cadgfJson) {
       const value = typeof raw?.text?.value === 'string' ? raw.text.value : '';
       if (!pos || !Number.isFinite(height) || !Number.isFinite(rotation)) {
         warnings.push(`entity:${id} invalid text geometry`);
-        entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color }));
+        entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color, metadata }));
         continue;
       }
       entities.push({
@@ -270,12 +385,13 @@ export function importCadgfDocument(cadgfJson) {
         value: value || 'TEXT',
         height: Math.max(0.1, height),
         rotation,
+        ...metadata,
       });
       continue;
     }
 
     warnings.push(`entity:${id} unsupported cadgf type=${raw?.type}`);
-    entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color }));
+    entities.push(makeUnsupportedEntity(raw, { id, layerId, name, color, metadata }));
   }
 
   const meta = {
@@ -428,12 +544,12 @@ export function exportCadgfDocument(documentState, { baseCadgfJson = null } = {}
     if (entity.type === 'line') {
       const baseEntity = ensureCadgfEntityBase(prior, id);
       const line = [pointToVec2(entity.start), pointToVec2(entity.end)];
-      const patch = {
+      const patch = applyEntityMetadataPatch({
         type: CADGF_ENTITY_TYPES.LINE,
         layer_id: coerceId(entity.layerId, baseEntity.layer_id),
         name: typeof entity.name === 'string' ? entity.name : baseEntity.name,
         line,
-      };
+      }, entity);
       outEntities.push(ensureCadgfEntityBase({ ...baseEntity, ...patch }, id));
       continue;
     }
@@ -445,31 +561,31 @@ export function exportCadgfDocument(documentState, { baseCadgfJson = null } = {}
       if (entity.closed && points.length >= 2) {
         polyline.push(pointToVec2(points[0]));
       }
-      const patch = {
+      const patch = applyEntityMetadataPatch({
         type: CADGF_ENTITY_TYPES.POLYLINE,
         layer_id: coerceId(entity.layerId, baseEntity.layer_id),
         name: typeof entity.name === 'string' ? entity.name : baseEntity.name,
         polyline,
-      };
+      }, entity);
       outEntities.push(ensureCadgfEntityBase({ ...baseEntity, ...patch }, id));
       continue;
     }
 
     if (entity.type === 'circle') {
       const baseEntity = ensureCadgfEntityBase(prior, id);
-      const patch = {
+      const patch = applyEntityMetadataPatch({
         type: CADGF_ENTITY_TYPES.CIRCLE,
         layer_id: coerceId(entity.layerId, baseEntity.layer_id),
         name: typeof entity.name === 'string' ? entity.name : baseEntity.name,
         circle: { c: pointToVec2(entity.center), r: Number(entity.radius || 0) },
-      };
+      }, entity);
       outEntities.push(ensureCadgfEntityBase({ ...baseEntity, ...patch }, id));
       continue;
     }
 
     if (entity.type === 'arc') {
       const baseEntity = ensureCadgfEntityBase(prior, id);
-      const patch = {
+      const patch = applyEntityMetadataPatch({
         type: CADGF_ENTITY_TYPES.ARC,
         layer_id: coerceId(entity.layerId, baseEntity.layer_id),
         name: typeof entity.name === 'string' ? entity.name : baseEntity.name,
@@ -480,14 +596,14 @@ export function exportCadgfDocument(documentState, { baseCadgfJson = null } = {}
           a1: Number(entity.endAngle || 0),
           cw: entity.cw ? 1 : 0,
         },
-      };
+      }, entity);
       outEntities.push(ensureCadgfEntityBase({ ...baseEntity, ...patch }, id));
       continue;
     }
 
     if (entity.type === 'text') {
       const baseEntity = ensureCadgfEntityBase(prior, id);
-      const patch = {
+      const patch = applyEntityMetadataPatch({
         type: CADGF_ENTITY_TYPES.TEXT,
         layer_id: coerceId(entity.layerId, baseEntity.layer_id),
         name: typeof entity.name === 'string' ? entity.name : baseEntity.name,
@@ -497,7 +613,7 @@ export function exportCadgfDocument(documentState, { baseCadgfJson = null } = {}
           rot: Number(entity.rotation || 0),
           value: typeof entity.value === 'string' ? entity.value : '',
         },
-      };
+      }, entity);
       outEntities.push(ensureCadgfEntityBase({ ...baseEntity, ...patch }, id));
       continue;
     }

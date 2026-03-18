@@ -1,0 +1,24 @@
+{
+  "entities": [],
+  "line_entities": [
+    {
+      "id": 1,
+      "base_vertex": 0,
+      "vertex_count": 2,
+      "index_offset": 0,
+      "index_count": 2,
+      "space": 0,
+      "source_type": "HATCH",
+      "edit_mode": "proxy",
+      "proxy_kind": "dimension",
+      "hatch_id": 1,
+      "hatch_pattern": "BROKEN"
+    }
+  ],
+  "summary": {
+    "default_space": 0,
+    "document_entity_count": 1,
+    "mesh_entity_count": 0,
+    "line_entity_count": 1
+  }
+}

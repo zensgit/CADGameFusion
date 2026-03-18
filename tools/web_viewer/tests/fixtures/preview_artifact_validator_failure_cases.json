@@ -1,0 +1,85 @@
+[
+  {
+    "id": "invalid_mesh_metadata_json",
+    "target": "tools/web_viewer/tests/fixtures/preview_bad_manifest_invalid_mesh_metadata.json",
+    "expect_errors": [
+      "JSON parse failed"
+    ]
+  },
+  {
+    "id": "provenance_mismatch",
+    "target": "tools/web_viewer/tests/fixtures/preview_bad_artifact_provenance_mismatch/manifest.json",
+    "expect_errors": [
+      "proxy_kind mismatch",
+      "hatch_pattern mismatch"
+    ]
+  },
+  {
+    "id": "layout_viewport_mismatch",
+    "target": "tools/web_viewer/tests/fixtures/preview_bad_artifact_layout_viewport_mismatch/manifest.json",
+    "expect_errors": [
+      "mesh_metadata.layouts missing names referenced by document viewports",
+      "mesh_metadata.viewports[0].layout mismatch"
+    ]
+  },
+  {
+    "id": "summary_space_mismatch",
+    "target": "tools/web_viewer/tests/fixtures/preview_bad_artifact_summary_space_mismatch/manifest.json",
+    "expect_errors": [
+      "mesh_metadata.summary.spaces[0].document_entity_count mismatch",
+      "mesh_metadata.summary.spaces[1].mesh_entity_count mismatch"
+    ]
+  },
+  {
+    "id": "layout_duplicate_default",
+    "target": "tools/web_viewer/tests/fixtures/preview_bad_artifact_layout_duplicate_default/manifest.json",
+    "expect_errors": [
+      "mesh_metadata.layouts contains duplicate name",
+      "mesh_metadata.layouts contains multiple default layouts"
+    ]
+  },
+  {
+    "id": "source_semantic_mismatch",
+    "target": "tools/web_viewer/tests/fixtures/preview_bad_artifact_source_semantic_mismatch/manifest.json",
+    "expect_errors": [
+      "source_type DIMENSION requires edit_mode='proxy'",
+      "source_type HATCH requires proxy_kind='hatch'",
+      "source_type INSERT requires block_name"
+    ]
+  },
+  {
+    "id": "color_source_semantic_mismatch",
+    "target": "tools/web_viewer/tests/fixtures/preview_bad_artifact_color_source_semantic_mismatch/manifest.json",
+    "expect_errors": [
+      "color_source INDEX requires color_aci",
+      "has invalid color_source 'BROKEN'",
+      "color_source TRUECOLOR requires color",
+      "color_source BYLAYER requires color == layer_color"
+    ]
+  },
+  {
+    "id": "style_precedence_mismatch",
+    "target": "tools/web_viewer/tests/fixtures/preview_bad_artifact_style_precedence_mismatch/manifest.json",
+    "expect_errors": [
+      "line_type mismatch",
+      "line_weight mismatch",
+      "line_type_scale mismatch"
+    ]
+  },
+  {
+    "id": "layout_count_presence_mismatch",
+    "target": "tools/web_viewer/tests/fixtures/preview_bad_artifact_layout_count_presence_mismatch/manifest.json",
+    "expect_errors": [
+      "mesh_metadata.layouts[1].document_entity_count mismatch",
+      "mesh_metadata.layouts[1].line_entity_count mismatch"
+    ]
+  },
+  {
+    "id": "text_kind_semantic_mismatch",
+    "target": "tools/web_viewer/tests/fixtures/preview_bad_artifact_text_kind_semantic_mismatch/manifest.json",
+    "expect_errors": [
+      "has invalid text_kind 'broken'",
+      "text_kind dimension requires source_type='DIMENSION'"
+    ]
+  }
+]

@@ -1,7 +1,18 @@
 [
   {
     "name": "cadgf_smoke_fixture_minimal",
-    "path": "tools/web_viewer/tests/fixtures/cadgf_smoke_document.json"
+    "path": "tools/web_viewer/tests/fixtures/cadgf_smoke_document.json",
+    "tags": [
+      "text-heavy"
+    ],
+    "priority": "P1"
+  },
+  {
+    "name": "cadgf_smoke_fixture_derived_proxy",
+    "path": "tools/web_viewer/tests/fixtures/cadgf_smoke_derived_proxy_document.json",
+    "tags": [
+      "proxy-derived"
+    ],
+    "priority": "P1"
   }
 ]
-

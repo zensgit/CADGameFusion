@@ -1,0 +1,20 @@
+[
+  {
+    "id": "missing_document_artifact",
+    "query": "tools/web_viewer/index.html?manifest=tools/web_viewer/tests/fixtures/preview_bad_manifest_missing_document.json",
+    "expectStatus": "Failed to load manifest.",
+    "expectError": true
+  },
+  {
+    "id": "invalid_manifest_json",
+    "query": "tools/web_viewer/index.html?manifest=tools/web_viewer/tests/fixtures/preview_bad_manifest_invalid_json.json",
+    "expectStatus": "Failed to load manifest.",
+    "expectError": true
+  },
+  {
+    "id": "invalid_mesh_metadata_json",
+    "query": "tools/web_viewer/index.html?manifest=tools/web_viewer/tests/fixtures/preview_bad_manifest_invalid_mesh_metadata.json",
+    "expectStatus": "Failed to load manifest.",
+    "expectError": true
+  }
+]
