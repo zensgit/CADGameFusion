@@ -194,6 +194,28 @@
           </section>
 
           <section class="cad-panel">
+            <h2>Constraints <span id="cad-constraint-count" class="cad-badge">0</span></h2>
+            <div class="cad-constraint-bar">
+              <select id="cad-constraint-type">
+                <option value="horizontal">Horizontal</option>
+                <option value="vertical">Vertical</option>
+                <option value="distance">Distance</option>
+                <option value="coincident">Coincident</option>
+                <option value="concentric">Concentric</option>
+                <option value="angle">Angle</option>
+              </select>
+              <input id="cad-constraint-refs" type="text" placeholder="e.g. e1_start.y,e2_start.y" class="cad-constraint-bar__input">
+              <input id="cad-constraint-value" type="number" step="any" placeholder="Value" class="cad-constraint-bar__value" style="display:none">
+              <button id="cad-add-constraint" type="button" class="cad-constraint-bar__button">Add</button>
+            </div>
+            <div id="cad-constraint-list" class="cad-constraint-list"></div>
+            <div class="cad-constraint-bar" style="margin-top:4px">
+              <button id="cad-export-solver-project" type="button" class="cad-constraint-bar__button">Export Solver Project</button>
+              <button id="cad-clear-constraints" type="button" class="cad-constraint-bar__button" disabled>Clear All</button>
+            </div>
+          </section>
+
+          <section class="cad-panel">
             <h2>Diagnostics</h2>
             <div class="cad-solver-actions-bar">
               <button id="cad-import-solver" type="button" class="cad-solver-actions-bar__button">Import Solver JSON</button>

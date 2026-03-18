@@ -679,6 +679,110 @@ body.text-overlay-clean.is-bg-black .text-label {
   cursor: default;
 }
 
+/* --- Constraint panel --- */
+
+.cad-badge {
+  display: inline-block;
+  background: rgba(37, 99, 235, 0.12);
+  color: #2563eb;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+.cad-constraint-bar {
+  padding: 0 10px 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.cad-constraint-bar select,
+.cad-constraint-bar input {
+  font-size: 0.72rem;
+  padding: 4px 6px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background: #fff;
+  color: #1f2937;
+}
+
+.cad-constraint-bar select {
+  min-width: 90px;
+}
+
+.cad-constraint-bar__input {
+  flex: 1;
+  min-width: 80px;
+}
+
+.cad-constraint-bar__value {
+  width: 60px;
+}
+
+.cad-constraint-bar__button {
+  appearance: none;
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  border-radius: 999px;
+  background: #fff;
+  color: #1f2937;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cad-constraint-bar__button:hover:not(:disabled) {
+  background: #eef6ff;
+  border-color: rgba(37, 99, 235, 0.24);
+}
+
+.cad-constraint-bar__button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.cad-constraint-list {
+  padding: 0 10px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.cad-constraint-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 0.72rem;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.cad-constraint-item__label {
+  color: #374151;
+  font-weight: 500;
+}
+
+.cad-constraint-item__refs {
+  color: #6b7280;
+  font-size: 0.68rem;
+  margin-left: 4px;
+}
+
+.cad-constraint-item__remove {
+  appearance: none;
+  border: none;
+  background: none;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0 4px;
+}
+
 .cad-solver-flow-banner {
   padding: 0 10px 10px;
   display: grid;

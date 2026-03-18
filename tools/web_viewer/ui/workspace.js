@@ -858,6 +858,96 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
     });
   }
 
+  // --- Constraint panel wiring ---
+  const constraintTypeSelect = document.getElementById('cad-constraint-type');
+  const constraintRefsInput = document.getElementById('cad-constraint-refs');
+  const constraintValueInput = document.getElementById('cad-constraint-value');
+  const addConstraintButton = document.getElementById('cad-add-constraint');
+  const constraintListEl = document.getElementById('cad-constraint-list');
+  const constraintCountBadge = document.getElementById('cad-constraint-count');
+  const exportSolverProjectButton = document.getElementById('cad-export-solver-project');
+  const clearConstraintsButton = document.getElementById('cad-clear-constraints');
+
+  function renderConstraintList() {
+    if (!constraintListEl) return;
+    const constraints = documentState.listConstraints();
+    constraintListEl.innerHTML = '';
+    for (const c of constraints) {
+      const item = document.createElement('div');
+      item.className = 'cad-constraint-item';
+      const label = document.createElement('span');
+      label.className = 'cad-constraint-item__label';
+      label.textContent = c.type;
+      const refs = document.createElement('span');
+      refs.className = 'cad-constraint-item__refs';
+      refs.textContent = c.refs.join(', ') + (c.value !== undefined ? ` = ${c.value}` : '');
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'cad-constraint-item__remove';
+      removeBtn.textContent = '\u00d7';
+      removeBtn.addEventListener('click', () => {
+        documentState.removeConstraint(c.id);
+        renderConstraintList();
+      });
+      item.appendChild(label);
+      item.appendChild(refs);
+      item.appendChild(removeBtn);
+      constraintListEl.appendChild(item);
+    }
+    if (constraintCountBadge) constraintCountBadge.textContent = String(constraints.length);
+    if (clearConstraintsButton) clearConstraintsButton.disabled = constraints.length === 0;
+  }
+
+  if (constraintTypeSelect && constraintValueInput) {
+    const valueTypes = new Set(['distance', 'angle']);
+    constraintTypeSelect.addEventListener('change', () => {
+      constraintValueInput.style.display = valueTypes.has(constraintTypeSelect.value) ? '' : 'none';
+    });
+  }
+
+  if (addConstraintButton) {
+    addConstraintButton.addEventListener('click', () => {
+      const type = constraintTypeSelect?.value || 'horizontal';
+      const refsRaw = (constraintRefsInput?.value || '').trim();
+      if (!refsRaw) {
+        statusApi?.setMessage('Enter constraint refs (e.g. e1_start.y,e2_start.y)');
+        return;
+      }
+      const refs = refsRaw.split(',').map((r) => r.trim()).filter(Boolean);
+      const raw = { type, refs };
+      if (constraintValueInput && constraintValueInput.style.display !== 'none') {
+        const v = parseFloat(constraintValueInput.value);
+        if (Number.isFinite(v)) raw.value = v;
+      }
+      documentState.addConstraint(raw);
+      if (constraintRefsInput) constraintRefsInput.value = '';
+      if (constraintValueInput) constraintValueInput.value = '';
+      renderConstraintList();
+      statusApi?.setMessage(`Added ${type} constraint`);
+    });
+  }
+
+  if (exportSolverProjectButton) {
+    exportSolverProjectButton.addEventListener('click', () => {
+      const result = commandBus.execute('solver.export-project');
+      if (!result.ok) {
+        statusApi?.setMessage(result.message || 'Export failed');
+        return;
+      }
+      downloadJson('solver_project.json', result.project);
+      statusApi?.setMessage('Solver project exported');
+    });
+  }
+
+  if (clearConstraintsButton) {
+    clearConstraintsButton.addEventListener('click', () => {
+      documentState.clearConstraints();
+      renderConstraintList();
+      statusApi?.setMessage('All constraints cleared');
+    });
+  }
+
+  renderConstraintList();
+
   function exportCadgf() {
     const payload = exportCadgfDocument(documentState, { baseCadgfJson: cadgfBaseDocument });
     downloadJson('document.json', payload);

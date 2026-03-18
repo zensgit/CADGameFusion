@@ -4262,3 +4262,46 @@ test('solver.import-diagnostics works without setSolverDiagnostics hook', () => 
   const res = bus.execute('solver.import-diagnostics', diagnostics);
   assert.equal(res.ok, true);
 });
+
+test('solver.export-project outputs valid CADGF-PROJ that solve_from_project can consume', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { existsSync } = await import('node:fs');
+  const path = await import('node:path');
+
+  // Find the solve_from_project binary
+  const repoRoot = path.resolve(import.meta.dirname, '../../..');
+  const binary = path.join(repoRoot, 'build_fix/tools/solve_from_project');
+  if (!existsSync(binary)) {
+    // Skip if binary not built (CI may not have it)
+    return;
+  }
+
+  const { document, bus } = setup();
+  bus.execute('entity.create', {
+    entity: { type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, layerId: 0 },
+  });
+  bus.execute('entity.create', {
+    entity: { type: 'line', start: { x: 10, y: 0 }, end: { x: 10, y: 5 }, layerId: 0 },
+  });
+  document.addConstraint({ id: 'c0', type: 'horizontal', refs: ['e1_start.y', 'e1_end.y'] });
+
+  const exportResult = bus.execute('solver.export-project');
+  assert.equal(exportResult.ok, true);
+
+  // Write project to temp file, run solve_from_project, check output
+  const { writeFileSync, unlinkSync } = await import('node:fs');
+  const tmpPath = path.join(repoRoot, 'build_fix', '_test_solver_bridge_project.json');
+  writeFileSync(tmpPath, JSON.stringify(exportResult.project, null, 2));
+
+  try {
+    const stdout = execFileSync(binary, ['--json', tmpPath], { encoding: 'utf-8' });
+    const result = JSON.parse(stdout);
+    assert.equal(result.ok, true);
+    assert.ok(Number.isFinite(result.iterations));
+    assert.ok(result.analysis);
+    assert.equal(result.analysis.constraint_count, 1);
+    assert.equal(result.analysis.evaluable_constraint_count, 1);
+  } finally {
+    try { unlinkSync(tmpPath); } catch { /* ignore */ }
+  }
+});
