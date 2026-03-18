@@ -252,6 +252,17 @@ add_test(NAME test_dxf_nonfinite_numbers_run
         $<TARGET_FILE:cadgf_dxf_importer_plugin>
         ${CMAKE_SOURCE_DIR}/tests/plugin_data/nonfinite_numbers_sample.dxf)
 
+add_executable(test_dxf_roundtrip test_dxf_roundtrip.cpp)
+target_link_libraries(test_dxf_roundtrip PRIVATE core_c ${CMAKE_DL_LIBS})
+target_include_directories(test_dxf_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/core/include ${CMAKE_SOURCE_DIR}/tools)
+set_target_properties(test_dxf_roundtrip PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_dependencies(test_dxf_roundtrip cadgf_dxf_importer_plugin)
+
+add_test(NAME test_dxf_roundtrip_run
+    COMMAND test_dxf_roundtrip
+        $<TARGET_FILE:cadgf_dxf_importer_plugin>
+        ${CMAKE_SOURCE_DIR}/build_fix/editor_assembly_roundtrip_dense_smoke/source_preview_importer_entities/document.json)
+
 if(WIN32)
     set(_plugin_env "PATH=$<TARGET_FILE_DIR:core>;$<TARGET_FILE_DIR:core_c>;$ENV{PATH}")
 elseif(APPLE)
@@ -274,3 +285,4 @@ set_tests_properties(test_dxf_hatch_dash_run PROPERTIES ENVIRONMENT "${_plugin_e
 set_tests_properties(test_dxf_hatch_dense_cap_run PROPERTIES ENVIRONMENT "${_plugin_env}")
 set_tests_properties(test_dxf_hatch_large_boundary_budget_run PROPERTIES ENVIRONMENT "${_plugin_env}")
 set_tests_properties(test_dxf_nonfinite_numbers_run PROPERTIES ENVIRONMENT "${_plugin_env}")
+set_tests_properties(test_dxf_roundtrip_run PROPERTIES ENVIRONMENT "${_plugin_env}")
