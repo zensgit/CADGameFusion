@@ -263,6 +263,28 @@ add_test(NAME test_dxf_roundtrip_run
         $<TARGET_FILE:cadgf_dxf_importer_plugin>
         ${CMAKE_SOURCE_DIR}/build_fix/editor_assembly_roundtrip_dense_smoke/source_preview_importer_entities/document.json)
 
+add_executable(test_dxf_roundtrip_styles test_dxf_roundtrip_styles.cpp)
+target_link_libraries(test_dxf_roundtrip_styles PRIVATE core_c ${CMAKE_DL_LIBS})
+target_include_directories(test_dxf_roundtrip_styles PRIVATE ${CMAKE_SOURCE_DIR}/core/include ${CMAKE_SOURCE_DIR}/tools)
+set_target_properties(test_dxf_roundtrip_styles PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_dependencies(test_dxf_roundtrip_styles cadgf_dxf_importer_plugin)
+
+add_test(NAME test_dxf_roundtrip_styles_run
+    COMMAND test_dxf_roundtrip_styles
+        $<TARGET_FILE:cadgf_dxf_importer_plugin>
+        ${CMAKE_SOURCE_DIR}/build_fix/editor_assembly_roundtrip_dense_smoke/source_preview_importer_entities/document.json)
+
+add_executable(test_dxf_exporter_plugin_smoke test_dxf_exporter_plugin.cpp)
+target_link_libraries(test_dxf_exporter_plugin_smoke PRIVATE core_c ${CMAKE_DL_LIBS})
+target_include_directories(test_dxf_exporter_plugin_smoke PRIVATE ${CMAKE_SOURCE_DIR}/core/include ${CMAKE_SOURCE_DIR}/tools)
+set_target_properties(test_dxf_exporter_plugin_smoke PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_dependencies(test_dxf_exporter_plugin_smoke cadgf_dxf_exporter_plugin cadgf_dxf_importer_plugin)
+
+add_test(NAME test_dxf_exporter_plugin_smoke_run
+    COMMAND test_dxf_exporter_plugin_smoke
+        $<TARGET_FILE:cadgf_dxf_exporter_plugin>
+        $<TARGET_FILE:cadgf_dxf_importer_plugin>)
+
 if(WIN32)
     set(_plugin_env "PATH=$<TARGET_FILE_DIR:core>;$<TARGET_FILE_DIR:core_c>;$ENV{PATH}")
 elseif(APPLE)
@@ -286,3 +308,5 @@ set_tests_properties(test_dxf_hatch_dense_cap_run PROPERTIES ENVIRONMENT "${_plu
 set_tests_properties(test_dxf_hatch_large_boundary_budget_run PROPERTIES ENVIRONMENT "${_plugin_env}")
 set_tests_properties(test_dxf_nonfinite_numbers_run PROPERTIES ENVIRONMENT "${_plugin_env}")
 set_tests_properties(test_dxf_roundtrip_run PROPERTIES ENVIRONMENT "${_plugin_env}")
+set_tests_properties(test_dxf_roundtrip_styles_run PROPERTIES ENVIRONMENT "${_plugin_env}")
+set_tests_properties(test_dxf_exporter_plugin_smoke_run PROPERTIES ENVIRONMENT "${_plugin_env}")
