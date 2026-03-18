@@ -81,7 +81,7 @@ int main(int argc, char** argv) {
     int expected_count = 0;
     for (const auto& ent : srcDoc["entities"]) {
         int type = ent.value("type", -1);
-        if (type == 0 || type == 2 || type == 3 || type == 4 || type == 5 || type == 6 || type == 7)
+        if (type == 0 || type == 1 || type == 2 || type == 3 || type == 4 || type == 5 || type == 6 || type == 7)
             ++expected_count;
     }
     std::fprintf(stderr, "Entities: %d imported, %d expected\n", entity_count, expected_count);

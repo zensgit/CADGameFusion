@@ -124,6 +124,17 @@ inline std::string writeDxf(const json& doc) {
                 }
             }
         }
+        else if (type == 1 && ent.contains("point")) {
+            // POINT: point = [x, y]
+            const auto& p = ent["point"];
+            if (p.is_array() && p.size() >= 2) {
+                emit(0, "POINT");
+                emit(8, layerName);
+                emitStyle(ent);
+                emitd(10, p[0].get<double>());
+                emitd(20, p[1].get<double>());
+            }
+        }
         else if (type == 4 && ent.contains("circle")) {
             // CIRCLE: circle = {c:[x,y], r}
             const auto& c = ent["circle"];
