@@ -219,6 +219,10 @@ int main(int argc, char** argv) {
     assert_near(get_entity_line_scale(doc, line_id), 0.25);
     assert(get_entity_meta(doc, line_id, "color_source") == "BYBLOCK");
     assert(get_entity_meta(doc, line_id, "color_aci") == "1");
+    assert(get_entity_meta(doc, line_id, "source_type") == "INSERT");
+    assert(get_entity_meta(doc, line_id, "edit_mode") == "exploded");
+    assert(get_entity_meta(doc, line_id, "proxy_kind") == "insert");
+    assert(get_entity_meta(doc, line_id, "block_name") == "BlockA");
     assert(get_entity_color_source_api(doc, line_id) == "BYBLOCK");
     int line_aci = 0;
     assert(get_entity_color_aci_api(doc, line_id, &line_aci));
@@ -238,6 +242,8 @@ int main(int argc, char** argv) {
     assert(get_entity_line_type(doc, nested_line_id) == "DASHED");
     assert_near(get_entity_line_weight(doc, nested_line_id), 0.2);
     assert_near(get_entity_line_scale(doc, nested_line_id), 0.75);
+    assert(get_entity_meta(doc, nested_line_id, "source_type") == "INSERT");
+    assert(get_entity_meta(doc, nested_line_id, "block_name") == "BlockA");
 
     assert(byblock_fallback_id != 0);
     cadgf_line byblock_fallback_line{};
@@ -247,6 +253,8 @@ int main(int argc, char** argv) {
     assert_near(get_entity_line_weight(doc, byblock_fallback_id), 0.7);
     assert(get_entity_color(doc, byblock_fallback_id) == 0xFFFF00u);
     assert_near(get_entity_line_scale(doc, byblock_fallback_id), 1.5);
+    assert(get_entity_meta(doc, byblock_fallback_id, "source_type") == "INSERT");
+    assert(get_entity_meta(doc, byblock_fallback_id, "block_name") == "BlockC");
 
     assert(bylayer_id != 0);
     cadgf_line bylayer_line{};
@@ -329,6 +337,8 @@ int main(int argc, char** argv) {
     assert_near(get_entity_line_weight(doc, text_id), 0.3);
     assert(get_entity_color(doc, text_id) == 0xFF0000u);
     assert_near(get_entity_line_scale(doc, text_id), 2.2);
+    assert(get_entity_meta(doc, text_id, "source_type") == "INSERT");
+    assert(get_entity_meta(doc, text_id, "block_name") == "BlockH");
 
     assert(spline_id != 0);
     assert(get_entity_layer_name(doc, spline_id) == "LayerSplineBylayer");
@@ -367,6 +377,8 @@ int main(int argc, char** argv) {
     assert_near(circle.center.y, 7.0);
     assert_near(circle.radius, 1.0);
     assert(get_entity_layer_name(doc, circle_id) == "LayerInsert");
+    assert(get_entity_meta(doc, circle_id, "source_type") == "INSERT");
+    assert(get_entity_meta(doc, circle_id, "block_name") == "BlockA");
     cadgf_entity_info_v2 circle_info{};
     assert(cadgf_document_get_entity_info_v2(doc, circle_id, &circle_info));
     assert(line_info.group_id >= 1);

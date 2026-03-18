@@ -106,6 +106,16 @@
           "color": {"type": "integer", "minimum": 0, "maximum": 16777215},
           "color_source": {"type": "string"},
           "color_aci": {"type": "integer", "minimum": 0, "maximum": 255},
+          "text_kind": {"type": "string"},
+          "text_width": {"type": "number"},
+          "text_width_factor": {"type": "number"},
+          "text_attachment": {"type": "integer"},
+          "text_halign": {"type": "integer"},
+          "text_valign": {"type": "integer"},
+          "dim_type": {"type": "integer"},
+          "dim_style": {"type": "string"},
+          "dim_text_pos": {"$ref": "#/$defs/vec2"},
+          "dim_text_rotation": {"type": "number"},
           "polyline": {
             "type": "array",
             "items": {"$ref": "#/$defs/vec2"}

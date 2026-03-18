@@ -13,6 +13,12 @@ set_target_properties(cadgf_sample_plugin PROPERTIES
 add_library(cadgf_dxf_importer_plugin SHARED dxf_importer_plugin.cpp)
 target_link_libraries(cadgf_dxf_importer_plugin PRIVATE core_c)
 target_include_directories(cadgf_dxf_importer_plugin PRIVATE ${CMAKE_SOURCE_DIR}/core/include)
+if(APPLE)
+    find_library(CADGF_ICONV_LIBRARY iconv)
+    if(CADGF_ICONV_LIBRARY)
+        target_link_libraries(cadgf_dxf_importer_plugin PRIVATE ${CADGF_ICONV_LIBRARY})
+    endif()
+endif()
 set_target_properties(cadgf_dxf_importer_plugin PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
