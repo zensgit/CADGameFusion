@@ -116,6 +116,95 @@ add_test(NAME convert_cli_mesh_metadata_smoke
     -Doutmeta="${CONVERT_CLI_META_OUT}"
     -P "${CMAKE_SOURCE_DIR}/cmake/RunConvertCliMeshMetadata.cmake")
 
+set(CONVERT_CLI_BLOCK_OUT_DIR "${CMAKE_BINARY_DIR}/convert_cli_block_instances_smoke")
+set(CONVERT_CLI_BLOCK_OUT "${CONVERT_CLI_BLOCK_OUT_DIR}/mesh_metadata.json")
+add_test(NAME convert_cli_block_instances_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -Dexe="$<TARGET_FILE:convert_cli>"
+    -Dplugin="$<TARGET_FILE:cadgf_dxf_importer_plugin>"
+    -Dinput="${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_blocks.dxf"
+    -Doutdir="${CONVERT_CLI_BLOCK_OUT_DIR}"
+    -Doutmeta="${CONVERT_CLI_BLOCK_OUT}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunConvertCliBlockInstances.cmake")
+
+add_test(NAME convert_cli_block_instances_contract_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -Doutmeta="${CONVERT_CLI_BLOCK_OUT}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/CheckConvertCliBlockInstanceContract.cmake")
+set_tests_properties(convert_cli_block_instances_contract_smoke PROPERTIES DEPENDS convert_cli_block_instances_smoke)
+
+set(EDITOR_ASSEMBLY_ROUNDTRIP_OUT_DIR "${CMAKE_BINARY_DIR}/editor_assembly_roundtrip_smoke")
+add_test(NAME editor_assembly_roundtrip_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -Drepo="${CMAKE_SOURCE_DIR}"
+    -Dinputdoc="${CONVERT_CLI_BLOCK_OUT_DIR}/document.json"
+    -Doutdir="${EDITOR_ASSEMBLY_ROUNDTRIP_OUT_DIR}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunEditorAssemblyRoundtrip.cmake")
+set_tests_properties(editor_assembly_roundtrip_smoke PROPERTIES DEPENDS convert_cli_block_instances_smoke)
+
+set(EDITOR_ASSEMBLY_PAPERSPACE_OUT_DIR "${CMAKE_BINARY_DIR}/editor_assembly_roundtrip_paperspace_smoke")
+add_test(NAME editor_assembly_roundtrip_paperspace_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -Drepo="${CMAKE_SOURCE_DIR}"
+    -Dexe="$<TARGET_FILE:convert_cli>"
+    -Dplugin="$<TARGET_FILE:cadgf_dxf_importer_plugin>"
+    -Dinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_paperspace_insert_leader_sample.dxf"
+    -Doutdir="${EDITOR_ASSEMBLY_PAPERSPACE_OUT_DIR}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunEditorAssemblyRoundtripPaperspace.cmake")
+
+set(EDITOR_ASSEMBLY_MIXED_OUT_DIR "${CMAKE_BINARY_DIR}/editor_assembly_roundtrip_mixed_smoke")
+add_test(NAME editor_assembly_roundtrip_mixed_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -Drepo="${CMAKE_SOURCE_DIR}"
+    -Dexe="$<TARGET_FILE:convert_cli>"
+    -Dplugin="$<TARGET_FILE:cadgf_dxf_importer_plugin>"
+    -Dinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_mixed_origin_sample.dxf"
+    -Doutdir="${EDITOR_ASSEMBLY_MIXED_OUT_DIR}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunEditorAssemblyRoundtripMixed.cmake")
+
+set(EDITOR_ASSEMBLY_DENSE_OUT_DIR "${CMAKE_BINARY_DIR}/editor_assembly_roundtrip_dense_smoke")
+add_test(NAME editor_assembly_roundtrip_dense_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -Drepo="${CMAKE_SOURCE_DIR}"
+    -Dexe="$<TARGET_FILE:convert_cli>"
+    -Dplugin="$<TARGET_FILE:cadgf_dxf_importer_plugin>"
+    -Dmixedinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_mixed_origin_sample.dxf"
+    -Dpaperspaceinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_paperspace_insert_leader_sample.dxf"
+    -Dstylesinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_paperspace_insert_styles_sample.dxf"
+    -Dstylesvariantinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_paperspace_insert_styles_variant_sample.dxf"
+    -Ddimensioninputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_paperspace_insert_dimension_sample.dxf"
+    -Ddimensionhatchinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_paperspace_insert_dimension_hatch_sample.dxf"
+    -Dannotationbundleinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_paperspace_annotation_bundle_sample.dxf"
+    -Dcomboinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_paperspace_combo_sample.dxf"
+    -Dmultilayoutinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_multi_layout_sample.dxf"
+    -Dviewportinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/viewport_sample.dxf"
+    -Dtriadinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_insert_triad_sample.dxf"
+    -Dleaderinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_leader_sample.dxf"
+    -Dhatchlargeinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/hatch_large_boundary_budget_sample.dxf"
+    -Dhatchinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/hatch_dash_sample.dxf"
+    -Dhatchdashinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/hatch_dash_sample.dxf"
+    -Dblocksinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_blocks.dxf"
+    -Dimporterentitiesinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_entities.dxf"
+    -Dimportertextmetadatainputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_text_metadata.dxf"
+    -Dnonfiniteinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/nonfinite_numbers_sample.dxf"
+    -Dinserttextbundleinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_insert_text_bundle_sample.dxf"
+    -Dinserttextbundlevariantinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_insert_text_bundle_variant_sample.dxf"
+    -Dtextalignpartialinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/text_align_partial.dxf"
+    -Dtextalignextinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/text_align_partial_extended.dxf"
+    -Dmleaderinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_mleader_sample.dxf"
+    -Dtableinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_table_sample.dxf"
+    -Dtextkindsinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/step186_text_kinds_sample.dxf"
+    -Dhatchdenseinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/hatch_dense_sample.dxf"
+    -Doutdir="${EDITOR_ASSEMBLY_DENSE_OUT_DIR}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunEditorAssemblyRoundtripDense.cmake")
+
+set(SOLVE_FROM_PROJECT_JSON_OUT_DIR "${CMAKE_BINARY_DIR}/solve_from_project_json_smoke")
+add_test(NAME solve_from_project_json_smoke
+  COMMAND ${CMAKE_COMMAND}
+    -Dexe="$<TARGET_FILE:solve_from_project>"
+    -Doutdir="${SOLVE_FROM_PROJECT_JSON_OUT_DIR}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/RunSolveFromProjectJson.cmake")
+
 set(PLUGIN_DEMO_OUT "${CMAKE_BINARY_DIR}/out_plugin_export.json")
 add_test(NAME plugin_host_demo_run
   COMMAND ${CMAKE_COMMAND}

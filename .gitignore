@@ -19,6 +19,13 @@ install_manifest.txt
 *.cmake
 !cmake/CheckBinaryExists.cmake
 !cmake/RunConvertCliMeshMetadata.cmake
+!cmake/CheckConvertCliBlockInstanceContract.cmake
+!cmake/RunConvertCliBlockInstances.cmake
+!cmake/RunEditorAssemblyRoundtrip.cmake
+!cmake/RunEditorAssemblyRoundtripDense.cmake
+!cmake/RunEditorAssemblyRoundtripMixed.cmake
+!cmake/RunEditorAssemblyRoundtripPaperspace.cmake
+!cmake/RunSolveFromProjectJson.cmake
 
 # vcpkg
 vcpkg/
@@ -44,6 +51,9 @@ vcpkg_installed/
 *~
 .DS_Store
 
+# Playwright CLI artifacts
+.playwright-cli/
+
 # Prerequisites
 *.d
 
@@ -62,3 +72,6 @@ verification_*.png
 
 # Git bundles
 *.bundle
+
+# Local developer-only inputs (do not commit)
+local/editor_roundtrip_smoke_cases.json

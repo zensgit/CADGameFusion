@@ -1,15 +1,23 @@
 #include <algorithm>
+#include <array>
+#include <cctype>
+#include <chrono>
 #include <cmath>
+#include <cstdint>
+#include <ctime>
 #include <exception>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <limits>
+#include <map>
 #include <string>
 #include <unordered_map>
 #include <vector>
 #include <utility>
 #include <cstdio>
 #include <cstring>
+#include <cstdlib>
 
 #include "core/core_c_api.h"
 #include "plugin_registry.hpp"
@@ -31,6 +39,9 @@ struct ConvertOptions {
     std::string pluginPath;
     std::string inputPath;
     std::string outDir = "build/convert_out";
+    std::string projectId;
+    std::string documentLabel;
+    std::string documentId;
     bool emitJson = false;
     bool emitGltf = false;
     bool lineOnly = false;
@@ -39,7 +50,15 @@ struct ConvertOptions {
 struct MeshSlice {
     cadgf_entity_id id{};
     int layerId{};
+    int groupId{-1};
     std::string layerName;
+    std::string layoutName;
+    std::string sourceType;
+    std::string editMode;
+    std::string proxyKind;
+    std::string blockName;
+    std::string hatchPattern;
+    std::string dimStyle;
     uint32_t layerColor{};
     bool hasLayerColor{false};
     std::string name;
@@ -47,6 +66,10 @@ struct MeshSlice {
     std::string colorSource;
     int colorAci{};
     bool hasColorAci{false};
+    int hatchId{};
+    bool hasHatchId{false};
+    int dimType{};
+    bool hasDimType{false};
     std::string lineType;
     double lineWeight{};
     double lineTypeScale{};
@@ -57,8 +80,92 @@ struct MeshSlice {
     uint32_t indexCount{};
 };
 
+struct SpaceSummary {
+    int space{-1};
+    int documentEntityCount{};
+    int meshEntityCount{};
+    int lineEntityCount{};
+};
+
+struct ViewportMetadata {
+    size_t index{};
+    int space{-1};
+    bool hasId{false};
+    int id{};
+    std::string layout;
+    bool hasCenterX{false};
+    double centerX{};
+    bool hasCenterY{false};
+    double centerY{};
+    bool hasWidth{false};
+    double width{};
+    bool hasHeight{false};
+    double height{};
+    bool hasViewCenterX{false};
+    double viewCenterX{};
+    bool hasViewCenterY{false};
+    double viewCenterY{};
+    bool hasViewHeight{false};
+    double viewHeight{};
+    bool hasTwistDeg{false};
+    double twistDeg{};
+};
+
+struct LayoutMetadata {
+    std::string name;
+    int space{-1};
+    bool synthetic{false};
+    bool isDefault{false};
+    int viewportCount{};
+    bool hasDocumentEntityCount{false};
+    int documentEntityCount{};
+    bool hasMeshEntityCount{false};
+    int meshEntityCount{};
+    bool hasLineEntityCount{false};
+    int lineEntityCount{};
+};
+
+struct InstanceMetadata {
+    int groupId{-1};
+    std::string blockName;
+    std::string sourceType;
+    std::string editMode;
+    std::string proxyKind;
+    int space{-1};
+    std::string layoutName;
+    std::vector<cadgf_entity_id> entityIds;
+    int documentEntityCount{};
+    int meshEntityCount{};
+    int lineEntityCount{};
+};
+
+struct BlockMetadata {
+    std::string name;
+    int instanceCount{};
+    int documentEntityCount{};
+    int meshEntityCount{};
+    int lineEntityCount{};
+    int proxyEntityCount{};
+};
+
+struct ManifestWarning {
+    std::string code;
+    std::string message;
+};
+
+struct ArtifactManifestEntry {
+    const char* key{};
+    const char* filename{};
+    const char* output_name{};
+    bool emitted{false};
+    std::string sha256;
+    uintmax_t size{};
+};
+
 static void usage(const char* argv0) {
-    std::cerr << "Usage: " << argv0 << " --plugin <path> --input <file> [--out <dir>] [--json] [--gltf] [--line-only]\n";
+    std::cerr << "Usage: " << argv0
+              << " --plugin <path> --input <file> [--out <dir>] [--json] [--gltf]"
+              << " [--project-id <id>] [--document-label <label>] [--document-id <id>] [--line-only]\n";
 }
 
 static bool parse_args(int argc, char** argv, ConvertOptions* opts) {
@@ -72,6 +179,12 @@ static bool parse_args(int argc, char** argv, ConvertOptions* opts) {
             opts->inputPath = argv[++i];
         } else if (arg == "--out" && i + 1 < argc) {
             opts->outDir = argv[++i];
+        } else if (arg == "--project-id" && i + 1 < argc) {
+            opts->projectId = argv[++i];
+        } else if (arg == "--document-label" && i + 1 < argc) {
+            opts->documentLabel = argv[++i];
+        } else if (arg == "--document-id" && i + 1 < argc) {
+            opts->documentId = argv[++i];
         } else if (arg == "--json") {
             opts->emitJson = true;
             saw_format = true;
@@ -113,6 +226,437 @@ static void json_write_escaped(FILE* f, const char* s, size_t n) {
         }
     }
     std::fputc('"', f);
+}
+
+static std::string trim_ascii(std::string value);
+static std::string encode_document_id(const std::string& project_id, const std::string& document_label);
+
+class Sha256 {
+public:
+    Sha256() { reset(); }
+
+    void update(const uint8_t* data, size_t len) {
+        if (!data || len == 0) return;
+        bit_count_ += static_cast<uint64_t>(len) * 8u;
+        size_t offset = 0;
+        while (offset < len) {
+            const size_t copy = std::min(len - offset, block_.size() - block_size_);
+            std::memcpy(block_.data() + block_size_, data + offset, copy);
+            block_size_ += copy;
+            offset += copy;
+            if (block_size_ == block_.size()) {
+                process_block(block_.data());
+                block_size_ = 0;
+            }
+        }
+    }
+
+    void update(const char* data, size_t len) {
+        update(reinterpret_cast<const uint8_t*>(data), len);
+    }
+
+    std::string finalize_hex() {
+        block_[block_size_++] = 0x80u;
+        if (block_size_ > 56) {
+            std::fill(block_.begin() + static_cast<std::ptrdiff_t>(block_size_), block_.end(), 0u);
+            process_block(block_.data());
+            block_size_ = 0;
+        }
+        std::fill(block_.begin() + static_cast<std::ptrdiff_t>(block_size_), block_.begin() + 56, 0u);
+        for (size_t i = 0; i < 8; ++i) {
+            block_[63 - i] = static_cast<uint8_t>((bit_count_ >> (i * 8u)) & 0xffu);
+        }
+        process_block(block_.data());
+        block_size_ = 0;
+
+        static constexpr char kHex[] = "0123456789abcdef";
+        std::string out(64, '0');
+        for (size_t i = 0; i < state_.size(); ++i) {
+            const uint32_t word = state_[i];
+            out[i * 8 + 0] = kHex[(word >> 28) & 0x0fu];
+            out[i * 8 + 1] = kHex[(word >> 24) & 0x0fu];
+            out[i * 8 + 2] = kHex[(word >> 20) & 0x0fu];
+            out[i * 8 + 3] = kHex[(word >> 16) & 0x0fu];
+            out[i * 8 + 4] = kHex[(word >> 12) & 0x0fu];
+            out[i * 8 + 5] = kHex[(word >> 8) & 0x0fu];
+            out[i * 8 + 6] = kHex[(word >> 4) & 0x0fu];
+            out[i * 8 + 7] = kHex[word & 0x0fu];
+        }
+        return out;
+    }
+
+private:
+    static uint32_t rotr(uint32_t value, uint32_t bits) {
+        return (value >> bits) | (value << (32u - bits));
+    }
+
+    static uint32_t ch(uint32_t x, uint32_t y, uint32_t z) {
+        return (x & y) ^ (~x & z);
+    }
+
+    static uint32_t maj(uint32_t x, uint32_t y, uint32_t z) {
+        return (x & y) ^ (x & z) ^ (y & z);
+    }
+
+    static uint32_t big_sigma0(uint32_t x) {
+        return rotr(x, 2u) ^ rotr(x, 13u) ^ rotr(x, 22u);
+    }
+
+    static uint32_t big_sigma1(uint32_t x) {
+        return rotr(x, 6u) ^ rotr(x, 11u) ^ rotr(x, 25u);
+    }
+
+    static uint32_t small_sigma0(uint32_t x) {
+        return rotr(x, 7u) ^ rotr(x, 18u) ^ (x >> 3u);
+    }
+
+    static uint32_t small_sigma1(uint32_t x) {
+        return rotr(x, 17u) ^ rotr(x, 19u) ^ (x >> 10u);
+    }
+
+    void reset() {
+        state_ = {
+            0x6a09e667u, 0xbb67ae85u, 0x3c6ef372u, 0xa54ff53au,
+            0x510e527fu, 0x9b05688cu, 0x1f83d9abu, 0x5be0cd19u,
+        };
+        block_.fill(0u);
+        block_size_ = 0;
+        bit_count_ = 0;
+    }
+
+    void process_block(const uint8_t* block) {
+        uint32_t schedule[64]{};
+        for (size_t i = 0; i < 16; ++i) {
+            const size_t offset = i * 4;
+            schedule[i] =
+                (static_cast<uint32_t>(block[offset]) << 24) |
+                (static_cast<uint32_t>(block[offset + 1]) << 16) |
+                (static_cast<uint32_t>(block[offset + 2]) << 8) |
+                static_cast<uint32_t>(block[offset + 3]);
+        }
+        for (size_t i = 16; i < 64; ++i) {
+            schedule[i] = small_sigma1(schedule[i - 2]) + schedule[i - 7] +
+                          small_sigma0(schedule[i - 15]) + schedule[i - 16];
+        }
+
+        uint32_t a = state_[0];
+        uint32_t b = state_[1];
+        uint32_t c = state_[2];
+        uint32_t d = state_[3];
+        uint32_t e = state_[4];
+        uint32_t f = state_[5];
+        uint32_t g = state_[6];
+        uint32_t h = state_[7];
+
+        for (size_t i = 0; i < 64; ++i) {
+            const uint32_t temp1 = h + big_sigma1(e) + ch(e, f, g) + kRoundConstants[i] + schedule[i];
+            const uint32_t temp2 = big_sigma0(a) + maj(a, b, c);
+            h = g;
+            g = f;
+            f = e;
+            e = d + temp1;
+            d = c;
+            c = b;
+            b = a;
+            a = temp1 + temp2;
+        }
+
+        state_[0] += a;
+        state_[1] += b;
+        state_[2] += c;
+        state_[3] += d;
+        state_[4] += e;
+        state_[5] += f;
+        state_[6] += g;
+        state_[7] += h;
+    }
+
+    std::array<uint32_t, 8> state_{};
+    std::array<uint8_t, 64> block_{};
+    size_t block_size_{};
+    uint64_t bit_count_{};
+
+    static constexpr std::array<uint32_t, 64> kRoundConstants{{
+        0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u, 0x3956c25bu, 0x59f111f1u, 0x923f82a4u, 0xab1c5ed5u,
+        0xd807aa98u, 0x12835b01u, 0x243185beu, 0x550c7dc3u, 0x72be5d74u, 0x80deb1feu, 0x9bdc06a7u, 0xc19bf174u,
+        0xe49b69c1u, 0xefbe4786u, 0x0fc19dc6u, 0x240ca1ccu, 0x2de92c6fu, 0x4a7484aau, 0x5cb0a9dcu, 0x76f988dau,
+        0x983e5152u, 0xa831c66du, 0xb00327c8u, 0xbf597fc7u, 0xc6e00bf3u, 0xd5a79147u, 0x06ca6351u, 0x14292967u,
+        0x27b70a85u, 0x2e1b2138u, 0x4d2c6dfcu, 0x53380d13u, 0x650a7354u, 0x766a0abbu, 0x81c2c92eu, 0x92722c85u,
+        0xa2bfe8a1u, 0xa81a664bu, 0xc24b8b70u, 0xc76c51a3u, 0xd192e819u, 0xd6990624u, 0xf40e3585u, 0x106aa070u,
+        0x19a4c116u, 0x1e376c08u, 0x2748774cu, 0x34b0bcb5u, 0x391c0cb3u, 0x4ed8aa4au, 0x5b9cca4fu, 0x682e6ff3u,
+        0x748f82eeu, 0x78a5636fu, 0x84c87814u, 0x8cc70208u, 0x90befffau, 0xa4506cebu, 0xbef9a3f7u, 0xc67178f2u,
+    }};
+};
+
+static bool compute_file_sha256(const fs::path& path, std::string* out, std::string* err) {
+    if (!out) return false;
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) {
+        if (err) *err = "failed to open file for hashing: " + path.string();
+        return false;
+    }
+    Sha256 sha;
+    std::array<char, 1024 * 1024> buffer{};
+    while (stream) {
+        stream.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        const std::streamsize got = stream.gcount();
+        if (got > 0) {
+            sha.update(buffer.data(), static_cast<size_t>(got));
+        }
+    }
+    if (!stream.eof()) {
+        if (err) *err = "failed while hashing file: " + path.string();
+        return false;
+    }
+    *out = sha.finalize_hex();
+    return true;
+}
+
+static bool utc_tm_from_time_t(std::time_t value, std::tm* out) {
+    if (!out) return false;
+#if defined(_WIN32)
+    return gmtime_s(out, &value) == 0;
+#else
+    return gmtime_r(&value, out) != nullptr;
+#endif
+}
+
+static std::string format_time_point_utc(std::chrono::system_clock::time_point tp) {
+    const std::time_t raw = std::chrono::system_clock::to_time_t(tp);
+    std::tm utc{};
+    if (!utc_tm_from_time_t(raw, &utc)) {
+        return {};
+    }
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer),
+                  "%04d-%02d-%02dT%02d:%02d:%02dZ",
+                  utc.tm_year + 1900, utc.tm_mon + 1, utc.tm_mday,
+                  utc.tm_hour, utc.tm_min, utc.tm_sec);
+    return buffer;
+}
+
+static std::chrono::system_clock::time_point filesystem_time_to_system_clock(fs::file_time_type tp) {
+    return std::chrono::time_point_cast<std::chrono::system_clock::duration>(
+        tp - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
+}
+
+static bool query_file_size(const fs::path& path, uintmax_t* out) {
+    if (!out) return false;
+    std::error_code ec;
+    const uintmax_t size = fs::file_size(path, ec);
+    if (ec) {
+        return false;
+    }
+    *out = size;
+    return true;
+}
+
+static bool query_file_mtime_utc(const fs::path& path, std::string* out) {
+    if (!out) return false;
+    std::error_code ec;
+    const fs::file_time_type mtime = fs::last_write_time(path, ec);
+    if (ec) {
+        return false;
+    }
+    *out = format_time_point_utc(filesystem_time_to_system_clock(mtime));
+    return !out->empty();
+}
+
+static bool populate_artifact_manifest_entry(const fs::path& out_dir,
+                                             ArtifactManifestEntry* artifact,
+                                             std::string* err) {
+    if (!artifact || !artifact->emitted || !artifact->filename) return true;
+    const fs::path path = out_dir / artifact->filename;
+    if (!fs::exists(path)) {
+        if (err) *err = "expected artifact missing: " + path.string();
+        return false;
+    }
+    if (!query_file_size(path, &artifact->size)) {
+        if (err) *err = "failed to read artifact size: " + path.string();
+        return false;
+    }
+    return compute_file_sha256(path, &artifact->sha256, err);
+}
+
+static bool write_manifest_json(const ConvertOptions& opts,
+                                bool wrote_json,
+                                bool wrote_gltf,
+                                bool wrote_bin,
+                                bool wrote_meta,
+                                std::string* err) {
+    const fs::path input_path = fs::absolute(fs::path(opts.inputPath));
+    const fs::path plugin_path = fs::absolute(fs::path(opts.pluginPath));
+    const fs::path out_dir = fs::absolute(fs::path(opts.outDir));
+    const fs::path manifest_path = out_dir / "manifest.json";
+    const char* cadgf_version = cadgf_get_version();
+    const std::string project_id = trim_ascii(opts.projectId);
+    const std::string document_label = trim_ascii(opts.documentLabel);
+    std::string document_id = trim_ascii(opts.documentId);
+    if (document_id.empty()) {
+        document_id = encode_document_id(project_id, document_label);
+    }
+
+    uintmax_t input_size = 0;
+    if (!query_file_size(input_path, &input_size)) {
+        if (err) *err = "failed to read input size: " + input_path.string();
+        return false;
+    }
+
+    std::string input_mtime;
+    if (!query_file_mtime_utc(input_path, &input_mtime)) {
+        if (err) *err = "failed to read input mtime: " + input_path.string();
+        return false;
+    }
+
+    std::string source_hash;
+    if (!compute_file_sha256(input_path, &source_hash, err)) {
+        return false;
+    }
+
+    ArtifactManifestEntry artifacts[] = {
+        {"document_json", "document.json", "json", wrote_json},
+        {"mesh_gltf", "mesh.gltf", "gltf", wrote_gltf},
+        {"mesh_bin", "mesh.bin", "gltf", wrote_bin},
+        {"mesh_metadata", "mesh_metadata.json", "meta", wrote_meta},
+    };
+    for (auto& artifact : artifacts) {
+        if (!populate_artifact_manifest_entry(out_dir, &artifact, err)) {
+            return false;
+        }
+    }
+
+    std::vector<std::string> outputs;
+    for (const auto& artifact : artifacts) {
+        if (!artifact.emitted || !artifact.output_name) continue;
+        outputs.emplace_back(artifact.output_name);
+    }
+    std::sort(outputs.begin(), outputs.end());
+    outputs.erase(std::unique(outputs.begin(), outputs.end()), outputs.end());
+
+    std::vector<ManifestWarning> warnings;
+    if (opts.emitJson && !wrote_json) {
+        warnings.push_back({"document_json_missing", "document.json was requested but not produced"});
+    }
+    if (opts.emitGltf && (!wrote_gltf || !wrote_bin)) {
+        warnings.push_back({"mesh_gltf_missing", "glTF export was requested but mesh.gltf or mesh.bin was not produced"});
+    }
+    if (opts.emitGltf && !wrote_meta) {
+        warnings.push_back({"mesh_metadata_missing", "glTF export was requested but mesh_metadata.json was not produced"});
+    }
+
+    FILE* f = std::fopen(manifest_path.string().c_str(), "wb");
+    if (!f) {
+        if (err) *err = "failed to open manifest JSON";
+        return false;
+    }
+
+    const std::string generated_at = format_time_point_utc(std::chrono::system_clock::now());
+    std::fprintf(f, "{\n");
+    std::fprintf(f, "  \"schema_version\": \"1\",\n");
+    std::fprintf(f, "  \"input\": ");
+    const std::string input_string = input_path.string();
+    json_write_escaped(f, input_string.c_str(), input_string.size());
+    std::fprintf(f, ",\n  \"input_size\": %llu,\n", static_cast<unsigned long long>(input_size));
+    std::fprintf(f, "  \"input_mtime\": ");
+    json_write_escaped(f, input_mtime.c_str(), input_mtime.size());
+    std::fprintf(f, ",\n  \"source_hash\": ");
+    json_write_escaped(f, source_hash.c_str(), source_hash.size());
+    std::fprintf(f, ",\n  \"plugin\": ");
+    const std::string plugin_string = plugin_path.string();
+    json_write_escaped(f, plugin_string.c_str(), plugin_string.size());
+    std::fprintf(f, ",\n  \"output_dir\": ");
+    const std::string out_dir_string = out_dir.string();
+    json_write_escaped(f, out_dir_string.c_str(), out_dir_string.size());
+    std::fprintf(f, ",\n  \"output_layout\": \"legacy\",\n");
+    std::fprintf(f, "  \"generated_at\": ");
+    json_write_escaped(f, generated_at.c_str(), generated_at.size());
+    std::fprintf(f, ",\n  \"cadgf_version\": ");
+    json_write_escaped(f, cadgf_version, std::strlen(cadgf_version));
+    if (!project_id.empty()) {
+        std::fprintf(f, ",\n  \"project_id\": ");
+        json_write_escaped(f, project_id.c_str(), project_id.size());
+    }
+    if (!document_label.empty()) {
+        std::fprintf(f, ",\n  \"document_label\": ");
+        json_write_escaped(f, document_label.c_str(), document_label.size());
+    }
+    if (!document_id.empty()) {
+        std::fprintf(f, ",\n  \"document_id\": ");
+        json_write_escaped(f, document_id.c_str(), document_id.size());
+    }
+    if (wrote_json) {
+        std::fprintf(f, ",\n  \"document_schema_version\": %d", kDocumentSchemaVersion);
+    }
+    std::fprintf(f, ",\n  \"artifacts\": {\n");
+    bool first = true;
+    for (const auto& artifact : artifacts) {
+        if (!artifact.emitted) continue;
+        std::fprintf(f, "%s", first ? "" : ",\n");
+        std::fprintf(f, "    ");
+        json_write_escaped(f, artifact.key, std::strlen(artifact.key));
+        std::fprintf(f, ": ");
+        json_write_escaped(f, artifact.filename, std::strlen(artifact.filename));
+        first = false;
+    }
+    if (!first) std::fprintf(f, "\n");
+    std::fprintf(f, "  },\n");
+    std::fprintf(f, "  \"content_hashes\": {\n");
+    first = true;
+    for (const auto& artifact : artifacts) {
+        if (!artifact.emitted) continue;
+        std::fprintf(f, "%s", first ? "" : ",\n");
+        std::fprintf(f, "    ");
+        json_write_escaped(f, artifact.key, std::strlen(artifact.key));
+        std::fprintf(f, ": ");
+        json_write_escaped(f, artifact.sha256.c_str(), artifact.sha256.size());
+        first = false;
+    }
+    if (!first) std::fprintf(f, "\n");
+    std::fprintf(f, "  },\n");
+    std::fprintf(f, "  \"artifact_sizes\": {\n");
+    first = true;
+    for (const auto& artifact : artifacts) {
+        if (!artifact.emitted) continue;
+        std::fprintf(f, "%s", first ? "" : ",\n");
+        std::fprintf(f, "    ");
+        json_write_escaped(f, artifact.key, std::strlen(artifact.key));
+        std::fprintf(f, ": %llu", static_cast<unsigned long long>(artifact.size));
+        first = false;
+    }
+    if (!first) std::fprintf(f, "\n");
+    std::fprintf(f, "  },\n");
+    std::fprintf(f, "  \"tool_versions\": {\n");
+    std::fprintf(f, "    \"plm_convert\": \"1\",\n");
+    std::fprintf(f, "    \"cadgf\": ");
+    json_write_escaped(f, cadgf_version, std::strlen(cadgf_version));
+    std::fprintf(f, ",\n    \"convert_cli\": ");
+    json_write_escaped(f, cadgf_version, std::strlen(cadgf_version));
+    std::fprintf(f, "\n  },\n");
+    std::fprintf(f, "  \"outputs\": [\n");
+    for (size_t i = 0; i < outputs.size(); ++i) {
+        std::fprintf(f, "    ");
+        json_write_escaped(f, outputs[i].c_str(), outputs[i].size());
+        std::fprintf(f, "%s\n", (i + 1 < outputs.size()) ? "," : "");
+    }
+    std::fprintf(f, "  ],\n");
+    std::fprintf(f, "  \"warnings\": [\n");
+    for (size_t i = 0; i < warnings.size(); ++i) {
+        std::fprintf(f, "    {\"code\": ");
+        json_write_escaped(f, warnings[i].code.c_str(), warnings[i].code.size());
+        std::fprintf(f, ", \"message\": ");
+        json_write_escaped(f, warnings[i].message.c_str(), warnings[i].message.size());
+        std::fprintf(f, "}%s\n", (i + 1 < warnings.size()) ? "," : "");
+    }
+    std::fprintf(f, "  ],\n");
+    std::fprintf(f, "  \"status\": %s\n", warnings.empty() ? "\"ok\"" : "\"partial\"");
+    std::fprintf(f, "}\n");
+    if (std::fflush(f) != 0 || std::ferror(f)) {
+        if (err) *err = "write error while flushing manifest JSON";
+        std::fclose(f);
+        return false;
+    }
+    std::fclose(f);
+    return true;
 }
 
 static bool is_valid_utf8(const std::string& value) {
@@ -178,6 +722,54 @@ static std::string sanitize_utf8(const std::string& value) {
         return value;
     }
     return latin1_to_utf8(value);
+}
+
+static std::string trim_ascii(std::string value) {
+    const auto is_space = [](unsigned char c) { return std::isspace(c) != 0; };
+    value.erase(value.begin(), std::find_if(value.begin(), value.end(), [&](char c) {
+        return !is_space(static_cast<unsigned char>(c));
+    }));
+    value.erase(std::find_if(value.rbegin(), value.rend(), [&](char c) {
+        return !is_space(static_cast<unsigned char>(c));
+    }).base(), value.end());
+    return value;
+}
+
+static std::string encode_document_id(const std::string& project_id, const std::string& document_label) {
+    if (project_id.empty() || document_label.empty()) {
+        return {};
+    }
+    static constexpr char kBase64Url[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    const std::string raw = project_id + "\n" + document_label;
+    std::string out;
+    out.reserve(((raw.size() + 2) / 3) * 4);
+    size_t i = 0;
+    while (i + 3 <= raw.size()) {
+        const uint32_t block =
+            (static_cast<uint32_t>(static_cast<unsigned char>(raw[i])) << 16) |
+            (static_cast<uint32_t>(static_cast<unsigned char>(raw[i + 1])) << 8) |
+            static_cast<uint32_t>(static_cast<unsigned char>(raw[i + 2]));
+        out.push_back(kBase64Url[(block >> 18) & 0x3fu]);
+        out.push_back(kBase64Url[(block >> 12) & 0x3fu]);
+        out.push_back(kBase64Url[(block >> 6) & 0x3fu]);
+        out.push_back(kBase64Url[block & 0x3fu]);
+        i += 3;
+    }
+    const size_t remaining = raw.size() - i;
+    if (remaining == 1) {
+        const uint32_t block = static_cast<uint32_t>(static_cast<unsigned char>(raw[i])) << 16;
+        out.push_back(kBase64Url[(block >> 18) & 0x3fu]);
+        out.push_back(kBase64Url[(block >> 12) & 0x3fu]);
+    } else if (remaining == 2) {
+        const uint32_t block =
+            (static_cast<uint32_t>(static_cast<unsigned char>(raw[i])) << 16) |
+            (static_cast<uint32_t>(static_cast<unsigned char>(raw[i + 1])) << 8);
+        out.push_back(kBase64Url[(block >> 18) & 0x3fu]);
+        out.push_back(kBase64Url[(block >> 12) & 0x3fu]);
+        out.push_back(kBase64Url[(block >> 6) & 0x3fu]);
+    }
+    return out;
 }
 
 static std::string query_layer_name_utf8(const cadgf_document* doc, int layer_id) {
@@ -274,6 +866,43 @@ static bool query_doc_meta_value(const cadgf_document* doc, const std::string& k
     return !out->empty();
 }
 
+static bool query_entity_meta_value(const cadgf_document* doc,
+                                    cadgf_entity_id id,
+                                    const char* suffix,
+                                    std::string* out) {
+    if (!suffix || !*suffix) return false;
+    const std::string key = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id)) + "." + suffix;
+    return query_doc_meta_value(doc, key, out);
+}
+
+static bool parse_meta_int(const std::string& value, int* out) {
+    if (!out) return false;
+    char* end = nullptr;
+    const long parsed = std::strtol(value.c_str(), &end, 10);
+    if (!end || end == value.c_str()) return false;
+    *out = static_cast<int>(parsed);
+    return true;
+}
+
+static bool parse_meta_double(const std::string& value, double* out) {
+    if (!out) return false;
+    char* end = nullptr;
+    const double parsed = std::strtod(value.c_str(), &end);
+    if (!end || end == value.c_str()) return false;
+    *out = parsed;
+    return true;
+}
+
+static bool query_doc_meta_int(const cadgf_document* doc, const std::string& key, int* out) {
+    std::string value;
+    return query_doc_meta_value(doc, key, &value) && parse_meta_int(value, out);
+}
+
+static bool query_doc_meta_double(const cadgf_document* doc, const std::string& key, double* out) {
+    std::string value;
+    return query_doc_meta_value(doc, key, &value) && parse_meta_double(value, out);
+}
+
 static int query_entity_space(const cadgf_document* doc, cadgf_entity_id id) {
     std::string value;
     const std::string key = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id)) + ".space";
@@ -283,6 +912,565 @@ static int query_entity_space(const cadgf_document* doc, cadgf_entity_id id) {
     if (!end || end == value.c_str()) return -1;
     if (parsed != 0 && parsed != 1) return -1;
     return static_cast<int>(parsed);
+}
+
+static std::string query_entity_layout_name(const cadgf_document* doc, cadgf_entity_id id) {
+    std::string value;
+    if (!query_entity_meta_value(doc, id, "layout", &value)) {
+        return {};
+    }
+    return value;
+}
+
+static std::map<int, int> count_document_entities_by_space(const cadgf_document* doc) {
+    std::map<int, int> counts;
+    int entity_count = 0;
+    if (!cadgf_document_get_entity_count(doc, &entity_count) || entity_count <= 0) {
+        return counts;
+    }
+    for (int i = 0; i < entity_count; ++i) {
+        cadgf_entity_id eid = 0;
+        if (!cadgf_document_get_entity_id_at(doc, i, &eid)) continue;
+        const int space = query_entity_space(doc, eid);
+        counts[space] += 1;
+    }
+    return counts;
+}
+
+static std::map<std::string, int> count_document_entities_by_layout(const cadgf_document* doc) {
+    std::map<std::string, int> counts;
+    int entity_count = 0;
+    if (!cadgf_document_get_entity_count(doc, &entity_count) || entity_count <= 0) {
+        return counts;
+    }
+    for (int i = 0; i < entity_count; ++i) {
+        cadgf_entity_id eid = 0;
+        if (!cadgf_document_get_entity_id_at(doc, i, &eid)) continue;
+        const std::string layout_name = query_entity_layout_name(doc, eid);
+        if (layout_name.empty()) continue;
+        counts[layout_name] += 1;
+    }
+    return counts;
+}
+
+static std::map<int, int> count_mesh_slices_by_space(const std::vector<MeshSlice>& slices) {
+    std::map<int, int> counts;
+    for (const auto& slice : slices) {
+        counts[slice.space] += 1;
+    }
+    return counts;
+}
+
+static std::map<std::string, int> count_mesh_slices_by_layout(const std::vector<MeshSlice>& slices) {
+    std::map<std::string, int> counts;
+    for (const auto& slice : slices) {
+        if (slice.layoutName.empty()) continue;
+        counts[slice.layoutName] += 1;
+    }
+    return counts;
+}
+
+static int find_count_for_space(const std::map<int, int>& counts, int space) {
+    const auto it = counts.find(space);
+    return it == counts.end() ? 0 : it->second;
+}
+
+static bool find_count_for_layout(const std::map<std::string, int>& counts,
+                                  const std::string& layout_name,
+                                  int* out) {
+    if (!out || layout_name.empty()) return false;
+    const auto it = counts.find(layout_name);
+    if (it == counts.end()) return false;
+    *out = it->second;
+    return true;
+}
+
+static std::vector<SpaceSummary> build_space_summaries(const cadgf_document* doc,
+                                                       const std::vector<MeshSlice>& slices,
+                                                       const std::vector<MeshSlice>* line_slices) {
+    const auto doc_counts = count_document_entities_by_space(doc);
+    const auto mesh_counts = count_mesh_slices_by_space(slices);
+    const auto line_counts = line_slices ? count_mesh_slices_by_space(*line_slices) : std::map<int, int>{};
+    std::map<int, SpaceSummary> merged;
+    const auto merge_keys = [&](const std::map<int, int>& counts) {
+        for (const auto& kv : counts) {
+            merged[kv.first].space = kv.first;
+        }
+    };
+    merge_keys(doc_counts);
+    merge_keys(mesh_counts);
+    merge_keys(line_counts);
+    for (auto& kv : merged) {
+        kv.second.documentEntityCount = find_count_for_space(doc_counts, kv.first);
+        kv.second.meshEntityCount = find_count_for_space(mesh_counts, kv.first);
+        kv.second.lineEntityCount = find_count_for_space(line_counts, kv.first);
+    }
+    std::vector<SpaceSummary> out;
+    out.reserve(merged.size());
+    for (const auto& kv : merged) {
+        out.push_back(kv.second);
+    }
+    return out;
+}
+
+static const SpaceSummary* find_space_summary(const std::vector<SpaceSummary>& summaries, int space) {
+    for (const auto& item : summaries) {
+        if (item.space == space) return &item;
+    }
+    return nullptr;
+}
+
+static std::vector<ViewportMetadata> collect_viewports(const cadgf_document* doc) {
+    std::vector<ViewportMetadata> viewports;
+    int count = 0;
+    if (!query_doc_meta_int(doc, "dxf.viewport.count", &count) || count <= 0) {
+        return viewports;
+    }
+    viewports.reserve(static_cast<size_t>(count));
+    for (int i = 0; i < count; ++i) {
+        ViewportMetadata viewport{};
+        viewport.index = static_cast<size_t>(i);
+        std::string value;
+        const std::string base = "dxf.viewport." + std::to_string(i);
+        if (query_doc_meta_int(doc, base + ".space", &viewport.space)) {
+            // populated
+        }
+        if (query_doc_meta_int(doc, base + ".id", &viewport.id)) {
+            viewport.hasId = true;
+        }
+        if (query_doc_meta_value(doc, base + ".layout", &value)) {
+            viewport.layout = value;
+        }
+        if (query_doc_meta_double(doc, base + ".center_x", &viewport.centerX)) {
+            viewport.hasCenterX = true;
+        }
+        if (query_doc_meta_double(doc, base + ".center_y", &viewport.centerY)) {
+            viewport.hasCenterY = true;
+        }
+        if (query_doc_meta_double(doc, base + ".width", &viewport.width)) {
+            viewport.hasWidth = true;
+        }
+        if (query_doc_meta_double(doc, base + ".height", &viewport.height)) {
+            viewport.hasHeight = true;
+        }
+        if (query_doc_meta_double(doc, base + ".view_center_x", &viewport.viewCenterX)) {
+            viewport.hasViewCenterX = true;
+        }
+        if (query_doc_meta_double(doc, base + ".view_center_y", &viewport.viewCenterY)) {
+            viewport.hasViewCenterY = true;
+        }
+        if (query_doc_meta_double(doc, base + ".view_height", &viewport.viewHeight)) {
+            viewport.hasViewHeight = true;
+        }
+        if (query_doc_meta_double(doc, base + ".twist_deg", &viewport.twistDeg)) {
+            viewport.hasTwistDeg = true;
+        }
+        viewports.push_back(std::move(viewport));
+    }
+    return viewports;
+}
+
+static int count_viewports_for_space(const std::vector<ViewportMetadata>& viewports, int space) {
+    int count = 0;
+    for (const auto& viewport : viewports) {
+        if (viewport.space == space) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+static std::vector<LayoutMetadata> build_layouts(const std::vector<SpaceSummary>& spaces,
+                                                 int default_space,
+                                                 const std::vector<ViewportMetadata>& viewports,
+                                                 const std::map<std::string, int>& document_layout_counts,
+                                                 const std::map<std::string, int>& mesh_layout_counts,
+                                                 const std::map<std::string, int>& line_layout_counts) {
+    std::vector<LayoutMetadata> layouts;
+
+    if (const SpaceSummary* model = find_space_summary(spaces, 0)) {
+        LayoutMetadata layout{};
+        layout.name = "Model";
+        layout.space = 0;
+        layout.synthetic = true;
+        layout.isDefault = default_space == 0;
+        layout.viewportCount = count_viewports_for_space(viewports, 0);
+        layout.hasDocumentEntityCount = true;
+        layout.documentEntityCount = model->documentEntityCount;
+        layout.hasMeshEntityCount = true;
+        layout.meshEntityCount = model->meshEntityCount;
+        layout.hasLineEntityCount = true;
+        layout.lineEntityCount = model->lineEntityCount;
+        layouts.push_back(std::move(layout));
+    } else if (default_space == 0 || viewports.empty()) {
+        LayoutMetadata layout{};
+        layout.name = "Model";
+        layout.space = 0;
+        layout.synthetic = true;
+        layout.isDefault = default_space == 0;
+        layout.viewportCount = count_viewports_for_space(viewports, 0);
+        layouts.push_back(std::move(layout));
+    }
+
+    std::map<std::string, int> paper_layouts;
+    for (const auto& viewport : viewports) {
+        if (viewport.space != 1 || viewport.layout.empty()) continue;
+        paper_layouts[viewport.layout] += 1;
+    }
+
+    const SpaceSummary* paper = find_space_summary(spaces, 1);
+    const bool has_paper_content = paper != nullptr;
+    const bool should_emit_paper = has_paper_content || default_space == 1 || !paper_layouts.empty();
+    if (!should_emit_paper) {
+        return layouts;
+    }
+
+    if (paper_layouts.empty()) {
+        LayoutMetadata layout{};
+        layout.name = "PaperSpace";
+        layout.space = 1;
+        layout.synthetic = true;
+        layout.isDefault = default_space == 1;
+        layout.viewportCount = count_viewports_for_space(viewports, 1);
+        if (paper) {
+            layout.hasDocumentEntityCount = true;
+            layout.documentEntityCount = paper->documentEntityCount;
+            layout.hasMeshEntityCount = true;
+            layout.meshEntityCount = paper->meshEntityCount;
+            layout.hasLineEntityCount = true;
+            layout.lineEntityCount = paper->lineEntityCount;
+        }
+        layouts.push_back(std::move(layout));
+        return layouts;
+    }
+
+    const bool unique_paper_layout = paper_layouts.size() == 1;
+    const bool default_unique_paper_layout = default_space == 1 && unique_paper_layout;
+    for (const auto& kv : paper_layouts) {
+        LayoutMetadata layout{};
+        layout.name = kv.first;
+        layout.space = 1;
+        layout.synthetic = false;
+        layout.isDefault = default_unique_paper_layout;
+        layout.viewportCount = kv.second;
+        int count = 0;
+        if (find_count_for_layout(document_layout_counts, layout.name, &count)) {
+            layout.hasDocumentEntityCount = true;
+            layout.documentEntityCount = count;
+        }
+        if (find_count_for_layout(mesh_layout_counts, layout.name, &count)) {
+            layout.hasMeshEntityCount = true;
+            layout.meshEntityCount = count;
+        }
+        if (find_count_for_layout(line_layout_counts, layout.name, &count)) {
+            layout.hasLineEntityCount = true;
+            layout.lineEntityCount = count;
+        }
+        if (paper && unique_paper_layout &&
+            !layout.hasDocumentEntityCount && !layout.hasMeshEntityCount && !layout.hasLineEntityCount) {
+            layout.hasDocumentEntityCount = true;
+            layout.documentEntityCount = paper->documentEntityCount;
+            layout.hasMeshEntityCount = true;
+            layout.meshEntityCount = paper->meshEntityCount;
+            layout.hasLineEntityCount = true;
+            layout.lineEntityCount = paper->lineEntityCount;
+        }
+        layouts.push_back(std::move(layout));
+    }
+    return layouts;
+}
+
+static void write_mesh_slice_json(FILE* f, const MeshSlice& s) {
+    std::fprintf(f, "{\"id\": %llu, \"name\": ", static_cast<unsigned long long>(s.id));
+    json_write_escaped(f, s.name.c_str(), s.name.size());
+    std::fprintf(f, ", \"layer_id\": %d", s.layerId);
+    if (s.groupId >= 0) {
+        std::fprintf(f, ", \"group_id\": %d", s.groupId);
+    }
+    if (!s.layoutName.empty()) {
+        std::fprintf(f, ", \"layout\": ");
+        json_write_escaped(f, s.layoutName.c_str(), s.layoutName.size());
+    }
+    if (!s.sourceType.empty()) {
+        std::fprintf(f, ", \"source_type\": ");
+        json_write_escaped(f, s.sourceType.c_str(), s.sourceType.size());
+    }
+    if (!s.editMode.empty()) {
+        std::fprintf(f, ", \"edit_mode\": ");
+        json_write_escaped(f, s.editMode.c_str(), s.editMode.size());
+    }
+    if (!s.proxyKind.empty()) {
+        std::fprintf(f, ", \"proxy_kind\": ");
+        json_write_escaped(f, s.proxyKind.c_str(), s.proxyKind.size());
+    }
+    if (!s.blockName.empty()) {
+        std::fprintf(f, ", \"block_name\": ");
+        json_write_escaped(f, s.blockName.c_str(), s.blockName.size());
+    }
+    if (s.hasHatchId) {
+        std::fprintf(f, ", \"hatch_id\": %d", s.hatchId);
+    }
+    if (!s.hatchPattern.empty()) {
+        std::fprintf(f, ", \"hatch_pattern\": ");
+        json_write_escaped(f, s.hatchPattern.c_str(), s.hatchPattern.size());
+    }
+    if (s.hasDimType) {
+        std::fprintf(f, ", \"dim_type\": %d", s.dimType);
+    }
+    if (!s.dimStyle.empty()) {
+        std::fprintf(f, ", \"dim_style\": ");
+        json_write_escaped(f, s.dimStyle.c_str(), s.dimStyle.size());
+    }
+    if (!s.layerName.empty()) {
+        std::fprintf(f, ", \"layer_name\": ");
+        json_write_escaped(f, s.layerName.c_str(), s.layerName.size());
+    }
+    if (s.hasLayerColor) {
+        std::fprintf(f, ", \"layer_color\": %u", s.layerColor);
+    }
+    if (s.color != 0) {
+        std::fprintf(f, ", \"color\": %u", s.color);
+    }
+    if (!s.colorSource.empty()) {
+        std::fprintf(f, ", \"color_source\": ");
+        json_write_escaped(f, s.colorSource.c_str(), s.colorSource.size());
+    }
+    if (s.hasColorAci) {
+        std::fprintf(f, ", \"color_aci\": %d", s.colorAci);
+    }
+    if (!s.lineType.empty()) {
+        std::fprintf(f, ", \"line_type\": ");
+        json_write_escaped(f, s.lineType.c_str(), s.lineType.size());
+    }
+    if (s.lineWeight != 0.0) {
+        std::fprintf(f, ", \"line_weight\": %.6f", s.lineWeight);
+    }
+    if (s.lineTypeScale != 0.0) {
+        std::fprintf(f, ", \"line_type_scale\": %.6f", s.lineTypeScale);
+    }
+    if (s.space >= 0) {
+        std::fprintf(f, ", \"space\": %d", s.space);
+    }
+    std::fprintf(f, ", \"base_vertex\": %u, \"vertex_count\": %u, \"index_offset\": %u, \"index_count\": %u}",
+                 s.baseVertex, s.vertexCount, s.indexOffset, s.indexCount);
+}
+
+static void write_space_summary_json(FILE* f, const SpaceSummary& summary) {
+    std::fprintf(f,
+                 "{\"space\": %d, \"document_entity_count\": %d, \"mesh_entity_count\": %d, "
+                 "\"line_entity_count\": %d}",
+                 summary.space, summary.documentEntityCount, summary.meshEntityCount,
+                 summary.lineEntityCount);
+}
+
+static void write_layout_json(FILE* f, const LayoutMetadata& layout) {
+    std::fprintf(f, "{\"name\": ");
+    json_write_escaped(f, layout.name.c_str(), layout.name.size());
+    std::fprintf(f, ", \"space\": %d, \"is_default\": %s, \"synthetic\": %s, \"viewport_count\": %d",
+                 layout.space, layout.isDefault ? "true" : "false",
+                 layout.synthetic ? "true" : "false", layout.viewportCount);
+    if (layout.hasDocumentEntityCount) {
+        std::fprintf(f, ", \"document_entity_count\": %d", layout.documentEntityCount);
+    }
+    if (layout.hasMeshEntityCount) {
+        std::fprintf(f, ", \"mesh_entity_count\": %d", layout.meshEntityCount);
+    }
+    if (layout.hasLineEntityCount) {
+        std::fprintf(f, ", \"line_entity_count\": %d", layout.lineEntityCount);
+    }
+    std::fprintf(f, "}");
+}
+
+static void write_viewport_json(FILE* f, const ViewportMetadata& viewport) {
+    std::fprintf(f, "{\"index\": %zu", viewport.index);
+    if (viewport.space >= 0) {
+        std::fprintf(f, ", \"space\": %d", viewport.space);
+    }
+    if (viewport.hasId) {
+        std::fprintf(f, ", \"id\": %d", viewport.id);
+    }
+    if (!viewport.layout.empty()) {
+        std::fprintf(f, ", \"layout\": ");
+        json_write_escaped(f, viewport.layout.c_str(), viewport.layout.size());
+    }
+    if (viewport.hasCenterX) {
+        std::fprintf(f, ", \"center_x\": %.6f", viewport.centerX);
+    }
+    if (viewport.hasCenterY) {
+        std::fprintf(f, ", \"center_y\": %.6f", viewport.centerY);
+    }
+    if (viewport.hasWidth) {
+        std::fprintf(f, ", \"width\": %.6f", viewport.width);
+    }
+    if (viewport.hasHeight) {
+        std::fprintf(f, ", \"height\": %.6f", viewport.height);
+    }
+    if (viewport.hasViewCenterX) {
+        std::fprintf(f, ", \"view_center_x\": %.6f", viewport.viewCenterX);
+    }
+    if (viewport.hasViewCenterY) {
+        std::fprintf(f, ", \"view_center_y\": %.6f", viewport.viewCenterY);
+    }
+    if (viewport.hasViewHeight) {
+        std::fprintf(f, ", \"view_height\": %.6f", viewport.viewHeight);
+    }
+    if (viewport.hasTwistDeg) {
+        std::fprintf(f, ", \"twist_deg\": %.6f", viewport.twistDeg);
+    }
+    std::fprintf(f, "}");
+}
+
+static void write_instance_json(FILE* f, const InstanceMetadata& instance) {
+    std::fprintf(f, "{\"group_id\": %d, \"block_name\": ", instance.groupId);
+    json_write_escaped(f, instance.blockName.c_str(), instance.blockName.size());
+    if (!instance.sourceType.empty()) {
+        std::fprintf(f, ", \"source_type\": ");
+        json_write_escaped(f, instance.sourceType.c_str(), instance.sourceType.size());
+    }
+    if (!instance.editMode.empty()) {
+        std::fprintf(f, ", \"edit_mode\": ");
+        json_write_escaped(f, instance.editMode.c_str(), instance.editMode.size());
+    }
+    if (!instance.proxyKind.empty()) {
+        std::fprintf(f, ", \"proxy_kind\": ");
+        json_write_escaped(f, instance.proxyKind.c_str(), instance.proxyKind.size());
+    }
+    if (instance.space >= 0) {
+        std::fprintf(f, ", \"space\": %d", instance.space);
+    }
+    if (!instance.layoutName.empty()) {
+        std::fprintf(f, ", \"layout\": ");
+        json_write_escaped(f, instance.layoutName.c_str(), instance.layoutName.size());
+    }
+    std::fprintf(f,
+                 ", \"document_entity_count\": %d, \"mesh_entity_count\": %d, \"line_entity_count\": %d, "
+                 "\"entity_ids\": [",
+                 instance.documentEntityCount, instance.meshEntityCount, instance.lineEntityCount);
+    for (size_t i = 0; i < instance.entityIds.size(); ++i) {
+        std::fprintf(f, "%s%llu", (i ? ", " : ""),
+                     static_cast<unsigned long long>(instance.entityIds[i]));
+    }
+    std::fprintf(f, "]}");
+}
+
+static void write_block_json(FILE* f, const BlockMetadata& block) {
+    std::fprintf(f, "{\"name\": ");
+    json_write_escaped(f, block.name.c_str(), block.name.size());
+    std::fprintf(f,
+                 ", \"instance_count\": %d, \"document_entity_count\": %d, "
+                 "\"mesh_entity_count\": %d, \"line_entity_count\": %d, \"proxy_entity_count\": %d}",
+                 block.instanceCount, block.documentEntityCount, block.meshEntityCount,
+                 block.lineEntityCount, block.proxyEntityCount);
+}
+
+static std::vector<InstanceMetadata> build_instance_metadata(const cadgf_document* doc,
+                                                             const std::vector<MeshSlice>& slices,
+                                                             const std::vector<MeshSlice>* line_slices) {
+    struct Accumulator {
+        InstanceMetadata value{};
+        bool seeded{false};
+    };
+
+    std::map<int, Accumulator> by_group;
+    auto seed_from_values = [](Accumulator& acc,
+                               int group_id,
+                               const std::string& block_name,
+                               const std::string& source_type,
+                               const std::string& edit_mode,
+                               const std::string& proxy_kind,
+                               int space,
+                               const std::string& layout_name) {
+        if (!acc.seeded) {
+            acc.value.groupId = group_id;
+            acc.value.blockName = block_name;
+            acc.value.sourceType = source_type;
+            acc.value.editMode = edit_mode;
+            acc.value.proxyKind = proxy_kind;
+            acc.value.space = space;
+            acc.value.layoutName = layout_name;
+            acc.seeded = true;
+            return;
+        }
+        if (acc.value.blockName.empty()) acc.value.blockName = block_name;
+        if (acc.value.sourceType.empty()) acc.value.sourceType = source_type;
+        if (acc.value.editMode.empty()) acc.value.editMode = edit_mode;
+        if (acc.value.proxyKind.empty()) acc.value.proxyKind = proxy_kind;
+        if (acc.value.space < 0 && space >= 0) acc.value.space = space;
+        if (acc.value.layoutName.empty()) acc.value.layoutName = layout_name;
+    };
+
+    int entity_count = 0;
+    (void)cadgf_document_get_entity_count(doc, &entity_count);
+    for (int i = 0; i < entity_count; ++i) {
+        cadgf_entity_id eid = 0;
+        if (!cadgf_document_get_entity_id_at(doc, i, &eid)) continue;
+        cadgf_entity_info_v2 info_v2{};
+        if (!cadgf_document_get_entity_info_v2(doc, eid, &info_v2)) continue;
+        if (info_v2.group_id < 0) continue;
+        std::string block_name;
+        if (!query_entity_meta_value(doc, eid, "block_name", &block_name) || block_name.empty()) continue;
+        std::string source_type;
+        std::string edit_mode;
+        std::string proxy_kind;
+        std::string layout_name = query_entity_layout_name(doc, eid);
+        (void)query_entity_meta_value(doc, eid, "source_type", &source_type);
+        (void)query_entity_meta_value(doc, eid, "edit_mode", &edit_mode);
+        (void)query_entity_meta_value(doc, eid, "proxy_kind", &proxy_kind);
+        const int space = query_entity_space(doc, eid);
+        auto& acc = by_group[info_v2.group_id];
+        seed_from_values(acc, info_v2.group_id, block_name, source_type, edit_mode, proxy_kind, space, layout_name);
+        acc.value.documentEntityCount += 1;
+        acc.value.entityIds.push_back(eid);
+    }
+
+    auto add_slice_counts = [&](const std::vector<MeshSlice>& slice_list, bool line_mode) {
+        for (const auto& slice : slice_list) {
+            if (slice.groupId < 0 || slice.blockName.empty()) continue;
+            auto& acc = by_group[slice.groupId];
+            seed_from_values(acc, slice.groupId, slice.blockName, slice.sourceType, slice.editMode,
+                             slice.proxyKind, slice.space, slice.layoutName);
+            if (line_mode) {
+                acc.value.lineEntityCount += 1;
+            } else {
+                acc.value.meshEntityCount += 1;
+            }
+        }
+    };
+    add_slice_counts(slices, false);
+    if (line_slices) add_slice_counts(*line_slices, true);
+
+    std::vector<InstanceMetadata> instances;
+    instances.reserve(by_group.size());
+    for (auto& kv : by_group) {
+        auto& value = kv.second.value;
+        if (value.blockName.empty()) continue;
+        std::sort(value.entityIds.begin(), value.entityIds.end());
+        value.entityIds.erase(std::unique(value.entityIds.begin(), value.entityIds.end()), value.entityIds.end());
+        instances.push_back(std::move(value));
+    }
+    return instances;
+}
+
+static std::vector<BlockMetadata> build_block_metadata(const std::vector<InstanceMetadata>& instances) {
+    std::map<std::string, BlockMetadata> by_name;
+    for (const auto& instance : instances) {
+        if (instance.blockName.empty()) continue;
+        auto& block = by_name[instance.blockName];
+        if (block.name.empty()) block.name = instance.blockName;
+        block.instanceCount += 1;
+        block.documentEntityCount += instance.documentEntityCount;
+        block.meshEntityCount += instance.meshEntityCount;
+        block.lineEntityCount += instance.lineEntityCount;
+        if (instance.editMode == "proxy" || !instance.proxyKind.empty()) {
+            block.proxyEntityCount += instance.documentEntityCount;
+        }
+    }
+    std::vector<BlockMetadata> blocks;
+    blocks.reserve(by_name.size());
+    for (auto& kv : by_name) {
+        blocks.push_back(std::move(kv.second));
+    }
+    return blocks;
 }
 
 static bool query_polyline_points(const cadgf_document* doc, cadgf_entity_id id, std::vector<cadgf_vec2>& out) {
@@ -393,7 +1581,8 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
         int entity_type = 0;
         int layer_id = 0;
         unsigned int entity_color = 0;
-        if (cadgf_document_get_entity_info_v2(doc, eid, &info_v2)) {
+        const bool got_info_v2 = cadgf_document_get_entity_info_v2(doc, eid, &info_v2) != 0;
+        if (got_info_v2) {
             entity_type = info_v2.type;
             layer_id = info_v2.layer_id;
             entity_color = info_v2.color;
@@ -434,6 +1623,9 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
         if (has_color) {
             std::fprintf(f, ", \"color\": %u", entity_color);
         }
+        if (got_info_v2 && info_v2.group_id >= 0) {
+            std::fprintf(f, ", \"group_id\": %d", info_v2.group_id);
+        }
         if (!color_source.empty()) {
             std::fprintf(f, ", \"color_source\": ");
             json_write_escaped(f, color_source.c_str(), color_source.size());
@@ -443,6 +1635,47 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
         }
         if (entity_space >= 0) {
             std::fprintf(f, ", \"space\": %d", entity_space);
+        }
+        std::string meta_value;
+        if (query_entity_meta_value(doc, eid, "layout", &meta_value)) {
+            std::fprintf(f, ", \"layout\": ");
+            json_write_escaped(f, meta_value.c_str(), meta_value.size());
+        }
+        if (query_entity_meta_value(doc, eid, "source_type", &meta_value)) {
+            std::fprintf(f, ", \"source_type\": ");
+            json_write_escaped(f, meta_value.c_str(), meta_value.size());
+        }
+        if (query_entity_meta_value(doc, eid, "edit_mode", &meta_value)) {
+            std::fprintf(f, ", \"edit_mode\": ");
+            json_write_escaped(f, meta_value.c_str(), meta_value.size());
+        }
+        if (query_entity_meta_value(doc, eid, "proxy_kind", &meta_value)) {
+            std::fprintf(f, ", \"proxy_kind\": ");
+            json_write_escaped(f, meta_value.c_str(), meta_value.size());
+        }
+        if (query_entity_meta_value(doc, eid, "block_name", &meta_value)) {
+            std::fprintf(f, ", \"block_name\": ");
+            json_write_escaped(f, meta_value.c_str(), meta_value.size());
+        }
+        if (query_entity_meta_value(doc, eid, "hatch_id", &meta_value)) {
+            int hatch_id = 0;
+            if (parse_meta_int(meta_value, &hatch_id)) {
+                std::fprintf(f, ", \"hatch_id\": %d", hatch_id);
+            }
+        }
+        if (query_entity_meta_value(doc, eid, "hatch_pattern", &meta_value)) {
+            std::fprintf(f, ", \"hatch_pattern\": ");
+            json_write_escaped(f, meta_value.c_str(), meta_value.size());
+        }
+        if (query_entity_meta_value(doc, eid, "dim_type", &meta_value)) {
+            int dim_type = 0;
+            if (parse_meta_int(meta_value, &dim_type)) {
+                std::fprintf(f, ", \"dim_type\": %d", dim_type);
+            }
+        }
+        if (query_entity_meta_value(doc, eid, "dim_style", &meta_value)) {
+            std::fprintf(f, ", \"dim_style\": ");
+            json_write_escaped(f, meta_value.c_str(), meta_value.size());
         }
 
         if (entity_type == CADGF_ENTITY_TYPE_POLYLINE) {
@@ -530,6 +1763,57 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
                                  pos.x, pos.y, height, rotation);
                     json_write_escaped(f, buf.data(), buf.size());
                     std::fprintf(f, "}");
+
+                    if (query_entity_meta_value(doc, eid, "text_kind", &meta_value)) {
+                        std::fprintf(f, ", \"text_kind\": ");
+                        json_write_escaped(f, meta_value.c_str(), meta_value.size());
+                    }
+                    if (query_entity_meta_value(doc, eid, "text_width", &meta_value)) {
+                        double text_width = 0.0;
+                        if (parse_meta_double(meta_value, &text_width)) {
+                            std::fprintf(f, ", \"text_width\": %.6f", text_width);
+                        }
+                    }
+                    if (query_entity_meta_value(doc, eid, "text_width_factor", &meta_value)) {
+                        double width_factor = 0.0;
+                        if (parse_meta_double(meta_value, &width_factor)) {
+                            std::fprintf(f, ", \"text_width_factor\": %.6f", width_factor);
+                        }
+                    }
+                    if (query_entity_meta_value(doc, eid, "text_attachment", &meta_value)) {
+                        int attachment = 0;
+                        if (parse_meta_int(meta_value, &attachment)) {
+                            std::fprintf(f, ", \"text_attachment\": %d", attachment);
+                        }
+                    }
+                    if (query_entity_meta_value(doc, eid, "text_halign", &meta_value)) {
+                        int halign = 0;
+                        if (parse_meta_int(meta_value, &halign)) {
+                            std::fprintf(f, ", \"text_halign\": %d", halign);
+                        }
+                    }
+                    if (query_entity_meta_value(doc, eid, "text_valign", &meta_value)) {
+                        int valign = 0;
+                        if (parse_meta_int(meta_value, &valign)) {
+                            std::fprintf(f, ", \"text_valign\": %d", valign);
+                        }
+                    }
+                    std::string dim_x;
+                    std::string dim_y;
+                    double dim_pos_x = 0.0;
+                    double dim_pos_y = 0.0;
+                    if (query_entity_meta_value(doc, eid, "dim_text_pos_x", &dim_x) &&
+                        query_entity_meta_value(doc, eid, "dim_text_pos_y", &dim_y) &&
+                        parse_meta_double(dim_x, &dim_pos_x) &&
+                        parse_meta_double(dim_y, &dim_pos_y)) {
+                        std::fprintf(f, ", \"dim_text_pos\": [%.6f, %.6f]", dim_pos_x, dim_pos_y);
+                    }
+                    if (query_entity_meta_value(doc, eid, "dim_text_rotation", &meta_value)) {
+                        double dim_rot = 0.0;
+                        if (parse_meta_double(meta_value, &dim_rot)) {
+                            std::fprintf(f, ", \"dim_text_rotation\": %.6f", dim_rot);
+                        }
+                    }
                 }
             }
         }
@@ -538,14 +1822,21 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
     }
     std::fprintf(f, "  ]\n");
     std::fprintf(f, "}\n");
+    if (std::fflush(f) != 0 || std::ferror(f)) {
+        if (err) *err = "write error while flushing document JSON";
+        std::fclose(f);
+        return false;
+    }
     std::fclose(f);
     return true;
 }
 
-static bool write_mesh_metadata(const std::string& path,
+static bool write_mesh_metadata(const cadgf_document* doc,
+                                const std::string& path,
                                 const std::string& gltf_path,
                                 const std::string& bin_path,
                                 const std::vector<MeshSlice>& slices,
+                                const std::vector<MeshSlice>* line_slices,
                                 std::string* err) {
     FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) {
@@ -555,52 +1846,102 @@ static bool write_mesh_metadata(const std::string& path,
 
     const std::string gltf_name = fs::path(gltf_path).filename().string();
     const std::string bin_name = fs::path(bin_path).filename().string();
+    const std::vector<SpaceSummary> space_summaries = build_space_summaries(doc, slices, line_slices);
+    const std::vector<ViewportMetadata> viewports = collect_viewports(doc);
+    const auto document_layout_counts = count_document_entities_by_layout(doc);
+    const auto mesh_layout_counts = count_mesh_slices_by_layout(slices);
+    const auto line_layout_counts = line_slices
+        ? count_mesh_slices_by_layout(*line_slices)
+        : std::map<std::string, int>{};
+    int default_space = -1;
+    (void)query_doc_meta_int(doc, "dxf.default_space", &default_space);
+    const std::vector<LayoutMetadata> layouts = build_layouts(
+        space_summaries, default_space, viewports,
+        document_layout_counts, mesh_layout_counts, line_layout_counts);
+    const std::vector<InstanceMetadata> instances = build_instance_metadata(doc, slices, line_slices);
+    const std::vector<BlockMetadata> blocks = build_block_metadata(instances);
+    int document_entity_count = 0;
+    (void)cadgf_document_get_entity_count(doc, &document_entity_count);
+    const size_t line_entity_count = line_slices ? line_slices->size() : 0;
+
     std::fprintf(f, "{\n");
     std::fprintf(f, "  \"gltf\": ");
     json_write_escaped(f, gltf_name.c_str(), gltf_name.size());
     std::fprintf(f, ",\n  \"bin\": ");
     json_write_escaped(f, bin_name.c_str(), bin_name.size());
-    std::fprintf(f, ",\n  \"entities\": [\n");
+    std::fprintf(f, ",\n  \"summary\": {\n");
+    std::fprintf(f, "    \"document_entity_count\": %d,\n", document_entity_count);
+    std::fprintf(f, "    \"mesh_entity_count\": %zu,\n", slices.size());
+    std::fprintf(f, "    \"line_entity_count\": %zu,\n", line_entity_count);
+    std::fprintf(f, "    \"instance_count\": %zu,\n", instances.size());
+    std::fprintf(f, "    \"block_count\": %zu,\n", blocks.size());
+    if (default_space >= 0) {
+        std::fprintf(f, "    \"default_space\": %d,\n", default_space);
+    } else {
+        std::fprintf(f, "    \"default_space\": null,\n");
+    }
+    std::fprintf(f, "    \"layout_count\": %zu,\n", layouts.size());
+    std::fprintf(f, "    \"viewport_count\": %zu,\n", viewports.size());
+    std::fprintf(f, "    \"spaces\": [\n");
+    for (size_t i = 0; i < space_summaries.size(); ++i) {
+        std::fprintf(f, "      ");
+        write_space_summary_json(f, space_summaries[i]);
+        std::fprintf(f, "%s\n", (i + 1 < space_summaries.size()) ? "," : "");
+    }
+    std::fprintf(f, "    ]\n");
+    std::fprintf(f, "  },\n");
+    std::fprintf(f, "  \"layouts\": [\n");
+    for (size_t i = 0; i < layouts.size(); ++i) {
+        std::fprintf(f, "    ");
+        write_layout_json(f, layouts[i]);
+        std::fprintf(f, "%s\n", (i + 1 < layouts.size()) ? "," : "");
+    }
+    std::fprintf(f, "  ],\n");
+    std::fprintf(f, "  \"viewports\": [\n");
+    for (size_t i = 0; i < viewports.size(); ++i) {
+        std::fprintf(f, "    ");
+        write_viewport_json(f, viewports[i]);
+        std::fprintf(f, "%s\n", (i + 1 < viewports.size()) ? "," : "");
+    }
+    std::fprintf(f, "  ],\n");
+    std::fprintf(f, "  \"instances\": [\n");
+    for (size_t i = 0; i < instances.size(); ++i) {
+        std::fprintf(f, "    ");
+        write_instance_json(f, instances[i]);
+        std::fprintf(f, "%s\n", (i + 1 < instances.size()) ? "," : "");
+    }
+    std::fprintf(f, "  ],\n");
+    std::fprintf(f, "  \"blocks\": [\n");
+    for (size_t i = 0; i < blocks.size(); ++i) {
+        std::fprintf(f, "    ");
+        write_block_json(f, blocks[i]);
+        std::fprintf(f, "%s\n", (i + 1 < blocks.size()) ? "," : "");
+    }
+    std::fprintf(f, "  ],\n");
+    std::fprintf(f, "  \"entities\": [\n");
     for (size_t i = 0; i < slices.size(); ++i) {
         const auto& s = slices[i];
-        std::fprintf(f, "    {\"id\": %llu, \"name\": ", static_cast<unsigned long long>(s.id));
-        json_write_escaped(f, s.name.c_str(), s.name.size());
-        std::fprintf(f, ", \"layer_id\": %d", s.layerId);
-        if (!s.layerName.empty()) {
-            std::fprintf(f, ", \"layer_name\": ");
-            json_write_escaped(f, s.layerName.c_str(), s.layerName.size());
-        }
-        if (s.hasLayerColor) {
-            std::fprintf(f, ", \"layer_color\": %u", s.layerColor);
-        }
-        if (s.color != 0) {
-            std::fprintf(f, ", \"color\": %u", s.color);
-        }
-        if (!s.colorSource.empty()) {
-            std::fprintf(f, ", \"color_source\": ");
-            json_write_escaped(f, s.colorSource.c_str(), s.colorSource.size());
-        }
-        if (s.hasColorAci) {
-            std::fprintf(f, ", \"color_aci\": %d", s.colorAci);
-        }
-        if (!s.lineType.empty()) {
-            std::fprintf(f, ", \"line_type\": ");
-            json_write_escaped(f, s.lineType.c_str(), s.lineType.size());
-        }
-        if (s.lineWeight != 0.0) {
-            std::fprintf(f, ", \"line_weight\": %.6f", s.lineWeight);
-        }
-        if (s.lineTypeScale != 0.0) {
-            std::fprintf(f, ", \"line_type_scale\": %.6f", s.lineTypeScale);
-        }
-        if (s.space >= 0) {
-            std::fprintf(f, ", \"space\": %d", s.space);
-        }
-        std::fprintf(f, ", \"base_vertex\": %u, \"vertex_count\": %u, \"index_offset\": %u, \"index_count\": %u}%s\n",
-                     s.baseVertex, s.vertexCount, s.indexOffset, s.indexCount,
-                     (i + 1 < slices.size()) ? "," : "");
+        std::fprintf(f, "    ");
+        write_mesh_slice_json(f, s);
+        std::fprintf(f, "%s\n", (i + 1 < slices.size()) ? "," : "");
     }
-    std::fprintf(f, "  ]\n}\n");
+    std::fprintf(f, "  ],\n");
+    std::fprintf(f, "  \"line_entities\": [\n");
+    if (line_slices) {
+        for (size_t i = 0; i < line_slices->size(); ++i) {
+            const auto& s = (*line_slices)[i];
+            std::fprintf(f, "    ");
+            write_mesh_slice_json(f, s);
+            std::fprintf(f, "%s\n", (i + 1 < line_slices->size()) ? "," : "");
+        }
+    }
+    std::fprintf(f, "  ]\n");
+    std::fprintf(f, "}\n");
+    if (std::fflush(f) != 0 || std::ferror(f)) {
+        if (err) *err = "write error while flushing mesh metadata JSON";
+        std::fclose(f);
+        return false;
+    }
     std::fclose(f);
     return true;
 }
@@ -799,6 +2140,20 @@ static void populate_slice_metadata(const cadgf_document* doc,
     slice.id = id;
     slice.layerId = info.layer_id;
     slice.layerName = query_layer_name_utf8(doc, info.layer_id);
+    slice.layoutName = query_entity_layout_name(doc, id);
+    (void)query_entity_meta_value(doc, id, "source_type", &slice.sourceType);
+    (void)query_entity_meta_value(doc, id, "edit_mode", &slice.editMode);
+    (void)query_entity_meta_value(doc, id, "proxy_kind", &slice.proxyKind);
+    (void)query_entity_meta_value(doc, id, "block_name", &slice.blockName);
+    (void)query_entity_meta_value(doc, id, "hatch_pattern", &slice.hatchPattern);
+    std::string meta_value;
+    if (query_entity_meta_value(doc, id, "hatch_id", &meta_value)) {
+        slice.hasHatchId = parse_meta_int(meta_value, &slice.hatchId);
+    }
+    if (query_entity_meta_value(doc, id, "dim_type", &meta_value)) {
+        slice.hasDimType = parse_meta_int(meta_value, &slice.dimType);
+    }
+    (void)query_entity_meta_value(doc, id, "dim_style", &slice.dimStyle);
     cadgf_layer_info_v2 layer_info{};
     if (cadgf_document_get_layer_info_v2(doc, info.layer_id, &layer_info)) {
         slice.layerColor = layer_info.color;
@@ -816,6 +2171,7 @@ static void populate_slice_metadata(const cadgf_document* doc,
     slice.hasColorAci = query_entity_color_aci(doc, id, &slice.colorAci);
     cadgf_entity_info_v2 info_v2{};
     if (cadgf_document_get_entity_info_v2(doc, id, &info_v2)) {
+        slice.groupId = info_v2.group_id;
         slice.color = info_v2.color;
     }
     (void)cadgf_document_get_entity_line_weight(doc, id, &slice.lineWeight);
@@ -1384,6 +2740,10 @@ int main(int argc, char** argv) {
     const std::string json_path = (fs::path(opts.outDir) / "document.json").string();
     const std::string gltf_path = (fs::path(opts.outDir) / "mesh.gltf").string();
     const std::string bin_path = (fs::path(opts.outDir) / "mesh.bin").string();
+    bool wrote_json = false;
+    bool wrote_gltf = false;
+    bool wrote_bin = false;
+    bool wrote_meta = false;
 
     if (opts.emitJson) {
         if (!write_document_json(doc, json_path, &err)) {
@@ -1391,6 +2751,7 @@ int main(int argc, char** argv) {
             cadgf_document_destroy(doc);
             return 1;
         }
+        wrote_json = true;
     }
 
     if (opts.emitGltf) {
@@ -1726,48 +3087,60 @@ int main(int argc, char** argv) {
                 cadgf_document_destroy(doc);
                 return 1;
             }
+            wrote_gltf = true;
+            wrote_bin = true;
             const std::string meta_path = (fs::path(opts.outDir) / "mesh_metadata.json").string();
-            if (!write_mesh_metadata(meta_path, gltf_path, bin_path, line_slices, &err)) {
+            if (!write_mesh_metadata(doc, meta_path, gltf_path, bin_path, line_slices, &line_slices, &err)) {
                 std::cerr << "metadata export failed: " << err << "\n";
                 cadgf_document_destroy(doc);
                 return 1;
             }
+            wrote_meta = true;
         } else if (has_mesh && has_lines) {
             if (!write_gltf_combined(gltf_path, bin_path, positions, indices, line_positions, line_indices, doc, &err)) {
                 std::cerr << "glTF export failed: " << err << "\n";
                 cadgf_document_destroy(doc);
                 return 1;
             }
+            wrote_gltf = true;
+            wrote_bin = true;
             const std::string meta_path = (fs::path(opts.outDir) / "mesh_metadata.json").string();
-            if (!write_mesh_metadata(meta_path, gltf_path, bin_path, slices, &err)) {
+            if (!write_mesh_metadata(doc, meta_path, gltf_path, bin_path, slices, &line_slices, &err)) {
                 std::cerr << "metadata export failed: " << err << "\n";
                 cadgf_document_destroy(doc);
                 return 1;
             }
+            wrote_meta = true;
         } else if (has_mesh) {
             if (!write_gltf(gltf_path, bin_path, positions, indices, doc, &err)) {
                 std::cerr << "glTF export failed: " << err << "\n";
                 cadgf_document_destroy(doc);
                 return 1;
             }
+            wrote_gltf = true;
+            wrote_bin = true;
             const std::string meta_path = (fs::path(opts.outDir) / "mesh_metadata.json").string();
-            if (!write_mesh_metadata(meta_path, gltf_path, bin_path, slices, &err)) {
+            if (!write_mesh_metadata(doc, meta_path, gltf_path, bin_path, slices, nullptr, &err)) {
                 std::cerr << "metadata export failed: " << err << "\n";
                 cadgf_document_destroy(doc);
                 return 1;
             }
+            wrote_meta = true;
         } else if (has_lines) {
             if (!write_gltf_lines(gltf_path, bin_path, line_positions, line_indices, doc, &err)) {
                 std::cerr << "glTF export failed: " << err << "\n";
                 cadgf_document_destroy(doc);
                 return 1;
             }
+            wrote_gltf = true;
+            wrote_bin = true;
             const std::string meta_path = (fs::path(opts.outDir) / "mesh_metadata.json").string();
-            if (!write_mesh_metadata(meta_path, gltf_path, bin_path, line_slices, &err)) {
+            if (!write_mesh_metadata(doc, meta_path, gltf_path, bin_path, line_slices, &line_slices, &err)) {
                 std::cerr << "metadata export failed: " << err << "\n";
                 cadgf_document_destroy(doc);
                 return 1;
             }
+            wrote_meta = true;
         } else {
             std::cerr << "glTF export failed: no geometry data\n";
             cadgf_document_destroy(doc);
@@ -1776,6 +3149,12 @@ int main(int argc, char** argv) {
 #else
         std::cerr << "[WARN] TinyGLTF not available; skipping glTF export.\n";
 #endif
+    }
+
+    if (!write_manifest_json(opts, wrote_json, wrote_gltf, wrote_bin, wrote_meta, &err)) {
+        std::cerr << "manifest export failed: " << err << "\n";
+        cadgf_document_destroy(doc);
+        return 1;
     }
 
     cadgf_document_destroy(doc);
