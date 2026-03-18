@@ -1196,159 +1196,131 @@ int main() {
 
     // =========================================================================
     // Coincident, Concentric, Angle constraint tests
-    //
-    // NOTE: The current MinimalSolver (solver.cpp) classifies and validates
-    // these three constraint types correctly, but has_numeric_residual_implementation()
-    // returns false for all three. This means:
-    //   - They pass structural validation (no diagnostics).
-    //   - They are NOT evaluable (evaluableConstraintCount will be 0 for them).
-    //   - The Jacobian analysis and Levenberg-Marquardt solver ignore them.
-    //
-    // The run_single helper asserts evaluableConstraintCount == constraints.size(),
-    // which would fail for these types. The tests below are therefore wrapped in
-    // if (false) blocks and are ready to enable once the solver gains numeric
-    // residual implementations for coincident, concentric, and angle.
-    //
-    // expected_arity() also returns -1 for all three, so any var count passes
-    // the arity check. The var layouts chosen below match the intended semantics
-    // documented in the task specification.
     // =========================================================================
 
     // --- Coincident: single-constraint success path ---
     // Semantics: two points coincide.
     // Vars: [{id1, "x"}, {id1, "y"}, {id2, "x"}, {id2, "y"}], no value.
-    if (false) {
-        vars["p0.x"] = 1.0; vars["p0.y"] = 2.0;
-        vars["p1.x"] = 3.0; vars["p1.y"] = 4.5;
-        run_single(
-            "coincident",
-            {ConstraintSpec{"coincident",
-                            {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"}},
-                            std::nullopt}},
-            [&]() {
-                assert(std::abs(vars["p1.x"] - vars["p0.x"]) < 5e-3);
-                assert(std::abs(vars["p1.y"] - vars["p0.y"]) < 5e-3);
-            });
-    }
+    vars["p0.x"] = 1.0; vars["p0.y"] = 2.0;
+    vars["p1.x"] = 3.0; vars["p1.y"] = 4.5;
+    run_single(
+        "coincident",
+        {ConstraintSpec{"coincident",
+                        {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"}},
+                        std::nullopt}},
+        [&]() {
+            assert(std::abs(vars["p1.x"] - vars["p0.x"]) < 5e-3);
+            assert(std::abs(vars["p1.y"] - vars["p0.y"]) < 5e-3);
+        });
 
     // --- Coincident: composed with distance on a third point ---
-    if (false) {
-        vars["p0.x"] = 1.0; vars["p0.y"] = 2.0;
-        vars["p1.x"] = 3.0; vars["p1.y"] = 4.5;
-        vars["r0.x"] = 6.0; vars["r0.y"] = -1.0;
-        run_single(
-            "coincident+distance",
-            {
-                ConstraintSpec{"coincident",
-                               {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"}},
-                               std::nullopt},
-                ConstraintSpec{"distance",
-                               {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"r0", "x"}, VarRef{"r0", "y"}},
-                               3.5},
-            },
-            [&]() {
-                assert(std::abs(vars["p1.x"] - vars["p0.x"]) < 5e-3);
-                assert(std::abs(vars["p1.y"] - vars["p0.y"]) < 5e-3);
-                const double dx = vars["r0.x"] - vars["p0.x"];
-                const double dy = vars["r0.y"] - vars["p0.y"];
-                assert(std::abs(length2(dx, dy) - 3.5) < 5e-3);
-            });
-    }
+    vars["p0.x"] = 1.0; vars["p0.y"] = 2.0;
+    vars["p1.x"] = 3.0; vars["p1.y"] = 4.5;
+    vars["r0.x"] = 6.0; vars["r0.y"] = -1.0;
+    run_single(
+        "coincident+distance",
+        {
+            ConstraintSpec{"coincident",
+                           {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"}},
+                           std::nullopt},
+            ConstraintSpec{"distance",
+                           {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"r0", "x"}, VarRef{"r0", "y"}},
+                           3.5},
+        },
+        [&]() {
+            assert(std::abs(vars["p1.x"] - vars["p0.x"]) < 5e-3);
+            assert(std::abs(vars["p1.y"] - vars["p0.y"]) < 5e-3);
+            const double dx = vars["r0.x"] - vars["p0.x"];
+            const double dy = vars["r0.y"] - vars["p0.y"];
+            assert(std::abs(length2(dx, dy) - 3.5) < 5e-3);
+        });
 
     // --- Concentric: single-constraint success path ---
     // Semantics: two circles share the same center.
     // Vars: [{id1, "cx"}, {id1, "cy"}, {id2, "cx"}, {id2, "cy"}], no value.
-    if (false) {
-        vars["p0.cx"] = 1.0; vars["p0.cy"] = 2.0;
-        vars["p1.cx"] = 4.0; vars["p1.cy"] = -1.5;
-        run_single(
-            "concentric",
-            {ConstraintSpec{"concentric",
-                            {VarRef{"p0", "cx"}, VarRef{"p0", "cy"}, VarRef{"p1", "cx"}, VarRef{"p1", "cy"}},
-                            std::nullopt}},
-            [&]() {
-                assert(std::abs(vars["p1.cx"] - vars["p0.cx"]) < 5e-3);
-                assert(std::abs(vars["p1.cy"] - vars["p0.cy"]) < 5e-3);
-            });
-    }
+    vars["p0.cx"] = 1.0; vars["p0.cy"] = 2.0;
+    vars["p1.cx"] = 4.0; vars["p1.cy"] = -1.5;
+    run_single(
+        "concentric",
+        {ConstraintSpec{"concentric",
+                        {VarRef{"p0", "cx"}, VarRef{"p0", "cy"}, VarRef{"p1", "cx"}, VarRef{"p1", "cy"}},
+                        std::nullopt}},
+        [&]() {
+            assert(std::abs(vars["p1.cx"] - vars["p0.cx"]) < 5e-3);
+            assert(std::abs(vars["p1.cy"] - vars["p0.cy"]) < 5e-3);
+        });
 
     // --- Concentric: composed with equal (radii) ---
-    if (false) {
-        vars["p0.cx"] = 1.0; vars["p0.cy"] = 2.0; vars["p0.r"] = 3.0;
-        vars["p1.cx"] = 4.0; vars["p1.cy"] = -1.5; vars["p1.r"] = 5.0;
-        run_single(
-            "concentric+equal_radius",
-            {
-                ConstraintSpec{"concentric",
-                               {VarRef{"p0", "cx"}, VarRef{"p0", "cy"}, VarRef{"p1", "cx"}, VarRef{"p1", "cy"}},
-                               std::nullopt},
-                ConstraintSpec{"equal", {VarRef{"p0", "r"}, VarRef{"p1", "r"}}, std::nullopt},
-            },
-            [&]() {
-                assert(std::abs(vars["p1.cx"] - vars["p0.cx"]) < 5e-3);
-                assert(std::abs(vars["p1.cy"] - vars["p0.cy"]) < 5e-3);
-                assert(std::abs(vars["p1.r"] - vars["p0.r"]) < 5e-3);
-            });
-    }
+    vars["p0.cx"] = 1.0; vars["p0.cy"] = 2.0; vars["p0.r"] = 3.0;
+    vars["p1.cx"] = 4.0; vars["p1.cy"] = -1.5; vars["p1.r"] = 5.0;
+    run_single(
+        "concentric+equal_radius",
+        {
+            ConstraintSpec{"concentric",
+                           {VarRef{"p0", "cx"}, VarRef{"p0", "cy"}, VarRef{"p1", "cx"}, VarRef{"p1", "cy"}},
+                           std::nullopt},
+            ConstraintSpec{"equal", {VarRef{"p0", "r"}, VarRef{"p1", "r"}}, std::nullopt},
+        },
+        [&]() {
+            assert(std::abs(vars["p1.cx"] - vars["p0.cx"]) < 5e-3);
+            assert(std::abs(vars["p1.cy"] - vars["p0.cy"]) < 5e-3);
+            assert(std::abs(vars["p1.r"] - vars["p0.r"]) < 5e-3);
+        });
 
     // --- Angle: single-constraint success path ---
     // Semantics: angle between two lines.
     // Vars: 8 VarRefs (same layout as parallel/perpendicular), requires a value in radians.
     // Example: 45 degrees = M_PI / 4.
-    if (false) {
-        vars["p0.x"] = 0.0; vars["p0.y"] = 0.0;
-        vars["p1.x"] = 3.0; vars["p1.y"] = 0.0;
-        vars["q0.x"] = 0.0; vars["q0.y"] = 0.0;
-        vars["q1.x"] = 2.0; vars["q1.y"] = 2.5;
-        run_single(
-            "angle_45deg",
-            {ConstraintSpec{"angle",
-                            {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"},
-                             VarRef{"q0", "x"}, VarRef{"q0", "y"}, VarRef{"q1", "x"}, VarRef{"q1", "y"}},
-                            M_PI / 4.0}},
-            [&]() {
-                const double v1x = vars["p1.x"] - vars["p0.x"];
-                const double v1y = vars["p1.y"] - vars["p0.y"];
-                const double v2x = vars["q1.x"] - vars["q0.x"];
-                const double v2y = vars["q1.y"] - vars["q0.y"];
-                const double n1 = length2(v1x, v1y);
-                const double n2 = length2(v2x, v2y);
-                assert(n1 > 1e-9 && n2 > 1e-9);
-                const double cosAngle = (v1x * v2x + v1y * v2y) / (n1 * n2);
-                assert(std::abs(cosAngle - std::cos(M_PI / 4.0)) < 5e-2);
-            });
-    }
+    vars["p0.x"] = 0.0; vars["p0.y"] = 0.0;
+    vars["p1.x"] = 3.0; vars["p1.y"] = 0.0;
+    vars["q0.x"] = 0.0; vars["q0.y"] = 0.0;
+    vars["q1.x"] = 2.0; vars["q1.y"] = 2.5;
+    run_single(
+        "angle_45deg",
+        {ConstraintSpec{"angle",
+                        {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"},
+                         VarRef{"q0", "x"}, VarRef{"q0", "y"}, VarRef{"q1", "x"}, VarRef{"q1", "y"}},
+                        M_PI / 4.0}},
+        [&]() {
+            const double v1x = vars["p1.x"] - vars["p0.x"];
+            const double v1y = vars["p1.y"] - vars["p0.y"];
+            const double v2x = vars["q1.x"] - vars["q0.x"];
+            const double v2y = vars["q1.y"] - vars["q0.y"];
+            const double n1 = length2(v1x, v1y);
+            const double n2 = length2(v2x, v2y);
+            assert(n1 > 1e-9 && n2 > 1e-9);
+            const double cosAngle = (v1x * v2x + v1y * v2y) / (n1 * n2);
+            assert(std::abs(cosAngle - std::cos(M_PI / 4.0)) < 5e-2);
+        });
 
     // --- Angle: composed with distance ---
-    if (false) {
-        vars["p0.x"] = 0.0; vars["p0.y"] = 0.0;
-        vars["p1.x"] = 3.0; vars["p1.y"] = 0.0;
-        vars["q0.x"] = 0.0; vars["q0.y"] = 0.0;
-        vars["q1.x"] = 1.5; vars["q1.y"] = 2.0;
-        run_single(
-            "angle_45deg+distance",
-            {
-                ConstraintSpec{"angle",
-                               {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"},
-                                VarRef{"q0", "x"}, VarRef{"q0", "y"}, VarRef{"q1", "x"}, VarRef{"q1", "y"}},
-                               M_PI / 4.0},
-                ConstraintSpec{"distance",
-                               {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"}},
-                               4.0},
-            },
-            [&]() {
-                const double v1x = vars["p1.x"] - vars["p0.x"];
-                const double v1y = vars["p1.y"] - vars["p0.y"];
-                const double v2x = vars["q1.x"] - vars["q0.x"];
-                const double v2y = vars["q1.y"] - vars["q0.y"];
-                const double n1 = length2(v1x, v1y);
-                const double n2 = length2(v2x, v2y);
-                assert(n1 > 1e-9 && n2 > 1e-9);
-                const double cosAngle = (v1x * v2x + v1y * v2y) / (n1 * n2);
-                assert(std::abs(cosAngle - std::cos(M_PI / 4.0)) < 5e-2);
-                assert(std::abs(n1 - 4.0) < 5e-3);
-            });
-    }
+    vars["p0.x"] = 0.0; vars["p0.y"] = 0.0;
+    vars["p1.x"] = 3.0; vars["p1.y"] = 0.0;
+    vars["q0.x"] = 0.0; vars["q0.y"] = 0.0;
+    vars["q1.x"] = 1.5; vars["q1.y"] = 2.0;
+    run_single(
+        "angle_45deg+distance",
+        {
+            ConstraintSpec{"angle",
+                           {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"},
+                            VarRef{"q0", "x"}, VarRef{"q0", "y"}, VarRef{"q1", "x"}, VarRef{"q1", "y"}},
+                           M_PI / 4.0},
+            ConstraintSpec{"distance",
+                           {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"}},
+                           4.0},
+        },
+        [&]() {
+            const double v1x = vars["p1.x"] - vars["p0.x"];
+            const double v1y = vars["p1.y"] - vars["p0.y"];
+            const double v2x = vars["q1.x"] - vars["q0.x"];
+            const double v2y = vars["q1.y"] - vars["q0.y"];
+            const double n1 = length2(v1x, v1y);
+            const double n2 = length2(v2x, v2y);
+            assert(n1 > 1e-9 && n2 > 1e-9);
+            const double cosAngle = (v1x * v2x + v1y * v2y) / (n1 * n2);
+            assert(std::abs(cosAngle - std::cos(M_PI / 4.0)) < 5e-2);
+            assert(std::abs(n1 - 4.0) < 5e-3);
+        });
 
     std::cout << "solver basic constraints regression passed\n";
     delete solver;
