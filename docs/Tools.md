@@ -66,6 +66,32 @@ export CADGF_ROUTER_DWG_CONVERT_TIMEOUT=120
 export CADGF_ROUTER_CLI_ALLOWLIST="/usr/local/bin/dwg2dxf"
 ```
 
+Local business-path smoke for real DWG open:
+
+```bash
+python3 tools/plm_dwg_open_smoke.py \
+  --input-dwg "/absolute/path/to/file.dwg"
+```
+
+This smoke mirrors the current desktop flow:
+- `DWG -> dwg2dxf -> router /convert -> manifest -> viewer_url`
+- writes a timestamped run under `build/plm_dwg_open_smoke/`
+- emits `summary.json`, `dwg2dxf.log`, `router.log`, and generated preview artifacts
+
+Desktop-main-process DWG open smoke:
+
+```bash
+python3 tools/plm_dwg_open_desktop_smoke.py \
+  --input-dwg "/absolute/path/to/file.dwg"
+```
+
+This smoke:
+- launches the Electron desktop wrapper with `main.js --smoke-dwg`
+- reuses the real `maybeConvertDwg(...) -> convertWithRouter(...)` path
+- writes a timestamped run under `build/plm_dwg_open_desktop_smoke/`
+- emits `desktop_summary.json`, `desktop_smoke.log`, wrapper `summary.json`
+- runs `validate_plm_preview_artifacts.py` and `validate_plm_manifest.py`
+
 ## plm_convert.py
 Runs the conversion pipeline (plugin import → artifacts).
 

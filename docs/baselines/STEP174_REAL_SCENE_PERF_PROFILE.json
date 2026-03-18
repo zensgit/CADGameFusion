@@ -1,0 +1,9 @@
+{
+  "name": "step174_real_scene_j0225034_layoutfix",
+  "doc": "build/plm_preview_j0225034_layoutfix/document.json",
+  "thresholds": {
+    "pick_p95_ms": 0.05,
+    "box_p95_ms": 0.20,
+    "drag_p95_ms": 0.20
+  }
+}

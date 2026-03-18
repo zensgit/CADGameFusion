@@ -1,0 +1,135 @@
+{
+  "run_id": "20260208_030156",
+  "started_at": "2026-02-08T03:01:56Z",
+  "finished_at": "2026-02-08T03:02:32Z",
+  "mode": "gate",
+  "totals": {
+    "pass": 6,
+    "fail": 0,
+    "skipped": 1
+  },
+  "metrics_by_case": [
+    {
+      "name": "ACAD_blank_2013_negative",
+      "layout": "布局1",
+      "filter": "-",
+      "space": "paper",
+      "status": "SKIPPED",
+      "metrics": {},
+      "delta_vs_baseline": {}
+    },
+    {
+      "name": "BTJ01239601522-03_layout1",
+      "layout": "布局1",
+      "filter": "all",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.005631500068122985,
+        "jaccard_aligned": 0.019756838905775075,
+        "shift_dx": 32,
+        "shift_dy": -36,
+        "pdf_edges": 20294,
+        "viewer_edges": 23992
+      },
+      "delta_vs_baseline": {}
+    },
+    {
+      "name": "BTJ01239601522-03_layout1",
+      "layout": "布局1",
+      "filter": "text",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.00583666745116498,
+        "jaccard_aligned": 0.02048710601719198,
+        "shift_dx": 32,
+        "shift_dy": -36,
+        "pdf_edges": 20294,
+        "viewer_edges": 22444
+      },
+      "delta_vs_baseline": {}
+    },
+    {
+      "name": "BTJ01239601522-03_layout2",
+      "layout": "布局2",
+      "filter": "all",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.017345474340575047,
+        "jaccard_aligned": 0.05487992610837438,
+        "shift_dx": 50,
+        "shift_dy": -1,
+        "pdf_edges": 19784,
+        "viewer_edges": 21331
+      },
+      "delta_vs_baseline": {}
+    },
+    {
+      "name": "BTJ01239601522-03_layout1",
+      "layout": "布局1",
+      "filter": "dimension",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.0057267394681319705,
+        "jaccard_aligned": 0.02017873941674506,
+        "shift_dx": 29,
+        "shift_dy": -36,
+        "pdf_edges": 20294,
+        "viewer_edges": 23084
+      },
+      "delta_vs_baseline": {}
+    },
+    {
+      "name": "BTJ01239601522-03_layout2",
+      "layout": "布局2",
+      "filter": "text",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.01734847922389685,
+        "jaccard_aligned": 0.05488978418743103,
+        "shift_dx": 50,
+        "shift_dy": -1,
+        "pdf_edges": 19784,
+        "viewer_edges": 21324
+      },
+      "delta_vs_baseline": {}
+    },
+    {
+      "name": "BTJ01239601522-03_layout2",
+      "layout": "布局2",
+      "filter": "dimension",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.017340754483611626,
+        "jaccard_aligned": 0.05486444199348501,
+        "shift_dx": 50,
+        "shift_dy": -1,
+        "pdf_edges": 19784,
+        "viewer_edges": 21342
+      },
+      "delta_vs_baseline": {}
+    }
+  ],
+  "failure_buckets": {
+    "INPUT_INVALID": 0,
+    "IMPORT_FAIL": 0,
+    "VIEWPORT_LAYOUT_MISSING": 0,
+    "RENDER_DRIFT": 0,
+    "TEXT_METRIC_DRIFT": 0
+  },
+  "baseline_compare": {
+    "baseline_file": "",
+    "compared_cases": 0,
+    "degraded_cases": 0,
+    "improved_cases": 0
+  },
+  "gate_decision": {
+    "would_fail": false,
+    "fail_reasons": []
+  }
+}

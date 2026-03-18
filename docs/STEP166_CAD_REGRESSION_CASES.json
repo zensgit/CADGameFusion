@@ -1,0 +1,59 @@
+[
+  {
+    "name": "BTJ01239601522-03_layout1",
+    "dxf": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01239601522-03扭转弹簧v1.dxf",
+    "pdf": "/Users/huazhou/Documents/BTJ01239601522-03扭转弹簧v1-布局1.pdf",
+    "layout": "布局1",
+    "space": "paper",
+    "filters": ["all", "text", "dimension"],
+    "expected": {
+      "has_viewport": true,
+      "has_entities": true
+    },
+    "compare": {
+      "text_overlay": true,
+      "line_overlay": false,
+      "text_style": "clean",
+      "ui": true
+    },
+    "tags": ["baseline", "paper-space", "multi-filter"]
+  },
+  {
+    "name": "BTJ01239601522-03_layout2",
+    "dxf": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01239601522-03扭转弹簧v1.dxf",
+    "pdf": "/Users/huazhou/Documents/BTJ01239601522-03扭转弹簧v1-布局2.pdf",
+    "layout": "布局2",
+    "space": "paper",
+    "filters": ["all", "text", "dimension"],
+    "expected": {
+      "has_viewport": false,
+      "has_entities": true
+    },
+    "compare": {
+      "text_overlay": true,
+      "line_overlay": false,
+      "text_style": "clean",
+      "ui": true
+    },
+    "tags": ["baseline", "paper-space", "multi-filter", "no-layout-viewport"]
+  },
+  {
+    "name": "ACAD_blank_2013_negative",
+    "dxf": "/Users/huazhou/Downloads/训练图纸/训练图纸/ACAD-布局空白 DXF-2013.dxf",
+    "pdf": "/Users/huazhou/Documents/ACAD-布局空白 DXF-2013-布局1.pdf",
+    "layout": "布局1",
+    "space": "paper",
+    "filters": ["all"],
+    "expected": {
+      "has_viewport": true,
+      "has_entities": true
+    },
+    "compare": {
+      "text_overlay": true,
+      "line_overlay": false,
+      "text_style": "clean",
+      "ui": true
+    },
+    "tags": ["negative", "blank-layout"]
+  }
+]

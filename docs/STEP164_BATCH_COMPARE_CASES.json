@@ -1,0 +1,26 @@
+[
+  {
+    "name": "LTJ012306102-0084-model",
+    "pdf": "/Users/huazhou/Documents/文稿 - hua-MacBook Pro/LTJ012306102-0084调节螺栓v1-模型.pdf",
+    "manifest": "build/plm_preview_dim_layout/manifest.json",
+    "filters": ["dimension"],
+    "space": "model",
+    "paper_viewport": false,
+    "text_overlay": true,
+    "line_overlay": false,
+    "text_style": "clean",
+    "ui": true
+  },
+  {
+    "name": "LTJ012306102-0084-layout",
+    "pdf": "/Users/huazhou/Documents/文稿 - hua-MacBook Pro/LTJ012306102-0084调节螺栓v1-布局1.pdf",
+    "manifest": "build/plm_preview_dim_layout/manifest.json",
+    "filters": ["all"],
+    "space": "paper",
+    "paper_viewport": true,
+    "text_overlay": true,
+    "line_overlay": false,
+    "text_style": "clean",
+    "ui": true
+  }
+]

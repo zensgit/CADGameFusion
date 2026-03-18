@@ -444,71 +444,47 @@ Why this belongs here:
   explainable diagnostics elsewhere in the codebase, which is the practical way to close part of
   the gap with mature sketch solvers without pretending the full solver depth already exists.
 
-## Coincident, Concentric, and Angle: Pending Test Scaffolding
+## Coincident, Concentric, and Angle: Implemented
 
-Step188 now includes classification and naming checks for three additional constraint types:
-- `coincident` (ConstraintKind::Coincident)
-- `concentric` (ConstraintKind::Concentric)
-- `angle` (ConstraintKind::Angle)
+Step188 now includes full numeric residual implementations for the three remaining constraint
+types. All nine ConstraintKind values are now fully evaluable by the Gauss-Newton solver.
 
-These are verified at the top of the test with `classifyConstraintKind()` and
-`constraintKindName()` round-trip assertions. These checks execute and pass because the
-classifier and name functions already handle all nine ConstraintKind values.
+### Constraint types
 
-### Solver implementation status
+- `coincident` (ConstraintKind::Coincident) — arity 4, no value
+- `concentric` (ConstraintKind::Concentric) — arity 4, no value
+- `angle` (ConstraintKind::Angle) — arity 8, value in radians
 
-The current MinimalSolver in `solver.cpp` classifies and validates these three types correctly:
-- `classifyConstraintKind()` maps the type strings to the correct enum values.
-- `requires_numeric_value()` returns `true` for Angle, `false` for Coincident and Concentric.
-- `normalize_constraint_key()` sorts var refs for Coincident and Concentric (matching
-  Equal/Horizontal/Vertical symmetry behavior).
+### Solver implementation
 
-However, the solver does NOT yet have numeric residual implementations for any of the three:
-- `expected_arity()` returns -1 for all three (no enforced arity).
-- `has_numeric_residual_implementation()` returns `false` for all three.
-- The Levenberg-Marquardt solve loop and Jacobian analysis skip them entirely.
+Changes applied to `solver.cpp`:
+1. `expected_arity()` returns 4 for Coincident/Concentric, 8 for Angle.
+2. `has_numeric_residual_implementation()` returns `true` for all three.
+3. Residual lambda implementations:
+   - Coincident: Euclidean distance between two points → 0.
+   - Concentric: Euclidean distance between two circle centers → 0.
+   - Angle: `acos(dot / (n1 * n2)) - target_angle` → 0.
 
-This means the constraints pass structural validation but are not evaluable. The existing
-`run_single` helper asserts `evaluableConstraintCount == constraints.size()`, which would fail
-if these constraints were the only (or partial) evaluable subset.
+### Test coverage
 
-### Pending test cases
-
-Six test cases have been added inside `if (false)` blocks, ready to enable once the solver
-gains numeric residual implementations:
+Six test cases are now active (previously disabled in `if (false)` blocks):
 
 Single-constraint success paths:
 - `coincident` -- two points coincide (4 VarRefs: x, y, x, y), no value
 - `concentric` -- two circles share center (4 VarRefs: cx, cy, cx, cy), no value
-- `angle_45deg` -- angle between two lines (8 VarRefs, same layout as parallel/perpendicular),
-  value = pi/4 radians
+- `angle_45deg` -- angle between two lines (8 VarRefs), value = pi/4 radians
 
 Composed success paths:
 - `coincident+distance` -- coincident constraint plus a distance to a third point
 - `concentric+equal_radius` -- concentric constraint plus equal radii
 - `angle_45deg+distance` -- angle constraint plus a distance on the first line
 
-### What must change before enabling
+### Final coverage shape
 
-To enable these tests (remove the `if (false)` wrappers), the solver must:
-1. Set `expected_arity()` to return the correct positive integer for each type:
-   - Coincident: 4
-   - Concentric: 4
-   - Angle: 8
-2. Add numeric residual implementations in the `residual` lambda for each type.
-3. Return `true` from `has_numeric_residual_implementation()` for each type.
+The test file now contains:
+- nine `classifyConstraintKind()` assertions (covering all non-Unknown kinds);
+- ten `constraintKindName()` assertions (covering all enum values);
+- sixty-six active success-path solve checks (60 original + 6 newly enabled).
 
-Once those three changes are made per constraint type, the corresponding `if (false)` block
-can be removed and the test will exercise the full solve-and-verify path just like the existing
-sixty green cases.
-
-### Coverage shape
-
-After this expansion, the test file contains:
-- nine `classifyConstraintKind()` assertions (up from six, now covering all non-Unknown kinds);
-- ten `constraintKindName()` assertions (up from seven, now covering all enum values);
-- sixty active success-path solve checks (unchanged);
-- six pending (disabled) success-path solve checks for Coincident, Concentric, and Angle.
-
-This keeps the green lane stable at sixty passing checks while documenting the intended test
-shape for the next constraint implementation wave.
+All nine ConstraintKind values are now exercised end-to-end through the Levenberg-Marquardt
+solver with full Jacobian analysis. Step188 is complete.

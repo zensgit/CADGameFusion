@@ -1,0 +1,331 @@
+{
+  "run_id": "20260216_010837",
+  "started_at": "2026-02-16T01:08:37Z",
+  "finished_at": "2026-02-16T01:09:13Z",
+  "mode": "gate",
+  "totals": {
+    "pass": 6,
+    "fail": 0,
+    "skipped": 1
+  },
+  "metrics_by_case": [
+    {
+      "name": "ACAD_blank_2013_negative",
+      "layout": "布局1",
+      "filter": "-",
+      "space": "paper",
+      "status": "SKIPPED",
+      "metrics": {},
+      "delta_vs_baseline": {}
+    },
+    {
+      "name": "BTJ01239601522-03_layout1",
+      "layout": "布局1",
+      "filter": "all",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.0056079010103303436,
+        "jaccard_aligned": 0.019754109683657962,
+        "shift_dx": 29,
+        "shift_dy": -36,
+        "pdf_edges": 20294,
+        "viewer_edges": 23998
+      },
+      "delta_vs_baseline": {
+        "baseline": 0.019756838905775075,
+        "current": 0.019754109683657962,
+        "delta": -2.729222117112823e-06
+      },
+      "import_meta": {
+        "hatch_pattern_emitted_lines": 0,
+        "hatch_pattern_clamped": 0,
+        "hatch_pattern_clamped_hatches": 0,
+        "hatch_pattern_stride_max": 1,
+        "hatch_pattern_ksteps_limit": 5000,
+        "hatch_pattern_edge_checks": 0,
+        "hatch_pattern_edge_budget_exhausted_hatches": 0,
+        "hatch_pattern_boundary_points_clamped_hatches": 0,
+        "hatch_pattern_boundary_points_max": 0,
+        "hatch_pattern_edge_checks_limit_per_hatch": 10000000,
+        "hatch_pattern_edge_checks_limit_per_doc": 40000000,
+        "hatch_pattern_boundary_points_limit": 20000,
+        "text_entities_seen": 228,
+        "text_entities_emitted": 228,
+        "text_skipped_missing_xy": 0,
+        "text_align_complete": 32,
+        "text_align_partial": 0,
+        "text_align_partial_x_only": 0,
+        "text_align_partial_y_only": 0,
+        "text_align_used": 26,
+        "text_nonfinite_values": 0
+      }
+    },
+    {
+      "name": "BTJ01239601522-03_layout1",
+      "layout": "布局1",
+      "filter": "text",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.005832686563653896,
+        "jaccard_aligned": 0.020472929442363216,
+        "shift_dx": 32,
+        "shift_dy": -36,
+        "pdf_edges": 20294,
+        "viewer_edges": 22473
+      },
+      "delta_vs_baseline": {
+        "baseline": 0.02048710601719198,
+        "current": 0.020472929442363216,
+        "delta": -1.417657482876214e-05
+      },
+      "import_meta": {
+        "hatch_pattern_emitted_lines": 0,
+        "hatch_pattern_clamped": 0,
+        "hatch_pattern_clamped_hatches": 0,
+        "hatch_pattern_stride_max": 1,
+        "hatch_pattern_ksteps_limit": 5000,
+        "hatch_pattern_edge_checks": 0,
+        "hatch_pattern_edge_budget_exhausted_hatches": 0,
+        "hatch_pattern_boundary_points_clamped_hatches": 0,
+        "hatch_pattern_boundary_points_max": 0,
+        "hatch_pattern_edge_checks_limit_per_hatch": 10000000,
+        "hatch_pattern_edge_checks_limit_per_doc": 40000000,
+        "hatch_pattern_boundary_points_limit": 20000,
+        "text_entities_seen": 228,
+        "text_entities_emitted": 228,
+        "text_skipped_missing_xy": 0,
+        "text_align_complete": 32,
+        "text_align_partial": 0,
+        "text_align_partial_x_only": 0,
+        "text_align_partial_y_only": 0,
+        "text_align_used": 26,
+        "text_nonfinite_values": 0
+      }
+    },
+    {
+      "name": "BTJ01239601522-03_layout1",
+      "layout": "布局1",
+      "filter": "dimension",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.005727801869072189,
+        "jaccard_aligned": 0.020182536695521263,
+        "shift_dx": 29,
+        "shift_dy": -36,
+        "pdf_edges": 20294,
+        "viewer_edges": 23076
+      },
+      "delta_vs_baseline": {
+        "baseline": 0.02017873941674506,
+        "current": 0.020182536695521263,
+        "delta": 3.797278776203339e-06
+      },
+      "import_meta": {
+        "hatch_pattern_emitted_lines": 0,
+        "hatch_pattern_clamped": 0,
+        "hatch_pattern_clamped_hatches": 0,
+        "hatch_pattern_stride_max": 1,
+        "hatch_pattern_ksteps_limit": 5000,
+        "hatch_pattern_edge_checks": 0,
+        "hatch_pattern_edge_budget_exhausted_hatches": 0,
+        "hatch_pattern_boundary_points_clamped_hatches": 0,
+        "hatch_pattern_boundary_points_max": 0,
+        "hatch_pattern_edge_checks_limit_per_hatch": 10000000,
+        "hatch_pattern_edge_checks_limit_per_doc": 40000000,
+        "hatch_pattern_boundary_points_limit": 20000,
+        "text_entities_seen": 228,
+        "text_entities_emitted": 228,
+        "text_skipped_missing_xy": 0,
+        "text_align_complete": 32,
+        "text_align_partial": 0,
+        "text_align_partial_x_only": 0,
+        "text_align_partial_y_only": 0,
+        "text_align_used": 26,
+        "text_nonfinite_values": 0
+      }
+    },
+    {
+      "name": "BTJ01239601522-03_layout2",
+      "layout": "布局2",
+      "filter": "all",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.017341183455373044,
+        "jaccard_aligned": 0.05486584927922844,
+        "shift_dx": 50,
+        "shift_dy": -1,
+        "pdf_edges": 19784,
+        "viewer_edges": 21341
+      },
+      "delta_vs_baseline": {
+        "baseline": 0.05487992610837438,
+        "current": 0.05486584927922844,
+        "delta": -1.4076829145941161e-05
+      },
+      "import_meta": {
+        "hatch_pattern_emitted_lines": 0,
+        "hatch_pattern_clamped": 0,
+        "hatch_pattern_clamped_hatches": 0,
+        "hatch_pattern_stride_max": 1,
+        "hatch_pattern_ksteps_limit": 5000,
+        "hatch_pattern_edge_checks": 0,
+        "hatch_pattern_edge_budget_exhausted_hatches": 0,
+        "hatch_pattern_boundary_points_clamped_hatches": 0,
+        "hatch_pattern_boundary_points_max": 0,
+        "hatch_pattern_edge_checks_limit_per_hatch": 10000000,
+        "hatch_pattern_edge_checks_limit_per_doc": 40000000,
+        "hatch_pattern_boundary_points_limit": 20000,
+        "text_entities_seen": 228,
+        "text_entities_emitted": 228,
+        "text_skipped_missing_xy": 0,
+        "text_align_complete": 32,
+        "text_align_partial": 0,
+        "text_align_partial_x_only": 0,
+        "text_align_partial_y_only": 0,
+        "text_align_used": 26,
+        "text_nonfinite_values": 0
+      }
+    },
+    {
+      "name": "BTJ01239601522-03_layout2",
+      "layout": "布局2",
+      "filter": "dimension",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.017344615993665876,
+        "jaccard_aligned": 0.054877110164708295,
+        "shift_dx": 50,
+        "shift_dy": -1,
+        "pdf_edges": 19784,
+        "viewer_edges": 21333
+      },
+      "delta_vs_baseline": {
+        "baseline": 0.05486444199348501,
+        "current": 0.054877110164708295,
+        "delta": 1.2668171223285951e-05
+      },
+      "import_meta": {
+        "hatch_pattern_emitted_lines": 0,
+        "hatch_pattern_clamped": 0,
+        "hatch_pattern_clamped_hatches": 0,
+        "hatch_pattern_stride_max": 1,
+        "hatch_pattern_ksteps_limit": 5000,
+        "hatch_pattern_edge_checks": 0,
+        "hatch_pattern_edge_budget_exhausted_hatches": 0,
+        "hatch_pattern_boundary_points_clamped_hatches": 0,
+        "hatch_pattern_boundary_points_max": 0,
+        "hatch_pattern_edge_checks_limit_per_hatch": 10000000,
+        "hatch_pattern_edge_checks_limit_per_doc": 40000000,
+        "hatch_pattern_boundary_points_limit": 20000,
+        "text_entities_seen": 228,
+        "text_entities_emitted": 228,
+        "text_skipped_missing_xy": 0,
+        "text_align_complete": 32,
+        "text_align_partial": 0,
+        "text_align_partial_x_only": 0,
+        "text_align_partial_y_only": 0,
+        "text_align_used": 26,
+        "text_nonfinite_values": 0
+      }
+    },
+    {
+      "name": "BTJ01239601522-03_layout2",
+      "layout": "布局2",
+      "filter": "text",
+      "space": "paper",
+      "status": "PASS",
+      "metrics": {
+        "jaccard": 0.017341612448358606,
+        "jaccard_aligned": 0.05486725663716814,
+        "shift_dx": 50,
+        "shift_dy": -1,
+        "pdf_edges": 19784,
+        "viewer_edges": 21340
+      },
+      "delta_vs_baseline": {
+        "baseline": 0.05488978418743103,
+        "current": 0.05486725663716814,
+        "delta": -2.252755026289216e-05
+      },
+      "import_meta": {
+        "hatch_pattern_emitted_lines": 0,
+        "hatch_pattern_clamped": 0,
+        "hatch_pattern_clamped_hatches": 0,
+        "hatch_pattern_stride_max": 1,
+        "hatch_pattern_ksteps_limit": 5000,
+        "hatch_pattern_edge_checks": 0,
+        "hatch_pattern_edge_budget_exhausted_hatches": 0,
+        "hatch_pattern_boundary_points_clamped_hatches": 0,
+        "hatch_pattern_boundary_points_max": 0,
+        "hatch_pattern_edge_checks_limit_per_hatch": 10000000,
+        "hatch_pattern_edge_checks_limit_per_doc": 40000000,
+        "hatch_pattern_boundary_points_limit": 20000,
+        "text_entities_seen": 228,
+        "text_entities_emitted": 228,
+        "text_skipped_missing_xy": 0,
+        "text_align_complete": 32,
+        "text_align_partial": 0,
+        "text_align_partial_x_only": 0,
+        "text_align_partial_y_only": 0,
+        "text_align_used": 26,
+        "text_nonfinite_values": 0
+      }
+    }
+  ],
+  "failure_buckets": {
+    "INPUT_INVALID": 0,
+    "IMPORT_FAIL": 0,
+    "VIEWPORT_LAYOUT_MISSING": 0,
+    "RENDER_DRIFT": 0,
+    "TEXT_METRIC_DRIFT": 0
+  },
+  "sanity": {
+    "cases_total": 3,
+    "cases_valid": 2,
+    "cases_invalid": 1,
+    "cases_warned": 0,
+    "warning_code_counts": {}
+  },
+  "import_meta_summary": {
+    "hatch_pattern_clamped_cases": 0,
+    "hatch_pattern_clamped_hatches_total": 0,
+    "hatch_pattern_emitted_lines_total": 0,
+    "hatch_pattern_stride_max_max": 1,
+    "hatch_pattern_ksteps_limit_max": 5000,
+    "hatch_pattern_edge_checks_total": 0,
+    "hatch_pattern_edge_budget_exhausted_cases": 0,
+    "hatch_pattern_edge_budget_exhausted_hatches_total": 0,
+    "hatch_pattern_boundary_points_clamped_cases": 0,
+    "hatch_pattern_boundary_points_clamped_hatches_total": 0,
+    "hatch_pattern_boundary_points_max_max": 0,
+    "text_align_partial_cases": 0,
+    "text_align_partial_total": 0,
+    "text_align_used_total": 52,
+    "text_nonfinite_values_total": 0,
+    "text_skipped_missing_xy_total": 0,
+    "text_entities_seen_total": 456,
+    "text_entities_emitted_total": 456
+  },
+  "baseline_compare": {
+    "baseline_file": "/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/docs/baselines/STEP166_baseline_summary.json",
+    "compared_cases": 6,
+    "degraded_cases": 0,
+    "improved_cases": 2
+  },
+  "drift_confirmation": {
+    "enabled": true,
+    "rechecked": 0,
+    "confirmed": 0,
+    "recovered": 0,
+    "compare_fail": 0
+  },
+  "gate_decision": {
+    "would_fail": false,
+    "fail_reasons": []
+  }
+}
