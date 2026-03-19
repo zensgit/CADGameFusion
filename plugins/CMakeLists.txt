@@ -33,6 +33,15 @@ set_target_properties(cadgf_dxf_exporter_plugin PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
+# DWG importer plugin (wraps dwg2dxf + DXF importer)
+add_library(cadgf_dwg_importer_plugin SHARED dwg_importer_plugin.cpp)
+target_link_libraries(cadgf_dwg_importer_plugin PRIVATE core_c ${CMAKE_DL_LIBS})
+target_include_directories(cadgf_dwg_importer_plugin PRIVATE ${CMAKE_SOURCE_DIR}/core/include)
+set_target_properties(cadgf_dwg_importer_plugin PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
 # JSON importer plugin (sample)
 add_library(cadgf_json_importer_plugin SHARED json_importer_plugin.cpp)
 target_link_libraries(cadgf_json_importer_plugin PRIVATE core_c)
