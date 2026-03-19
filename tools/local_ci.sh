@@ -250,6 +250,10 @@ CTEST_HATCH_DENSE_STATUS="skipped"
 CTEST_HATCH_LARGE_BOUNDARY_STATUS="skipped"
 CTEST_NONFINITE_STATUS="skipped"
 CTEST_CONSTRAINTS_BASIC_STATUS="skipped"
+CTEST_DWG_MATRIX_STATUS="skipped"
+CTEST_CONVERT_ROUNDTRIP_STATUS="skipped"
+CTEST_CONVERT_ROUNDTRIP_COMPLEX_STATUS="skipped"
+CTEST_DXF_EXPORTER_STATUS="skipped"
 CTEST_ASSEMBLY_MODEL_STATUS="skipped"
 CTEST_ASSEMBLY_PAPERSPACE_STATUS="skipped"
 CTEST_ASSEMBLY_MIXED_STATUS="skipped"
@@ -963,6 +967,10 @@ main() {
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target test_dxf_hatch_large_boundary_budget --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target test_dxf_nonfinite_numbers --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target cadgf_json_importer_plugin --parallel || true
+  cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target cadgf_dxf_exporter_plugin --parallel || true
+  cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target cadgf_dwg_importer_plugin --parallel || true
+  cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target test_dwg_matrix --parallel || true
+  cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target test_convert_roundtrip --parallel || true
 
   echo "[LOCAL-CI] Locate export_cli"
   EXPORT_CLI=""
@@ -2655,6 +2663,10 @@ PY
   run_ctest_check test_dxf_hatch_dense_cap_run "hatch dense cap" CTEST_HATCH_DENSE_STATUS
   run_ctest_check test_dxf_hatch_large_boundary_budget_run "hatch large boundary budget" CTEST_HATCH_LARGE_BOUNDARY_STATUS
   run_ctest_check test_dxf_nonfinite_numbers_run "nonfinite numbers" CTEST_NONFINITE_STATUS
+  run_ctest_check test_dxf_exporter_plugin_smoke_run "DXF exporter plugin" CTEST_DXF_EXPORTER_STATUS
+  run_ctest_check test_dwg_matrix_run "DWG matrix (40 samples)" CTEST_DWG_MATRIX_STATUS
+  run_ctest_check test_convert_roundtrip_run "DWG→DXF roundtrip (simple)" CTEST_CONVERT_ROUNDTRIP_STATUS
+  run_ctest_check test_convert_roundtrip_complex_run "DWG→DXF roundtrip (complex)" CTEST_CONVERT_ROUNDTRIP_COMPLEX_STATUS
   if command -v cmake >/dev/null 2>&1; then
     cmake --build "$BUILD_DIR" --target core_tests_constraints_basic -j4 >/dev/null 2>&1 || true
   fi
@@ -2805,6 +2817,10 @@ PY
   echo "- CTest hatch dense cap: $CTEST_HATCH_DENSE_STATUS"
   echo "- CTest hatch large boundary budget: $CTEST_HATCH_LARGE_BOUNDARY_STATUS"
   echo "- CTest nonfinite numbers: $CTEST_NONFINITE_STATUS"
+  echo "- CTest DXF exporter plugin: $CTEST_DXF_EXPORTER_STATUS"
+  echo "- CTest DWG matrix (40 samples): $CTEST_DWG_MATRIX_STATUS"
+  echo "- CTest DWG→DXF roundtrip (simple): $CTEST_CONVERT_ROUNDTRIP_STATUS"
+  echo "- CTest DWG→DXF roundtrip (complex): $CTEST_CONVERT_ROUNDTRIP_COMPLEX_STATUS"
   echo "- CTest constraints basic: $CTEST_CONSTRAINTS_BASIC_STATUS"
   echo "- CTest assembly roundtrip: $CTEST_ASSEMBLY_ROUNDTRIP_STATUS"
   echo "- CTest assembly roundtrip cases: total=$CTEST_ASSEMBLY_ROUNDTRIP_CASE_COUNT pass=$CTEST_ASSEMBLY_ROUNDTRIP_PASS_COUNT fail=$CTEST_ASSEMBLY_ROUNDTRIP_FAIL_COUNT missing=$CTEST_ASSEMBLY_ROUNDTRIP_MISSING_COUNT first_failed=${CTEST_ASSEMBLY_ROUNDTRIP_FIRST_FAILED_CASE:-<none>}"
@@ -3163,6 +3179,10 @@ PY
     echo "  \"ctestHatchDenseCapStatus\": \"$CTEST_HATCH_DENSE_STATUS\",";
     echo "  \"ctestHatchLargeBoundaryBudgetStatus\": \"$CTEST_HATCH_LARGE_BOUNDARY_STATUS\",";
     echo "  \"ctestNonfiniteNumbersStatus\": \"$CTEST_NONFINITE_STATUS\",";
+    echo "  \"ctestDxfExporterPluginStatus\": \"$CTEST_DXF_EXPORTER_STATUS\",";
+    echo "  \"ctestDwgMatrixStatus\": \"$CTEST_DWG_MATRIX_STATUS\",";
+    echo "  \"ctestConvertRoundtripStatus\": \"$CTEST_CONVERT_ROUNDTRIP_STATUS\",";
+    echo "  \"ctestConvertRoundtripComplexStatus\": \"$CTEST_CONVERT_ROUNDTRIP_COMPLEX_STATUS\",";
     echo "  \"ctestConstraintsBasicStatus\": \"$CTEST_CONSTRAINTS_BASIC_STATUS\",";
     echo "  \"ctestAssemblyRoundtripStatus\": \"$CTEST_ASSEMBLY_ROUNDTRIP_STATUS\",";
     echo "  \"ctestAssemblyRoundtripCaseCount\": $CTEST_ASSEMBLY_ROUNDTRIP_CASE_COUNT,";
@@ -3531,6 +3551,18 @@ PY
     if [[ "$CTEST_NONFINITE_STATUS" == "fail" || "$CTEST_NONFINITE_STATUS" == "missing" ]]; then
       FAIL_FLAG=1
       FAIL_REASONS+=("ctestNonfiniteNumbers=$CTEST_NONFINITE_STATUS")
+    fi
+    if [[ "$CTEST_DXF_EXPORTER_STATUS" == "fail" ]]; then
+      FAIL_FLAG=1
+      FAIL_REASONS+=("ctestDxfExporterPlugin=$CTEST_DXF_EXPORTER_STATUS")
+    fi
+    if [[ "$CTEST_DWG_MATRIX_STATUS" == "fail" ]]; then
+      FAIL_FLAG=1
+      FAIL_REASONS+=("ctestDwgMatrix=$CTEST_DWG_MATRIX_STATUS")
+    fi
+    if [[ "$CTEST_CONVERT_ROUNDTRIP_STATUS" == "fail" ]]; then
+      FAIL_FLAG=1
+      FAIL_REASONS+=("ctestConvertRoundtrip=$CTEST_CONVERT_ROUNDTRIP_STATUS")
     fi
     if [[ "$CTEST_ASSEMBLY_ROUNDTRIP_STATUS" == "fail" || "$CTEST_ASSEMBLY_ROUNDTRIP_STATUS" == "missing" ]]; then
       FAIL_FLAG=1
