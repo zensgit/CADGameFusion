@@ -3629,6 +3629,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
         auto count_entities_in_space = [&](int space) -> size_t {
             size_t total = 0;
             for (const auto& pl : polylines) total += (pl.space == space);
+            for (const auto& pt : points) total += (pt.space == space);
             for (const auto& ln : lines) total += (ln.space == space);
             for (const auto& circle : circles) total += (circle.space == space);
             for (const auto& arc : arcs) total += (arc.space == space);

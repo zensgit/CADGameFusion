@@ -31,6 +31,21 @@ static void emit(FILE* f, int code, const char* val) {
     std::fprintf(f, "%d\n%s\n", code, val);
 }
 
+// Sanitize text for DXF output: replace literal newlines with the DXF
+// paragraph separator \P so that the group-code/value pair alignment is
+// preserved.  Carriage returns are stripped.
+static std::string sanitize_text_for_dxf(const char* text) {
+    std::string out;
+    if (!text) return out;
+    out.reserve(std::strlen(text));
+    for (const char* p = text; *p; ++p) {
+        if (*p == '\r') continue;
+        if (*p == '\n') { out += "\\P"; continue; }
+        out += *p;
+    }
+    return out;
+}
+
 static void emitd(FILE* f, int code, double val) {
     char buf[64];
     std::snprintf(buf, sizeof(buf), "%g", val);
@@ -278,7 +293,8 @@ static void write_entities_section(FILE* f, const cadgf_document* doc) {
             emitd(f, 40, height);
             double rot_deg = rotation * 180.0 / M_PI;
             if (std::fabs(rot_deg) > 1e-9) emitd(f, 50, rot_deg);
-            emit(f, 1, text_buf);
+            std::string safe_text = sanitize_text_for_dxf(text_buf);
+            emit(f, 1, safe_text.c_str());
             break;
         }
         case CADGF_ENTITY_TYPE_POLYLINE: {
