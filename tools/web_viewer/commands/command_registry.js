@@ -4,11 +4,21 @@ import {
   angleFrom,
   cloneValue,
   computeOffsetEntity,
+  distance,
   distanceSq,
+  EPSILON,
+  lineArcIntersection,
+  normalizeAngle,
   pointOnSegmentDistance,
   extractLineSegments,
   lineLineIntersection,
   rotateEntity,
+  subtract,
+  normalizeVector,
+  perpendicular,
+  scale,
+  add,
+  dot,
   transformEntityByDelta,
 } from '../tools/geometry.js';
 
@@ -823,6 +833,23 @@ function resolvePickSegmentRef(entity, pick) {
       closed,
     };
   }
+  if (entity.type === 'arc') {
+    const cx = entity.center?.x;
+    const cy = entity.center?.y;
+    const r = Number(entity.radius || 0);
+    if (!Number.isFinite(cx) || !Number.isFinite(cy) || r <= EPSILON) return null;
+    return {
+      kind: 'arc',
+      entity,
+      layerId: entity.layerId,
+      cx,
+      cy,
+      r,
+      startAngle: Number(entity.startAngle || 0),
+      endAngle: Number(entity.endAngle || 0),
+      cw: entity.cw === true,
+    };
+  }
   return null;
 }
 
@@ -886,6 +913,157 @@ function resolveArcDirection(startAngle, endAngle) {
   const sweepCw = (a1 - a0 + Math.PI * 2) % (Math.PI * 2);
   const sweepCcw = (a0 - a1 + Math.PI * 2) % (Math.PI * 2);
   return sweepCw <= sweepCcw;
+}
+
+function trimArcToPoint(arcEntity, trimAngle, keepSide) {
+  // keepSide: 'start' keeps from startAngle to trimAngle, 'end' keeps from trimAngle to endAngle
+  const next = cloneValue(arcEntity);
+  if (keepSide === 'start') {
+    next.endAngle = trimAngle;
+  } else {
+    next.startAngle = trimAngle;
+  }
+  return next;
+}
+
+function runFilletLineArc(ctx, lineTgt, arcTgt, linePick, radius) {
+  const lineEnt = lineTgt.entity;
+  const arcEnt = arcTgt.entity;
+  const cx = arcTgt.cx;
+  const cy = arcTgt.cy;
+  const arcR = arcTgt.r;
+
+  // Find closest point on line to arc center
+  const lineDir = subtract(lineEnt.end, lineEnt.start);
+  const lineUnit = normalizeVector(lineDir);
+  if (!lineUnit) {
+    return { ok: false, changed: false, error_code: 'INVALID_GEOMETRY', message: 'Fillet: degenerate line' };
+  }
+  const lineNorm = perpendicular(lineUnit);
+
+  // Signed distance from arc center to line
+  const toCenter = subtract({ x: cx, y: cy }, lineEnt.start);
+  const signedDist = dot(toCenter, lineNorm);
+  const absDist = Math.abs(signedDist);
+
+  // Determine fillet center: offset line by ±radius, offset arc by ±radius, find intersection
+  // The fillet center lies at distance `radius` from the line and `arcR ± radius` from arc center
+  const lineSign = signedDist >= 0 ? 1 : -1;
+
+  // Two possible arc offsets: inside (arcR - radius) and outside (arcR + radius)
+  const candidates = [];
+  for (const arcSign of [-1, 1]) {
+    const offsetR = arcR + arcSign * radius;
+    if (offsetR < EPSILON) continue;
+
+    // Fillet center: distance `radius` from line on the arc-center side, distance `offsetR` from arc center
+    // Line offset: move line by lineSign*radius in normal direction
+    const offsetLineOrigin = add(lineEnt.start, scale(lineNorm, lineSign * radius));
+
+    // Find intersections of offset line with circle of radius offsetR around arc center
+    const offsetLineEnd = add(lineEnt.end, scale(lineNorm, lineSign * radius));
+    const hits = lineArcIntersection(offsetLineOrigin, offsetLineEnd, cx, cy, offsetR);
+
+    for (const hit of hits) {
+      const fc = { x: hit.x, y: hit.y };
+
+      // Tangent point on line: project fillet center onto original line
+      const toFc = subtract(fc, lineEnt.start);
+      const tLine = dot(toFc, lineUnit);
+      const tangentOnLine = add(lineEnt.start, scale(lineUnit, tLine));
+
+      // Tangent point on arc: point on arc at distance arcR from arc center, in direction of fillet center
+      const fcToArcCenter = subtract({ x: cx, y: cy }, fc);
+      const fcToArcCenterUnit = normalizeVector(fcToArcCenter);
+      if (!fcToArcCenterUnit) continue;
+      const tangentOnArc = arcSign > 0
+        ? add(fc, scale(fcToArcCenterUnit, radius))
+        : subtract(fc, scale(fcToArcCenterUnit, radius));
+
+      // Verify tangent point on arc is within arc sweep
+      const tangentAngle = normalizeAngle(angleFrom({ x: cx, y: cy }, tangentOnArc));
+      const arcStart = normalizeAngle(arcTgt.startAngle);
+      const arcEnd = normalizeAngle(arcTgt.endAngle);
+      const arcCw = arcTgt.cw;
+      const sweepStart = arcCw ? arcStart : arcEnd;
+      const sweepEnd = arcCw ? arcEnd : arcStart;
+      let inSweep;
+      if (sweepStart <= sweepEnd) {
+        inSweep = tangentAngle >= sweepStart - EPSILON && tangentAngle <= sweepEnd + EPSILON;
+      } else {
+        inSweep = tangentAngle >= sweepStart - EPSILON || tangentAngle <= sweepEnd + EPSILON;
+      }
+      if (!inSweep) continue;
+
+      // Verify tangent point on line is within segment
+      if (tLine < -EPSILON || tLine > Math.sqrt(dot(lineDir, lineDir)) + EPSILON) continue;
+
+      // Pick closest candidate to linePick
+      const score = distanceSq(linePick, tangentOnLine);
+      candidates.push({ fc, tangentOnLine, tangentOnArc, tangentAngle, tLine, score, arcSign });
+    }
+  }
+
+  if (candidates.length === 0) {
+    return { ok: false, changed: false, error_code: 'NO_INTERSECTION', message: 'Fillet: no valid fillet geometry for line+arc' };
+  }
+  candidates.sort((a, b) => a.score - b.score);
+  const best = candidates[0];
+
+  const layer1 = ctx.document.getLayer(lineTgt.layerId);
+  if (layer1?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  }
+  const layer2 = ctx.document.getLayer(arcTgt.layerId);
+  if (layer2?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  }
+
+  // Trim line: keep the side closest to linePick
+  const dToStart = distanceSq(linePick, lineEnt.start);
+  const dToEnd = distanceSq(linePick, lineEnt.end);
+  const lineKeepStart = dToStart < dToEnd;
+  const linePatch = lineKeepStart
+    ? { end: { ...best.tangentOnLine } }
+    : { start: { ...best.tangentOnLine } };
+  const ok1 = ctx.document.updateEntity(lineEnt.id, { ...lineEnt, ...linePatch });
+
+  // Trim arc: keep the side farther from the tangent point
+  const tangentAngleVal = best.tangentAngle;
+  const arcStartAngle = arcTgt.startAngle;
+  const arcEndAngle = arcTgt.endAngle;
+  const dToArcStart = Math.abs(angleDelta(tangentAngleVal, arcStartAngle));
+  const dToArcEnd = Math.abs(angleDelta(tangentAngleVal, arcEndAngle));
+  const trimmedArc = dToArcStart < dToArcEnd
+    ? trimArcToPoint(arcEnt, tangentAngleVal, 'end')
+    : trimArcToPoint(arcEnt, tangentAngleVal, 'start');
+  const ok2 = ctx.document.updateEntity(arcEnt.id, trimmedArc);
+
+  if (!ok1 || !ok2) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: failed to trim entities' };
+  }
+
+  // Create fillet arc
+  const filletStartAngle = angleFrom(best.fc, best.tangentOnLine);
+  const filletEndAngle = angleFrom(best.fc, best.tangentOnArc);
+  const filletCw = resolveArcDirection(filletStartAngle, filletEndAngle);
+  const filletArc = ctx.document.addEntity({
+    type: 'arc',
+    layerId: lineEnt.layerId,
+    color: lineEnt.color,
+    visible: lineEnt.visible,
+    center: best.fc,
+    radius,
+    startAngle: filletStartAngle,
+    endAngle: filletEndAngle,
+    cw: filletCw,
+  });
+  if (!filletArc) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: failed to create fillet arc' };
+  }
+
+  ctx.selection.setSelection([lineEnt.id, arcEnt.id, filletArc.id], filletArc.id);
+  return { ok: true, changed: true, message: 'Fillet applied (line+arc)' };
 }
 
 function runFilletSelectionByPick(ctx, payload) {
@@ -1124,6 +1302,16 @@ function runFilletSelectionByPick(ctx, payload) {
     return { ok: true, changed: true, message: 'Fillet applied' };
   }
 
+  // --- Line + Arc fillet dispatch ---
+  const hasArc = target1.kind === 'arc' || target2.kind === 'arc';
+  const hasLine = target1.kind === 'line' || target2.kind === 'line';
+  if (hasArc && hasLine) {
+    const lineTgt = target1.kind === 'line' ? target1 : target2;
+    const arcTgt = target1.kind === 'arc' ? target1 : target2;
+    const linePick = lineTgt === target1 ? pick1 : pick2;
+    return runFilletLineArc(ctx, lineTgt, arcTgt, linePick, radius);
+  }
+
   const segTol = 1e-6;
   for (const target of [target1, target2]) {
     if (target.kind !== 'polyline') continue;
@@ -1323,6 +1511,9 @@ function runChamferSelectionByPick(ctx, payload) {
   let target2 = resolvePickSegmentRef(ent2, pick2);
   if (!target1 || !target2) {
     return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: unsupported target type' };
+  }
+  if (target1.kind === 'arc' || target2.kind === 'arc') {
+    return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: arc entities are not supported' };
   }
   if (firstId === secondId
       && target1.kind === 'polyline'

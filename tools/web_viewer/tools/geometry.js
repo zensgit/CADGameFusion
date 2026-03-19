@@ -101,6 +101,33 @@ export function lineLineIntersection(a0, a1, b0, b1, asSegment = true, bsSegment
   };
 }
 
+export function lineArcIntersection(p1, p2, cx, cy, r) {
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+  const fx = p1.x - cx;
+  const fy = p1.y - cy;
+  const a = dx * dx + dy * dy;
+  if (a <= EPSILON) return [];
+  const b = 2 * (fx * dx + fy * dy);
+  const c = fx * fx + fy * fy - r * r;
+  const disc = b * b - 4 * a * c;
+  if (disc < -EPSILON) return [];
+  const sqrtDisc = Math.sqrt(Math.max(0, disc));
+  const results = [];
+  const t1 = (-b - sqrtDisc) / (2 * a);
+  const t2 = (-b + sqrtDisc) / (2 * a);
+  for (const t of [t1, t2]) {
+    if (t >= -EPSILON && t <= 1 + EPSILON) {
+      results.push({
+        x: p1.x + t * dx,
+        y: p1.y + t * dy,
+        t: Math.max(0, Math.min(1, t)),
+      });
+    }
+  }
+  return results;
+}
+
 export function applyDelta(point, delta) {
   return {
     x: point.x + delta.x,
