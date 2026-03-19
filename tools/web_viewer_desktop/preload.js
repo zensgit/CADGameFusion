@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("vemcadDesktop", {
   getDefaultSettings: async () => ipcRenderer.invoke("vemcad:get-default-settings"),
   testRouter: async (settings) => ipcRenderer.invoke("vemcad:test-router", settings),
   testDwg: async (settings) => ipcRenderer.invoke("vemcad:test-dwg", settings),
+  exportDxf: async (params) => ipcRenderer.invoke("vemcad:export-dxf", params),
   onOpenSettings: (handler) => {
     if (typeof handler !== "function") return;
     ipcRenderer.on("vemcad:open-settings", () => handler());

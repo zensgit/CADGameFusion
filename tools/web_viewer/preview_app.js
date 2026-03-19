@@ -2691,5 +2691,43 @@ async function bootstrapScene() {
   }
 }
 
+// --- Desktop integration (Electron) ---
+let lastOutputDir = null;
+const exportDxfBtn = document.getElementById("export-dxf-btn");
+
+if (typeof window.vemcadDesktop !== "undefined" && exportDxfBtn) {
+  exportDxfBtn.style.display = "";
+
+  exportDxfBtn.addEventListener("click", async () => {
+    if (!lastOutputDir) {
+      setStatus("No conversion output yet — open a CAD file first.", true);
+      return;
+    }
+    setStatus("Exporting DXF...");
+    try {
+      const result = await window.vemcadDesktop.exportDxf({ outputDir: lastOutputDir });
+      if (result && result.ok) {
+        setStatus(`DXF exported (${result.size} bytes)`);
+      } else {
+        setStatus("DXF export failed: " + (result && result.error || "unknown"), true);
+      }
+    } catch (err) {
+      setStatus("DXF export error: " + err.message, true);
+    }
+  });
+
+  // Wrap openCadFile to capture outputDir from results
+  const origOpen = window.vemcadDesktop.openCadFile;
+  if (origOpen) {
+    window.vemcadDesktop.openCadFile = async (settings) => {
+      const result = await origOpen(settings);
+      if (result && result.output_dir) {
+        lastOutputDir = result.output_dir;
+      }
+      return result;
+    };
+  }
+}
+
 bootstrapScene();
 animate();
