@@ -1326,7 +1326,7 @@ test('selection.filletByPick supports line+arc targets', () => {
   approxEqual(filletArc.radius, 1);
 });
 
-test('selection.filletByPick rejects arc+arc targets with explainable error', () => {
+test('selection.filletByPick trims arc+arc targets and inserts fillet arc (existing test)', () => {
   const { document, bus } = setup();
 
   bus.execute('entity.create', {
@@ -1359,11 +1359,17 @@ test('selection.filletByPick rejects arc+arc targets with explainable error', ()
     pick2: { x: 5.2, y: 2.8 },
     radius: 1,
   });
-  assert.equal(res.ok, false);
-  assert.equal(res.changed, false);
-  assert.equal(res.error_code, 'UNSUPPORTED');
-  assert.match(res.message || '', /arc\+arc not supported/i);
-  assert.equal(document.listEntities().length, 2);
+  assert.equal(res.ok, true);
+  assert.equal(res.changed, true);
+  assert.equal(document.listEntities().length, 3);
+
+  const filletArc = document.getEntity(3);
+  assert.equal(filletArc.type, 'arc');
+  approxEqual(filletArc.radius, 1);
+  // Fillet center: circle-circle intersection of offset arcs (R1=R2=5, d=8)
+  // a=4, h=3, center at (4, 3)
+  approxEqual(filletArc.center.x, 4, 1e-3);
+  approxEqual(filletArc.center.y, 3, 1e-3);
 });
 
 test('selection.filletByPick trims an open polyline mid-segment (cross) and keeps picked side', () => {
@@ -1633,7 +1639,61 @@ test('selection.filletByPick trims line+arc and inserts fillet arc', () => {
   assert.equal(line.end.y, 0);
 });
 
-test('selection.filletByPick returns UNSUPPORTED for arc+arc', () => {
+test('selection.filletByPick trims arc+arc and inserts fillet arc', () => {
+  const { document, bus } = setup();
+
+  // Quarter-circle arc1: center (0,0), r=5, first quadrant
+  // Convention: cw=false, startAngle=π/2, endAngle=0 → sweep covers [0, π/2]
+  bus.execute('entity.create', {
+    entity: {
+      type: 'arc',
+      center: { x: 0, y: 0 },
+      radius: 5,
+      startAngle: Math.PI / 2,
+      endAngle: 0,
+      cw: false,
+      layerId: 0,
+    },
+  }); // id=1
+
+  // Quarter-circle arc2: center (12,0), r=5, second quadrant
+  // Convention: cw=false, startAngle=π, endAngle=π/2 → sweep covers [π/2, π]
+  bus.execute('entity.create', {
+    entity: {
+      type: 'arc',
+      center: { x: 12, y: 0 },
+      radius: 5,
+      startAngle: Math.PI,
+      endAngle: Math.PI / 2,
+      cw: false,
+      layerId: 0,
+    },
+  }); // id=2
+
+  const res = bus.execute('selection.filletByPick', {
+    firstId: 1,
+    secondId: 2,
+    pick1: { x: 3, y: 3 },
+    pick2: { x: 9, y: 3 },
+    radius: 2,
+  });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.changed, true);
+  assert.equal(document.listEntities().length, 3);
+
+  const filletArc = document.getEntity(3);
+  assert.equal(filletArc.type, 'arc');
+  approxEqual(filletArc.radius, 2);
+
+  // Fillet center: circle-circle intersection of offset arcs (R1=R2=7, d=12)
+  // a=6, h=√13, center at (6, √13)
+  const sqrt13 = Math.sqrt(13);
+  approxEqual(filletArc.center.x, 6, 1e-3);
+  approxEqual(filletArc.center.y, sqrt13, 1e-3);
+});
+
+test('selection.filletByPick returns UNSUPPORTED for arc+polyline', () => {
   const { document, bus } = setup();
 
   bus.execute('entity.create', {
@@ -1650,12 +1710,9 @@ test('selection.filletByPick returns UNSUPPORTED for arc+arc', () => {
 
   bus.execute('entity.create', {
     entity: {
-      type: 'arc',
-      center: { x: 10, y: 0 },
-      radius: 5,
-      startAngle: Math.PI,
-      endAngle: 0,
-      cw: false,
+      type: 'polyline',
+      points: [{ x: 10, y: 0 }, { x: 10, y: 10 }, { x: 20, y: 10 }],
+      closed: false,
       layerId: 0,
     },
   }); // id=2
@@ -1664,7 +1721,7 @@ test('selection.filletByPick returns UNSUPPORTED for arc+arc', () => {
     firstId: 1,
     secondId: 2,
     pick1: { x: 3, y: 3 },
-    pick2: { x: 7, y: 3 },
+    pick2: { x: 10, y: 5 },
     radius: 2,
   });
 

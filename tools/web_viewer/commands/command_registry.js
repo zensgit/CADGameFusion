@@ -1066,6 +1066,143 @@ function runFilletLineArc(ctx, lineTgt, arcTgt, linePick, radius) {
   return { ok: true, changed: true, message: 'Fillet applied (line+arc)' };
 }
 
+function runFilletArcArc(ctx, arc1Tgt, arc2Tgt, pick1, pick2, radius) {
+  const c1x = arc1Tgt.cx, c1y = arc1Tgt.cy, r1 = arc1Tgt.r;
+  const c2x = arc2Tgt.cx, c2y = arc2Tgt.cy, r2 = arc2Tgt.r;
+  const arc1Ent = arc1Tgt.entity;
+  const arc2Ent = arc2Tgt.entity;
+
+  const dx = c2x - c1x;
+  const dy = c2y - c1y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d < EPSILON) {
+    return { ok: false, changed: false, error_code: 'CONCENTRIC', message: 'Fillet: concentric arcs' };
+  }
+
+  const candidates = [];
+  for (const s1 of [-1, 1]) {
+    for (const s2 of [-1, 1]) {
+      const R1 = r1 + s1 * radius;
+      const R2 = r2 + s2 * radius;
+      if (R1 < EPSILON || R2 < EPSILON) continue;
+
+      // Circle-circle intersection: offset arc1 with R1, offset arc2 with R2
+      if (d > R1 + R2 + EPSILON || d < Math.abs(R1 - R2) - EPSILON) continue;
+      const a = (R1 * R1 - R2 * R2 + d * d) / (2 * d);
+      const h2 = R1 * R1 - a * a;
+      if (h2 < -EPSILON) continue;
+      const h = Math.sqrt(Math.max(0, h2));
+
+      const ux = dx / d;
+      const uy = dy / d;
+      const mx = c1x + a * ux;
+      const my = c1y + a * uy;
+      const px = -uy;
+      const py = ux;
+
+      const points = h < EPSILON
+        ? [{ x: mx, y: my }]
+        : [{ x: mx + h * px, y: my + h * py }, { x: mx - h * px, y: my - h * py }];
+
+      for (const fc of points) {
+        // Tangent point on arc1
+        const dir1 = { x: c1x - fc.x, y: c1y - fc.y };
+        const len1 = Math.sqrt(dir1.x * dir1.x + dir1.y * dir1.y);
+        if (len1 < EPSILON) continue;
+        const u1 = { x: dir1.x / len1, y: dir1.y / len1 };
+        const tangent1 = s1 > 0
+          ? { x: fc.x + radius * u1.x, y: fc.y + radius * u1.y }
+          : { x: fc.x - radius * u1.x, y: fc.y - radius * u1.y };
+
+        // Tangent point on arc2
+        const dir2 = { x: c2x - fc.x, y: c2y - fc.y };
+        const len2 = Math.sqrt(dir2.x * dir2.x + dir2.y * dir2.y);
+        if (len2 < EPSILON) continue;
+        const u2 = { x: dir2.x / len2, y: dir2.y / len2 };
+        const tangent2 = s2 > 0
+          ? { x: fc.x + radius * u2.x, y: fc.y + radius * u2.y }
+          : { x: fc.x - radius * u2.x, y: fc.y - radius * u2.y };
+
+        // Verify tangent points are within arc sweeps
+        const angle1 = normalizeAngle(Math.atan2(tangent1.y - c1y, tangent1.x - c1x));
+        const sw1s = arc1Tgt.cw ? normalizeAngle(arc1Tgt.startAngle) : normalizeAngle(arc1Tgt.endAngle);
+        const sw1e = arc1Tgt.cw ? normalizeAngle(arc1Tgt.endAngle) : normalizeAngle(arc1Tgt.startAngle);
+        const in1 = sw1s <= sw1e
+          ? angle1 >= sw1s - EPSILON && angle1 <= sw1e + EPSILON
+          : angle1 >= sw1s - EPSILON || angle1 <= sw1e + EPSILON;
+        if (!in1) continue;
+
+        const angle2 = normalizeAngle(Math.atan2(tangent2.y - c2y, tangent2.x - c2x));
+        const sw2s = arc2Tgt.cw ? normalizeAngle(arc2Tgt.startAngle) : normalizeAngle(arc2Tgt.endAngle);
+        const sw2e = arc2Tgt.cw ? normalizeAngle(arc2Tgt.endAngle) : normalizeAngle(arc2Tgt.startAngle);
+        const in2 = sw2s <= sw2e
+          ? angle2 >= sw2s - EPSILON && angle2 <= sw2e + EPSILON
+          : angle2 >= sw2s - EPSILON || angle2 <= sw2e + EPSILON;
+        if (!in2) continue;
+
+        const score = distanceSq(pick1, tangent1) + distanceSq(pick2, tangent2);
+        candidates.push({ fc, tangent1, tangent2, angle1, angle2, score });
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    return { ok: false, changed: false, error_code: 'NO_INTERSECTION', message: 'Fillet: no valid fillet geometry for arc+arc' };
+  }
+  candidates.sort((a, b) => a.score - b.score);
+  const best = candidates[0];
+
+  const layer1 = ctx.document.getLayer(arc1Tgt.layerId);
+  if (layer1?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  }
+  const layer2 = ctx.document.getLayer(arc2Tgt.layerId);
+  if (layer2?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  }
+
+  // Trim arc1
+  const d1s = Math.abs(angleDelta(best.angle1, arc1Tgt.startAngle));
+  const d1e = Math.abs(angleDelta(best.angle1, arc1Tgt.endAngle));
+  const trimmed1 = d1s < d1e
+    ? trimArcToPoint(arc1Ent, best.angle1, 'end')
+    : trimArcToPoint(arc1Ent, best.angle1, 'start');
+  const ok1 = ctx.document.updateEntity(arc1Ent.id, trimmed1);
+
+  // Trim arc2
+  const d2s = Math.abs(angleDelta(best.angle2, arc2Tgt.startAngle));
+  const d2e = Math.abs(angleDelta(best.angle2, arc2Tgt.endAngle));
+  const trimmed2 = d2s < d2e
+    ? trimArcToPoint(arc2Ent, best.angle2, 'end')
+    : trimArcToPoint(arc2Ent, best.angle2, 'start');
+  const ok2 = ctx.document.updateEntity(arc2Ent.id, trimmed2);
+
+  if (!ok1 || !ok2) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: failed to trim arcs' };
+  }
+
+  const filletStartAngle = angleFrom(best.fc, best.tangent1);
+  const filletEndAngle = angleFrom(best.fc, best.tangent2);
+  const filletCw = resolveArcDirection(filletStartAngle, filletEndAngle);
+  const filletArc = ctx.document.addEntity({
+    type: 'arc',
+    layerId: arc1Ent.layerId,
+    color: arc1Ent.color,
+    visible: arc1Ent.visible,
+    center: best.fc,
+    radius,
+    startAngle: filletStartAngle,
+    endAngle: filletEndAngle,
+    cw: filletCw,
+  });
+  if (!filletArc) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: failed to create fillet arc' };
+  }
+
+  ctx.selection.setSelection([arc1Ent.id, arc2Ent.id, filletArc.id], filletArc.id);
+  return { ok: true, changed: true, message: 'Fillet applied (arc+arc)' };
+}
+
 function runFilletSelectionByPick(ctx, payload) {
   const firstId = Number(payload?.firstId);
   const secondId = Number(payload?.secondId);
@@ -1125,7 +1262,10 @@ function runFilletSelectionByPick(ctx, payload) {
     return runFilletLineArc(ctx, lineTgt, arcTgt, linePick, radius);
   }
   if (hasArc) {
-    return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: arc+arc not supported' };
+    if (target1.kind === 'arc' && target2.kind === 'arc') {
+      return runFilletArcArc(ctx, target1, target2, pick1, pick2, radius);
+    }
+    return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: arc+polyline not supported' };
   }
 
   const inter = lineLineIntersection(target1.segStart, target1.segEnd, target2.segStart, target2.segEnd, false, false);
