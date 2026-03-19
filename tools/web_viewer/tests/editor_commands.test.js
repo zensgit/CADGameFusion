@@ -1281,6 +1281,91 @@ test('selection.filletByPick rejects locked layer in cross-layer mode', () => {
   assert.equal(document.listEntities().length, 2);
 });
 
+test('selection.filletByPick supports line+arc targets', () => {
+  const { document, bus } = setup();
+
+  bus.execute('entity.create', {
+    entity: { type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, layerId: 0 },
+  });
+  bus.execute('entity.create', {
+    entity: {
+      type: 'arc',
+      center: { x: 8, y: 5 },
+      radius: 3,
+      startAngle: Math.PI,
+      endAngle: Math.PI * 1.5,
+      cw: true,
+      layerId: 0,
+    },
+  });
+
+  const res = bus.execute('selection.filletByPick', {
+    firstId: 1,
+    secondId: 2,
+    pick1: { x: 9, y: 0 },
+    pick2: { x: 5, y: 5 },
+    radius: 1,
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.changed, true);
+  assert.equal(res.message, 'Fillet applied (line+arc)');
+  assert.equal(document.listEntities().length, 3);
+
+  const line = document.getEntity(1);
+  const sourceArc = document.getEntity(2);
+  const filletArc = document.getEntity(3);
+  assert.equal(line.type, 'line');
+  assert.equal(sourceArc.type, 'arc');
+  assert.equal(filletArc.type, 'arc');
+  approxEqual(line.start.x, 8);
+  approxEqual(line.start.y, 0);
+  approxEqual(line.end.x, 10);
+  approxEqual(line.end.y, 0);
+  approxEqual(filletArc.center.x, 8);
+  approxEqual(filletArc.center.y, 1);
+  approxEqual(filletArc.radius, 1);
+});
+
+test('selection.filletByPick rejects arc+arc targets with explainable error', () => {
+  const { document, bus } = setup();
+
+  bus.execute('entity.create', {
+    entity: {
+      type: 'arc',
+      center: { x: 0, y: 0 },
+      radius: 4,
+      startAngle: 0,
+      endAngle: Math.PI / 2,
+      cw: true,
+      layerId: 0,
+    },
+  });
+  bus.execute('entity.create', {
+    entity: {
+      type: 'arc',
+      center: { x: 8, y: 0 },
+      radius: 4,
+      startAngle: Math.PI / 2,
+      endAngle: Math.PI,
+      cw: true,
+      layerId: 0,
+    },
+  });
+
+  const res = bus.execute('selection.filletByPick', {
+    firstId: 1,
+    secondId: 2,
+    pick1: { x: 2.8, y: 2.8 },
+    pick2: { x: 5.2, y: 2.8 },
+    radius: 1,
+  });
+  assert.equal(res.ok, false);
+  assert.equal(res.changed, false);
+  assert.equal(res.error_code, 'UNSUPPORTED');
+  assert.match(res.message || '', /arc\+arc not supported/i);
+  assert.equal(document.listEntities().length, 2);
+});
+
 test('selection.filletByPick trims an open polyline mid-segment (cross) and keeps picked side', () => {
   const { document, bus } = setup();
 
@@ -1490,6 +1575,102 @@ test('selection.fillet rejects locked secondary layer in cross-layer mode', () =
   assert.equal(res.ok, false);
   assert.equal(res.error_code, 'LAYER_LOCKED');
   assert.match(res.message || '', /L1/);
+  assert.equal(document.listEntities().length, 2);
+});
+
+// --- Fillet: line + arc ---
+
+test('selection.filletByPick trims line+arc and inserts fillet arc', () => {
+  const { document, bus } = setup();
+
+  // Horizontal line along x-axis
+  bus.execute('entity.create', {
+    entity: { type: 'line', start: { x: -10, y: 0 }, end: { x: 10, y: 0 }, layerId: 0 },
+  }); // id=1
+
+  // Right semicircle arc: center at (0,8), radius 5, from -π/2 to π/2, CCW
+  // Bottom of arc is at (0,3), right at (5,8), top at (0,13)
+  bus.execute('entity.create', {
+    entity: {
+      type: 'arc',
+      center: { x: 0, y: 8 },
+      radius: 5,
+      startAngle: -Math.PI / 2,
+      endAngle: Math.PI / 2,
+      cw: false,
+      layerId: 0,
+    },
+  }); // id=2
+
+  const res = bus.execute('selection.filletByPick', {
+    firstId: 1,
+    secondId: 2,
+    pick1: { x: 8, y: 0 },   // keep right side of line
+    pick2: { x: -3, y: 5 },  // pick left side of arc
+    radius: 2,
+  });
+
+  assert.equal(res.ok, true);
+  assert.equal(res.changed, true);
+  assert.equal(document.listEntities().length, 3);
+
+  const line = document.getEntity(1);
+  const filletArc = document.getEntity(3);
+  assert.equal(filletArc.type, 'arc');
+  approxEqual(filletArc.radius, 2);
+
+  // Fillet center: offset line at y=2, offset arc (outside) radius=7
+  // Intersection with line y=2 and circle(0,8,7): x²+36=49 => x=±√13
+  // Arc sweep convention means the left-side candidate (-√13) is in-sweep
+  const sqrt13 = Math.sqrt(13);
+  approxEqual(filletArc.center.x, -sqrt13, 1e-3);
+  approxEqual(filletArc.center.y, 2, 1e-3);
+
+  // Line trimmed: start moves to tangent point (~-3.606, 0), end stays at (10, 0)
+  approxEqual(line.start.x, -sqrt13, 1e-3);
+  approxEqual(line.start.y, 0, 1e-3);
+  assert.equal(line.end.x, 10);
+  assert.equal(line.end.y, 0);
+});
+
+test('selection.filletByPick returns UNSUPPORTED for arc+arc', () => {
+  const { document, bus } = setup();
+
+  bus.execute('entity.create', {
+    entity: {
+      type: 'arc',
+      center: { x: 0, y: 0 },
+      radius: 5,
+      startAngle: 0,
+      endAngle: Math.PI,
+      cw: false,
+      layerId: 0,
+    },
+  }); // id=1
+
+  bus.execute('entity.create', {
+    entity: {
+      type: 'arc',
+      center: { x: 10, y: 0 },
+      radius: 5,
+      startAngle: Math.PI,
+      endAngle: 0,
+      cw: false,
+      layerId: 0,
+    },
+  }); // id=2
+
+  const res = bus.execute('selection.filletByPick', {
+    firstId: 1,
+    secondId: 2,
+    pick1: { x: 3, y: 3 },
+    pick2: { x: 7, y: 3 },
+    radius: 2,
+  });
+
+  assert.equal(res.ok, false);
+  assert.equal(res.changed, false);
+  assert.equal(res.error_code, 'UNSUPPORTED');
   assert.equal(document.listEntities().length, 2);
 });
 
