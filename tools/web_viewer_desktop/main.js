@@ -99,9 +99,13 @@ function detectRouterPaths() {
   const pluginNames = process.platform === "win32"
     ? ["cadgf_dxf_importer_plugin.dll", "libcadgf_dxf_importer_plugin.dll"]
     : [`libcadgf_dxf_importer_plugin${pluginExt}`];
+  const dwgPluginNames = process.platform === "win32"
+    ? ["cadgf_dwg_importer_plugin.dll", "libcadgf_dwg_importer_plugin.dll"]
+    : [`libcadgf_dwg_importer_plugin${pluginExt}`];
   const convertCliNames = process.platform === "win32" ? ["convert_cli.exe"] : ["convert_cli"];
 
   let pluginPath = "";
+  let dwgPluginPath = "";
   let convertCliPath = "";
   let repoRoot = "";
 
@@ -115,6 +119,12 @@ function detectRouterPaths() {
           path.join(root, buildDir, "plugins", name)
         );
         pluginPath = pickFirstExistingPath(pluginCandidates) || pluginPath;
+      }
+      if (!dwgPluginPath) {
+        const dwgCandidates = dwgPluginNames.map((name) =>
+          path.join(root, buildDir, "plugins", name)
+        );
+        dwgPluginPath = pickFirstExistingPath(dwgCandidates) || dwgPluginPath;
       }
       if (!convertCliPath) {
         const convertCandidates = convertCliNames.map((name) =>
@@ -133,7 +143,7 @@ function detectRouterPaths() {
       break;
     }
   }
-  return { pluginPath, convertCliPath, repoRoot };
+  return { pluginPath, dwgPluginPath, convertCliPath, repoRoot };
 }
 
 function parseBool(value) {
@@ -672,6 +682,7 @@ function buildDefaultSettings() {
     dwgServicePath: dwgServicePath || "",
     dwg2dxfBin: dwg2dxfBin || "",
     dwgTimeoutMs: dwgConfig.timeoutMs,
+    dwgPluginPath: detectedRouter.dwgPluginPath || "",
   };
 }
 
@@ -1047,6 +1058,18 @@ ipcMain.handle("vemcad:open-cad-file", async (_event, settings) => {
     return { ok: false, canceled: true };
   }
   const selection = result.filePaths[0];
+  const ext = path.extname(selection).toLowerCase();
+
+  // .dwg with DWG importer plugin: send directly to router (no local dwg2dxf step)
+  if (ext === ".dwg") {
+    const detected = detectRouterPaths();
+    if (detected.dwgPluginPath) {
+      const dwgOverrides = { ...overrides, routerPlugin: detected.dwgPluginPath };
+      return await convertWithRouter(selection, "", dwgOverrides);
+    }
+  }
+
+  // Fallback: legacy local dwg2dxf conversion for .dwg, passthrough for others
   const prepared = await maybeConvertDwg(selection, overrides);
   if (!prepared.ok) {
     return prepared;
