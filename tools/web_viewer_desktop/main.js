@@ -1,5 +1,5 @@
 const { app, BrowserWindow, shell, ipcMain, dialog, Menu } = require("electron");
-const { spawn } = require("child_process");
+const { spawn, execFile } = require("child_process");
 const os = require("os");
 const path = require("path");
 const fs = require("fs");
@@ -1106,6 +1106,67 @@ ipcMain.handle("vemcad:test-router", async (_event, settings) => {
     health,
     health_error: healthError
   };
+});
+
+ipcMain.handle("vemcad:export-dxf", async (_event, { outputDir } = {}) => {
+  if (!outputDir) {
+    return { ok: false, error: "No document loaded (output_dir missing).", error_code: "NO_DOCUMENT" };
+  }
+
+  // Find document.json in the output directory
+  const docJsonPath = path.join(outputDir, "document.json");
+  if (!fs.existsSync(docJsonPath)) {
+    return { ok: false, error: `document.json not found in ${outputDir}`, error_code: "DOC_NOT_FOUND" };
+  }
+
+  // Find json2dxf binary
+  const detected = detectRouterPaths();
+  const buildDirs = ["build_vcpkg", "build", "build_novcpkg"];
+  const json2dxfNames = process.platform === "win32" ? ["json2dxf.exe"] : ["json2dxf"];
+  let json2dxfPath = "";
+  for (const root of getCadgfRootCandidates()) {
+    if (!root || !fs.existsSync(root)) continue;
+    for (const bd of buildDirs) {
+      if (json2dxfPath) break;
+      const candidates = json2dxfNames.map((n) => path.join(root, bd, "tools", n));
+      json2dxfPath = pickFirstExistingPath(candidates) || "";
+    }
+    if (json2dxfPath) break;
+  }
+  if (!json2dxfPath) {
+    return { ok: false, error: "json2dxf binary not found.", error_code: "JSON2DXF_NOT_FOUND" };
+  }
+
+  // Show Save dialog
+  const result = await dialog.showSaveDialog({
+    defaultPath: path.join(app.getPath("documents"), "export.dxf"),
+    filters: [
+      { name: "DXF Files", extensions: ["dxf"] },
+      { name: "All Files", extensions: ["*"] }
+    ]
+  });
+  if (result.canceled || !result.filePath) {
+    return { ok: false, canceled: true };
+  }
+  const outputPath = result.filePath;
+
+  // Run json2dxf
+  return new Promise((resolve) => {
+    execFile(json2dxfPath, [docJsonPath, outputPath], { timeout: 30000 }, (error, stdout, stderr) => {
+      if (error) {
+        resolve({
+          ok: false,
+          error: `json2dxf failed: ${error.message}${stderr ? " — " + stderr.trim() : ""}`,
+          error_code: "JSON2DXF_FAILED"
+        });
+      } else if (!fs.existsSync(outputPath)) {
+        resolve({ ok: false, error: "json2dxf did not produce output.", error_code: "JSON2DXF_NO_OUTPUT" });
+      } else {
+        const size = fs.statSync(outputPath).size;
+        resolve({ ok: true, path: outputPath, size });
+      }
+    });
+  });
 });
 
 ipcMain.handle("vemcad:test-dwg", async (_event, settings) => {
