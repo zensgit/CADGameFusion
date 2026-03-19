@@ -300,6 +300,46 @@ if(EXISTS "${_dwg_sample}")
             "${_dwg_sample}")
 endif()
 
+# DWG matrix test — batch smoke across 40 real DWG samples
+add_executable(test_dwg_matrix test_dwg_matrix.cpp)
+target_link_libraries(test_dwg_matrix PRIVATE core_c ${CMAKE_DL_LIBS})
+target_include_directories(test_dwg_matrix PRIVATE ${CMAKE_SOURCE_DIR}/core/include ${CMAKE_SOURCE_DIR}/tools)
+set_target_properties(test_dwg_matrix PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_dependencies(test_dwg_matrix cadgf_dwg_importer_plugin cadgf_dxf_importer_plugin)
+
+set(_dwg_matrix "${CMAKE_SOURCE_DIR}/tools/plm_dwg_open_matrix_cases.json")
+if(EXISTS "${_dwg_matrix}")
+    add_test(NAME test_dwg_matrix_run
+        COMMAND test_dwg_matrix
+            $<TARGET_FILE:cadgf_dwg_importer_plugin>
+            "${_dwg_matrix}")
+endif()
+
+# Convert roundtrip test — DWG → import → DXF export → reimport → verify
+add_executable(test_convert_roundtrip test_convert_roundtrip.cpp)
+target_link_libraries(test_convert_roundtrip PRIVATE core_c ${CMAKE_DL_LIBS})
+target_include_directories(test_convert_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/core/include ${CMAKE_SOURCE_DIR}/tools)
+set_target_properties(test_convert_roundtrip PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_dependencies(test_convert_roundtrip cadgf_dwg_importer_plugin cadgf_dxf_exporter_plugin cadgf_dxf_importer_plugin)
+
+if(EXISTS "${_dwg_sample}")
+    add_test(NAME test_convert_roundtrip_run
+        COMMAND test_convert_roundtrip
+            $<TARGET_FILE:cadgf_dwg_importer_plugin>
+            $<TARGET_FILE:cadgf_dxf_exporter_plugin>
+            $<TARGET_FILE:cadgf_dxf_importer_plugin>
+            "${_dwg_sample}")
+endif()
+set(_dwg_complex "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ02230301120-03保护罩组件v1.dwg")
+if(EXISTS "${_dwg_complex}")
+    add_test(NAME test_convert_roundtrip_complex_run
+        COMMAND test_convert_roundtrip
+            $<TARGET_FILE:cadgf_dwg_importer_plugin>
+            $<TARGET_FILE:cadgf_dxf_exporter_plugin>
+            $<TARGET_FILE:cadgf_dxf_importer_plugin>
+            "${_dwg_complex}")
+endif()
+
 if(WIN32)
     set(_plugin_env "PATH=$<TARGET_FILE_DIR:core>;$<TARGET_FILE_DIR:core_c>;$ENV{PATH}")
 elseif(APPLE)
@@ -327,4 +367,11 @@ set_tests_properties(test_dxf_roundtrip_styles_run PROPERTIES ENVIRONMENT "${_pl
 set_tests_properties(test_dxf_exporter_plugin_smoke_run PROPERTIES ENVIRONMENT "${_plugin_env}")
 if(EXISTS "${_dwg_sample}")
     set_tests_properties(test_dwg_importer_plugin_run PROPERTIES ENVIRONMENT "${_plugin_env}")
+    set_tests_properties(test_convert_roundtrip_run PROPERTIES ENVIRONMENT "${_plugin_env}")
+endif()
+if(EXISTS "${_dwg_complex}")
+    set_tests_properties(test_convert_roundtrip_complex_run PROPERTIES ENVIRONMENT "${_plugin_env}")
+endif()
+if(EXISTS "${_dwg_matrix}")
+    set_tests_properties(test_dwg_matrix_run PROPERTIES ENVIRONMENT "${_plugin_env}")
 endif()
