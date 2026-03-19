@@ -1775,29 +1775,31 @@ if [[ "$RUN_DXF_PLUGIN_CTEST_GATE" == "1" ]]; then
   echo "[EDITOR-GATE] 1.10b) DXF plugin CTests"
   if command -v cmake >/dev/null 2>&1; then
     cmake --build "$DXF_PLUGIN_CTEST_BUILD_DIR" \
-      --target cadgf_dxf_exporter_plugin cadgf_dxf_importer_plugin test_dxf_exporter_plugin_smoke \
+      --target test_dxf_roundtrip test_dxf_roundtrip_styles test_dxf_exporter_plugin_smoke \
+      cadgf_dxf_importer_plugin cadgf_dxf_exporter_plugin \
       -j4 >/dev/null 2>&1 || true
   fi
-  DXF_PLUGIN_CTEST_CASE_COUNT=1
+  DXF_PLUGIN_CTEST_CASE_COUNT=3
   if ! command -v ctest >/dev/null 2>&1; then
     DXF_PLUGIN_CTEST_STATUS="MISSING"
-    DXF_PLUGIN_CTEST_MISSING_COUNT=1
-    DXF_PLUGIN_CTEST_FIRST_FAILED_CASE="dxf_exporter"
+    DXF_PLUGIN_CTEST_MISSING_COUNT=3
+    DXF_PLUGIN_CTEST_FIRST_FAILED_CASE="dxf_plugin"
     echo "[EDITOR-GATE] WARN ctest not found; DXF plugin CTest missing"
-  elif ctest --test-dir "$DXF_PLUGIN_CTEST_BUILD_DIR" -N -R "test_dxf_exporter_plugin_smoke" 2>/dev/null | grep -q "Total Tests: 0"; then
+  elif ctest --test-dir "$DXF_PLUGIN_CTEST_BUILD_DIR" -N -R "test_dxf_(roundtrip|roundtrip_styles|exporter_plugin_smoke)" 2>/dev/null | grep -q "Total Tests: 0"; then
     DXF_PLUGIN_CTEST_STATUS="MISSING"
-    DXF_PLUGIN_CTEST_MISSING_COUNT=1
-    DXF_PLUGIN_CTEST_FIRST_FAILED_CASE="dxf_exporter"
-    echo "[EDITOR-GATE] WARN missing CTest DXF plugin"
-  elif ctest --test-dir "$DXF_PLUGIN_CTEST_BUILD_DIR" -R "test_dxf_exporter_plugin_smoke" -V; then
+    DXF_PLUGIN_CTEST_MISSING_COUNT=3
+    DXF_PLUGIN_CTEST_FIRST_FAILED_CASE="dxf_plugin"
+    echo "[EDITOR-GATE] WARN missing CTest DXF plugin tests"
+  elif ctest --test-dir "$DXF_PLUGIN_CTEST_BUILD_DIR" --output-on-failure \
+    --tests-regex "test_dxf_(roundtrip|roundtrip_styles|exporter_plugin_smoke)"; then
     DXF_PLUGIN_CTEST_STATUS="PASS"
-    DXF_PLUGIN_CTEST_PASS_COUNT=1
-    echo "[EDITOR-GATE] OK CTest DXF exporter plugin smoke"
+    DXF_PLUGIN_CTEST_PASS_COUNT=3
+    echo "[EDITOR-GATE] OK CTest DXF plugin tests (roundtrip + styles + smoke)"
   else
     DXF_PLUGIN_CTEST_STATUS="FAIL"
     DXF_PLUGIN_CTEST_FAIL_COUNT=1
-    DXF_PLUGIN_CTEST_FIRST_FAILED_CASE="dxf_exporter"
-    echo "[EDITOR-GATE] FAIL CTest DXF exporter plugin smoke"
+    DXF_PLUGIN_CTEST_FIRST_FAILED_CASE="dxf_plugin"
+    echo "[EDITOR-GATE] FAIL CTest DXF plugin tests"
   fi
   if [[ "$DXF_PLUGIN_CTEST_STATUS" == "FAIL" ]]; then
     GATE_FAIL_RC=2
@@ -3354,7 +3356,7 @@ payload = {
     "enabled": os.environ.get("RUN_DXF_PLUGIN_CTEST_GATE", "0") == "1",
     "status": os.environ.get("DXF_PLUGIN_CTEST_STATUS", "SKIPPED"),
     "build_dir": os.environ.get("DXF_PLUGIN_CTEST_BUILD_DIR", "build"),
-    "test_name": "test_dxf_exporter_plugin_smoke",
+    "test_name": "test_dxf_*",
   },
   "ui_flow_failure_injection": {
     "enabled": os.environ.get("RUN_UI_FLOW_FAILURE_INJECTION_GATE", "0") == "1",
