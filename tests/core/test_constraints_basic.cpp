@@ -1322,6 +1322,112 @@ int main() {
             assert(std::abs(n1 - 4.0) < 5e-3);
         });
 
+    // --- Coincident densification: 2 new cases ---
+
+    // coincident_two_line_endpoints: constrain e0_end == e1_start on two separate lines
+    vars["p0.x"] = 1.0; vars["p0.y"] = 2.0;
+    vars["p1.x"] = 5.0; vars["p1.y"] = 3.0;
+    vars["q0.x"] = 7.0; vars["q0.y"] = -1.0;
+    vars["q1.x"] = 10.0; vars["q1.y"] = 4.0;
+    run_single(
+        "coincident_two_line_endpoints",
+        {ConstraintSpec{"coincident",
+                        {VarRef{"p1", "x"}, VarRef{"p1", "y"}, VarRef{"q0", "x"}, VarRef{"q0", "y"}},
+                        std::nullopt}},
+        [&]() {
+            assert(std::abs(vars["p1.x"] - vars["q0.x"]) < 5e-3);
+            assert(std::abs(vars["p1.y"] - vars["q0.y"]) < 5e-3);
+        });
+
+    // coincident_arc_center_to_point: constrain arc center to a specific point
+    vars["p0.cx"] = 3.0; vars["p0.cy"] = 4.0;
+    vars["r0.x"] = -2.0; vars["r0.y"] = 6.0;
+    run_single(
+        "coincident_arc_center_to_point",
+        {ConstraintSpec{"coincident",
+                        {VarRef{"p0", "cx"}, VarRef{"p0", "cy"}, VarRef{"r0", "x"}, VarRef{"r0", "y"}},
+                        std::nullopt}},
+        [&]() {
+            assert(std::abs(vars["p0.cx"] - vars["r0.x"]) < 5e-3);
+            assert(std::abs(vars["p0.cy"] - vars["r0.y"]) < 5e-3);
+        });
+
+    // --- Concentric densification: 2 new cases ---
+
+    // concentric_circle_and_arc: circle center == arc center (different variable ids)
+    vars["p0.cx"] = 1.5; vars["p0.cy"] = -3.0;
+    vars["q0.cx"] = 8.0; vars["q0.cy"] = 5.0;
+    run_single(
+        "concentric_circle_and_arc",
+        {ConstraintSpec{"concentric",
+                        {VarRef{"p0", "cx"}, VarRef{"p0", "cy"}, VarRef{"q0", "cx"}, VarRef{"q0", "cy"}},
+                        std::nullopt}},
+        [&]() {
+            assert(std::abs(vars["p0.cx"] - vars["q0.cx"]) < 5e-3);
+            assert(std::abs(vars["p0.cy"] - vars["q0.cy"]) < 5e-3);
+        });
+
+    // concentric_two_arcs: arc1 center == arc2 center
+    vars["p0.cx"] = -4.0; vars["p0.cy"] = 2.5;
+    vars["p1.cx"] = 6.0; vars["p1.cy"] = -3.5;
+    run_single(
+        "concentric_two_arcs",
+        {ConstraintSpec{"concentric",
+                        {VarRef{"p0", "cx"}, VarRef{"p0", "cy"}, VarRef{"p1", "cx"}, VarRef{"p1", "cy"}},
+                        std::nullopt}},
+        [&]() {
+            assert(std::abs(vars["p0.cx"] - vars["p1.cx"]) < 5e-3);
+            assert(std::abs(vars["p0.cy"] - vars["p1.cy"]) < 5e-3);
+        });
+
+    // --- Angle densification: 2 new cases ---
+
+    // angle_right_angle_two_lines: constrain angle between two lines to 90 degrees
+    vars["p0.x"] = 0.0; vars["p0.y"] = 0.0;
+    vars["p1.x"] = 3.0; vars["p1.y"] = 1.0;
+    vars["q0.x"] = 0.0; vars["q0.y"] = 0.0;
+    vars["q1.x"] = 1.0; vars["q1.y"] = 3.0;
+    run_single(
+        "angle_right_angle_two_lines",
+        {ConstraintSpec{"angle",
+                        {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"},
+                         VarRef{"q0", "x"}, VarRef{"q0", "y"}, VarRef{"q1", "x"}, VarRef{"q1", "y"}},
+                        M_PI / 2.0}},
+        [&]() {
+            const double v1x = vars["p1.x"] - vars["p0.x"];
+            const double v1y = vars["p1.y"] - vars["p0.y"];
+            const double v2x = vars["q1.x"] - vars["q0.x"];
+            const double v2y = vars["q1.y"] - vars["q0.y"];
+            const double n1 = length2(v1x, v1y);
+            const double n2 = length2(v2x, v2y);
+            assert(n1 > 1e-9 && n2 > 1e-9);
+            const double cosAngle = (v1x * v2x + v1y * v2y) / (n1 * n2);
+            assert(std::abs(cosAngle) < 5e-2);
+        });
+
+    // angle_45_deg: constrain angle to 45 degrees, verify with trig
+    vars["p0.x"] = -1.0; vars["p0.y"] = -1.0;
+    vars["p1.x"] = 2.0; vars["p1.y"] = 0.5;
+    vars["q0.x"] = -1.0; vars["q0.y"] = -1.0;
+    vars["q1.x"] = 3.0; vars["q1.y"] = 2.0;
+    run_single(
+        "angle_45_deg",
+        {ConstraintSpec{"angle",
+                        {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"},
+                         VarRef{"q0", "x"}, VarRef{"q0", "y"}, VarRef{"q1", "x"}, VarRef{"q1", "y"}},
+                        M_PI / 4.0}},
+        [&]() {
+            const double v1x = vars["p1.x"] - vars["p0.x"];
+            const double v1y = vars["p1.y"] - vars["p0.y"];
+            const double v2x = vars["q1.x"] - vars["q0.x"];
+            const double v2y = vars["q1.y"] - vars["q0.y"];
+            const double n1 = length2(v1x, v1y);
+            const double n2 = length2(v2x, v2y);
+            assert(n1 > 1e-9 && n2 > 1e-9);
+            const double cosAngle = (v1x * v2x + v1y * v2y) / (n1 * n2);
+            assert(std::abs(cosAngle - std::cos(M_PI / 4.0)) < 5e-2);
+        });
+
     std::cout << "solver basic constraints regression passed\n";
     delete solver;
     return 0;
