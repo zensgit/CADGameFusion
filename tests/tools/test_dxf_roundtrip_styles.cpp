@@ -142,6 +142,11 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "POLYLINE line_weight=%f\n", lw);
             CHECK_NEAR(lw, 0.5, 0.01);
 
+            double lts = 0.0;
+            CHECK(cadgf_document_get_entity_line_type_scale(doc, eid, &lts));
+            std::fprintf(stderr, "POLYLINE line_type_scale=%f\n", lts);
+            CHECK_NEAR(lts, 2.0, 0.01);
+
             int aci = 0;
             if (cadgf_document_get_entity_color_aci(doc, eid, &aci)) {
                 std::fprintf(stderr, "POLYLINE color_aci=%d\n", aci);
@@ -159,6 +164,17 @@ int main(int argc, char** argv) {
             CHECK(cadgf_document_get_entity_line_weight(doc, eid, &lw));
             std::fprintf(stderr, "LINE line_weight=%f\n", lw);
             CHECK_NEAR(lw, 0.35, 0.01);
+
+            double lts = 0.0;
+            CHECK(cadgf_document_get_entity_line_type_scale(doc, eid, &lts));
+            std::fprintf(stderr, "LINE line_type_scale=%f\n", lts);
+            CHECK_NEAR(lts, 0.5, 0.01);
+
+            // TRUECOLOR: entity color should be 0xFF0000 (red)
+            cadgf_entity_info_v2 info2{};
+            cadgf_document_get_entity_info_v2(doc, eid, &info2);
+            std::fprintf(stderr, "LINE color=0x%06X\n", info2.color);
+            CHECK(info2.color == 0xFF0000);
 
             checked_line = true;
         } else if (info.type == CADGF_ENTITY_TYPE_SPLINE) {

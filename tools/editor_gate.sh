@@ -129,6 +129,8 @@ RUN_CONSTRAINTS_BASIC_CTEST_GATE="${RUN_CONSTRAINTS_BASIC_CTEST_GATE:-1}"
 CONSTRAINTS_BASIC_CTEST_BUILD_DIR="${CONSTRAINTS_BASIC_CTEST_BUILD_DIR:-build}"
 RUN_ASSEMBLY_ROUNDTRIP_CTEST_GATE="${RUN_ASSEMBLY_ROUNDTRIP_CTEST_GATE:-1}"
 ASSEMBLY_ROUNDTRIP_CTEST_BUILD_DIR="${ASSEMBLY_ROUNDTRIP_CTEST_BUILD_DIR:-build}"
+RUN_DXF_PLUGIN_CTEST_GATE="${RUN_DXF_PLUGIN_CTEST_GATE:-1}"
+DXF_PLUGIN_CTEST_BUILD_DIR="${DXF_PLUGIN_CTEST_BUILD_DIR:-build}"
 EDITOR_UI_FLOW_PORT="${EDITOR_UI_FLOW_PORT:-}"
 EDITOR_UI_FLOW_VIEWPORT="${EDITOR_UI_FLOW_VIEWPORT:-1400,900}"
 EDITOR_UI_FLOW_TIMEOUT_MS="${EDITOR_UI_FLOW_TIMEOUT_MS:-25000}"
@@ -651,6 +653,7 @@ echo "[EDITOR-GATE] preview_artifact_smoke=$RUN_PREVIEW_ARTIFACT_SMOKE_GATE case
 echo "[EDITOR-GATE] preview_artifact_validator_failure_injection=$RUN_PREVIEW_ARTIFACT_VALIDATOR_FAILURE_INJECTION_GATE cases=$PREVIEW_ARTIFACT_VALIDATOR_FAILURE_CASES outdir=$PREVIEW_ARTIFACT_VALIDATOR_FAILURE_OUTDIR"
 echo "[EDITOR-GATE] assembly_roundtrip_ctest=$RUN_ASSEMBLY_ROUNDTRIP_CTEST_GATE build_dir=$ASSEMBLY_ROUNDTRIP_CTEST_BUILD_DIR"
 echo "[EDITOR-GATE] constraints_basic_ctest=$RUN_CONSTRAINTS_BASIC_CTEST_GATE build_dir=$CONSTRAINTS_BASIC_CTEST_BUILD_DIR"
+echo "[EDITOR-GATE] dxf_plugin_ctest=$RUN_DXF_PLUGIN_CTEST_GATE build_dir=$DXF_PLUGIN_CTEST_BUILD_DIR"
 echo "[EDITOR-GATE] ui_flow_stage_trend=$RUN_UI_FLOW_STAGE_TREND policy=$UI_FLOW_STAGE_TREND_POLICY status=$UI_FLOW_STAGE_TREND_STATUS recommended=$UI_FLOW_STAGE_TREND_RECOMMENDED_MODE effective=$UI_FLOW_STAGE_TREND_EFFECTIVE_MODE source=$UI_FLOW_STAGE_TREND_GATE_SOURCE applied=$UI_FLOW_STAGE_TREND_GATE_APPLIED days=$UI_FLOW_STAGE_TREND_DAYS"
 echo "[EDITOR-GATE] ui_flow_failure_injection=$RUN_UI_FLOW_FAILURE_INJECTION_GATE timeout_ms=$UI_FLOW_FAILURE_INJECTION_TIMEOUT_MS strict=$UI_FLOW_FAILURE_INJECTION_STRICT"
 echo "[EDITOR-GATE] editor_smoke_failure_injection=$RUN_EDITOR_SMOKE_FAILURE_INJECTION_GATE limit=$EDITOR_SMOKE_FAILURE_INJECTION_LIMIT strict=$EDITOR_SMOKE_FAILURE_INJECTION_STRICT plugin=$EDITOR_SMOKE_FAILURE_INJECTION_PLUGIN"
@@ -1760,6 +1763,45 @@ if [[ "$RUN_CONSTRAINTS_BASIC_CTEST_GATE" == "1" ]]; then
   if [[ "$CONSTRAINTS_BASIC_CTEST_STATUS" != "PASS" ]]; then
     GATE_FAIL_RC=2
     GATE_FAIL_REASONS+=("CONSTRAINTS_BASIC_CTEST:${CONSTRAINTS_BASIC_CTEST_STATUS}")
+  fi
+fi
+
+DXF_PLUGIN_CTEST_STATUS="SKIPPED"
+DXF_PLUGIN_CTEST_PASS_COUNT=0
+DXF_PLUGIN_CTEST_FAIL_COUNT=0
+DXF_PLUGIN_CTEST_MISSING_COUNT=0
+DXF_PLUGIN_CTEST_FIRST_FAILED_CASE=""
+if [[ "$RUN_DXF_PLUGIN_CTEST_GATE" == "1" ]]; then
+  echo "[EDITOR-GATE] 1.10b) DXF plugin CTests"
+  if command -v cmake >/dev/null 2>&1; then
+    cmake --build "$DXF_PLUGIN_CTEST_BUILD_DIR" \
+      --target cadgf_dxf_exporter_plugin cadgf_dxf_importer_plugin test_dxf_exporter_plugin_smoke \
+      -j4 >/dev/null 2>&1 || true
+  fi
+  DXF_PLUGIN_CTEST_CASE_COUNT=1
+  if ! command -v ctest >/dev/null 2>&1; then
+    DXF_PLUGIN_CTEST_STATUS="MISSING"
+    DXF_PLUGIN_CTEST_MISSING_COUNT=1
+    DXF_PLUGIN_CTEST_FIRST_FAILED_CASE="dxf_exporter"
+    echo "[EDITOR-GATE] WARN ctest not found; DXF plugin CTest missing"
+  elif ctest --test-dir "$DXF_PLUGIN_CTEST_BUILD_DIR" -N -R "test_dxf_exporter_plugin_smoke" 2>/dev/null | grep -q "Total Tests: 0"; then
+    DXF_PLUGIN_CTEST_STATUS="MISSING"
+    DXF_PLUGIN_CTEST_MISSING_COUNT=1
+    DXF_PLUGIN_CTEST_FIRST_FAILED_CASE="dxf_exporter"
+    echo "[EDITOR-GATE] WARN missing CTest DXF plugin"
+  elif ctest --test-dir "$DXF_PLUGIN_CTEST_BUILD_DIR" -R "test_dxf_exporter_plugin_smoke" -V; then
+    DXF_PLUGIN_CTEST_STATUS="PASS"
+    DXF_PLUGIN_CTEST_PASS_COUNT=1
+    echo "[EDITOR-GATE] OK CTest DXF exporter plugin smoke"
+  else
+    DXF_PLUGIN_CTEST_STATUS="FAIL"
+    DXF_PLUGIN_CTEST_FAIL_COUNT=1
+    DXF_PLUGIN_CTEST_FIRST_FAILED_CASE="dxf_exporter"
+    echo "[EDITOR-GATE] FAIL CTest DXF exporter plugin smoke"
+  fi
+  if [[ "$DXF_PLUGIN_CTEST_STATUS" == "FAIL" ]]; then
+    GATE_FAIL_RC=2
+    GATE_FAIL_REASONS+=("DXF_PLUGIN_CTEST:${DXF_PLUGIN_CTEST_STATUS}")
   fi
 fi
 
@@ -3307,6 +3349,12 @@ payload = {
     "paperspace_case_name": os.environ.get("ASSEMBLY_ROUNDTRIP_CTEST_PAPERSPACE_CASE_NAME", ""),
     "mixed_case_name": os.environ.get("ASSEMBLY_ROUNDTRIP_CTEST_MIXED_CASE_NAME", ""),
     "dense_case_name": os.environ.get("ASSEMBLY_ROUNDTRIP_CTEST_DENSE_CASE_NAME", ""),
+  },
+  "dxf_plugin_ctest": {
+    "enabled": os.environ.get("RUN_DXF_PLUGIN_CTEST_GATE", "0") == "1",
+    "status": os.environ.get("DXF_PLUGIN_CTEST_STATUS", "SKIPPED"),
+    "build_dir": os.environ.get("DXF_PLUGIN_CTEST_BUILD_DIR", "build"),
+    "test_name": "test_dxf_exporter_plugin_smoke",
   },
   "ui_flow_failure_injection": {
     "enabled": os.environ.get("RUN_UI_FLOW_FAILURE_INJECTION_GATE", "0") == "1",
