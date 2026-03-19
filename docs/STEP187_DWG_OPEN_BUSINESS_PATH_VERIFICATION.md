@@ -1234,3 +1234,12 @@ Scope note:
 Current conclusion:
 - Step187 now has a stable forty-sample real-DWG matrix in fresh standalone validation, and the
   desktop business path still opens DWG successfully with strict manifest/artifact validation.
+
+### Scope note
+
+- Designed matrix scope: 44 real DWG files (see STEP187_DWG_OPEN_BUSINESS_PATH_DESIGN.md).
+- Fresh verified baseline: 40/40 pass with 80 downstream validator passes.
+- The four newest designed cases (41-44: `BTJ01231201522-00拖车DN1500` and
+  `BTJ01239901522-00拖轮组件` pairs) have not yet been promoted into the fresh verified baseline.
+- Import architecture: plugin-first with dwg2dxf fallback on desktop; router path uses external
+  dwg2dxf + DXF importer plugin.

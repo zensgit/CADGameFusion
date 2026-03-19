@@ -378,3 +378,10 @@ Why it belongs in Step189:
 - it is the densest hatch sample in the matrix by entity count, exercising the export pipeline
   under realistic load from the hatch scanline tessellator;
 - promoting it closes the last documented known-red gap in the Step189 dense matrix.
+
+## Scope Status
+
+- Designed dense matrix scope: 27 cases.
+- Fresh verified baseline: 26/26 pass (see STEP189_ASSEMBLY_ROUNDTRIP_VERIFICATION.md).
+- Case 27 (`assembly_dense_hatch_dense_proxy`) is designed and documented above but has not yet
+  been promoted into the fresh verified baseline.

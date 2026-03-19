@@ -23,10 +23,17 @@ That boundary is already visible in:
 - `/Users/huazhou/Downloads/Github/VemCAD/services/router/README.md`
 - `/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer_desktop/main.js`
 
-The desktop wrapper already does this in production code:
-- detect `.dwg`
-- run `maybeConvertDwg(...)`
-- then call `convertWithRouter(...)`
+The desktop wrapper now has two concrete DWG-open cuts in production code:
+- preferred path: detect `.dwg`, detect `cadgf_dwg_importer_plugin`, and send the original `.dwg`
+  directly to `convertWithRouter(...)` with the DWG plugin selected;
+- fallback path: if no DWG plugin is available, run `maybeConvertDwg(...)` and then call
+  `convertWithRouter(...)` with the converted temporary `.dxf`.
+
+That keeps the desktop entrypoint ahead of the older Step187 narrative while preserving the same
+architecture boundary:
+- the core still does not become a DWG-native editor;
+- the DWG plugin still wraps `dwg2dxf + DXF importer`;
+- the downstream product contract is still `manifest.json + document.json + mesh.gltf`.
 
 Step187 turns that path into a standalone, repeatable business smoke.
 
@@ -676,3 +683,20 @@ The strictness contract still does not change:
 - every green case still requires two downstream validator passes;
 - the forty-four-sample matrix therefore implies eighty-eight successful downstream validations
   when fully green.
+
+Current verification boundary:
+- the designed default matrix scope is now forty-four real DWGs;
+- the last explicitly documented fresh standalone verification in Step187 verification is still the
+  forty-sample matrix;
+- keep those two numbers separate until the forty-four-sample scope is rerun as a fresh authority
+  lane instead of folding design intent and verification evidence together.
+
+### Import architecture summary
+
+The DWG business path is plugin-first with external conversion:
+1. Desktop path: `cadgf_dwg_importer_plugin` is preferred; if unavailable, falls back to local
+   `dwg2dxf` + DXF importer.
+2. Router path: external `dwg2dxf` converts DWG to temporary DXF, then `convert_cli` with
+   `cadgf_dxf_importer_plugin` processes the DXF.
+3. This is still business-path DWG support, not a DWG-native core — the boundary remains at
+   `DWG -> external conversion -> DXF -> existing DXF importer`.

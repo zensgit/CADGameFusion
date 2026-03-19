@@ -723,3 +723,10 @@ Scope note:
 
 Current conclusion:
 - Step189 now has a green twenty-six-case dense roundtrip matrix in fresh direct dense ctest.
+
+### Scope note
+
+- Designed dense matrix scope: 27 cases (see STEP189_ASSEMBLY_ROUNDTRIP_DESIGN.md).
+- Fresh verified baseline: 26/26 pass with zero metadata and group drift.
+- Case 27 (`assembly_dense_hatch_dense_proxy`) is designed but has not yet been promoted into the
+  fresh verified baseline.

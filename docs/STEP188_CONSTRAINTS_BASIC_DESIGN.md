@@ -484,7 +484,20 @@ Composed success paths:
 The test file now contains:
 - nine `classifyConstraintKind()` assertions (covering all non-Unknown kinds);
 - ten `constraintKindName()` assertions (covering all enum values);
-- sixty-six active success-path solve checks (60 original + 6 newly enabled).
+- seventy-two active success-path solve checks (60 original + 6 coincident/concentric/angle base
+  cases + 6 densification cases).
+
+Densification beyond the initial 66-check baseline added two new cases per newly enabled type:
+- coincident: `coincident_two_line_endpoints`, `coincident_arc_center_to_point`
+- concentric: `concentric_circle_and_arc`, `concentric_two_arcs`
+- angle: `angle_right_angle_two_lines`, `angle_45_deg`
 
 All nine ConstraintKind values are now exercised end-to-end through the Levenberg-Marquardt
 solver with full Jacobian analysis. Step188 is complete.
+
+### Scope note
+
+- Designed test coverage: 72 `run_single` invocations.
+- Fresh verified baseline: 72/72 pass (see STEP188_CONSTRAINTS_BASIC_VERIFICATION.md).
+- All nine constraint kinds (horizontal, vertical, equal, distance, parallel, perpendicular,
+  coincident, concentric, angle) are fully implemented and tested.

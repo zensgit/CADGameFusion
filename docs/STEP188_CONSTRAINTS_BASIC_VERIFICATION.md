@@ -670,3 +670,31 @@ Scope note:
 
 Current conclusion:
 - Step188 now guards sixty success-path checks while remaining green in fresh direct ctest.
+
+## 2026-03-19 Seventy-Two Success-Path Expansion
+
+Fresh direct ctest result:
+- `core_tests_constraints_basic = PASS`
+- `/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tests/core/test_constraints_basic.cpp`
+- `run_single invocations = 72`
+
+Newest success-path cases confirmed in this pass (densification of coincident/concentric/angle):
+- `coincident_two_line_endpoints`
+- `coincident_arc_center_to_point`
+- `concentric_circle_and_arc`
+- `concentric_two_arcs`
+- `angle_right_angle_two_lines`
+- `angle_45_deg`
+
+These six new cases add two densification tests per newly enabled constraint type, pushing the
+total from sixty-six (after coincident/concentric/angle base enablement) to seventy-two.
+
+Scope note:
+- this pass reran fresh direct ctest only and used that as the authoritative evidence;
+- it did not rerun local CI or gate since only test cases changed, not solver behavior;
+- the design doc now documents all nine constraint kinds as fully implemented and tested.
+
+Current conclusion:
+- Step188 now guards seventy-two success-path checks while remaining green in fresh direct ctest.
+- All nine ConstraintKind values (horizontal, vertical, equal, distance, parallel, perpendicular,
+  coincident, concentric, angle) are exercised end-to-end.
