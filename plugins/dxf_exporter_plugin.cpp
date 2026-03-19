@@ -283,7 +283,16 @@ static void write_entities_section(FILE* f, const cadgf_document* doc) {
         }
         case CADGF_ENTITY_TYPE_POLYLINE: {
             std::vector<cadgf_vec2> pts;
-            if (!query_polyline_points(doc, eid, pts) || pts.size() < 2) break;
+            if (!query_polyline_points(doc, eid, pts) || pts.empty()) break;
+            // Single-point polyline → emit as DXF POINT
+            if (pts.size() == 1) {
+                emit(f, 0, "POINT");
+                emit(f, 8, layer.c_str());
+                emit_entity_style(f, doc, eid);
+                emitd(f, 10, pts[0].x);
+                emitd(f, 20, pts[0].y);
+                break;
+            }
             emit(f, 0, "LWPOLYLINE");
             emit(f, 8, layer.c_str());
             emit_entity_style(f, doc, eid);

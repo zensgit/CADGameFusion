@@ -89,6 +89,19 @@ struct DxfLine {
     DxfEntityOriginMeta origin_meta;
 };
 
+struct DxfPoint {
+    std::string layer;
+    std::string owner_handle;
+    bool has_owner_handle = false;
+    std::string layout_name;
+    cadgf_vec2 p{};
+    bool has_x = false;
+    bool has_y = false;
+    DxfStyle style;
+    int space = 0;
+    DxfEntityOriginMeta origin_meta;
+};
+
 struct DxfCircle {
     std::string layer;
     std::string owner_handle;
@@ -369,6 +382,7 @@ struct DxfBlock {
     bool has_base = false;
     std::vector<DxfPolyline> polylines;
     std::vector<DxfLine> lines;
+    std::vector<DxfPoint> points;
     std::vector<DxfCircle> circles;
     std::vector<DxfArc> arcs;
     std::vector<DxfEllipse> ellipses;
@@ -1247,6 +1261,11 @@ static void finalize_line(const DxfLine& line, std::vector<DxfLine>& out) {
     out.push_back(line);
 }
 
+static void finalize_point(const DxfPoint& pt, std::vector<DxfPoint>& out) {
+    if (!(pt.has_x && pt.has_y)) return;
+    out.push_back(pt);
+}
+
 static void finalize_circle(const DxfCircle& circle, std::vector<DxfCircle>& out) {
     if (!(circle.has_cx && circle.has_cy && circle.has_radius)) return;
     out.push_back(circle);
@@ -1704,6 +1723,7 @@ enum class DxfEntityKind {
     None,
     Polyline,
     Line,
+    Point,
     Circle,
     Arc,
     Ellipse,
@@ -1727,6 +1747,7 @@ enum class DxfSection {
 static bool parse_dxf_entities(const std::string& path,
                                std::vector<DxfPolyline>& polylines,
                                std::vector<DxfLine>& lines,
+                               std::vector<DxfPoint>& points,
                                std::vector<DxfCircle>& circles,
                                std::vector<DxfArc>& arcs,
                                std::vector<DxfEllipse>& ellipses,
@@ -1764,6 +1785,7 @@ static bool parse_dxf_entities(const std::string& path,
     DxfEntityKind current_kind = DxfEntityKind::None;
     DxfPolyline current_polyline;
     DxfLine current_line;
+    DxfPoint current_point;
     DxfCircle current_circle;
     DxfArc current_arc;
     DxfEllipse current_ellipse;
@@ -1845,6 +1867,7 @@ static bool parse_dxf_entities(const std::string& path,
         has_x = false;
     };
     auto reset_line = [&]() { current_line = DxfLine{}; };
+    auto reset_point = [&]() { current_point = DxfPoint{}; };
     auto reset_circle = [&]() { current_circle = DxfCircle{}; };
     auto reset_arc = [&]() { current_arc = DxfArc{}; };
     auto reset_ellipse = [&]() { current_ellipse = DxfEllipse{}; };
@@ -2024,6 +2047,14 @@ static bool parse_dxf_entities(const std::string& path,
                     finalize_line(current_line, lines);
                 }
                 reset_line();
+                break;
+            case DxfEntityKind::Point:
+                if (in_block) {
+                    finalize_point(current_point, current_block.points);
+                } else {
+                    finalize_point(current_point, points);
+                }
+                reset_point();
                 break;
             case DxfEntityKind::Circle:
                 if (in_block) {
@@ -2284,6 +2315,9 @@ static bool parse_dxf_entities(const std::string& path,
             } else if (value_line == "LINE") {
                 current_kind = DxfEntityKind::Line;
                 reset_line();
+            } else if (value_line == "POINT") {
+                current_kind = DxfEntityKind::Point;
+                reset_point();
             } else if (value_line == "CIRCLE") {
                 current_kind = DxfEntityKind::Circle;
                 reset_circle();
@@ -2611,6 +2645,29 @@ static bool parse_dxf_entities(const std::string& path,
                     case 21:
                         if (parse_double(value_line, &current_line.b.y)) {
                             current_line.has_by = true;
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case DxfEntityKind::Point:
+                if (parse_entity_space(code, value_line, &current_point.space)) break;
+                if (parse_entity_owner(code, value_line, &current_point.owner_handle,
+                                       &current_point.has_owner_handle)) break;
+                if (parse_style_code(&current_point.style, code, value_line, header_codepage)) break;
+                switch (code) {
+                    case 8:
+                        current_point.layer = sanitize_utf8(value_line, header_codepage);
+                        break;
+                    case 10:
+                        if (parse_double(value_line, &current_point.p.x)) {
+                            current_point.has_x = true;
+                        }
+                        break;
+                    case 20:
+                        if (parse_double(value_line, &current_point.p.y)) {
+                            current_point.has_y = true;
                         }
                         break;
                     default:
@@ -3435,6 +3492,7 @@ static bool parse_dxf_entities(const std::string& path,
         };
         assign_layout_names(polylines);
         assign_layout_names(lines);
+        assign_layout_names(points);
         assign_layout_names(circles);
         assign_layout_names(arcs);
         assign_layout_names(ellipses);
@@ -3445,6 +3503,7 @@ static bool parse_dxf_entities(const std::string& path,
             auto& block = entry.second;
             assign_layout_names(block.polylines);
             assign_layout_names(block.lines);
+            assign_layout_names(block.points);
             assign_layout_names(block.circles);
             assign_layout_names(block.arcs);
             assign_layout_names(block.ellipses);
@@ -3511,6 +3570,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
     try {
         std::vector<DxfPolyline> polylines;
         std::vector<DxfLine> lines;
+        std::vector<DxfPoint> points;
         std::vector<DxfCircle> circles;
         std::vector<DxfArc> arcs;
         std::vector<DxfEllipse> ellipses;
@@ -3529,7 +3589,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
 	        TextImportStats text_stats{};
 	        bool has_paperspace = false;
 	        bool has_active_view = false;
-	        if (!parse_dxf_entities(path_utf8, polylines, lines, circles, arcs, ellipses, splines, texts,
+	        if (!parse_dxf_entities(path_utf8, polylines, lines, points, circles, arcs, ellipses, splines, texts,
 	                                blocks, inserts, viewports, layers, text_styles,
 	                                &default_line_scale, &default_text_height,
 	                                &has_paperspace, &has_active_view, &active_view,
@@ -3766,6 +3826,22 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
             maybe_write_layout_metadata(id, ln.space, ln.layout_name);
             write_entity_origin_metadata(doc, id, ln.origin_meta);
             apply_line_style(doc, id, ln.style, layer_style_for(ln.layer), nullptr, default_line_scale);
+        }
+
+        for (const auto& pt_in : points) {
+            if (!include_space(pt_in.space)) continue;
+            int layer_id = 0;
+            if (!resolve_layer_id(pt_in.layer, &layer_id)) {
+                set_error(out_err, 3, "failed to add layer");
+                return 0;
+            }
+            cadgf_point pt{};
+            pt.p = pt_in.p;
+            cadgf_entity_id id = cadgf_document_add_point(doc, &pt, "", layer_id);
+            write_space_metadata(doc, id, pt_in.space);
+            maybe_write_layout_metadata(id, pt_in.space, pt_in.layout_name);
+            write_entity_origin_metadata(doc, id, pt_in.origin_meta);
+            apply_line_style(doc, id, pt_in.style, layer_style_for(pt_in.layer), nullptr, default_line_scale);
         }
 
         for (const auto& circle_in : circles) {
@@ -4013,6 +4089,25 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
                 apply_line_style(doc, id, ln.style, layer_style_for(layer_name), insert_style, default_line_scale);
             }
 
+            for (const auto& pt_in : block.points) {
+                const std::string layer_name = resolve_entity_layer_name(pt_in.layer, insert_layer);
+                int layer_id = 0;
+                if (!resolve_layer_id(layer_name, &layer_id)) {
+                    set_error(out_err, 3, "failed to add layer");
+                    return false;
+                }
+                cadgf_point pt{};
+                pt.p = apply_transform(tr, pt_in.p);
+                cadgf_entity_id id = cadgf_document_add_point(doc, &pt, "", layer_id);
+                apply_group(id, group_id);
+                write_space_metadata(doc, id, space);
+                maybe_write_layout_metadata(id, space, layout_name);
+                if (origin_insert && pt_in.origin_meta.source_type.empty()) {
+                    write_insert_derived_metadata(doc, id, origin_insert);
+                }
+                apply_line_style(doc, id, pt_in.style, layer_style_for(layer_name), insert_style, default_line_scale);
+            }
+
             for (const auto& circle_in : block.circles) {
                 const std::string layer_name = resolve_entity_layer_name(circle_in.layer, insert_layer);
                 int layer_id = 0;
@@ -4221,9 +4316,9 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
         const Transform2D identity{};
         std::vector<std::string> stack;
         auto block_has_entities = [](const DxfBlock& block) -> bool {
-            return !(block.polylines.empty() && block.lines.empty() && block.circles.empty() &&
-                     block.arcs.empty() && block.ellipses.empty() && block.splines.empty() &&
-                     block.texts.empty() && block.inserts.empty());
+            return !(block.polylines.empty() && block.lines.empty() && block.points.empty() &&
+                     block.circles.empty() && block.arcs.empty() && block.ellipses.empty() &&
+                     block.splines.empty() && block.texts.empty() && block.inserts.empty());
         };
         auto find_named_block = [&](const char* name) -> const DxfBlock* {
             auto it = blocks.find(name);
