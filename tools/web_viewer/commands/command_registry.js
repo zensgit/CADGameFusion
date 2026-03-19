@@ -1114,6 +1114,20 @@ function runFilletSelectionByPick(ctx, payload) {
       return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Fillet: layer ${name} is locked` };
     }
   }
+
+  // --- Line + Arc fillet dispatch ---
+  const hasArc = target1.kind === 'arc' || target2.kind === 'arc';
+  const hasLine = target1.kind === 'line' || target2.kind === 'line';
+  if (hasArc && hasLine) {
+    const lineTgt = target1.kind === 'line' ? target1 : target2;
+    const arcTgt = target1.kind === 'arc' ? target1 : target2;
+    const linePick = lineTgt === target1 ? pick1 : pick2;
+    return runFilletLineArc(ctx, lineTgt, arcTgt, linePick, radius);
+  }
+  if (hasArc) {
+    return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: arc+arc not supported' };
+  }
+
   const inter = lineLineIntersection(target1.segStart, target1.segEnd, target2.segStart, target2.segEnd, false, false);
   if (!inter) {
     return { ok: false, changed: false, error_code: 'NO_INTERSECTION', message: 'Fillet: lines are parallel' };
@@ -1300,16 +1314,6 @@ function runFilletSelectionByPick(ctx, payload) {
     const ids = [...createdEntities.map((e) => e.id), arc.id];
     ctx.selection.setSelection(ids, arc.id);
     return { ok: true, changed: true, message: 'Fillet applied' };
-  }
-
-  // --- Line + Arc fillet dispatch ---
-  const hasArc = target1.kind === 'arc' || target2.kind === 'arc';
-  const hasLine = target1.kind === 'line' || target2.kind === 'line';
-  if (hasArc && hasLine) {
-    const lineTgt = target1.kind === 'line' ? target1 : target2;
-    const arcTgt = target1.kind === 'arc' ? target1 : target2;
-    const linePick = lineTgt === target1 ? pick1 : pick2;
-    return runFilletLineArc(ctx, lineTgt, arcTgt, linePick, radius);
   }
 
   const segTol = 1e-6;
