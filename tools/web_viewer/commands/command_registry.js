@@ -2509,6 +2509,180 @@ function runChamferLineCurve(ctx, lineTgt, curveTgt, linePick, curvePick, d1, d2
   return { ok: true, changed: true, message: 'Chamfer applied (line+arc/circle)' };
 }
 
+/**
+ * Find intersections between two arcs/circles using circle-circle intersection.
+ * Returns array of { x, y, angle1, angle2 } where angle1/angle2 are the
+ * angles from each center to the intersection point.
+ */
+function findCurveCurveIntersections(curve1, curve2) {
+  const c1x = curve1.cx, c1y = curve1.cy, r1 = curve1.r;
+  const c2x = curve2.cx, c2y = curve2.cy, r2 = curve2.r;
+  const dx = c2x - c1x;
+  const dy = c2y - c1y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d < EPSILON) return []; // concentric
+  if (d > r1 + r2 + EPSILON || d < Math.abs(r1 - r2) - EPSILON) return [];
+
+  const a = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+  const h2 = r1 * r1 - a * a;
+  if (h2 < -EPSILON) return [];
+  const h = Math.sqrt(Math.max(0, h2));
+
+  const ux = dx / d;
+  const uy = dy / d;
+  const mx = c1x + a * ux;
+  const my = c1y + a * uy;
+  const px = -uy;
+  const py = ux;
+
+  const rawPoints = h < EPSILON
+    ? [{ x: mx, y: my }]
+    : [{ x: mx + h * px, y: my + h * py }, { x: mx - h * px, y: my - h * py }];
+
+  const results = [];
+  for (const pt of rawPoints) {
+    const angle1 = normalizeAngle(Math.atan2(pt.y - c1y, pt.x - c1x));
+    const angle2 = normalizeAngle(Math.atan2(pt.y - c2y, pt.x - c2x));
+
+    // Filter by sweep for arcs (circles accept all)
+    if (curve1.kind === 'arc') {
+      if (!isAngleInSweep(curve1.startAngle, curve1.endAngle, curve1.cw, angle1)) continue;
+    }
+    if (curve2.kind === 'arc') {
+      if (!isAngleInSweep(curve2.startAngle, curve2.endAngle, curve2.cw, angle2)) continue;
+    }
+    results.push({ x: pt.x, y: pt.y, angle1, angle2 });
+  }
+  return results;
+}
+
+/**
+ * Chamfer between two arcs/circles.
+ * d1 = arc-length along curve1; d2 = arc-length along curve2.
+ */
+function runChamferCurveCurve(ctx, curve1Tgt, curve2Tgt, pick1, pick2, d1, d2) {
+  const ent1 = curve1Tgt.entity;
+  const ent2 = curve2Tgt.entity;
+
+  // 1. Find intersection(s)
+  const hits = findCurveCurveIntersections(curve1Tgt, curve2Tgt);
+  if (hits.length === 0) {
+    return { ok: false, changed: false, error_code: 'NO_INTERSECTION', message: 'Chamfer: arcs/circles do not intersect' };
+  }
+
+  // Pick closest intersection to picks
+  let best = hits[0];
+  let bestScore = Infinity;
+  for (const h of hits) {
+    const score = distanceSq(pick1, h) + distanceSq(pick2, h);
+    if (score < bestScore) {
+      bestScore = score;
+      best = h;
+    }
+  }
+
+  // 2. Curve1 side: keep direction + available arc-length
+  let keepSide1, availableLen1, walkCw1;
+  if (curve1Tgt.kind === 'arc') {
+    const arcKeep = pickArcKeepSideByPick(curve1Tgt, best.angle1, pick1);
+    keepSide1 = arcKeep.keepSide;
+    availableLen1 = arcKeep.arcLen;
+    walkCw1 = curve1Tgt.cw;
+  } else {
+    const pa = normalizeAngle(angleFrom({ x: curve1Tgt.cx, y: curve1Tgt.cy }, pick1));
+    const ccwFromI = ((pa - best.angle1) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    keepSide1 = 'end';
+    walkCw1 = ccwFromI > Math.PI;
+    availableLen1 = curve1Tgt.r * (Math.PI * 2 - 1e-3);
+  }
+
+  // 3. Curve2 side: keep direction + available arc-length
+  let keepSide2, availableLen2, walkCw2;
+  if (curve2Tgt.kind === 'arc') {
+    const arcKeep = pickArcKeepSideByPick(curve2Tgt, best.angle2, pick2);
+    keepSide2 = arcKeep.keepSide;
+    availableLen2 = arcKeep.arcLen;
+    walkCw2 = curve2Tgt.cw;
+  } else {
+    const pa = normalizeAngle(angleFrom({ x: curve2Tgt.cx, y: curve2Tgt.cy }, pick2));
+    const ccwFromI = ((pa - best.angle2) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    keepSide2 = 'end';
+    walkCw2 = ccwFromI > Math.PI;
+    availableLen2 = curve2Tgt.r * (Math.PI * 2 - 1e-3);
+  }
+
+  if (d1 >= availableLen1 - 1e-9) {
+    return { ok: false, changed: false, error_code: 'DISTANCE_TOO_LARGE', message: 'Chamfer: distance too large for first arc/circle' };
+  }
+  if (d2 >= availableLen2 - 1e-9) {
+    return { ok: false, changed: false, error_code: 'DISTANCE_TOO_LARGE', message: 'Chamfer: distance too large for second arc/circle' };
+  }
+
+  // 4. Compute chamfer points
+  const { angle: chamferAngle1, point: chamferPt1 } = arcChamferPoint(
+    curve1Tgt.cx, curve1Tgt.cy, curve1Tgt.r,
+    best.angle1, d1, keepSide1, walkCw1,
+  );
+  const { angle: chamferAngle2, point: chamferPt2 } = arcChamferPoint(
+    curve2Tgt.cx, curve2Tgt.cy, curve2Tgt.r,
+    best.angle2, d2, keepSide2, walkCw2,
+  );
+
+  // 5. Layer checks
+  const layer1 = ctx.document.getLayer(curve1Tgt.layerId);
+  if (layer1?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Chamfer: layer ${layer1?.name || ''} is locked` };
+  }
+  if (curve2Tgt.layerId !== curve1Tgt.layerId) {
+    const layer2 = ctx.document.getLayer(curve2Tgt.layerId);
+    if (layer2?.locked) {
+      return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Chamfer: layer ${layer2?.name || ''} is locked` };
+    }
+  }
+
+  // 6. Trim curve1
+  let ok1;
+  if (curve1Tgt.kind === 'arc') {
+    const trimmed = trimArcToPoint(ent1, chamferAngle1, keepSide1);
+    ok1 = ctx.document.updateEntity(ent1.id, trimmed);
+  } else {
+    const pa = normalizeAngle(angleFrom({ x: curve1Tgt.cx, y: curve1Tgt.cy }, pick1));
+    const trimmed = trimCircleToArc(ent1, chamferAngle1, pa);
+    ok1 = ctx.document.updateEntity(ent1.id, trimmed);
+  }
+
+  // 7. Trim curve2
+  let ok2;
+  if (curve2Tgt.kind === 'arc') {
+    const trimmed = trimArcToPoint(ent2, chamferAngle2, keepSide2);
+    ok2 = ctx.document.updateEntity(ent2.id, trimmed);
+  } else {
+    const pa = normalizeAngle(angleFrom({ x: curve2Tgt.cx, y: curve2Tgt.cy }, pick2));
+    const trimmed = trimCircleToArc(ent2, chamferAngle2, pa);
+    ok2 = ctx.document.updateEntity(ent2.id, trimmed);
+  }
+
+  if (!ok1 || !ok2) {
+    return { ok: false, changed: false, error_code: 'CHAMFER_FAILED', message: 'Chamfer: failed to trim entities' };
+  }
+
+  // 8. Create connector line
+  const connector = ctx.document.addEntity({
+    type: 'line',
+    layerId: curve1Tgt.layerId,
+    color: ent1.color,
+    visible: ent1.visible,
+    start: chamferPt1,
+    end: chamferPt2,
+  });
+  if (!connector) {
+    return { ok: false, changed: false, error_code: 'CHAMFER_FAILED', message: 'Chamfer: failed to create connector' };
+  }
+
+  ctx.selection.setSelection([ent1.id, ent2.id, connector.id], connector.id);
+  return { ok: true, changed: true, message: 'Chamfer applied (arc/circle + arc/circle)' };
+}
+
 function runChamferSelectionByPick(ctx, payload) {
   const firstId = Number(payload?.firstId);
   const secondId = Number(payload?.secondId);
@@ -2546,8 +2720,8 @@ function runChamferSelectionByPick(ctx, payload) {
       const cPick = curvTgt === target1 ? pick1 : pick2;
       return runChamferLineCurve(ctx, lineTgt, curvTgt, lPick, cPick, d1, d2);
     }
-    // arc+arc, arc+circle, circle+circle not yet supported
-    return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: arc/circle + arc/circle is not yet supported' };
+    // Both sides are curves (arc/circle)
+    return runChamferCurveCurve(ctx, target1, target2, pick1, pick2, d1, d2);
   }
   if (firstId === secondId
       && target1.kind === 'polyline'
