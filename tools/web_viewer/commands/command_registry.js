@@ -915,6 +915,22 @@ function trimOpenPolylineBySegmentKeepKey(entity, startIndex, endIndex, keepKey,
   return null;
 }
 
+function trimClosedPolylineBySegmentInsertPoint(entity, startIndex, endIndex, point) {
+  if (!entity || entity.type !== 'polyline' || entity.closed !== true) return null;
+  if (!Array.isArray(entity.points) || entity.points.length < 3) return null;
+  if (!Number.isFinite(startIndex) || !Number.isFinite(endIndex)) return null;
+  const points = entity.points.map((p) => ({ ...p }));
+  if (startIndex < 0 || startIndex >= points.length || endIndex < 0 || endIndex >= points.length) return null;
+  if (endIndex !== ((startIndex + 1) % points.length)) return null;
+  const insertPoint = { ...point };
+  if (startIndex === points.length - 1 && endIndex === 0) {
+    points.push(insertPoint);
+    return points;
+  }
+  points.splice(endIndex, 0, insertPoint);
+  return points;
+}
+
 function normalizeRad(angle) {
   let value = Number(angle || 0);
   while (value < 0) value += Math.PI * 2;
@@ -1477,6 +1493,226 @@ function runFilletCircleArc(ctx, circleTgt, arcTgt, circlePick, arcPick, radius)
   return { ok: true, changed: true, message: 'Fillet applied (circle+arc)' };
 }
 
+function runFilletCircleCircle(ctx, circle1Tgt, circle2Tgt, pick1, pick2, radius) {
+  const c1x = circle1Tgt.cx, c1y = circle1Tgt.cy, r1 = circle1Tgt.r;
+  const c2x = circle2Tgt.cx, c2y = circle2Tgt.cy, r2 = circle2Tgt.r;
+  const circle1Ent = circle1Tgt.entity;
+  const circle2Ent = circle2Tgt.entity;
+
+  const dx = c2x - c1x;
+  const dy = c2y - c1y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d < EPSILON) {
+    return { ok: false, changed: false, error_code: 'CONCENTRIC', message: 'Fillet: concentric circles' };
+  }
+
+  const candidates = [];
+  for (const s1 of [-1, 1]) {
+    for (const s2 of [-1, 1]) {
+      const R1 = r1 + s1 * radius;
+      const R2 = r2 + s2 * radius;
+      if (R1 < EPSILON || R2 < EPSILON) continue;
+
+      if (d > R1 + R2 + EPSILON || d < Math.abs(R1 - R2) - EPSILON) continue;
+      const a = (R1 * R1 - R2 * R2 + d * d) / (2 * d);
+      const h2 = R1 * R1 - a * a;
+      if (h2 < -EPSILON) continue;
+      const h = Math.sqrt(Math.max(0, h2));
+
+      const ux = dx / d;
+      const uy = dy / d;
+      const mx = c1x + a * ux;
+      const my = c1y + a * uy;
+      const px = -uy;
+      const py = ux;
+
+      const points = h < EPSILON
+        ? [{ x: mx, y: my }]
+        : [{ x: mx + h * px, y: my + h * py }, { x: mx - h * px, y: my - h * py }];
+
+      for (const fc of points) {
+        // Tangent on circle 1 — no sweep check
+        const dir1 = { x: c1x - fc.x, y: c1y - fc.y };
+        const len1 = Math.sqrt(dir1.x * dir1.x + dir1.y * dir1.y);
+        if (len1 < EPSILON) continue;
+        const u1 = { x: dir1.x / len1, y: dir1.y / len1 };
+        const tangent1 = s1 > 0
+          ? { x: fc.x + radius * u1.x, y: fc.y + radius * u1.y }
+          : { x: fc.x - radius * u1.x, y: fc.y - radius * u1.y };
+
+        // Tangent on circle 2 — no sweep check
+        const dir2 = { x: c2x - fc.x, y: c2y - fc.y };
+        const len2 = Math.sqrt(dir2.x * dir2.x + dir2.y * dir2.y);
+        if (len2 < EPSILON) continue;
+        const u2 = { x: dir2.x / len2, y: dir2.y / len2 };
+        const tangent2 = s2 > 0
+          ? { x: fc.x + radius * u2.x, y: fc.y + radius * u2.y }
+          : { x: fc.x - radius * u2.x, y: fc.y - radius * u2.y };
+
+        const angle1 = normalizeAngle(Math.atan2(tangent1.y - c1y, tangent1.x - c1x));
+        const angle2 = normalizeAngle(Math.atan2(tangent2.y - c2y, tangent2.x - c2x));
+        const score = distanceSq(pick1, tangent1) + distanceSq(pick2, tangent2);
+        candidates.push({ fc, tangent1, tangent2, angle1, angle2, score });
+      }
+    }
+  }
+
+  if (candidates.length === 0) {
+    return { ok: false, changed: false, error_code: 'NO_INTERSECTION', message: 'Fillet: no valid fillet geometry for circle+circle' };
+  }
+  candidates.sort((a, b) => a.score - b.score);
+  const best = candidates[0];
+
+  const layer1 = ctx.document.getLayer(circle1Tgt.layerId);
+  if (layer1?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  }
+  const layer2 = ctx.document.getLayer(circle2Tgt.layerId);
+  if (layer2?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  }
+
+  // Trim both circles → arcs
+  const trimmed1 = trimCircleToArc(circle1Ent, best.angle1, circle1Tgt.pickAngle);
+  const ok1 = ctx.document.updateEntity(circle1Ent.id, trimmed1);
+
+  const trimmed2 = trimCircleToArc(circle2Ent, best.angle2, circle2Tgt.pickAngle);
+  const ok2 = ctx.document.updateEntity(circle2Ent.id, trimmed2);
+
+  if (!ok1 || !ok2) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: failed to trim circles' };
+  }
+
+  const filletStartAngle = angleFrom(best.fc, best.tangent1);
+  const filletEndAngle = angleFrom(best.fc, best.tangent2);
+  const filletCw = resolveArcDirection(filletStartAngle, filletEndAngle);
+  const filletArc = ctx.document.addEntity({
+    type: 'arc',
+    layerId: circle1Ent.layerId,
+    color: circle1Ent.color,
+    visible: circle1Ent.visible,
+    center: best.fc,
+    radius,
+    startAngle: filletStartAngle,
+    endAngle: filletEndAngle,
+    cw: filletCw,
+  });
+  if (!filletArc) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: failed to create fillet arc' };
+  }
+
+  ctx.selection.setSelection([circle1Ent.id, circle2Ent.id, filletArc.id], filletArc.id);
+  return { ok: true, changed: true, message: 'Fillet applied (circle+circle)' };
+}
+
+function runFilletPolylineArc(ctx, polyTgt, arcTgt, polyPick, radius) {
+  const polyEnt = polyTgt.entity;
+  const arcEnt = arcTgt.entity;
+  const cx = arcTgt.cx;
+  const cy = arcTgt.cy;
+  const arcR = arcTgt.r;
+  const lineStart = polyTgt.segStart;
+  const lineEnd = polyTgt.segEnd;
+
+  const lineDir = subtract(lineEnd, lineStart);
+  const lineUnit = normalizeVector(lineDir);
+  if (!lineUnit) {
+    return { ok: false, changed: false, error_code: 'INVALID_GEOMETRY', message: 'Fillet: degenerate polyline segment' };
+  }
+  const lineNorm = perpendicular(lineUnit);
+  const toCenter = subtract({ x: cx, y: cy }, lineStart);
+  const signedDist = dot(toCenter, lineNorm);
+  const lineSign = signedDist >= 0 ? 1 : -1;
+
+  const candidates = [];
+  for (const arcSign of [-1, 1]) {
+    const offsetR = arcR + arcSign * radius;
+    if (offsetR < EPSILON) continue;
+
+    const offsetLineOrigin = add(lineStart, scale(lineNorm, lineSign * radius));
+    const offsetLineEnd = add(lineEnd, scale(lineNorm, lineSign * radius));
+    const hits = lineArcIntersection(offsetLineOrigin, offsetLineEnd, cx, cy, offsetR);
+
+    for (const hit of hits) {
+      const fc = { x: hit.x, y: hit.y };
+      const toFc = subtract(fc, lineStart);
+      const tLine = dot(toFc, lineUnit);
+      const tangentOnLine = add(lineStart, scale(lineUnit, tLine));
+
+      const fcToArcCenter = subtract({ x: cx, y: cy }, fc);
+      const fcToArcCenterUnit = normalizeVector(fcToArcCenter);
+      if (!fcToArcCenterUnit) continue;
+      const tangentOnArc = arcSign > 0
+        ? add(fc, scale(fcToArcCenterUnit, radius))
+        : subtract(fc, scale(fcToArcCenterUnit, radius));
+      const tangentAngle = normalizeAngle(angleFrom({ x: cx, y: cy }, tangentOnArc));
+      if (!isAngleInSweep(arcTgt.startAngle, arcTgt.endAngle, arcTgt.cw, tangentAngle)) continue;
+
+      if (tLine < -EPSILON || tLine > Math.sqrt(dot(lineDir, lineDir)) + EPSILON) continue;
+      const score = distanceSq(polyPick, tangentOnLine);
+      candidates.push({ fc, tangentOnLine, tangentOnArc, tangentAngle, score });
+    }
+  }
+
+  if (candidates.length === 0) {
+    return { ok: false, changed: false, error_code: 'NO_INTERSECTION', message: 'Fillet: no valid fillet geometry for polyline+arc' };
+  }
+  candidates.sort((a, b) => a.score - b.score);
+  const best = candidates[0];
+
+  const layer1 = ctx.document.getLayer(polyTgt.layerId);
+  if (layer1?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  }
+  const layer2 = ctx.document.getLayer(arcTgt.layerId);
+  if (layer2?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  }
+
+  const dToStart = distanceSq(polyPick, lineStart);
+  const dToEnd = distanceSq(polyPick, lineEnd);
+  const keepKey = dToStart < dToEnd ? 'start' : 'end';
+  const isClosed = polyEnt.closed === true;
+  const polyPoints = isClosed
+    ? trimClosedPolylineBySegmentInsertPoint(polyEnt, polyTgt.startIndex, polyTgt.endIndex, best.tangentOnLine)
+    : trimOpenPolylineBySegmentKeepKey(polyEnt, polyTgt.startIndex, polyTgt.endIndex, keepKey, best.tangentOnLine);
+  if (!polyPoints) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: unsupported polyline trim' };
+  }
+
+  const ok1 = ctx.document.updateEntity(polyEnt.id, { ...polyEnt, closed: isClosed, points: polyPoints });
+  const dToArcStart = Math.abs(angleDelta(best.tangentAngle, arcTgt.startAngle));
+  const dToArcEnd = Math.abs(angleDelta(best.tangentAngle, arcTgt.endAngle));
+  const trimmedArc = dToArcStart < dToArcEnd
+    ? trimArcToPoint(arcEnt, best.tangentAngle, 'end')
+    : trimArcToPoint(arcEnt, best.tangentAngle, 'start');
+  const ok2 = ctx.document.updateEntity(arcEnt.id, trimmedArc);
+  if (!ok1 || !ok2) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: failed to trim entities' };
+  }
+
+  const filletStartAngle = angleFrom(best.fc, best.tangentOnLine);
+  const filletEndAngle = angleFrom(best.fc, best.tangentOnArc);
+  const filletCw = resolveArcDirection(filletStartAngle, filletEndAngle);
+  const filletArc = ctx.document.addEntity({
+    type: 'arc',
+    layerId: polyEnt.layerId,
+    color: polyEnt.color,
+    visible: polyEnt.visible,
+    center: best.fc,
+    radius,
+    startAngle: filletStartAngle,
+    endAngle: filletEndAngle,
+    cw: filletCw,
+  });
+  if (!filletArc) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: failed to create fillet arc' };
+  }
+
+  ctx.selection.setSelection([polyEnt.id, arcEnt.id, filletArc.id], filletArc.id);
+  return { ok: true, changed: true, message: 'Fillet applied (polyline+arc)' };
+}
+
 function runFilletSelectionByPick(ctx, payload) {
   const firstId = Number(payload?.firstId);
   const secondId = Number(payload?.secondId);
@@ -1546,7 +1782,7 @@ function runFilletSelectionByPick(ctx, payload) {
       return runFilletCircleArc(ctx, cirT, arcT, cPick, aPick, radius);
     }
     if (target1.kind === 'circle' && target2.kind === 'circle') {
-      return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: circle+circle is not yet supported' };
+      return runFilletCircleCircle(ctx, target1, target2, pick1, pick2, radius);
     }
     if (target1.kind === 'polyline' || target2.kind === 'polyline') {
       return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: circle+polyline is not yet supported' };
@@ -1564,6 +1800,12 @@ function runFilletSelectionByPick(ctx, payload) {
   if (hasArc) {
     if (target1.kind === 'arc' && target2.kind === 'arc') {
       return runFilletArcArc(ctx, target1, target2, pick1, pick2, radius);
+    }
+    if (target1.kind === 'polyline' || target2.kind === 'polyline') {
+      const polyTgt = target1.kind === 'polyline' ? target1 : target2;
+      const arcTgt = target1.kind === 'arc' ? target1 : target2;
+      const polyPick = polyTgt === target1 ? pick1 : pick2;
+      return runFilletPolylineArc(ctx, polyTgt, arcTgt, polyPick, radius);
     }
     return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: arc+polyline not supported' };
   }
@@ -1759,11 +2001,8 @@ function runFilletSelectionByPick(ctx, payload) {
   const segTol = 1e-6;
   for (const target of [target1, target2]) {
     if (target.kind !== 'polyline') continue;
-    if (target.entity.closed === true) {
-      return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: closed polyline cross-entity is not supported' };
-    }
     if (pointOnSegmentDistance(I, target.segStart, target.segEnd) > segTol) {
-      return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: polyline segment requires intersection within the picked segment (no extend)' };
+      return { ok: false, changed: false, error_code: 'NO_INTERSECTION', message: 'Fillet: polyline segment requires intersection within the picked segment (no extend)' };
     }
   }
 
@@ -1804,11 +2043,14 @@ function runFilletSelectionByPick(ctx, payload) {
       if (pointOnSegmentDistance(point, target.segStart, target.segEnd) > segTol) {
         return null;
       }
-      const out = trimOpenPolylineBySegmentKeepKey(target.entity, target.startIndex, target.endIndex, endpoints.keepKey, point);
+      const isClosed = target.entity.closed === true;
+      const out = isClosed
+        ? trimClosedPolylineBySegmentInsertPoint(target.entity, target.startIndex, target.endIndex, point)
+        : trimOpenPolylineBySegmentKeepKey(target.entity, target.startIndex, target.endIndex, endpoints.keepKey, point);
       if (!out) {
         return null;
       }
-      return ctx.document.updateEntity(target.entity.id, { ...target.entity, closed: false, points: out });
+      return ctx.document.updateEntity(target.entity.id, { ...target.entity, closed: isClosed, points: out });
     }
     return null;
   };
@@ -1819,8 +2061,8 @@ function runFilletSelectionByPick(ctx, payload) {
     return {
       ok: false,
       changed: false,
-      error_code: 'UNSUPPORTED',
-      message: 'Fillet: unsupported polyline trim (requires intersection within picked segment; closed polyline cross-entity unsupported)',
+      error_code: 'FILLET_FAILED',
+      message: 'Fillet: unsupported polyline trim',
     };
   }
   if (!ok1 || !ok2) {
@@ -2153,11 +2395,8 @@ function runChamferSelectionByPick(ctx, payload) {
   const segTol = 1e-6;
   for (const target of [target1, target2]) {
     if (target.kind !== 'polyline') continue;
-    if (target.entity.closed === true) {
-      return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: closed polyline cross-entity is not supported' };
-    }
     if (pointOnSegmentDistance(I, target.segStart, target.segEnd) > segTol) {
-      return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: polyline segment requires intersection within the picked segment (no extend)' };
+      return { ok: false, changed: false, error_code: 'NO_INTERSECTION', message: 'Chamfer: polyline segment requires intersection within the picked segment (no extend)' };
     }
   }
 
@@ -2182,11 +2421,14 @@ function runChamferSelectionByPick(ctx, payload) {
       if (pointOnSegmentDistance(point, target.segStart, target.segEnd) > segTol) {
         return null;
       }
-      const out = trimOpenPolylineBySegmentKeepKey(target.entity, target.startIndex, target.endIndex, endpoints.keepKey, point);
+      const isClosed = target.entity.closed === true;
+      const out = isClosed
+        ? trimClosedPolylineBySegmentInsertPoint(target.entity, target.startIndex, target.endIndex, point)
+        : trimOpenPolylineBySegmentKeepKey(target.entity, target.startIndex, target.endIndex, endpoints.keepKey, point);
       if (!out) {
         return null;
       }
-      return ctx.document.updateEntity(target.entity.id, { ...target.entity, closed: false, points: out });
+      return ctx.document.updateEntity(target.entity.id, { ...target.entity, closed: isClosed, points: out });
     }
     return null;
   };
@@ -2197,8 +2439,8 @@ function runChamferSelectionByPick(ctx, payload) {
     return {
       ok: false,
       changed: false,
-      error_code: 'UNSUPPORTED',
-      message: 'Chamfer: unsupported polyline trim (requires intersection within picked segment; closed polyline cross-entity unsupported)',
+      error_code: 'CHAMFER_FAILED',
+      message: 'Chamfer: unsupported polyline trim',
     };
   }
   if (!ok1 || !ok2) {
