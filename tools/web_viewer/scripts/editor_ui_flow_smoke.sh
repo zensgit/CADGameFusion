@@ -764,12 +764,8 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     }) || lines[0];
     let vertical = lines.find((line) => line.id !== horizontal.id);
     if (!vertical) vertical = lines[1] || lines[0];
-    const midpoint = (line) => ({
-      x: (Number(line.start.x) + Number(line.end.x)) * 0.5,
-      y: (Number(line.start.y) + Number(line.end.y)) * 0.5,
-    });
-    const firstWorld = midpoint(horizontal);
-    const secondWorld = midpoint(vertical);
+    const firstWorld = midpoint(horizontal.start, horizontal.end);
+    const secondWorld = midpoint(vertical.start, vertical.end);
     const first = await worldToPagePoint(firstWorld);
     const second = await worldToPagePoint(secondWorld);
     if (!first || !second) {
@@ -1685,11 +1681,11 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
   await page.click('[data-tool=\"break\"]');
   // Pick target.
-  const targetPick = { x: (r1.x + r2.x) * 0.5, y: r1.y };
+  const targetPick = { x: midpoint(r1, r2).x, y: r1.y };
   await page.mouse.click(targetPick.x, targetPick.y);
   // Shift+click first break point, then click second point.
-  const b1 = { x: r2.x, y: (r2.y + r3.y) * 0.5 };
-  const b2 = { x: (r3.x + r4.x) * 0.5, y: r3.y };
+  const b1 = { x: r2.x, y: midpoint(r2, r3).y };
+  const b2 = { x: midpoint(r3, r4).x, y: r3.y };
   await page.keyboard.down('Shift');
   await page.mouse.click(b1.x, b1.y);
   await page.keyboard.up('Shift');
@@ -1745,11 +1741,11 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     }, null, { timeout: timeoutMs });
 
     await page.click('[data-tool=\"break\"]');
-    const targetPick2 = { x: (r1.x + r2.x) * 0.5, y: r1.y };
+    const targetPick2 = { x: midpoint(r1, r2).x, y: r1.y };
     await page.mouse.click(targetPick2.x, targetPick2.y);
 
-    const bb1 = { x: r2.x, y: (r2.y + r3.y) * 0.5 };
-    const bb2 = { x: (r3.x + r4.x) * 0.5, y: r3.y };
+    const bb1 = { x: r2.x, y: midpoint(r2, r3).y };
+    const bb2 = { x: midpoint(r3, r4).x, y: r3.y };
     await page.keyboard.down('Shift');
     await page.mouse.click(bb1.x, bb1.y);
     await page.keyboard.up('Shift');
@@ -2030,7 +2026,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   await page.fill('#cad-command-input', 'offset 5');
   await page.click('[data-tool=\"offset\"]');
 
-  const offMid = { x: (offA.x + offB.x) * 0.5, y: offA.y };
+  const offMid = { x: midpoint(offA, offB).x, y: offA.y };
   await page.mouse.click(offMid.x, offMid.y); // pickTargets -> pickSide
   const offSide = point(0.45, 0.45);
   await page.mouse.click(offSide.x, offSide.y); // commit
@@ -2076,12 +2072,12 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!(beforeLen > 1e-6 && afterLen > 1e-6)) {
     throw new Error('Offset(line) encountered degenerate line length');
   }
-  const lenTol = Math.max(0.1, beforeLen * 0.05);
+  const lenTol = adaptiveTol(beforeLen, 0.1, 0.05);
   if (Math.abs(afterLen - beforeLen) > lenTol) {
     throw new Error('Offset(line) changed line length unexpectedly');
   }
   const expectedOffset = 5.0;
-  const distTol = Math.max(0.35, expectedOffset * 0.25);
+  const distTol = adaptiveTol(expectedOffset, 0.35, 0.25);
   const offDist1 = pointLineDistance(offAfterEntity.start, offBeforeEntity.start, offBeforeEntity.end);
   const offDist2 = pointLineDistance(offAfterEntity.end, offBeforeEntity.start, offBeforeEntity.end);
   if (!Number.isFinite(offDist1) || !Number.isFinite(offDist2)) {
@@ -2136,7 +2132,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   await waitForTypesExact(['line']);
 
   await page.click('[data-tool=\"select\"]');
-  const jM1 = { x: (jA.x + jB.x) * 0.5, y: jA.y };
+  const jM1 = { x: midpoint(jA, jB).x, y: jA.y };
   const jM2 = midpoint(jB, jC);
   await page.mouse.click(jM1.x, jM1.y);
   await page.keyboard.down('Shift');
@@ -2437,7 +2433,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   };
 
   await page.click('[data-tool=\"trim\"]');
-  const trimBoundaryPick = { x: trimB1.x, y: (trimB1.y + trimB2.y) * 0.5 - 80 };
+  const trimBoundaryPick = { x: trimB1.x, y: midpoint(trimB1, trimB2).y - 80 };
   await page.mouse.click(trimBoundaryPick.x, trimBoundaryPick.y);
   // Trim target #1.
   await page.mouse.click(trim1TrimPick.x, trim1TrimPick.y);
@@ -2580,7 +2576,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
     // Trim: pick boundary, then attempt target#1 (expect no change), then target#2 (expect success) without re-picking boundary.
     await page.click('[data-tool=\"trim\"]');
-    const tfBoundaryPick = { x: tfB1.x, y: (tfB1.y + tfB2.y) * 0.5 - 60 };
+    const tfBoundaryPick = { x: tfB1.x, y: midpoint(tfB1, tfB2).y - 60 };
     await page.mouse.click(tfBoundaryPick.x, tfBoundaryPick.y);
 
     // Failure attempt: no intersection.
@@ -2704,7 +2700,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   const ext2BeforeEndX = await readNumberInput('end.x');
 
   await page.click('[data-tool=\"extend\"]');
-  const extBoundaryPick = { x: extB1.x, y: (extB1.y + extB2.y) * 0.5 - 80 };
+  const extBoundaryPick = { x: extB1.x, y: midpoint(extB1, extB2).y - 80 };
   await page.mouse.click(extBoundaryPick.x, extBoundaryPick.y);
   // Extend target #1.
   await page.mouse.click(ext1B.x - 2, ext1B.y);
@@ -2830,7 +2826,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     // Fit viewport to seeded entities so worldToPagePoint returns on-canvas coordinates.
     await fitView();
 
-    const ef1Mid = await worldToPagePoint({ x: failStart.x, y: (failStart.y + failEnd.y) * 0.5 });
+    const ef1Mid = await worldToPagePoint({ x: failStart.x, y: midpoint(failStart, failEnd).y });
     const ef2PickPoint = await worldToPagePoint(okEnd);
     const ef2Pick = { x: ef2PickPoint.x - 2, y: ef2PickPoint.y };
 
@@ -4445,7 +4441,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!Number.isFinite(mvBeforeLen) || !Number.isFinite(mvAfterLen) || mvBeforeLen <= 1e-6 || mvAfterLen <= 1e-6) {
     throw new Error('Move(line) invalid geometry length');
   }
-  const moveLenTol = Math.max(0.05, mvBeforeLen * 0.02);
+  const moveLenTol = adaptiveTol(mvBeforeLen, 0.05, 0.02);
   if (Math.abs(mvAfterLen - mvBeforeLen) > moveLenTol) {
     throw new Error('Move(line) changed length unexpectedly');
   }
@@ -4694,7 +4690,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!Number.isFinite(lenAfter)) {
     throw new Error('Rotate(line) invalid geometry length after');
   }
-  if (Math.abs(lenAfter - lenBefore) > Math.max(0.05, lenBefore * 0.02)) {
+  if (Math.abs(lenAfter - lenBefore) > adaptiveTol(lenBefore, 0.05, 0.02)) {
     throw new Error('Rotate(line) length not preserved');
   }
   const centerTol = 0.25;
