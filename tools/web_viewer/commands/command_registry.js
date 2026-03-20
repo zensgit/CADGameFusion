@@ -2286,6 +2286,229 @@ function runFilletSelection(ctx, payload) {
   return { ok: true, changed: true, message: 'Fillet applied' };
 }
 
+// ---------------------------------------------------------------------------
+// Arc / Circle chamfer helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Find intersections of an extended line with an arc or circle.
+ * The line is extended to infinity; results are filtered by arc sweep.
+ */
+function findLineCurveIntersections(lineTgt, curveTgt) {
+  const { segStart, segEnd } = lineTgt;
+  const { cx, cy, r } = curveTgt;
+  const dx = segEnd.x - segStart.x;
+  const dy = segEnd.y - segStart.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < EPSILON) return [];
+  const ux = dx / len;
+  const uy = dy / len;
+  // Extend line far enough to guarantee any intersection with the circle is captured
+  const reach = Math.sqrt(distanceSq(segStart, { x: cx, y: cy })) + r + len;
+  const extStart = { x: segStart.x - ux * reach, y: segStart.y - uy * reach };
+  const extEnd = { x: segEnd.x + ux * reach, y: segEnd.y + uy * reach };
+  const hits = lineArcIntersection(extStart, extEnd, cx, cy, r);
+  if (curveTgt.kind === 'arc') {
+    return hits.filter((h) => {
+      const a = normalizeAngle(Math.atan2(h.y - cy, h.x - cx));
+      return isAngleInSweep(curveTgt.startAngle, curveTgt.endAngle, curveTgt.cw, a);
+    });
+  }
+  return hits; // circle: every point on the circle is valid
+}
+
+/**
+ * Determine which side of an arc to keep during chamfer, based on the pick point.
+ * Returns { keepSide: 'start'|'end', arcLen: available arc-length from intersection }.
+ */
+function pickArcKeepSideByPick(arcTgt, iAngle, pick) {
+  const { cx, cy, r, startAngle, endAngle, cw } = arcTgt;
+  const ia = normalizeAngle(iAngle);
+  const pa = normalizeAngle(angleFrom({ x: cx, y: cy }, pick));
+
+  // Determine which sub-arc contains the pick
+  const pickInStart = isAngleInSweep(startAngle, ia, cw, pa);
+  const pickInEnd = isAngleInSweep(ia, endAngle, cw, pa);
+
+  let keepSide;
+  if (pickInStart && !pickInEnd) {
+    keepSide = 'start';
+  } else if (pickInEnd && !pickInStart) {
+    keepSide = 'end';
+  } else {
+    const dStart = Math.abs(angleDelta(pa, normalizeAngle(startAngle)));
+    const dEnd = Math.abs(angleDelta(pa, normalizeAngle(endAngle)));
+    keepSide = dStart <= dEnd ? 'start' : 'end';
+  }
+
+  // Compute angular sweep from intersection to the kept endpoint
+  const TWO_PI = Math.PI * 2;
+  let sweep;
+  if (keepSide === 'start') {
+    // Sweep from startAngle to intersectionAngle following arc direction
+    sweep = cw
+      ? ((normalizeAngle(startAngle) - ia + TWO_PI) % TWO_PI)
+      : ((ia - normalizeAngle(startAngle) + TWO_PI) % TWO_PI);
+  } else {
+    // Sweep from intersectionAngle to endAngle following arc direction
+    sweep = cw
+      ? ((ia - normalizeAngle(endAngle) + TWO_PI) % TWO_PI)
+      : ((normalizeAngle(endAngle) - ia + TWO_PI) % TWO_PI);
+  }
+  if (sweep < EPSILON) sweep = TWO_PI;
+  return { keepSide, arcLen: r * sweep };
+}
+
+/**
+ * Compute the chamfer point on an arc/circle at arc-length d from the intersection.
+ * For arcs: walkDir determined by keepSide and cw.
+ * For circles: walkDir determined by pick angle.
+ */
+function arcChamferPoint(cx, cy, r, iAngle, d, keepSide, cw) {
+  const dTheta = d / r;
+  // keepSide='start' → walk against arc direction; 'end' → walk with arc direction
+  const against = keepSide === 'start';
+  // Against CW = CCW = +angle; against CCW = CW = -angle
+  const sign = against ? (cw ? 1 : -1) : (cw ? -1 : 1);
+  const chamferAngle = normalizeAngle(iAngle + sign * dTheta);
+  return {
+    angle: chamferAngle,
+    point: { x: cx + r * Math.cos(chamferAngle), y: cy + r * Math.sin(chamferAngle) },
+  };
+}
+
+/**
+ * Chamfer between a line and an arc or circle.
+ * d1 = distance along the line from intersection; d2 = arc-length along the curve.
+ */
+function runChamferLineCurve(ctx, lineTgt, curveTgt, linePick, curvePick, d1, d2) {
+  const lineEnt = lineTgt.entity;
+  const curveEnt = curveTgt.entity;
+
+  // 1. Find intersection(s) of extended line with arc/circle
+  const hits = findLineCurveIntersections(lineTgt, curveTgt);
+  if (hits.length === 0) {
+    return { ok: false, changed: false, error_code: 'NO_INTERSECTION', message: 'Chamfer: line and arc/circle do not intersect' };
+  }
+
+  // Pick intersection closest to pick points
+  let bestHit = hits[0];
+  let bestScore = Infinity;
+  for (const h of hits) {
+    const score = distanceSq(linePick, h) + distanceSq(curvePick, h);
+    if (score < bestScore) {
+      bestScore = score;
+      bestHit = h;
+    }
+  }
+  const I = { x: bestHit.x, y: bestHit.y };
+
+  // 2. Line side: determine keep direction + available length
+  const eLine = pickLineKeepTrimEndpointsByPick(
+    { start: lineTgt.segStart, end: lineTgt.segEnd }, I, linePick,
+  );
+  if (!eLine) {
+    return { ok: false, changed: false, error_code: 'INVALID_GEOMETRY', message: 'Chamfer: degenerate line segment' };
+  }
+  if (d1 >= eLine.lenKeep - 1e-9) {
+    return { ok: false, changed: false, error_code: 'DISTANCE_TOO_LARGE', message: 'Chamfer: distance too large for line' };
+  }
+
+  // 3. Arc/Circle side
+  const iAngle = normalizeAngle(Math.atan2(I.y - curveTgt.cy, I.x - curveTgt.cx));
+  let keepSide, availableArcLen, walkCw;
+
+  if (curveTgt.kind === 'arc') {
+    const arcKeep = pickArcKeepSideByPick(curveTgt, iAngle, curvePick);
+    keepSide = arcKeep.keepSide;
+    availableArcLen = arcKeep.arcLen;
+    walkCw = curveTgt.cw;
+  } else {
+    // Circle: determine walk direction from pick angle
+    const pa = normalizeAngle(angleFrom({ x: curveTgt.cx, y: curveTgt.cy }, curvePick));
+    const ccwFromI = ((pa - iAngle) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+    // Walk toward the pick; model as keepSide='end' with cw/ccw matching walk direction
+    if (ccwFromI <= Math.PI) {
+      keepSide = 'end';
+      walkCw = false; // walk CCW
+    } else {
+      keepSide = 'end';
+      walkCw = true; // walk CW
+    }
+    availableArcLen = curveTgt.r * (Math.PI * 2 - 1e-3);
+  }
+
+  if (d2 >= availableArcLen - 1e-9) {
+    return { ok: false, changed: false, error_code: 'DISTANCE_TOO_LARGE', message: 'Chamfer: distance too large for arc/circle' };
+  }
+
+  // 4. Compute chamfer points
+  const linePoint = { x: I.x + eLine.v.x * d1, y: I.y + eLine.v.y * d1 };
+  const { angle: chamferAngle, point: arcPoint } = arcChamferPoint(
+    curveTgt.cx, curveTgt.cy, curveTgt.r,
+    iAngle, d2, keepSide, walkCw,
+  );
+
+  // 5. Layer checks
+  const layer1 = ctx.document.getLayer(lineTgt.layerId);
+  if (layer1?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Chamfer: layer ${layer1?.name || ''} is locked` };
+  }
+  if (curveTgt.layerId !== lineTgt.layerId) {
+    const layer2 = ctx.document.getLayer(curveTgt.layerId);
+    if (layer2?.locked) {
+      return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Chamfer: layer ${layer2?.name || ''} is locked` };
+    }
+  }
+
+  // 6. Trim line
+  const linePatch = eLine.trimKey === 'start' ? { start: linePoint } : { end: linePoint };
+  let ok1;
+  if (lineTgt.kind === 'line') {
+    ok1 = ctx.document.updateEntity(lineEnt.id, { ...lineEnt, ...linePatch });
+  } else if (lineTgt.kind === 'polyline') {
+    const isClosed = lineEnt.closed === true;
+    const out = isClosed
+      ? trimClosedPolylineBySegmentInsertPoint(lineEnt, lineTgt.startIndex, lineTgt.endIndex, linePoint)
+      : trimOpenPolylineBySegmentKeepKey(lineEnt, lineTgt.startIndex, lineTgt.endIndex, eLine.keepKey, linePoint);
+    ok1 = out ? ctx.document.updateEntity(lineEnt.id, { ...lineEnt, closed: isClosed, points: out }) : false;
+  } else {
+    ok1 = false;
+  }
+
+  // 7. Trim arc/circle
+  let ok2;
+  if (curveTgt.kind === 'arc') {
+    const trimmed = trimArcToPoint(curveEnt, chamferAngle, keepSide);
+    ok2 = ctx.document.updateEntity(curveEnt.id, trimmed);
+  } else {
+    // Circle → arc conversion
+    const pa = normalizeAngle(angleFrom({ x: curveTgt.cx, y: curveTgt.cy }, curvePick));
+    const trimmed = trimCircleToArc(curveEnt, chamferAngle, pa);
+    ok2 = ctx.document.updateEntity(curveEnt.id, trimmed);
+  }
+
+  if (!ok1 || !ok2) {
+    return { ok: false, changed: false, error_code: 'CHAMFER_FAILED', message: 'Chamfer: failed to trim entities' };
+  }
+
+  // 8. Create connector line
+  const connector = ctx.document.addEntity({
+    type: 'line',
+    layerId: lineTgt.layerId,
+    color: lineEnt.color,
+    visible: lineEnt.visible,
+    start: linePoint,
+    end: arcPoint,
+  });
+  if (!connector) {
+    return { ok: false, changed: false, error_code: 'CHAMFER_FAILED', message: 'Chamfer: failed to create connector' };
+  }
+
+  ctx.selection.setSelection([lineEnt.id, curveEnt.id, connector.id], connector.id);
+  return { ok: true, changed: true, message: 'Chamfer applied (line+arc/circle)' };
+}
+
 function runChamferSelectionByPick(ctx, payload) {
   const firstId = Number(payload?.firstId);
   const secondId = Number(payload?.secondId);
@@ -2312,8 +2535,19 @@ function runChamferSelectionByPick(ctx, payload) {
   if (!target1 || !target2) {
     return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: unsupported target type' };
   }
-  if (target1.kind === 'arc' || target2.kind === 'arc' || target1.kind === 'circle' || target2.kind === 'circle') {
-    return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: arc/circle entities are not supported' };
+  const hasCurve = target1.kind === 'arc' || target2.kind === 'arc' || target1.kind === 'circle' || target2.kind === 'circle';
+  if (hasCurve) {
+    const hasLine = target1.kind === 'line' || target2.kind === 'line'
+      || target1.kind === 'polyline' || target2.kind === 'polyline';
+    if (hasLine) {
+      const lineTgt = (target1.kind === 'line' || target1.kind === 'polyline') ? target1 : target2;
+      const curvTgt = (target1.kind === 'arc' || target1.kind === 'circle') ? target1 : target2;
+      const lPick = lineTgt === target1 ? pick1 : pick2;
+      const cPick = curvTgt === target1 ? pick1 : pick2;
+      return runChamferLineCurve(ctx, lineTgt, curvTgt, lPick, cPick, d1, d2);
+    }
+    // arc+arc, arc+circle, circle+circle not yet supported
+    return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: arc/circle + arc/circle is not yet supported' };
   }
   if (firstId === secondId
       && target1.kind === 'polyline'
