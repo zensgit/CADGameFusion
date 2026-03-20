@@ -850,6 +850,21 @@ function resolvePickSegmentRef(entity, pick) {
       cw: entity.cw === true,
     };
   }
+  if (entity.type === 'circle') {
+    const cx = entity.center?.x;
+    const cy = entity.center?.y;
+    const r = Number(entity.radius || 0);
+    if (!Number.isFinite(cx) || !Number.isFinite(cy) || r <= EPSILON) return null;
+    return {
+      kind: 'circle',
+      entity,
+      layerId: entity.layerId,
+      cx,
+      cy,
+      r,
+      pickAngle: angleFrom({ x: cx, y: cy }, pick),
+    };
+  }
   return null;
 }
 
@@ -1250,6 +1265,11 @@ function runFilletSelectionByPick(ctx, payload) {
       const name = layer2?.name || `L${target2.layerId}`;
       return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Fillet: layer ${name} is locked` };
     }
+  }
+
+  // --- Circle guard (recognized but not yet supported for fillet) ---
+  if (target1.kind === 'circle' || target2.kind === 'circle') {
+    return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: circle entities are not yet supported' };
   }
 
   // --- Line + Arc fillet dispatch ---
@@ -1656,8 +1676,8 @@ function runChamferSelectionByPick(ctx, payload) {
   if (!target1 || !target2) {
     return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: unsupported target type' };
   }
-  if (target1.kind === 'arc' || target2.kind === 'arc') {
-    return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: arc entities are not supported' };
+  if (target1.kind === 'arc' || target2.kind === 'arc' || target1.kind === 'circle' || target2.kind === 'circle') {
+    return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Chamfer: arc/circle entities are not supported' };
   }
   if (firstId === secondId
       && target1.kind === 'polyline'
