@@ -790,7 +790,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   await page.click('[data-tool=\"fillet\"]');
   const filletPromptSecond = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
-    return status.includes('click second line/polyline');
+    return status.includes('click second line/polyline') || status.includes('click second target');
   }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
   if (!filletPromptSecond) {
     throw new Error('Fillet preselection did not enter second-pick prompt');
@@ -1008,7 +1008,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   await page.click('[data-tool=\"fillet\"]');
   const filletCrossLayerPromptSecond = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
-    return status.includes('click second line/polyline');
+    return status.includes('click second line/polyline') || status.includes('click second target');
   }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
   if (!filletCrossLayerPromptSecond) {
     throw new Error('Fillet cross-layer preselection did not enter second-pick prompt');
@@ -1092,6 +1092,15 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!filletRuntimeClear?.ok) {
     throw new Error('Fillet runtime selection clear failed');
   }
+  const filletRuntimeSelectionCleared = await page.waitForFunction(() => {
+    const d = window.__cadDebug;
+    if (!d || typeof d.getSelectionIds !== 'function') return false;
+    const ids = d.getSelectionIds();
+    return Array.isArray(ids) && ids.length === 0;
+  }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
+  if (!filletRuntimeSelectionCleared) {
+    throw new Error('Fillet runtime selection clear did not empty selection');
+  }
   await page.fill('#cad-command-input', 'fillet 1');
   await page.click('[data-tool=\"fillet\"]');
   const filletRuntimePromptFirst = await page.waitForFunction(() => {
@@ -1136,11 +1145,20 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!chamferRuntimeClear?.ok) {
     throw new Error('Chamfer runtime selection clear failed');
   }
+  const chamferRuntimeSelectionCleared = await page.waitForFunction(() => {
+    const d = window.__cadDebug;
+    if (!d || typeof d.getSelectionIds !== 'function') return false;
+    const ids = d.getSelectionIds();
+    return Array.isArray(ids) && ids.length === 0;
+  }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
+  if (!chamferRuntimeSelectionCleared) {
+    throw new Error('Chamfer runtime selection clear did not empty selection');
+  }
   await page.fill('#cad-command-input', 'chamfer 1 1');
   await page.click('[data-tool=\"chamfer\"]');
   const chamferRuntimePromptFirst = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
-    return status.includes('click first line/polyline');
+    return status.includes('click first line/polyline') || status.includes('click first entity');
   }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
   if (!chamferRuntimePromptFirst) {
     throw new Error('Chamfer runtime selection setup did not enter first-pick prompt');
@@ -1187,7 +1205,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   await page.click('[data-tool=\"fillet\"]');
   const filletEscPromptSecondBeforeEsc = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
-    return status.includes('click second line/polyline');
+    return status.includes('click second line/polyline') || status.includes('click second target');
   }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
   if (!filletEscPromptSecondBeforeEsc) {
     throw new Error('Fillet Esc stale-preselection did not enter second-pick prompt');
@@ -1203,7 +1221,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   await page.mouse.click(filletEscPoints.second.x, filletEscPoints.second.y);
   const filletEscNoAutoApply = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
-    if (!status.includes('click second line/polyline')) return false;
+    if (!status.includes('click second line/polyline') && !status.includes('click second target')) return false;
     const debug = window.__cadDebug;
     if (!debug || typeof debug.listEntities !== 'function') return false;
     const entities = debug.listEntities();

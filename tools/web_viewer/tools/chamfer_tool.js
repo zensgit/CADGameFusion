@@ -3,6 +3,7 @@ export function createChamferTool(ctx) {
   let stage = 'pickFirst'; // pickFirst | pickSecond
   let firstId = null;
   let firstPick = null;
+  let firstPickFromFallback = false;
   let d1 = 1.0;
   let d2 = 1.0;
   let activationSelectedId = null;
@@ -25,7 +26,7 @@ export function createChamferTool(ctx) {
     stage = nextStage;
     const msg = `Chamfer: d1=${d1.toFixed(2)} d2=${d2.toFixed(2)}.`;
     if (stage === 'pickFirst') {
-      ctx.setStatus(`${msg} Click first line/polyline (Esc to cancel)`);
+      ctx.setStatus(`${msg} Click first line/polyline/arc/circle (Esc to cancel)`);
       return;
     }
     if (activationSelectedPair) {
@@ -40,13 +41,14 @@ export function createChamferTool(ctx) {
       ctx.setStatus(`${msg} Click near second side on selected polyline (Esc to cancel)`);
       return;
     }
-    ctx.setStatus(`${msg} Click second line/polyline (Esc to cancel)`);
+    ctx.setStatus(`${msg} Click second line/polyline/arc/circle (Esc to cancel)`);
   }
 
   function reset() {
     stage = 'pickFirst';
     firstId = null;
     firstPick = null;
+    firstPickFromFallback = false;
     activationSelectedPair = null;
     activationSelectedType = null;
     syncDistancesFromCommandInput();
@@ -59,6 +61,8 @@ export function createChamferTool(ctx) {
     if (!entity) return null;
     if (entity.type === 'line') return entity;
     if (entity.type === 'polyline') return entity;
+    if (entity.type === 'arc') return entity;
+    if (entity.type === 'circle') return entity;
     return null;
   }
 
@@ -142,6 +146,28 @@ export function createChamferTool(ctx) {
       if (best) return best;
       return projectPointToSegment(null, entity.points[0], entity.points[1]) || { x: 0, y: 0 };
     }
+    if (entity.type === 'arc' || entity.type === 'circle') {
+      const cx = Number(entity.center?.x);
+      const cy = Number(entity.center?.y);
+      const r = Number(entity.radius);
+      if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(r) || r <= 0) {
+        return { x: Number(referencePoint?.x) || 0, y: Number(referencePoint?.y) || 0 };
+      }
+      const px = Number(referencePoint?.x);
+      const py = Number(referencePoint?.y);
+      if (!Number.isFinite(px) || !Number.isFinite(py)) {
+        const sa = Number(entity.startAngle) || 0;
+        return { x: cx + r * Math.cos(sa), y: cy + r * Math.sin(sa) };
+      }
+      const dx = px - cx;
+      const dy = py - cy;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 1e-12) {
+        const sa = Number(entity.startAngle) || 0;
+        return { x: cx + r * Math.cos(sa), y: cy + r * Math.sin(sa) };
+      }
+      return { x: cx + (dx / dist) * r, y: cy + (dy / dist) * r };
+    }
     return { x: Number(referencePoint?.x) || 0, y: Number(referencePoint?.y) || 0 };
   }
 
@@ -178,6 +204,7 @@ export function createChamferTool(ctx) {
         stage = 'pickSecond';
         firstId = activationSelectedPair.firstId;
         firstPick = null;
+        firstPickFromFallback = false;
         setStage(stage);
         return;
       }
@@ -185,6 +212,7 @@ export function createChamferTool(ctx) {
         stage = 'pickSecond';
         firstId = activationSelectedId;
         firstPick = null;
+        firstPickFromFallback = false;
         setStage(stage);
         return;
       }
@@ -212,7 +240,7 @@ export function createChamferTool(ctx) {
         }
         const secondEntity = getTargetEntity(secondId);
         if (!secondEntity) {
-          ctx.setStatus('Chamfer: only line/polyline is supported');
+          ctx.setStatus('Chamfer: only line/polyline/arc/circle is supported');
           return;
         }
         if (secondId === firstId && firstEntity.type !== 'polyline') {
@@ -242,12 +270,12 @@ export function createChamferTool(ctx) {
       if (stage === 'pickFirst') {
         const hit = resolvePickTarget(event.world, true);
         if (!hit) {
-          ctx.setStatus('Chamfer: pick a line/polyline');
+          ctx.setStatus('Chamfer: pick a line/polyline/arc/circle');
           return;
         }
         const target = getTargetEntity(hit.id);
         if (!target) {
-          ctx.setStatus('Chamfer: only line/polyline is supported');
+          ctx.setStatus('Chamfer: only line/polyline/arc/circle is supported');
           return;
         }
         const preselectedId = getSingleSelectedTargetId();
@@ -306,13 +334,18 @@ export function createChamferTool(ctx) {
       }
       const hit = resolvePickTarget(event.world, true);
       if (!hit) {
-        ctx.setStatus(`Chamfer: d1=${d1.toFixed(2)} d2=${d2.toFixed(2)}. Click second line/polyline (Esc to cancel)`);
+        ctx.setStatus(`Chamfer: d1=${d1.toFixed(2)} d2=${d2.toFixed(2)}. Click second line/polyline/arc/circle (Esc to cancel)`);
         return;
       }
       if (hit.id === firstId
           && hit.fromSelection
           && firstEntity.type === 'polyline'
           && firstPick) {
+        const polylineCornerPointCount = Array.isArray(firstEntity.points) ? firstEntity.points.length : 0;
+        if (firstPickFromFallback && polylineCornerPointCount < 3) {
+          setStage('pickSecond');
+          return;
+        }
         // Same as fillet: for polyline same-entity corner edits, a fallback selection hit
         // can still execute using the current pointer as second-side pick.
         executeSecondPick(hit.id, { x: event.world.x, y: event.world.y });
@@ -320,14 +353,19 @@ export function createChamferTool(ctx) {
       }
       if (hit.id === firstId && (hit.fromSelection || firstEntity.type === 'line' || !firstPick)) {
         // Keep second-pick stage active; only update first-side pick on real hit, never on selection fallback.
-        if (!hit.fromSelection) {
+        if (firstEntity.type === 'polyline' && !firstPick && hit.fromSelection) {
           firstPick = { x: event.world.x, y: event.world.y };
+          firstPickFromFallback = true;
+        } else if (!hit.fromSelection) {
+          firstPick = { x: event.world.x, y: event.world.y };
+          firstPickFromFallback = false;
         }
         setStage('pickSecond');
         return;
       }
       if (!firstPick) {
         firstPick = resolveEntityPickPoint(firstEntity, event.world) || { x: event.world.x, y: event.world.y };
+        firstPickFromFallback = false;
       }
       executeSecondPick(hit.id, { x: event.world.x, y: event.world.y });
     },
