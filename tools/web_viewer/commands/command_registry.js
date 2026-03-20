@@ -1713,6 +1713,116 @@ function runFilletPolylineArc(ctx, polyTgt, arcTgt, polyPick, radius) {
   return { ok: true, changed: true, message: 'Fillet applied (polyline+arc)' };
 }
 
+function runFilletPolylineCircle(ctx, polyTgt, circleTgt, polyPick, circlePick, radius) {
+  const polyEnt = polyTgt.entity;
+  const circleEnt = circleTgt.entity;
+  const cx = circleTgt.cx;
+  const cy = circleTgt.cy;
+  const circleR = circleTgt.r;
+  const lineStart = polyTgt.segStart;
+  const lineEnd = polyTgt.segEnd;
+
+  const lineDir = subtract(lineEnd, lineStart);
+  const lineUnit = normalizeVector(lineDir);
+  if (!lineUnit) {
+    return { ok: false, changed: false, error_code: 'INVALID_GEOMETRY', message: 'Fillet: degenerate polyline segment' };
+  }
+  const lineNorm = perpendicular(lineUnit);
+  const toCenter = subtract({ x: cx, y: cy }, lineStart);
+  const signedDist = dot(toCenter, lineNorm);
+  const lineSign = signedDist >= 0 ? 1 : -1;
+
+  const candidates = [];
+  for (const circleSign of [-1, 1]) {
+    const offsetR = circleR + circleSign * radius;
+    if (offsetR < EPSILON) continue;
+
+    const offsetLineOrigin = add(lineStart, scale(lineNorm, lineSign * radius));
+    const offsetLineEnd = add(lineEnd, scale(lineNorm, lineSign * radius));
+    const hits = lineArcIntersection(offsetLineOrigin, offsetLineEnd, cx, cy, offsetR);
+
+    for (const hit of hits) {
+      const fc = { x: hit.x, y: hit.y };
+      const toFc = subtract(fc, lineStart);
+      const tLine = dot(toFc, lineUnit);
+      const tangentOnLine = add(lineStart, scale(lineUnit, tLine));
+
+      const fcToCenter = subtract({ x: cx, y: cy }, fc);
+      const fcToCenterUnit = normalizeVector(fcToCenter);
+      if (!fcToCenterUnit) continue;
+      const tangentOnCircle = circleSign > 0
+        ? add(fc, scale(fcToCenterUnit, radius))
+        : subtract(fc, scale(fcToCenterUnit, radius));
+
+      // No sweep check — every angle on a circle is valid
+
+      if (tLine < -EPSILON || tLine > Math.sqrt(dot(lineDir, lineDir)) + EPSILON) continue;
+
+      const tangentAngle = normalizeAngle(angleFrom({ x: cx, y: cy }, tangentOnCircle));
+      const score = distanceSq(polyPick, tangentOnLine) + distanceSq(circlePick, tangentOnCircle);
+      candidates.push({ fc, tangentOnLine, tangentOnCircle, tangentAngle, score });
+    }
+  }
+
+  if (candidates.length === 0) {
+    return { ok: false, changed: false, error_code: 'NO_INTERSECTION', message: 'Fillet: no valid fillet geometry for polyline+circle' };
+  }
+  candidates.sort((a, b) => a.score - b.score);
+  const best = candidates[0];
+
+  const layer1 = ctx.document.getLayer(polyTgt.layerId);
+  if (layer1?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  }
+  const layer2 = ctx.document.getLayer(circleTgt.layerId);
+  if (layer2?.locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Fillet: layer is locked' };
+  }
+
+  // Trim polyline
+  const dToStart = distanceSq(polyPick, lineStart);
+  const dToEnd = distanceSq(polyPick, lineEnd);
+  const keepKey = dToStart < dToEnd ? 'start' : 'end';
+  const isClosed = polyEnt.closed === true;
+  const polyPoints = isClosed
+    ? trimClosedPolylineBySegmentInsertPoint(polyEnt, polyTgt.startIndex, polyTgt.endIndex, best.tangentOnLine)
+    : trimOpenPolylineBySegmentKeepKey(polyEnt, polyTgt.startIndex, polyTgt.endIndex, keepKey, best.tangentOnLine);
+  if (!polyPoints) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: unsupported polyline trim' };
+  }
+
+  const ok1 = ctx.document.updateEntity(polyEnt.id, { ...polyEnt, closed: isClosed, points: polyPoints });
+
+  // Trim circle → arc
+  const trimmedCircle = trimCircleToArc(circleEnt, best.tangentAngle, circleTgt.pickAngle);
+  const ok2 = ctx.document.updateEntity(circleEnt.id, trimmedCircle);
+
+  if (!ok1 || !ok2) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: failed to trim entities' };
+  }
+
+  const filletStartAngle = angleFrom(best.fc, best.tangentOnLine);
+  const filletEndAngle = angleFrom(best.fc, best.tangentOnCircle);
+  const filletCw = resolveArcDirection(filletStartAngle, filletEndAngle);
+  const filletArc = ctx.document.addEntity({
+    type: 'arc',
+    layerId: polyEnt.layerId,
+    color: polyEnt.color,
+    visible: polyEnt.visible,
+    center: best.fc,
+    radius,
+    startAngle: filletStartAngle,
+    endAngle: filletEndAngle,
+    cw: filletCw,
+  });
+  if (!filletArc) {
+    return { ok: false, changed: false, error_code: 'FILLET_FAILED', message: 'Fillet: failed to create fillet arc' };
+  }
+
+  ctx.selection.setSelection([polyEnt.id, circleEnt.id, filletArc.id], filletArc.id);
+  return { ok: true, changed: true, message: 'Fillet applied (polyline+circle)' };
+}
+
 function runFilletSelectionByPick(ctx, payload) {
   const firstId = Number(payload?.firstId);
   const secondId = Number(payload?.secondId);
@@ -1785,7 +1895,11 @@ function runFilletSelectionByPick(ctx, payload) {
       return runFilletCircleCircle(ctx, target1, target2, pick1, pick2, radius);
     }
     if (target1.kind === 'polyline' || target2.kind === 'polyline') {
-      return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: circle+polyline is not yet supported' };
+      const polyTgt = target1.kind === 'polyline' ? target1 : target2;
+      const cirT = target1.kind === 'circle' ? target1 : target2;
+      const pPick = polyTgt === target1 ? pick1 : pick2;
+      const cPick = cirT === target1 ? pick1 : pick2;
+      return runFilletPolylineCircle(ctx, polyTgt, cirT, pPick, cPick, radius);
     }
     return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: unsupported entity combination' };
   }
