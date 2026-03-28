@@ -1304,6 +1304,8 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
       syncCurrentLayer({ preferredId: null, preferPopulated: true });
       syncCurrentSpaceContext({ preferred: documentState.getCurrentSpaceContext() });
       cadgfBaseDocument = imported.baseCadgfJson;
+      // Auto-enable dark mode for DXF/DWG imports (white entities on white bg are invisible)
+      if (canvasView) canvasView.darkMode = true;
       if (fitView) {
         fitViewToDocument({ documentState, viewState, canvas });
       }

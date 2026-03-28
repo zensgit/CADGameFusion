@@ -1,4 +1,5 @@
 import { normalizeAngle } from '../tools/geometry.js';
+import { resolveCanvasStrokeStyle, resolveEffectiveEntityColor } from '../line_style.js';
 
 function drawGrid(ctx, width, height, viewState, stepWorld) {
   const stepScreen = stepWorld * viewState.zoom;
@@ -72,15 +73,18 @@ function arcMidAngle(entity) {
   return normalizeAngle(start - delta * 0.5);
 }
 
-function drawEntity(ctx, viewState, entity, selected = false, layer = null) {
+function drawEntity(ctx, viewState, entity, selected = false, layer = null, options = {}) {
   if (!entity || entity.visible === false) return;
   if (layer && layer.visible === false) return;
 
-  const color = entity.color || layer?.color || '#1f2937';
+  const color = resolveEffectiveEntityColor(entity, layer);
+  const stroke = resolveCanvasStrokeStyle(entity, viewState.zoom, { selected, layer });
+  const lineDash = options.forceSolidStroke ? [] : stroke.lineDash;
   ctx.save();
   ctx.strokeStyle = selected ? '#fb923c' : color;
   ctx.fillStyle = selected ? '#ea580c' : color;
-  ctx.lineWidth = selected ? 2.2 : 1.5;
+  ctx.lineWidth = stroke.lineWidth;
+  ctx.setLineDash(lineDash);
 
   if (entity.type === 'line') {
     const p0 = viewState.worldToScreen(entity.start);
@@ -132,6 +136,7 @@ function drawEntity(ctx, viewState, entity, selected = false, layer = null) {
   }
 
   if (selected) {
+    ctx.setLineDash([]);
     ctx.globalAlpha = 0.9;
     if (entity.type === 'line') {
       const p0 = viewState.worldToScreen(entity.start);
@@ -387,6 +392,168 @@ function drawOverlay(ctx, viewState, overlays, documentState) {
     ctx.restore();
   }
 
+  const scalePreview = overlays.scalePreview;
+  if (scalePreview) {
+    const center = viewState.worldToScreen(scalePreview.center);
+    const from = viewState.worldToScreen(scalePreview.from);
+    const to = viewState.worldToScreen(scalePreview.to);
+    const fromRadius = Math.hypot(from.x - center.x, from.y - center.y);
+    const toRadius = Math.hypot(to.x - center.x, to.y - center.y);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(234, 88, 12, 0.9)';
+    ctx.setLineDash([8, 4]);
+    ctx.beginPath();
+    ctx.moveTo(center.x, center.y);
+    ctx.lineTo(from.x, from.y);
+    ctx.moveTo(center.x, center.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, Math.max(2, fromRadius), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(center.x, center.y, Math.max(2, toRadius), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  const insertGroupFrame = overlays.insertGroupFrame;
+  if (insertGroupFrame) {
+    const min = viewState.worldToScreen({ x: insertGroupFrame.minX, y: insertGroupFrame.minY });
+    const max = viewState.worldToScreen({ x: insertGroupFrame.maxX, y: insertGroupFrame.maxY });
+    const center = viewState.worldToScreen(insertGroupFrame.center);
+    const x = Math.min(min.x, max.x);
+    const y = Math.min(min.y, max.y);
+    const width = Math.abs(max.x - min.x);
+    const height = Math.abs(max.y - min.y);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(14, 116, 144, 0.95)';
+    ctx.fillStyle = 'rgba(14, 116, 144, 0.08)';
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([10, 4]);
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeRect(x, y, width, height);
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(center.x - 8, center.y);
+    ctx.lineTo(center.x + 8, center.y);
+    ctx.moveTo(center.x, center.y - 8);
+    ctx.lineTo(center.x, center.y + 8);
+    ctx.stroke();
+    ctx.font = '11px "IBM Plex Mono", monospace';
+    ctx.textBaseline = 'bottom';
+    const label = insertGroupFrame.blockName
+      ? `INSERT ${insertGroupFrame.blockName}`
+      : (Number.isFinite(insertGroupFrame.groupId) ? `INSERT ${insertGroupFrame.groupId}` : 'INSERT');
+    ctx.fillText(label, x + 6, y - 6);
+    ctx.restore();
+  }
+
+  const sourceGroupFrame = overlays.sourceGroupFrame;
+  if (sourceGroupFrame) {
+    const min = viewState.worldToScreen({ x: sourceGroupFrame.minX, y: sourceGroupFrame.minY });
+    const max = viewState.worldToScreen({ x: sourceGroupFrame.maxX, y: sourceGroupFrame.maxY });
+    const center = viewState.worldToScreen(sourceGroupFrame.center);
+    const x = Math.min(min.x, max.x);
+    const y = Math.min(min.y, max.y);
+    const width = Math.abs(max.x - min.x);
+    const height = Math.abs(max.y - min.y);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(217, 119, 6, 0.95)';
+    ctx.fillStyle = 'rgba(217, 119, 6, 0.08)';
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([8, 4]);
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeRect(x, y, width, height);
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(center.x - 7, center.y);
+    ctx.lineTo(center.x + 7, center.y);
+    ctx.moveTo(center.x, center.y - 7);
+    ctx.lineTo(center.x, center.y + 7);
+    ctx.stroke();
+    ctx.font = '11px "IBM Plex Mono", monospace';
+    ctx.textBaseline = 'bottom';
+    const sourceType = String(sourceGroupFrame.sourceType || '').trim().toUpperCase();
+    const label = sourceType
+      ? `${sourceType}${Number.isFinite(sourceGroupFrame.groupId) ? ` ${sourceGroupFrame.groupId}` : ''}`
+      : (Number.isFinite(sourceGroupFrame.groupId) ? `GROUP ${sourceGroupFrame.groupId}` : 'GROUP');
+    ctx.fillText(label, x + 6, y - 6);
+    ctx.restore();
+  }
+
+  const sourceTextGuide = overlays.sourceTextGuide;
+  if (sourceTextGuide?.anchor && sourceTextGuide?.sourcePoint && sourceTextGuide?.currentPoint) {
+    const anchor = viewState.worldToScreen(sourceTextGuide.anchor);
+    const source = viewState.worldToScreen(sourceTextGuide.sourcePoint);
+    const current = viewState.worldToScreen(sourceTextGuide.currentPoint);
+    const elbow = sourceTextGuide.elbowPoint ? viewState.worldToScreen(sourceTextGuide.elbowPoint) : null;
+    const sourceType = String(sourceTextGuide.sourceType || '').trim().toUpperCase();
+    const moved = Math.hypot(current.x - source.x, current.y - source.y) > 1.5;
+    ctx.save();
+    if (sourceType === 'LEADER' && elbow) {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.9)';
+      ctx.setLineDash([10, 4]);
+      ctx.beginPath();
+      ctx.moveTo(elbow.x, elbow.y);
+      ctx.lineTo(anchor.x, anchor.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.2)';
+      ctx.beginPath();
+      ctx.arc(elbow.x, elbow.y, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = 'rgba(14, 165, 233, 0.9)';
+    ctx.fillStyle = 'rgba(14, 165, 233, 0.18)';
+    ctx.beginPath();
+    ctx.arc(anchor.x, anchor.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(anchor.x - 9, anchor.y);
+    ctx.lineTo(anchor.x + 9, anchor.y);
+    ctx.moveTo(anchor.x, anchor.y - 9);
+    ctx.lineTo(anchor.x, anchor.y + 9);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(217, 119, 6, 0.9)';
+    ctx.setLineDash([7, 4]);
+    ctx.beginPath();
+    ctx.moveTo(anchor.x, anchor.y);
+    ctx.lineTo(source.x, source.y);
+    ctx.stroke();
+
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(217, 119, 6, 0.22)';
+    ctx.beginPath();
+    ctx.arc(source.x, source.y, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (moved) {
+      ctx.strokeStyle = 'rgba(234, 88, 12, 0.95)';
+      ctx.beginPath();
+      ctx.moveTo(anchor.x, anchor.y);
+      ctx.lineTo(current.x, current.y);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(234, 88, 12, 0.28)';
+      ctx.beginPath();
+      ctx.arc(current.x, current.y, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+    ctx.font = '11px "IBM Plex Mono", monospace';
+    ctx.textBaseline = 'bottom';
+    const label = sourceType === 'LEADER'
+      ? 'LEADER landing'
+      : (sourceType ? `${sourceType} anchor` : 'Source anchor');
+    ctx.fillText(label, anchor.x + 8, anchor.y - 8);
+    ctx.restore();
+  }
+
   const hint = overlays.constraintHint;
   if (hint) {
     const ids = Array.isArray(hint.boundaryIds)
@@ -399,7 +566,7 @@ function drawOverlay(ctx, viewState, overlays, documentState) {
         ctx.save();
         ctx.strokeStyle = hint.mode === 'extend' ? 'rgba(5, 150, 105, 0.9)' : 'rgba(245, 158, 11, 0.9)';
         ctx.lineWidth = 2.4;
-        drawEntity(ctx, viewState, entity, false, { visible: true, color: ctx.strokeStyle });
+        drawEntity(ctx, viewState, entity, false, { visible: true, color: ctx.strokeStyle }, { forceSolidStroke: true });
         ctx.restore();
       }
     }
@@ -476,6 +643,7 @@ export class CanvasView {
     this.activeTool = null;
     this.overlays = {};
     this.cursorWorld = { x: 0, y: 0 };
+    this.darkMode = false;
     this.cursorListeners = [];
     this.renderPending = false;
 
@@ -648,11 +816,16 @@ export class CanvasView {
     const height = rect.height;
     this.ctx.clearRect(0, 0, width, height);
 
-    const gradient = this.ctx.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, '#f7faff');
-    gradient.addColorStop(1, '#edf2fb');
-    this.ctx.fillStyle = gradient;
-    this.ctx.fillRect(0, 0, width, height);
+    if (this.darkMode) {
+      this.ctx.fillStyle = '#1e1e2e';
+      this.ctx.fillRect(0, 0, width, height);
+    } else {
+      const gradient = this.ctx.createLinearGradient(0, 0, 0, height);
+      gradient.addColorStop(0, '#f7faff');
+      gradient.addColorStop(1, '#edf2fb');
+      this.ctx.fillStyle = gradient;
+      this.ctx.fillRect(0, 0, width, height);
+    }
 
     const snapOptions = this.snap.toJSON();
     if (snapOptions.grid || this.viewport.showGrid) {
@@ -663,6 +836,7 @@ export class CanvasView {
     const layers = new Map(this.document.listLayers().map((layer) => [layer.id, layer]));
 
     for (const entity of this.document.listEntities()) {
+      if (!this.document.isEntityRenderable(entity)) continue;
       drawEntity(this.ctx, this.viewport, entity, selectedIds.has(entity.id), layers.get(entity.layerId));
     }
 
