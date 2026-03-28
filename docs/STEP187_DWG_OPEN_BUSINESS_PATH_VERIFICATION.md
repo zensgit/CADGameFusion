@@ -1292,4 +1292,19 @@ ok_rate=40/44 (91%)
 ### Current Conclusion
 - Step187 DWG open matrix improved from 0% to 91% coverage after TinyGLTF build fix
 - Import statistics are now present in all 40 successful manifests
-- 4 remaining failures are DXF parse-level issues (likely 3D entities or unusual AutoCAD features), not glTF pipeline issues
+
+### 2026-03-28 Re-verification: 44/44 (100%)
+The 4 "failed" cases were re-tested without batch timeout and ALL succeeded:
+```
+tank_section_alt_v1:  gltf=yes (11806 entities, 4.5MB DXF)
+tank_section_alt_v2:  gltf=yes (11916 entities, 4.5MB DXF)
+carrier_wheel_v1:     gltf=yes (4229 entities, 1.5MB DXF)
+carrier_wheel_v2:     gltf=yes (4229 entities, 1.5MB DXF)
+```
+
+**Root cause**: Batch script used 60s timeout; large DXF files (4.5MB, 11K+ entities) need ~120s.
+
+**True DWG matrix result: 44/44 (100%)**
+
+Before FreeCAD plan: 0/44 ok (all partial, no glTF)
+After FreeCAD plan: 44/44 ok (100%, all with mesh.gltf + mesh.bin + import_stats)
