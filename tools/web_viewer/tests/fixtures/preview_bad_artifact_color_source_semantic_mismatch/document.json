@@ -1,0 +1,26 @@
+{
+  "entities": [
+    {
+      "id": 1,
+      "space": 0,
+      "color_source": "INDEX",
+      "color": 255
+    },
+    {
+      "id": 2,
+      "space": 0,
+      "color_source": "BROKEN",
+      "color": 65280
+    },
+    {
+      "id": 3,
+      "space": 0,
+      "color_source": "TRUECOLOR"
+    }
+  ],
+  "metadata": {
+    "meta": {
+      "dxf.default_space": 0
+    }
+  }
+}

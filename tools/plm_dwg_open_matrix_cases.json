@@ -1,0 +1,180 @@
+{
+  "cases": [
+    {
+      "id": "layout_blank",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/ACAD-布局空白_布局1.dwg"
+    },
+    {
+      "id": "btj_protection_cover",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ02230301120-03保护罩组件v1.dwg"
+    },
+    {
+      "id": "btj_protection_cover_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ02230301120-03保护罩组件v2.dwg"
+    },
+    {
+      "id": "rotator_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225001-09-04旋转组件v1.dwg"
+    },
+    {
+      "id": "rotator_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225001-09-04旋转组件v2.dwg"
+    },
+    {
+      "id": "separator_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01230901522-00汽水分离器v1.dwg"
+    },
+    {
+      "id": "separator_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01230901522-00汽水分离器v2.dwg"
+    },
+    {
+      "id": "torsion_spring_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01239601522-03扭转弹簧v1.dwg"
+    },
+    {
+      "id": "ultrasonic_flange_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/LTJ012303106-0001超声波法兰v1.dwg"
+    },
+    {
+      "id": "bearing_seat_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J3025001-12轴承座v1.dwg"
+    },
+    {
+      "id": "torsion_spring_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01239601522-03扭转弹簧v2.dwg"
+    },
+    {
+      "id": "ultrasonic_flange_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/LTJ012303106-0001超声波法兰v2.dwg"
+    },
+    {
+      "id": "bearing_seat_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J3025001-12轴承座v2.dwg"
+    },
+    {
+      "id": "torsion_spring_v3",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01239601522-03扭转弹簧v3.dwg"
+    },
+    {
+      "id": "rotor_flange_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0224025-06-01-03出料凸缘v1.dwg"
+    },
+    {
+      "id": "rotor_flange_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0224025-06-01-03出料凸缘v2.dwg"
+    },
+    {
+      "id": "lower_seal_plate_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225004-04-05下封板v1.dwg"
+    },
+    {
+      "id": "lower_seal_plate_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225004-04-05下封板v2.dwg"
+    },
+    {
+      "id": "auto_feed_device_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01231101522-00自动进料装置v1.dwg"
+    },
+    {
+      "id": "auto_feed_device_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01231101522-00自动进料装置v2.dwg"
+    },
+    {
+      "id": "mixing_shaft_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225004-08搅拌轴组件v1.dwg"
+    },
+    {
+      "id": "mixing_shaft_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225004-08搅拌轴组件v2.dwg"
+    },
+    {
+      "id": "tank_section_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225034-05罐体部分v1.dwg"
+    },
+    {
+      "id": "tank_section_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225034-05罐体部分v2.dwg"
+    },
+    {
+      "id": "side_pusher_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225048-02-07侧推料组件v1.dwg"
+    },
+    {
+      "id": "side_pusher_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225048-02-07侧推料组件v2.dwg"
+    },
+    {
+      "id": "agitator_assembly_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0724006-02搅拌器组件v1.dwg"
+    },
+    {
+      "id": "agitator_assembly_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0724006-02搅拌器组件v2.dwg"
+    },
+    {
+      "id": "lower_cone_assembly_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0724006-01下锥体组件v1.dwg"
+    },
+    {
+      "id": "lower_cone_assembly_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0724006-01下锥体组件v2.dwg"
+    },
+    {
+      "id": "upper_head_assembly_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0724006-05上封头组件v1.dwg"
+    },
+    {
+      "id": "upper_head_assembly_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0724006-05上封头组件v2.dwg"
+    },
+    {
+      "id": "hydraulic_lid_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0224014-09液压开盖组件v1.dwg"
+    },
+    {
+      "id": "hydraulic_lid_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0224014-09液压开盖组件v2.dwg"
+    },
+    {
+      "id": "handwheel_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ02230101102-12手轮组件v1.dwg"
+    },
+    {
+      "id": "handwheel_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ02230101102-12手轮组件v2.dwg"
+    },
+    {
+      "id": "tank_section_alt_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225047-04罐体部分v1.dwg"
+    },
+    {
+      "id": "tank_section_alt_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0225047-04罐体部分v2.dwg"
+    },
+    {
+      "id": "vacuum_assembly_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0224036-12真空组件v1.dwg"
+    },
+    {
+      "id": "vacuum_assembly_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/J0224036-12真空组件v2.dwg"
+    },
+    {
+      "id": "trailer_dn1500_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01231201522-00拖车DN1500v1.dwg"
+    },
+    {
+      "id": "trailer_dn1500_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01231201522-00拖车DN1500v2.dwg"
+    },
+    {
+      "id": "carrier_wheel_v1",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01239901522-00拖轮组件v1.dwg"
+    },
+    {
+      "id": "carrier_wheel_v2",
+      "input_dwg": "/Users/huazhou/Downloads/训练图纸/训练图纸/BTJ01239901522-00拖轮组件v2.dwg"
+    }
+  ]
+}

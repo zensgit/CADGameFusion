@@ -1,0 +1,14 @@
+{
+  "schema_version": "1",
+  "cadgf_version": "1.0.0",
+  "document_schema_version": 1,
+  "artifacts": {
+    "document_json": "../../../../build/step186_origin_hatch/document.json",
+    "mesh_metadata": "preview_bad_mesh_metadata_invalid.json"
+  },
+  "outputs": [
+    "json",
+    "meta"
+  ],
+  "status": "ok"
+}

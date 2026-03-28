@@ -6,6 +6,10 @@
   "additionalProperties": false,
   "required": ["header", "project", "scene", "featureTree", "resources"],
   "$defs": {
+    "varRef": {
+      "type": "string",
+      "pattern": "^[^.]+\\.[^.]+$"
+    },
     "point": {
       "type": "object",
       "additionalProperties": false,
@@ -92,7 +96,7 @@
       "properties": {
         "id": {"type": "string"},
         "type": {"type": "string"},
-        "refs": {"type": "array", "items": {"type": "string"}}
+        "refs": {"type": "array", "items": {"$ref": "#/$defs/varRef"}}
       }
     },
     "c_no_value": {
@@ -169,11 +173,31 @@
             "oneOf": [
               {"allOf": [
                 {"$ref": "#/$defs/c_no_value"},
-                {"properties": {"type": {"enum": ["horizontal", "vertical", "parallel", "perpendicular", "equal", "concentric", "coincident"]}}}
+                {"properties": {
+                  "type": {"enum": ["horizontal", "vertical", "equal", "concentric", "coincident"]},
+                  "refs": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/varRef"}}
+                }}
+              ]},
+              {"allOf": [
+                {"$ref": "#/$defs/c_no_value"},
+                {"properties": {
+                  "type": {"enum": ["parallel", "perpendicular"]},
+                  "refs": {"type": "array", "minItems": 8, "maxItems": 8, "items": {"$ref": "#/$defs/varRef"}}
+                }}
               ]},
               {"allOf": [
                 {"$ref": "#/$defs/c_value_num"},
-                {"properties": {"type": {"enum": ["distance", "angle"]}}}
+                {"properties": {
+                  "type": {"const": "distance"},
+                  "refs": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/varRef"}}
+                }}
+              ]},
+              {"allOf": [
+                {"$ref": "#/$defs/c_value_num"},
+                {"properties": {
+                  "type": {"const": "angle"},
+                  "refs": {"type": "array", "minItems": 8, "maxItems": 8, "items": {"$ref": "#/$defs/varRef"}}
+                }}
               ]}
             ]
           }

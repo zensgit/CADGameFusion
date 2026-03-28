@@ -82,6 +82,9 @@ int main(int argc, char** argv) {
 
     snap.setSnapEndpoints(false);
     snap.setSnapMidpoints(true);
+    snap.setSnapCenters(false);
+    snap.setSnapIntersections(false);
+    snap.setOrthoEnabled(true);
     snap.setSnapGrid(true);
     snap.setSnapRadiusPixels(18.0);
     snap.setGridPixelSpacing(40.0);
@@ -156,6 +159,9 @@ int main(int argc, char** argv) {
 
     assert(!snap2.snapEndpoints());
     assert(snap2.snapMidpoints());
+    assert(!snap2.snapCenters());
+    assert(!snap2.snapIntersections());
+    assert(snap2.orthoEnabled());
     assert(snap2.snapGrid());
     assert(std::abs(snap2.snapRadiusPixels() - 18.0) < 1e-6);
     assert(std::abs(snap2.gridPixelSpacing() - 40.0) < 1e-6);

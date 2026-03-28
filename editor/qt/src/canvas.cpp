@@ -246,12 +246,16 @@ SnapManager::SnapResult CanvasWidget::computeSnapAt(const QPointF& worldPos, boo
     if (snap_settings_) {
         snap_manager_.setSnapEndpoints(snap_settings_->snapEndpoints());
         snap_manager_.setSnapMidpoints(snap_settings_->snapMidpoints());
+        snap_manager_.setSnapCenters(snap_settings_->snapCenters());
+        snap_manager_.setSnapIntersections(snap_settings_->snapIntersections());
         snap_manager_.setSnapGrid(snap_settings_->snapGrid());
         snap_manager_.setSnapRadiusPixels(snap_settings_->snapRadiusPixels());
         snap_manager_.setGridPixelSpacing(snap_settings_->gridPixelSpacing());
     } else {
         snap_manager_.setSnapEndpoints(true);
         snap_manager_.setSnapMidpoints(true);
+        snap_manager_.setSnapCenters(true);
+        snap_manager_.setSnapIntersections(true);
         snap_manager_.setSnapGrid(false);
         snap_manager_.setSnapRadiusPixels(12.0);
         snap_manager_.setGridPixelSpacing(50.0);
@@ -273,12 +277,21 @@ SnapManager::SnapResult CanvasWidget::computeSnapAt(const QPointF& worldPos, boo
 }
 
 QPointF CanvasWidget::moveTargetWorldWithSnap(const QPointF& mouseWorld, SnapManager::SnapResult* outSnap) {
+    QPointF queryWorld = mouseWorld;
+    if (snap_settings_ && snap_settings_->orthoEnabled()) {
+        const QPointF ref = move_start_world_;
+        const double dx = std::abs(mouseWorld.x() - ref.x());
+        const double dy = std::abs(mouseWorld.y() - ref.y());
+        if (dx >= dy) queryWorld.setY(ref.y());
+        else queryWorld.setX(ref.x());
+    }
+
     const double snapPx = snap_settings_ ? snap_settings_->snapRadiusPixels() : 12.0;
     const double scale = (scale_ <= 0.0) ? 1.0 : scale_;
     const double releaseWorld = (snapPx * 1.5) / scale;
     const double releaseWorldSq = releaseWorld * releaseWorld;
 
-    SnapManager::SnapResult res = computeSnapAt(mouseWorld, true);
+    SnapManager::SnapResult res = computeSnapAt(queryWorld, true);
 
     if (move_snap_locked_) {
         const double dx = mouseWorld.x() - move_snap_locked_pos_.x();

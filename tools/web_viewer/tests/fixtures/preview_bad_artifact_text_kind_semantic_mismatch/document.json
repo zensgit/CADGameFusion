@@ -1,0 +1,23 @@
+{
+  "entities": [
+    {
+      "id": 1,
+      "space": 0,
+      "text_kind": "broken"
+    },
+    {
+      "id": 2,
+      "space": 0,
+      "text_kind": "dimension",
+      "edit_mode": "proxy",
+      "proxy_kind": "dimension",
+      "dim_type": 0,
+      "dim_style": "STANDARD"
+    }
+  ],
+  "metadata": {
+    "meta": {
+      "dxf.default_space": 0
+    }
+  }
+}

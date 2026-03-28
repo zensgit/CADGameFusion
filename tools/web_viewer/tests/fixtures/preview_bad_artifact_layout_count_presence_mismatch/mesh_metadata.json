@@ -1,0 +1,50 @@
+{
+  "summary": {
+    "default_space": 1,
+    "layout_count": 2,
+    "viewport_count": 1,
+    "document_entity_count": 0,
+    "mesh_entity_count": 0,
+    "line_entity_count": 0
+  },
+  "layouts": [
+    {
+      "name": "Model",
+      "space": 0,
+      "is_default": false,
+      "synthetic": true,
+      "viewport_count": 0,
+      "document_entity_count": 0,
+      "mesh_entity_count": 0,
+      "line_entity_count": 0
+    },
+    {
+      "name": "LayoutMixed",
+      "space": 1,
+      "is_default": true,
+      "synthetic": false,
+      "viewport_count": 1,
+      "document_entity_count": 5,
+      "mesh_entity_count": 0,
+      "line_entity_count": 4
+    }
+  ],
+  "viewports": [
+    {
+      "index": 0,
+      "id": 3,
+      "layout": "LayoutMixed",
+      "space": 1,
+      "center_x": 148.5,
+      "center_y": 105.0,
+      "width": 120.0,
+      "height": 180.0,
+      "view_center_x": 15.0,
+      "view_center_y": 10.0,
+      "view_height": 30.0,
+      "twist_deg": 0.0
+    }
+  ],
+  "entities": [],
+  "line_entities": []
+}

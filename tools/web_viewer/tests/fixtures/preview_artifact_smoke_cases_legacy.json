@@ -1,0 +1,14 @@
+[
+  {
+    "id": "legacy_real_dim_hatch_sample",
+    "target": "build/plm_preview_dim_hatch"
+  },
+  {
+    "id": "legacy_real_layout_sample",
+    "target": "build/plm_preview_btj01239601522_layout"
+  },
+  {
+    "id": "legacy_real_large_layoutfix_meta_sample",
+    "target": "build/plm_preview_j0225034_layoutfix_meta"
+  }
+]

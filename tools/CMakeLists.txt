@@ -99,3 +99,14 @@ set_target_properties(solve_from_project PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
+
+# json2dxf: reads document.json, writes DXF
+add_executable(json2dxf json2dxf.cpp)
+target_include_directories(json2dxf PRIVATE
+    ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/tools
+)
+set_target_properties(json2dxf PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)

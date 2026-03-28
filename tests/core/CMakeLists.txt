@@ -50,10 +50,20 @@ if(TARGET core)
     target_include_directories(core_tests_solver_constraints PRIVATE ../../core/include)
     target_link_libraries(core_tests_solver_constraints PRIVATE core)
 
+    # Solver basic constraint regression
+    add_executable(core_tests_constraints_basic test_constraints_basic.cpp)
+    target_include_directories(core_tests_constraints_basic PRIVATE ../../core/include)
+    target_link_libraries(core_tests_constraints_basic PRIVATE core)
+
     # Solver conflict/inconsistency tests (Trial - non-blocking)
     add_executable(core_tests_solver_conflicts test_solver_conflicts.cpp)
     target_include_directories(core_tests_solver_conflicts PRIVATE ../../core/include)
     target_link_libraries(core_tests_solver_conflicts PRIVATE core)
+
+    # Solver diagnostics validation smoke test
+    add_executable(core_tests_solver_diagnostics test_solver_diagnostics.cpp)
+    target_include_directories(core_tests_solver_diagnostics PRIVATE ../../core/include)
+    target_link_libraries(core_tests_solver_diagnostics PRIVATE core)
 
     # C API document query smoke test (enumeration + UTF-8 name two-call APIs)
     add_executable(core_tests_c_api_document_query test_c_api_document_query.cpp)
@@ -105,6 +115,8 @@ if(TARGET core)
     cadgf_register_core_test(core_tests_document_metadata)
     cadgf_register_core_test(core_tests_solver_poc)
     cadgf_register_core_test(core_tests_solver_constraints)
+    cadgf_register_core_test(core_tests_constraints_basic)
+    cadgf_register_core_test(core_tests_solver_diagnostics)
 else()
     message(WARNING "Core library not found, skipping complex tests")
 endif()

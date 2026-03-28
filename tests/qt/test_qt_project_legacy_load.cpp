@@ -95,5 +95,12 @@ int main(int argc, char** argv) {
     assert(e2.color == 0xAABBCCu);
     assert(e2.layerId == 0);
 
+    // Legacy projects do not carry editor snap payload; defaults should remain unchanged.
+    assert(snap.snapEndpoints());
+    assert(snap.snapMidpoints());
+    assert(snap.snapCenters());
+    assert(snap.snapIntersections());
+    assert(!snap.orthoEnabled());
+
     return 0;
 }

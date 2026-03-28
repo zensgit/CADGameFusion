@@ -1,0 +1,12 @@
+{
+  "schema_version": "1",
+  "cadgf_version": "1.0.0",
+  "document_schema_version": 1,
+  "artifacts": {
+    "document_json": "preview_bad_manifest_missing_document_payload.json"
+  },
+  "outputs": [
+    "json"
+  ],
+  "status": "ok"
+}

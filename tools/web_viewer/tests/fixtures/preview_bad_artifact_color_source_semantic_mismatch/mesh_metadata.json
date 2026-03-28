@@ -1,0 +1,51 @@
+{
+  "entities": [
+    {
+      "id": 1,
+      "base_vertex": 0,
+      "vertex_count": 2,
+      "index_offset": 0,
+      "index_count": 2,
+      "space": 0,
+      "color_source": "INDEX",
+      "color": 255
+    },
+    {
+      "id": 2,
+      "base_vertex": 2,
+      "vertex_count": 2,
+      "index_offset": 2,
+      "index_count": 2,
+      "space": 0,
+      "color_source": "BROKEN",
+      "color": 65280
+    },
+    {
+      "id": 3,
+      "base_vertex": 4,
+      "vertex_count": 2,
+      "index_offset": 4,
+      "index_count": 2,
+      "space": 0,
+      "color_source": "TRUECOLOR"
+    },
+    {
+      "id": 4,
+      "base_vertex": 6,
+      "vertex_count": 2,
+      "index_offset": 6,
+      "index_count": 2,
+      "space": 0,
+      "color_source": "BYLAYER",
+      "color": 255,
+      "layer_color": 16777215
+    }
+  ],
+  "line_entities": [],
+  "summary": {
+    "default_space": 0,
+    "document_entity_count": 3,
+    "mesh_entity_count": 4,
+    "line_entity_count": 0
+  }
+}

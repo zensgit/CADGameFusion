@@ -7,7 +7,7 @@
 
 class SnapManager {
 public:
-    enum class SnapType { None, Endpoint, Midpoint, Grid };
+    enum class SnapType { None, Endpoint, Midpoint, Center, Intersection, Grid };
     struct SnapResult {
         bool active{false};
         QPointF pos;
@@ -25,10 +25,14 @@ public:
     double snapRadiusPixels() const { return snapRadiusPx_; }
     void setSnapEndpoints(bool enabled) { snapEndpoints_ = enabled; }
     void setSnapMidpoints(bool enabled) { snapMidpoints_ = enabled; }
+    void setSnapCenters(bool enabled) { snapCenters_ = enabled; }
+    void setSnapIntersections(bool enabled) { snapIntersections_ = enabled; }
     void setSnapGrid(bool enabled) { snapGrid_ = enabled; }
     void setGridPixelSpacing(double px) { gridPixelSpacingPx_ = px; }
     bool snapEndpoints() const { return snapEndpoints_; }
     bool snapMidpoints() const { return snapMidpoints_; }
+    bool snapCenters() const { return snapCenters_; }
+    bool snapIntersections() const { return snapIntersections_; }
     bool snapGrid() const { return snapGrid_; }
     double gridPixelSpacing() const { return gridPixelSpacingPx_; }
 
@@ -42,6 +46,8 @@ private:
     double snapRadiusPx_{12.0};
     bool snapEndpoints_{true};
     bool snapMidpoints_{true};
+    bool snapCenters_{true};
+    bool snapIntersections_{true};
     bool snapGrid_{false};
     double gridPixelSpacingPx_{50.0};
 };

@@ -5,6 +5,9 @@
 #include <cstdint>
 #include <variant>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
+#include <functional>
 
 #include "core/geometry2d.hpp"
 
@@ -20,7 +23,8 @@ enum class EntityType {
     Circle = 4,
     Ellipse = 5,
     Spline = 6,
-    Text = 7
+    Text = 7,
+    BlockInstance = 8
 };
 
 // Sub-entity reference roles for constraints and editing (internal).
@@ -39,7 +43,20 @@ struct ElementRef {
     int index{-1}; // control point or vertex index when applicable
 };
 
-using EntityPayload = std::variant<std::monostate, Point, Line, Arc, Circle, Ellipse, Spline, Text, Polyline>;
+struct BlockDefinition {
+    std::string name;
+    std::vector<EntityId> memberIds; // entities belonging to this block
+};
+
+struct BlockInstance {
+    std::string blockName;
+    Vec2 insertionPoint{};
+    double rotation{0.0};
+    double scaleX{1.0};
+    double scaleY{1.0};
+};
+
+using EntityPayload = std::variant<std::monostate, Point, Line, Arc, Circle, Ellipse, Spline, Text, Polyline, BlockInstance>;
 
 struct Entity {
     EntityId id{};
@@ -106,7 +123,45 @@ struct DocumentChangeEvent {
 class DocumentObserver {
 public:
     virtual ~DocumentObserver() = default;
+    virtual void on_before_document_changed(const Document& /*doc*/, const DocumentChangeEvent& /*event*/) {}
     virtual void on_document_changed(const Document& doc, const DocumentChangeEvent& event) = 0;
+};
+
+// Dependency graph for topological recompute (P3.2, FreeCAD-inspired).
+// Tracks directed edges: source → dependent. When source changes, dependents recompute in topo order.
+class DependencyGraph {
+public:
+    // Add a dependency edge: `dependent` depends on `source`.
+    void addDependency(EntityId source, EntityId dependent);
+    // Remove a single edge.
+    void removeDependency(EntityId source, EntityId dependent);
+    // Remove all edges involving an entity (both as source and dependent).
+    void removeEntity(EntityId id);
+    // Clear the entire graph.
+    void clear();
+
+    // Get direct dependents of a source entity.
+    std::vector<EntityId> dependentsOf(EntityId source) const;
+    // Get direct sources (providers) of a dependent entity.
+    std::vector<EntityId> sourcesOf(EntityId dependent) const;
+    // Check if adding source→dependent would create a cycle.
+    bool wouldCycle(EntityId source, EntityId dependent) const;
+
+    // Topological sort of all entities reachable from `roots` (downstream).
+    // Returns entity ids in recompute order (sources before dependents).
+    // If a cycle is detected, returns partial order + sets `hasCycle` to true.
+    std::vector<EntityId> topologicalOrder(const std::vector<EntityId>& roots, bool* hasCycle = nullptr) const;
+
+    // Get all entities in the graph.
+    std::vector<EntityId> allEntities() const;
+    bool empty() const { return forward_.empty(); }
+    size_t edgeCount() const;
+
+private:
+    // forward_[source] = {dependents}
+    std::unordered_map<EntityId, std::unordered_set<EntityId>> forward_;
+    // reverse_[dependent] = {sources}
+    std::unordered_map<EntityId, std::unordered_set<EntityId>> reverse_;
 };
 
 class Document {
@@ -159,6 +214,12 @@ public:
 
     EntityId add_polyline(const Polyline& pl, const std::string& name = "", int layerId = 0);
     bool set_polyline_points(EntityId id, const Polyline& pl);
+
+    // Block definition / instance management (P2.4)
+    int add_block_definition(const std::string& name);
+    bool add_entity_to_block(int blockIndex, EntityId entityId);
+    EntityId add_block_instance(const BlockInstance& inst, const std::string& name = "", int layerId = 0);
+    const std::vector<BlockDefinition>& block_definitions() const { return block_definitions_; }
     bool     remove_entity(EntityId id);
     void     clear();
 
@@ -194,19 +255,69 @@ public:
     bool remove_meta_value(const std::string& key);
     bool set_unit_scale(double unit_scale);
 
+    // Dependency graph + topological recompute (P3.2)
+    DependencyGraph& dependency_graph() { return dep_graph_; }
+    const DependencyGraph& dependency_graph() const { return dep_graph_; }
+    using RecomputeCallback = std::function<void(Document& doc, EntityId id)>;
+    void set_recompute_callback(RecomputeCallback cb) { recompute_cb_ = std::move(cb); }
+    // Recompute all entities downstream of `changedIds` in topological order.
+    // Calls the registered recompute callback for each dependent entity.
+    // Returns the number of entities recomputed.
+    int recompute(const std::vector<EntityId>& changedIds);
+    // Recompute everything in the graph.
+    int recompute_all();
+
+    // Transaction-based undo/redo (P2.1)
+    void begin_transaction(const std::string& label = "");
+    void commit_transaction();
+    void rollback_transaction();
+    bool undo();
+    bool redo();
+    bool can_undo() const;
+    bool can_redo() const;
+    std::string undo_label() const;
+    std::string redo_label() const;
+    size_t undo_stack_size() const;
+
 private:
+    void notify_before(DocumentChangeType type, EntityId entityId = 0, int layerId = 0);
     void notify(DocumentChangeType type, EntityId entityId = 0, int layerId = 0);
 
     DocumentSettings settings_{};
     DocumentMetadata metadata_{};
     std::vector<Entity> entities_{};
     std::vector<Layer> layers_{};
+    std::vector<BlockDefinition> block_definitions_{};
+    DependencyGraph dep_graph_;
+    RecomputeCallback recompute_cb_;
     EntityId next_id_{1};
     int next_layer_id_{1};
     int next_group_id_{1};
     std::vector<DocumentObserver*> observers_{};
     int change_batch_depth_{0};
     bool pending_reset_{false};
+
+    // Undo/redo state
+    struct PropertyDiff {
+        DocumentChangeType type{DocumentChangeType::Reset};
+        EntityId entityId{0};
+        int layerId{0};
+        EntityPayload oldPayload{};
+        EntityPayload newPayload{};
+        // For layer changes
+        Layer oldLayer{};
+        // For entity meta changes
+        Entity oldEntity{};
+    };
+    struct Transaction {
+        std::string label;
+        std::vector<PropertyDiff> diffs;
+    };
+    std::vector<Transaction> undo_stack_;
+    std::vector<Transaction> redo_stack_;
+    Transaction* active_transaction_{nullptr};
+    Transaction active_tx_storage_;
+    bool in_undo_redo_{false};
 };
 
 class DocumentChangeGuard {
@@ -219,6 +330,37 @@ public:
 
 private:
     Document* doc_{nullptr};
+};
+
+// Coordinates undo/redo transactions across multiple Document instances (P3.4).
+// Inspired by FreeCAD cross-document transaction support.
+class TransactionGroup {
+public:
+    TransactionGroup() = default;
+    ~TransactionGroup() = default;
+
+    TransactionGroup(const TransactionGroup&) = delete;
+    TransactionGroup& operator=(const TransactionGroup&) = delete;
+
+    // Register/unregister documents to coordinate.
+    void addDocument(Document* doc);
+    void removeDocument(Document* doc);
+
+    // Call begin_transaction(label) on all registered documents.
+    void beginGroup(const std::string& label);
+    // Call commit_transaction() on all registered documents.
+    void commitGroup();
+    // Call rollback_transaction() on all registered documents.
+    void rollbackGroup();
+    // Call undo() on all registered documents that can_undo().
+    // Returns true if at least one document was successfully undone.
+    bool undoGroup();
+    // Call redo() on all registered documents that can_redo().
+    // Returns true if at least one document was successfully redone.
+    bool redoGroup();
+
+private:
+    std::vector<Document*> documents_;
 };
 
 } // namespace core

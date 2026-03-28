@@ -1,0 +1,9 @@
+{
+  "artifacts": {
+    "document_json": "document.json",
+    "mesh_metadata": "mesh_metadata.json"
+  },
+  "outputs": [
+    "json"
+  ]
+}

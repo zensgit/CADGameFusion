@@ -1,0 +1,23 @@
+{
+  "entities": [
+    {
+      "id": 1,
+      "space": 0,
+      "source_type": "INSERT",
+      "edit_mode": "exploded",
+      "proxy_kind": "insert",
+      "block_name": "BlockA",
+      "color_source": "BYBLOCK",
+      "color": 16711680,
+      "color_aci": 1,
+      "line_type": "CENTER",
+      "line_weight": 0.5,
+      "line_type_scale": 0.25
+    }
+  ],
+  "metadata": {
+    "meta": {
+      "dxf.default_space": 0
+    }
+  }
+}

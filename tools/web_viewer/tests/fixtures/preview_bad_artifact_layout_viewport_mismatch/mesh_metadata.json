@@ -1,0 +1,37 @@
+{
+  "entities": [],
+  "line_entities": [],
+  "summary": {
+    "default_space": 1,
+    "layout_count": 1,
+    "viewport_count": 1,
+    "document_entity_count": 0,
+    "mesh_entity_count": 0,
+    "line_entity_count": 0
+  },
+  "layouts": [
+    {
+      "name": "WrongLayout",
+      "space": 1,
+      "mesh_entity_count": 0,
+      "line_entity_count": 0,
+      "viewport_count": 0
+    }
+  ],
+  "viewports": [
+    {
+      "index": 0,
+      "id": 7,
+      "layout": "WrongLayout",
+      "space": 1,
+      "center_x": 0,
+      "center_y": 0,
+      "width": 10,
+      "height": 10,
+      "view_center_x": 0,
+      "view_center_y": 0,
+      "view_height": 10,
+      "twist_deg": 0
+    }
+  ]
+}

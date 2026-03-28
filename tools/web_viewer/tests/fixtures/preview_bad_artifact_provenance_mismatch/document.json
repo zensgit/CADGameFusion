@@ -1,0 +1,18 @@
+{
+  "entities": [
+    {
+      "id": 1,
+      "space": 0,
+      "source_type": "HATCH",
+      "edit_mode": "proxy",
+      "proxy_kind": "hatch",
+      "hatch_id": 1,
+      "hatch_pattern": "ANSI31"
+    }
+  ],
+  "metadata": {
+    "meta": {
+      "dxf.default_space": 0
+    }
+  }
+}

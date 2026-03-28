@@ -16,6 +16,9 @@ SnapPanel::SnapPanel(QWidget* parent) : QDockWidget(parent) {
 
     endpoints_ = new QCheckBox("Endpoints", w);
     midpoints_ = new QCheckBox("Midpoints", w);
+    centers_ = new QCheckBox("Centers", w);
+    intersections_ = new QCheckBox("Intersections", w);
+    ortho_ = new QCheckBox("Ortho", w);
     grid_ = new QCheckBox("Grid", w);
     radius_ = new QDoubleSpinBox(w);
     radius_->setDecimals(1);
@@ -30,6 +33,9 @@ SnapPanel::SnapPanel(QWidget* parent) : QDockWidget(parent) {
 
     lay->addWidget(endpoints_);
     lay->addWidget(midpoints_);
+    lay->addWidget(centers_);
+    lay->addWidget(intersections_);
+    lay->addWidget(ortho_);
     lay->addWidget(grid_);
     auto* form = new QFormLayout();
     form->addRow("Snap Radius", radius_);
@@ -44,6 +50,18 @@ SnapPanel::SnapPanel(QWidget* parent) : QDockWidget(parent) {
     connect(midpoints_, &QCheckBox::toggled, this, [this](bool checked){
         if (updating_ || !settings_) return;
         settings_->setSnapMidpoints(checked);
+    });
+    connect(centers_, &QCheckBox::toggled, this, [this](bool checked){
+        if (updating_ || !settings_) return;
+        settings_->setSnapCenters(checked);
+    });
+    connect(intersections_, &QCheckBox::toggled, this, [this](bool checked){
+        if (updating_ || !settings_) return;
+        settings_->setSnapIntersections(checked);
+    });
+    connect(ortho_, &QCheckBox::toggled, this, [this](bool checked){
+        if (updating_ || !settings_) return;
+        settings_->setOrthoEnabled(checked);
     });
     connect(grid_, &QCheckBox::toggled, this, [this](bool checked){
         if (updating_ || !settings_) return;
@@ -76,6 +94,9 @@ void SnapPanel::updateFromSettings() {
     updating_ = true;
     endpoints_->setChecked(settings_->snapEndpoints());
     midpoints_->setChecked(settings_->snapMidpoints());
+    centers_->setChecked(settings_->snapCenters());
+    intersections_->setChecked(settings_->snapIntersections());
+    ortho_->setChecked(settings_->orthoEnabled());
     grid_->setChecked(settings_->snapGrid());
     radius_->setValue(settings_->snapRadiusPixels());
     gridSpacing_->setValue(settings_->gridPixelSpacing());
