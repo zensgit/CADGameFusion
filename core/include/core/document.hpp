@@ -5,6 +5,9 @@
 #include <cstdint>
 #include <variant>
 #include <map>
+#include <unordered_map>
+#include <unordered_set>
+#include <functional>
 
 #include "core/geometry2d.hpp"
 
@@ -124,6 +127,43 @@ public:
     virtual void on_document_changed(const Document& doc, const DocumentChangeEvent& event) = 0;
 };
 
+// Dependency graph for topological recompute (P3.2, FreeCAD-inspired).
+// Tracks directed edges: source → dependent. When source changes, dependents recompute in topo order.
+class DependencyGraph {
+public:
+    // Add a dependency edge: `dependent` depends on `source`.
+    void addDependency(EntityId source, EntityId dependent);
+    // Remove a single edge.
+    void removeDependency(EntityId source, EntityId dependent);
+    // Remove all edges involving an entity (both as source and dependent).
+    void removeEntity(EntityId id);
+    // Clear the entire graph.
+    void clear();
+
+    // Get direct dependents of a source entity.
+    std::vector<EntityId> dependentsOf(EntityId source) const;
+    // Get direct sources (providers) of a dependent entity.
+    std::vector<EntityId> sourcesOf(EntityId dependent) const;
+    // Check if adding source→dependent would create a cycle.
+    bool wouldCycle(EntityId source, EntityId dependent) const;
+
+    // Topological sort of all entities reachable from `roots` (downstream).
+    // Returns entity ids in recompute order (sources before dependents).
+    // If a cycle is detected, returns partial order + sets `hasCycle` to true.
+    std::vector<EntityId> topologicalOrder(const std::vector<EntityId>& roots, bool* hasCycle = nullptr) const;
+
+    // Get all entities in the graph.
+    std::vector<EntityId> allEntities() const;
+    bool empty() const { return forward_.empty(); }
+    size_t edgeCount() const;
+
+private:
+    // forward_[source] = {dependents}
+    std::unordered_map<EntityId, std::unordered_set<EntityId>> forward_;
+    // reverse_[dependent] = {sources}
+    std::unordered_map<EntityId, std::unordered_set<EntityId>> reverse_;
+};
+
 class Document {
 public:
     Document();
@@ -215,6 +255,18 @@ public:
     bool remove_meta_value(const std::string& key);
     bool set_unit_scale(double unit_scale);
 
+    // Dependency graph + topological recompute (P3.2)
+    DependencyGraph& dependency_graph() { return dep_graph_; }
+    const DependencyGraph& dependency_graph() const { return dep_graph_; }
+    using RecomputeCallback = std::function<void(Document& doc, EntityId id)>;
+    void set_recompute_callback(RecomputeCallback cb) { recompute_cb_ = std::move(cb); }
+    // Recompute all entities downstream of `changedIds` in topological order.
+    // Calls the registered recompute callback for each dependent entity.
+    // Returns the number of entities recomputed.
+    int recompute(const std::vector<EntityId>& changedIds);
+    // Recompute everything in the graph.
+    int recompute_all();
+
     // Transaction-based undo/redo (P2.1)
     void begin_transaction(const std::string& label = "");
     void commit_transaction();
@@ -236,6 +288,8 @@ private:
     std::vector<Entity> entities_{};
     std::vector<Layer> layers_{};
     std::vector<BlockDefinition> block_definitions_{};
+    DependencyGraph dep_graph_;
+    RecomputeCallback recompute_cb_;
     EntityId next_id_{1};
     int next_layer_id_{1};
     int next_group_id_{1};

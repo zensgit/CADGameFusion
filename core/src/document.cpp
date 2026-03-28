@@ -490,6 +490,7 @@ void Document::clear() {
     entities_.clear();
     layers_.clear();
     block_definitions_.clear();
+    dep_graph_.clear();
     next_id_ = 1;
     next_layer_id_ = 1;
     next_group_id_ = 1;
@@ -696,6 +697,192 @@ EntityId Document::add_block_instance(const BlockInstance& inst, const std::stri
     entities_.push_back(e);
     notify(DocumentChangeType::EntityAdded, e.id);
     return e.id;
+}
+
+// --- DependencyGraph (P3.2) ---
+
+void DependencyGraph::addDependency(EntityId source, EntityId dependent) {
+    if (source == dependent) return;
+    forward_[source].insert(dependent);
+    reverse_[dependent].insert(source);
+}
+
+void DependencyGraph::removeDependency(EntityId source, EntityId dependent) {
+    auto fit = forward_.find(source);
+    if (fit != forward_.end()) {
+        fit->second.erase(dependent);
+        if (fit->second.empty()) forward_.erase(fit);
+    }
+    auto rit = reverse_.find(dependent);
+    if (rit != reverse_.end()) {
+        rit->second.erase(source);
+        if (rit->second.empty()) reverse_.erase(rit);
+    }
+}
+
+void DependencyGraph::removeEntity(EntityId id) {
+    // Remove all forward edges from id
+    auto fit = forward_.find(id);
+    if (fit != forward_.end()) {
+        for (EntityId dep : fit->second) {
+            auto rit = reverse_.find(dep);
+            if (rit != reverse_.end()) {
+                rit->second.erase(id);
+                if (rit->second.empty()) reverse_.erase(rit);
+            }
+        }
+        forward_.erase(fit);
+    }
+    // Remove all reverse edges to id
+    auto rit = reverse_.find(id);
+    if (rit != reverse_.end()) {
+        for (EntityId src : rit->second) {
+            auto fit2 = forward_.find(src);
+            if (fit2 != forward_.end()) {
+                fit2->second.erase(id);
+                if (fit2->second.empty()) forward_.erase(fit2);
+            }
+        }
+        reverse_.erase(rit);
+    }
+}
+
+void DependencyGraph::clear() {
+    forward_.clear();
+    reverse_.clear();
+}
+
+std::vector<EntityId> DependencyGraph::dependentsOf(EntityId source) const {
+    auto it = forward_.find(source);
+    if (it == forward_.end()) return {};
+    return {it->second.begin(), it->second.end()};
+}
+
+std::vector<EntityId> DependencyGraph::sourcesOf(EntityId dependent) const {
+    auto it = reverse_.find(dependent);
+    if (it == reverse_.end()) return {};
+    return {it->second.begin(), it->second.end()};
+}
+
+bool DependencyGraph::wouldCycle(EntityId source, EntityId dependent) const {
+    if (source == dependent) return true;
+    // BFS from dependent through forward edges; if we reach source, it's a cycle
+    std::unordered_set<EntityId> visited;
+    std::vector<EntityId> queue = {dependent};
+    while (!queue.empty()) {
+        EntityId curr = queue.back();
+        queue.pop_back();
+        if (curr == source) return true;
+        if (!visited.insert(curr).second) continue;
+        auto it = forward_.find(curr);
+        if (it != forward_.end()) {
+            for (EntityId next : it->second) queue.push_back(next);
+        }
+    }
+    return false;
+}
+
+std::vector<EntityId> DependencyGraph::topologicalOrder(const std::vector<EntityId>& roots, bool* hasCycle) const {
+    if (hasCycle) *hasCycle = false;
+
+    // BFS to collect all reachable entities from roots (downstream)
+    std::unordered_set<EntityId> reachable;
+    {
+        std::vector<EntityId> queue = roots;
+        while (!queue.empty()) {
+            EntityId curr = queue.back();
+            queue.pop_back();
+            if (!reachable.insert(curr).second) continue;
+            auto it = forward_.find(curr);
+            if (it != forward_.end()) {
+                for (EntityId next : it->second) queue.push_back(next);
+            }
+        }
+    }
+
+    // Kahn's algorithm on the reachable subgraph
+    std::unordered_map<EntityId, int> in_degree;
+    for (EntityId id : reachable) in_degree[id] = 0;
+    for (EntityId id : reachable) {
+        auto it = forward_.find(id);
+        if (it == forward_.end()) continue;
+        for (EntityId dep : it->second) {
+            if (reachable.count(dep)) in_degree[dep]++;
+        }
+    }
+
+    std::vector<EntityId> queue;
+    for (auto& [id, deg] : in_degree) {
+        if (deg == 0) queue.push_back(id);
+    }
+
+    std::vector<EntityId> order;
+    order.reserve(reachable.size());
+    while (!queue.empty()) {
+        EntityId curr = queue.back();
+        queue.pop_back();
+        order.push_back(curr);
+        auto it = forward_.find(curr);
+        if (it == forward_.end()) continue;
+        for (EntityId dep : it->second) {
+            if (!reachable.count(dep)) continue;
+            if (--in_degree[dep] == 0) queue.push_back(dep);
+        }
+    }
+
+    if (order.size() < reachable.size() && hasCycle) {
+        *hasCycle = true;
+    }
+    return order;
+}
+
+std::vector<EntityId> DependencyGraph::allEntities() const {
+    std::unordered_set<EntityId> ids;
+    for (auto& [k, v] : forward_) {
+        ids.insert(k);
+        for (EntityId d : v) ids.insert(d);
+    }
+    return {ids.begin(), ids.end()};
+}
+
+size_t DependencyGraph::edgeCount() const {
+    size_t count = 0;
+    for (auto& [k, v] : forward_) count += v.size();
+    return count;
+}
+
+int Document::recompute(const std::vector<EntityId>& changedIds) {
+    if (!recompute_cb_ || dep_graph_.empty()) return 0;
+    bool hasCycle = false;
+    auto order = dep_graph_.topologicalOrder(changedIds, &hasCycle);
+    int count = 0;
+    // Skip the root entities themselves (they already changed); recompute dependents only
+    std::unordered_set<EntityId> roots(changedIds.begin(), changedIds.end());
+    for (EntityId id : order) {
+        if (roots.count(id)) continue;
+        recompute_cb_(*this, id);
+        count++;
+    }
+    return count;
+}
+
+int Document::recompute_all() {
+    if (!recompute_cb_ || dep_graph_.empty()) return 0;
+    auto all = dep_graph_.allEntities();
+    // Find root entities (no sources)
+    std::vector<EntityId> roots;
+    for (EntityId id : all) {
+        if (dep_graph_.sourcesOf(id).empty()) roots.push_back(id);
+    }
+    if (roots.empty()) return 0;
+    bool hasCycle = false;
+    auto order = dep_graph_.topologicalOrder(roots, &hasCycle);
+    int count = 0;
+    for (EntityId id : order) {
+        recompute_cb_(*this, id);
+        count++;
+    }
+    return count;
 }
 
 DocumentChangeGuard::DocumentChangeGuard(Document& doc) : doc_(&doc) {
