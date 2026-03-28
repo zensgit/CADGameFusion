@@ -483,6 +483,7 @@ static bool write_manifest_json(const ConvertOptions& opts,
                                 bool wrote_gltf,
                                 bool wrote_bin,
                                 bool wrote_meta,
+                                const cadgf_document* doc,
                                 std::string* err) {
     const fs::path input_path = fs::absolute(fs::path(opts.inputPath));
     const fs::path plugin_path = fs::absolute(fs::path(opts.pluginPath));
@@ -648,6 +649,31 @@ static bool write_manifest_json(const ConvertOptions& opts,
         std::fprintf(f, "}%s\n", (i + 1 < warnings.size()) ? "," : "");
     }
     std::fprintf(f, "  ],\n");
+    // Write import_stats from document metadata if available
+    if (doc) {
+        char meta_buf[4096]{};
+        auto read_meta = [&](const char* key) -> std::string {
+            meta_buf[0] = 0;
+            int required = 0;
+            if (cadgf_document_get_meta_value(doc, key, meta_buf, sizeof(meta_buf), &required)) {
+                return std::string(meta_buf);
+            }
+            return {};
+        };
+        const std::string parsed = read_meta("dxf.import.entities_parsed");
+        const std::string imported = read_meta("dxf.import.entities_imported");
+        const std::string skipped = read_meta("dxf.import.entities_skipped");
+        const std::string unsupported = read_meta("dxf.import.unsupported_types");
+        if (!parsed.empty() || !imported.empty()) {
+            std::fprintf(f, "  \"import_stats\": {\n");
+            if (!parsed.empty()) std::fprintf(f, "    \"entities_parsed\": %s,\n", parsed.c_str());
+            if (!imported.empty()) std::fprintf(f, "    \"entities_imported\": %s,\n", imported.c_str());
+            if (!skipped.empty()) std::fprintf(f, "    \"entities_skipped\": %s,\n", skipped.c_str());
+            if (!unsupported.empty()) std::fprintf(f, "    \"unsupported_types\": %s\n", unsupported.c_str());
+            else std::fprintf(f, "    \"unsupported_types\": {}\n");
+            std::fprintf(f, "  },\n");
+        }
+    }
     std::fprintf(f, "  \"status\": %s\n", warnings.empty() ? "\"ok\"" : "\"partial\"");
     std::fprintf(f, "}\n");
     if (std::fflush(f) != 0 || std::ferror(f)) {
@@ -890,6 +916,14 @@ static bool parse_meta_double(const std::string& value, double* out) {
     const double parsed = std::strtod(value.c_str(), &end);
     if (!end || end == value.c_str()) return false;
     *out = parsed;
+    return true;
+}
+
+static bool parse_meta_bool(const std::string& value, bool* out) {
+    if (!out) return false;
+    int parsed = 0;
+    if (!parse_meta_int(value, &parsed)) return false;
+    *out = parsed != 0;
     return true;
 }
 
@@ -1483,6 +1517,130 @@ static bool query_polyline_points(const cadgf_document* doc, cadgf_entity_id id,
     return true;
 }
 
+struct GuideExportEntity {
+    cadgf_entity_id id{};
+    int type{};
+    int groupId{-1};
+    int sourceBundleId{-1};
+    int space{-1};
+    std::string layoutName;
+    std::string sourceType;
+    std::string editMode;
+    std::string proxyKind;
+    bool hasSourceAnchor{false};
+    cadgf_vec2 sourceAnchor{};
+    std::string sourceAnchorDriverType;
+    std::string sourceAnchorDriverKind;
+    bool hasLine{false};
+    cadgf_line line{};
+    std::vector<cadgf_vec2> polyline;
+};
+
+struct AnchorDriverCandidate {
+    cadgf_entity_id id{};
+    std::string type;
+    std::string kind;
+    cadgf_vec2 point{};
+    double priority{};
+};
+
+static bool query_entity_meta_vec2(const cadgf_document* doc,
+                                   cadgf_entity_id id,
+                                   const char* base_suffix,
+                                   cadgf_vec2* out) {
+    if (!doc || !out || !base_suffix || !*base_suffix) return false;
+    std::string x_value;
+    std::string y_value;
+    double x = 0.0;
+    double y = 0.0;
+    const std::string suffix_x = std::string(base_suffix) + "_x";
+    const std::string suffix_y = std::string(base_suffix) + "_y";
+    if (!query_entity_meta_value(doc, id, suffix_x.c_str(), &x_value) ||
+        !query_entity_meta_value(doc, id, suffix_y.c_str(), &y_value) ||
+        !parse_meta_double(x_value, &x) ||
+        !parse_meta_double(y_value, &y)) {
+        return false;
+    }
+    out->x = x;
+    out->y = y;
+    return true;
+}
+
+static bool points_nearly_equal(const cadgf_vec2& a, const cadgf_vec2& b, double eps = 1e-6) {
+    return std::fabs(a.x - b.x) <= eps && std::fabs(a.y - b.y) <= eps;
+}
+
+static cadgf_vec2 midpoint(const cadgf_vec2& a, const cadgf_vec2& b) {
+    return cadgf_vec2{(a.x + b.x) * 0.5, (a.y + b.y) * 0.5};
+}
+
+static double distance_sq(const cadgf_vec2& a, const cadgf_vec2& b) {
+    const double dx = a.x - b.x;
+    const double dy = a.y - b.y;
+    return dx * dx + dy * dy;
+}
+
+static void collect_anchor_driver_candidates(const GuideExportEntity& entity,
+                                             std::vector<AnchorDriverCandidate>* out) {
+    if (!out) return;
+    if (entity.sourceType == "LEADER") {
+        if (entity.type == CADGF_ENTITY_TYPE_LINE && entity.hasLine) {
+            out->push_back(AnchorDriverCandidate{entity.id, "line", "endpoint", entity.line.a, 0.0});
+            out->push_back(AnchorDriverCandidate{entity.id, "line", "endpoint", entity.line.b, 0.0});
+        } else if (entity.type == CADGF_ENTITY_TYPE_POLYLINE && entity.polyline.size() >= 2) {
+            out->push_back(AnchorDriverCandidate{entity.id, "polyline", "endpoint", entity.polyline.front(), 0.0});
+            out->push_back(AnchorDriverCandidate{entity.id, "polyline", "endpoint", entity.polyline.back(), 0.0});
+        }
+        return;
+    }
+    if (entity.sourceType == "DIMENSION") {
+        if (entity.type == CADGF_ENTITY_TYPE_LINE && entity.hasLine) {
+            out->push_back(AnchorDriverCandidate{
+                entity.id,
+                "line",
+                "midpoint",
+                midpoint(entity.line.a, entity.line.b),
+                distance_sq(entity.line.a, entity.line.b),
+            });
+        } else if (entity.type == CADGF_ENTITY_TYPE_POLYLINE && entity.polyline.size() >= 2) {
+            double best_priority = -1.0;
+            cadgf_vec2 best_point{};
+            bool found = false;
+            for (size_t i = 0; i + 1 < entity.polyline.size(); ++i) {
+                const cadgf_vec2& a = entity.polyline[i];
+                const cadgf_vec2& b = entity.polyline[i + 1];
+                const double priority = distance_sq(a, b);
+                if (!found || priority > best_priority) {
+                    best_priority = priority;
+                    best_point = midpoint(a, b);
+                    found = true;
+                }
+            }
+            if (found) {
+                out->push_back(AnchorDriverCandidate{
+                    entity.id,
+                    "polyline",
+                    "midpoint",
+                    best_point,
+                    best_priority,
+                });
+            }
+        }
+    }
+}
+
+static bool matches_source_group_member(const GuideExportEntity& candidate,
+                                        const GuideExportEntity& target) {
+    if (candidate.id == target.id) return false;
+    if (candidate.space != target.space) return false;
+    if (candidate.layoutName != target.layoutName) return false;
+    if (candidate.sourceType != target.sourceType) return false;
+    if (target.sourceBundleId >= 0 && candidate.sourceBundleId >= 0) {
+        return candidate.sourceBundleId == target.sourceBundleId;
+    }
+    return candidate.groupId >= 0 && candidate.groupId == target.groupId;
+}
+
 static bool write_document_json(const cadgf_document* doc, const std::string& path, std::string* err) {
     FILE* f = std::fopen(path.c_str(), "wb");
     if (!f) {
@@ -1572,6 +1730,123 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
 
     int entity_count = 0;
     (void)cadgf_document_get_entity_count(doc, &entity_count);
+    std::unordered_map<std::string, int> derived_dimension_bundle_ids;
+    for (int i = 0; i < entity_count; ++i) {
+        cadgf_entity_id eid = 0;
+        if (!cadgf_document_get_entity_id_at(doc, i, &eid)) continue;
+        cadgf_entity_info_v2 info_v2{};
+        if (!cadgf_document_get_entity_info_v2(doc, eid, &info_v2) || info_v2.group_id < 0) continue;
+        std::string source_type;
+        if (!query_entity_meta_value(doc, eid, "source_type", &source_type) || source_type != "DIMENSION") continue;
+        std::string block_name;
+        if (!query_entity_meta_value(doc, eid, "block_name", &block_name) || block_name.empty()) continue;
+        const int entity_space = query_entity_space(doc, eid);
+        const std::string layout_name = query_entity_layout_name(doc, eid);
+        std::string source_bundle_meta;
+        int source_bundle_id = info_v2.group_id;
+        if (query_entity_meta_value(doc, eid, "source_bundle_id", &source_bundle_meta)) {
+            int parsed_source_bundle = 0;
+            if (parse_meta_int(source_bundle_meta, &parsed_source_bundle)) {
+                source_bundle_id = parsed_source_bundle;
+            }
+        }
+        const std::string bundle_key = std::to_string(entity_space) + "|" + layout_name + "|" + block_name;
+        auto it = derived_dimension_bundle_ids.find(bundle_key);
+        if (it == derived_dimension_bundle_ids.end() || source_bundle_id < it->second) {
+            derived_dimension_bundle_ids[bundle_key] = source_bundle_id;
+        }
+    }
+    std::vector<GuideExportEntity> guide_entities;
+    guide_entities.reserve(static_cast<size_t>(std::max(0, entity_count)));
+    for (int i = 0; i < entity_count; ++i) {
+        cadgf_entity_id eid = 0;
+        if (!cadgf_document_get_entity_id_at(doc, i, &eid)) continue;
+        cadgf_entity_info_v2 info_v2{};
+        cadgf_entity_info info{};
+        const bool got_info_v2 = cadgf_document_get_entity_info_v2(doc, eid, &info_v2) != 0;
+        const bool got_info = got_info_v2 || cadgf_document_get_entity_info(doc, eid, &info);
+        if (!got_info) continue;
+        std::string source_type;
+        if (!query_entity_meta_value(doc, eid, "source_type", &source_type) || source_type.empty()) continue;
+        GuideExportEntity entry{};
+        entry.id = eid;
+        entry.type = got_info_v2 ? info_v2.type : info.type;
+        entry.groupId = got_info_v2 ? info_v2.group_id : -1;
+        entry.space = query_entity_space(doc, eid);
+        entry.layoutName = query_entity_layout_name(doc, eid);
+        entry.sourceType = source_type;
+        (void)query_entity_meta_value(doc, eid, "edit_mode", &entry.editMode);
+        (void)query_entity_meta_value(doc, eid, "proxy_kind", &entry.proxyKind);
+        std::string source_bundle_meta;
+        if (query_entity_meta_value(doc, eid, "source_bundle_id", &source_bundle_meta)) {
+            int parsed = -1;
+            if (parse_meta_int(source_bundle_meta, &parsed)) {
+                entry.sourceBundleId = parsed;
+            }
+        } else if (entry.sourceType == "DIMENSION" && entry.groupId >= 0) {
+            std::string block_name;
+            if (query_entity_meta_value(doc, eid, "block_name", &block_name) && !block_name.empty()) {
+                const std::string bundle_key = std::to_string(entry.space) + "|" + entry.layoutName + "|" + block_name;
+                auto bundle_it = derived_dimension_bundle_ids.find(bundle_key);
+                if (bundle_it != derived_dimension_bundle_ids.end()) {
+                    entry.sourceBundleId = bundle_it->second;
+                }
+            }
+        }
+        entry.hasSourceAnchor = query_entity_meta_vec2(doc, eid, "source_anchor", &entry.sourceAnchor);
+        (void)query_entity_meta_value(doc, eid, "source_anchor_driver_type", &entry.sourceAnchorDriverType);
+        (void)query_entity_meta_value(doc, eid, "source_anchor_driver_kind", &entry.sourceAnchorDriverKind);
+        if (entry.type == CADGF_ENTITY_TYPE_LINE) {
+            entry.hasLine = cadgf_document_get_line(doc, eid, &entry.line) != 0;
+        } else if (entry.type == CADGF_ENTITY_TYPE_POLYLINE) {
+            (void)query_polyline_points(doc, eid, entry.polyline);
+        }
+        guide_entities.push_back(std::move(entry));
+    }
+    std::unordered_map<unsigned long long, int> derived_source_anchor_driver_ids;
+    for (const auto& target : guide_entities) {
+        if (target.type != CADGF_ENTITY_TYPE_TEXT || target.editMode != "proxy" || !target.hasSourceAnchor) continue;
+        if (target.sourceType != "DIMENSION" && target.sourceType != "LEADER") continue;
+        std::string explicit_driver_meta;
+        if (query_entity_meta_value(doc, target.id, "source_anchor_driver_id", &explicit_driver_meta)) {
+            int explicit_driver_id = 0;
+            if (parse_meta_int(explicit_driver_meta, &explicit_driver_id)) {
+                derived_source_anchor_driver_ids[static_cast<unsigned long long>(target.id)] = explicit_driver_id;
+                continue;
+            }
+        }
+        bool found = false;
+        bool tied = false;
+        int best_score = std::numeric_limits<int>::max();
+        double best_priority = -1.0;
+        int best_driver_id = -1;
+        for (const auto& candidate_entity : guide_entities) {
+            if (!matches_source_group_member(candidate_entity, target)) continue;
+            std::vector<AnchorDriverCandidate> candidates;
+            collect_anchor_driver_candidates(candidate_entity, &candidates);
+            for (const auto& candidate : candidates) {
+                if (!points_nearly_equal(candidate.point, target.sourceAnchor)) continue;
+                int score = 0;
+                if (!target.sourceAnchorDriverType.empty() && candidate.type != target.sourceAnchorDriverType) score += 1;
+                if (!target.sourceAnchorDriverKind.empty() && candidate.kind != target.sourceAnchorDriverKind) score += 1;
+                if (!found || score < best_score || (score == best_score && candidate.priority > best_priority + 1e-9)) {
+                    found = true;
+                    tied = false;
+                    best_score = score;
+                    best_priority = candidate.priority;
+                    best_driver_id = static_cast<int>(candidate.id);
+                } else if (score == best_score &&
+                           std::fabs(candidate.priority - best_priority) <= 1e-9 &&
+                           static_cast<int>(candidate.id) != best_driver_id) {
+                    tied = true;
+                }
+            }
+        }
+        if (found && !tied && best_driver_id > 0) {
+            derived_source_anchor_driver_ids[static_cast<unsigned long long>(target.id)] = best_driver_id;
+        }
+    }
+
     std::fprintf(f, "  \"entities\": [\n");
     for (int i = 0; i < entity_count; ++i) {
         cadgf_entity_id eid = 0;
@@ -1637,13 +1912,15 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
             std::fprintf(f, ", \"space\": %d", entity_space);
         }
         std::string meta_value;
-        if (query_entity_meta_value(doc, eid, "layout", &meta_value)) {
+        const std::string entity_layout = query_entity_layout_name(doc, eid);
+        if (!entity_layout.empty()) {
             std::fprintf(f, ", \"layout\": ");
-            json_write_escaped(f, meta_value.c_str(), meta_value.size());
+            json_write_escaped(f, entity_layout.c_str(), entity_layout.size());
         }
-        if (query_entity_meta_value(doc, eid, "source_type", &meta_value)) {
+        std::string source_type_value;
+        if (query_entity_meta_value(doc, eid, "source_type", &source_type_value)) {
             std::fprintf(f, ", \"source_type\": ");
-            json_write_escaped(f, meta_value.c_str(), meta_value.size());
+            json_write_escaped(f, source_type_value.c_str(), source_type_value.size());
         }
         if (query_entity_meta_value(doc, eid, "edit_mode", &meta_value)) {
             std::fprintf(f, ", \"edit_mode\": ");
@@ -1653,9 +1930,10 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
             std::fprintf(f, ", \"proxy_kind\": ");
             json_write_escaped(f, meta_value.c_str(), meta_value.size());
         }
-        if (query_entity_meta_value(doc, eid, "block_name", &meta_value)) {
+        std::string block_name_value;
+        if (query_entity_meta_value(doc, eid, "block_name", &block_name_value)) {
             std::fprintf(f, ", \"block_name\": ");
-            json_write_escaped(f, meta_value.c_str(), meta_value.size());
+            json_write_escaped(f, block_name_value.c_str(), block_name_value.size());
         }
         if (query_entity_meta_value(doc, eid, "hatch_id", &meta_value)) {
             int hatch_id = 0;
@@ -1676,6 +1954,20 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
         if (query_entity_meta_value(doc, eid, "dim_style", &meta_value)) {
             std::fprintf(f, ", \"dim_style\": ");
             json_write_escaped(f, meta_value.c_str(), meta_value.size());
+        }
+        if (query_entity_meta_value(doc, eid, "source_bundle_id", &meta_value)) {
+            int source_bundle_id = 0;
+            if (parse_meta_int(meta_value, &source_bundle_id)) {
+                std::fprintf(f, ", \"source_bundle_id\": %d", source_bundle_id);
+            }
+        } else if (got_info_v2 && info_v2.group_id >= 0 &&
+                   source_type_value == "DIMENSION" && !block_name_value.empty()) {
+            const std::string bundle_key =
+                std::to_string(entity_space) + "|" + entity_layout + "|" + block_name_value;
+            auto it = derived_dimension_bundle_ids.find(bundle_key);
+            if (it != derived_dimension_bundle_ids.end()) {
+                std::fprintf(f, ", \"source_bundle_id\": %d", it->second);
+            }
         }
 
         if (entity_type == CADGF_ENTITY_TYPE_POLYLINE) {
@@ -1768,6 +2060,54 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
                         std::fprintf(f, ", \"text_kind\": ");
                         json_write_escaped(f, meta_value.c_str(), meta_value.size());
                     }
+                    if (query_entity_meta_value(doc, eid, "attribute_tag", &meta_value)) {
+                        std::fprintf(f, ", \"attribute_tag\": ");
+                        json_write_escaped(f, meta_value.c_str(), meta_value.size());
+                    }
+                    if (query_entity_meta_value(doc, eid, "attribute_default", &meta_value)) {
+                        std::fprintf(f, ", \"attribute_default\": ");
+                        json_write_escaped(f, meta_value.c_str(), meta_value.size());
+                    }
+                    if (query_entity_meta_value(doc, eid, "attribute_prompt", &meta_value)) {
+                        std::fprintf(f, ", \"attribute_prompt\": ");
+                        json_write_escaped(f, meta_value.c_str(), meta_value.size());
+                    }
+                    if (query_entity_meta_value(doc, eid, "attribute_flags", &meta_value)) {
+                        int attribute_flags = 0;
+                        if (parse_meta_int(meta_value, &attribute_flags)) {
+                            std::fprintf(f, ", \"attribute_flags\": %d", attribute_flags);
+                        }
+                    }
+                    if (query_entity_meta_value(doc, eid, "attribute_invisible", &meta_value)) {
+                        bool flag = false;
+                        if (parse_meta_bool(meta_value, &flag)) {
+                            std::fprintf(f, ", \"attribute_invisible\": %s", flag ? "true" : "false");
+                        }
+                    }
+                    if (query_entity_meta_value(doc, eid, "attribute_constant", &meta_value)) {
+                        bool flag = false;
+                        if (parse_meta_bool(meta_value, &flag)) {
+                            std::fprintf(f, ", \"attribute_constant\": %s", flag ? "true" : "false");
+                        }
+                    }
+                    if (query_entity_meta_value(doc, eid, "attribute_verify", &meta_value)) {
+                        bool flag = false;
+                        if (parse_meta_bool(meta_value, &flag)) {
+                            std::fprintf(f, ", \"attribute_verify\": %s", flag ? "true" : "false");
+                        }
+                    }
+                    if (query_entity_meta_value(doc, eid, "attribute_preset", &meta_value)) {
+                        bool flag = false;
+                        if (parse_meta_bool(meta_value, &flag)) {
+                            std::fprintf(f, ", \"attribute_preset\": %s", flag ? "true" : "false");
+                        }
+                    }
+                    if (query_entity_meta_value(doc, eid, "attribute_lock_position", &meta_value)) {
+                        bool flag = false;
+                        if (parse_meta_bool(meta_value, &flag)) {
+                            std::fprintf(f, ", \"attribute_lock_position\": %s", flag ? "true" : "false");
+                        }
+                    }
                     if (query_entity_meta_value(doc, eid, "text_width", &meta_value)) {
                         double text_width = 0.0;
                         if (parse_meta_double(meta_value, &text_width)) {
@@ -1813,6 +2153,47 @@ static bool write_document_json(const cadgf_document* doc, const std::string& pa
                         if (parse_meta_double(meta_value, &dim_rot)) {
                             std::fprintf(f, ", \"dim_text_rotation\": %.6f", dim_rot);
                         }
+                    }
+                    std::string guide_x;
+                    std::string guide_y;
+                    double guide_pos_x = 0.0;
+                    double guide_pos_y = 0.0;
+                    if (query_entity_meta_value(doc, eid, "source_anchor_x", &guide_x) &&
+                        query_entity_meta_value(doc, eid, "source_anchor_y", &guide_y) &&
+                        parse_meta_double(guide_x, &guide_pos_x) &&
+                        parse_meta_double(guide_y, &guide_pos_y)) {
+                        std::fprintf(f, ", \"source_anchor\": [%.6f, %.6f]", guide_pos_x, guide_pos_y);
+                    }
+                    if (query_entity_meta_value(doc, eid, "leader_landing_x", &guide_x) &&
+                        query_entity_meta_value(doc, eid, "leader_landing_y", &guide_y) &&
+                        parse_meta_double(guide_x, &guide_pos_x) &&
+                        parse_meta_double(guide_y, &guide_pos_y)) {
+                        std::fprintf(f, ", \"leader_landing\": [%.6f, %.6f]", guide_pos_x, guide_pos_y);
+                    }
+                    if (query_entity_meta_value(doc, eid, "leader_elbow_x", &guide_x) &&
+                        query_entity_meta_value(doc, eid, "leader_elbow_y", &guide_y) &&
+                        parse_meta_double(guide_x, &guide_pos_x) &&
+                        parse_meta_double(guide_y, &guide_pos_y)) {
+                        std::fprintf(f, ", \"leader_elbow\": [%.6f, %.6f]", guide_pos_x, guide_pos_y);
+                    }
+                    if (query_entity_meta_value(doc, eid, "source_anchor_driver_id", &meta_value)) {
+                        int driver_id = 0;
+                        if (parse_meta_int(meta_value, &driver_id)) {
+                            std::fprintf(f, ", \"source_anchor_driver_id\": %d", driver_id);
+                        }
+                    } else {
+                        auto driver_it = derived_source_anchor_driver_ids.find(static_cast<unsigned long long>(eid));
+                        if (driver_it != derived_source_anchor_driver_ids.end()) {
+                            std::fprintf(f, ", \"source_anchor_driver_id\": %d", driver_it->second);
+                        }
+                    }
+                    if (query_entity_meta_value(doc, eid, "source_anchor_driver_type", &meta_value)) {
+                        std::fprintf(f, ", \"source_anchor_driver_type\": ");
+                        json_write_escaped(f, meta_value.c_str(), meta_value.size());
+                    }
+                    if (query_entity_meta_value(doc, eid, "source_anchor_driver_kind", &meta_value)) {
+                        std::fprintf(f, ", \"source_anchor_driver_kind\": ");
+                        json_write_escaped(f, meta_value.c_str(), meta_value.size());
                     }
                 }
             }
@@ -3151,7 +3532,7 @@ int main(int argc, char** argv) {
 #endif
     }
 
-    if (!write_manifest_json(opts, wrote_json, wrote_gltf, wrote_bin, wrote_meta, &err)) {
+    if (!write_manifest_json(opts, wrote_json, wrote_gltf, wrote_bin, wrote_meta, doc, &err)) {
         std::cerr << "manifest export failed: " << err << "\n";
         cadgf_document_destroy(doc);
         return 1;

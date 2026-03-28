@@ -20,7 +20,8 @@ enum class EntityType {
     Circle = 4,
     Ellipse = 5,
     Spline = 6,
-    Text = 7
+    Text = 7,
+    BlockInstance = 8
 };
 
 // Sub-entity reference roles for constraints and editing (internal).
@@ -39,7 +40,20 @@ struct ElementRef {
     int index{-1}; // control point or vertex index when applicable
 };
 
-using EntityPayload = std::variant<std::monostate, Point, Line, Arc, Circle, Ellipse, Spline, Text, Polyline>;
+struct BlockDefinition {
+    std::string name;
+    std::vector<EntityId> memberIds; // entities belonging to this block
+};
+
+struct BlockInstance {
+    std::string blockName;
+    Vec2 insertionPoint{};
+    double rotation{0.0};
+    double scaleX{1.0};
+    double scaleY{1.0};
+};
+
+using EntityPayload = std::variant<std::monostate, Point, Line, Arc, Circle, Ellipse, Spline, Text, Polyline, BlockInstance>;
 
 struct Entity {
     EntityId id{};
@@ -106,6 +120,7 @@ struct DocumentChangeEvent {
 class DocumentObserver {
 public:
     virtual ~DocumentObserver() = default;
+    virtual void on_before_document_changed(const Document& /*doc*/, const DocumentChangeEvent& /*event*/) {}
     virtual void on_document_changed(const Document& doc, const DocumentChangeEvent& event) = 0;
 };
 
@@ -159,6 +174,12 @@ public:
 
     EntityId add_polyline(const Polyline& pl, const std::string& name = "", int layerId = 0);
     bool set_polyline_points(EntityId id, const Polyline& pl);
+
+    // Block definition / instance management (P2.4)
+    int add_block_definition(const std::string& name);
+    bool add_entity_to_block(int blockIndex, EntityId entityId);
+    EntityId add_block_instance(const BlockInstance& inst, const std::string& name = "", int layerId = 0);
+    const std::vector<BlockDefinition>& block_definitions() const { return block_definitions_; }
     bool     remove_entity(EntityId id);
     void     clear();
 
@@ -194,19 +215,55 @@ public:
     bool remove_meta_value(const std::string& key);
     bool set_unit_scale(double unit_scale);
 
+    // Transaction-based undo/redo (P2.1)
+    void begin_transaction(const std::string& label = "");
+    void commit_transaction();
+    void rollback_transaction();
+    bool undo();
+    bool redo();
+    bool can_undo() const;
+    bool can_redo() const;
+    std::string undo_label() const;
+    std::string redo_label() const;
+    size_t undo_stack_size() const;
+
 private:
+    void notify_before(DocumentChangeType type, EntityId entityId = 0, int layerId = 0);
     void notify(DocumentChangeType type, EntityId entityId = 0, int layerId = 0);
 
     DocumentSettings settings_{};
     DocumentMetadata metadata_{};
     std::vector<Entity> entities_{};
     std::vector<Layer> layers_{};
+    std::vector<BlockDefinition> block_definitions_{};
     EntityId next_id_{1};
     int next_layer_id_{1};
     int next_group_id_{1};
     std::vector<DocumentObserver*> observers_{};
     int change_batch_depth_{0};
     bool pending_reset_{false};
+
+    // Undo/redo state
+    struct PropertyDiff {
+        DocumentChangeType type{DocumentChangeType::Reset};
+        EntityId entityId{0};
+        int layerId{0};
+        EntityPayload oldPayload{};
+        EntityPayload newPayload{};
+        // For layer changes
+        Layer oldLayer{};
+        // For entity meta changes
+        Entity oldEntity{};
+    };
+    struct Transaction {
+        std::string label;
+        std::vector<PropertyDiff> diffs;
+    };
+    std::vector<Transaction> undo_stack_;
+    std::vector<Transaction> redo_stack_;
+    Transaction* active_transaction_{nullptr};
+    Transaction active_tx_storage_;
+    bool in_undo_redo_{false};
 };
 
 class DocumentChangeGuard {

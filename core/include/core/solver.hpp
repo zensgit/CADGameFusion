@@ -18,7 +18,17 @@ enum class ConstraintKind {
     Concentric,
     Coincident,
     Distance,
-    Angle
+    Angle,
+    Tangent,
+    PointOnLine,
+    Symmetric,
+    Midpoint,
+    FixedPoint
+};
+
+enum class SolverAlgorithm {
+    LM,
+    DogLeg
 };
 
 enum class ConstraintDiagnosticCode {
@@ -232,7 +242,8 @@ public:
     virtual SolveResult solveWithBindings(std::vector<ConstraintSpec>& constraints, const GetVar& get, const SetVar& set) = 0;
 };
 
-// Factory function for a minimal Gauss-Newton style solver
+// Factory function: DogLeg default with LM fallback
 ISolver* createMinimalSolver();
+ISolver* createSolver(SolverAlgorithm algo = SolverAlgorithm::DogLeg);
 
 } // namespace core

@@ -19,6 +19,11 @@ ConstraintKind classifyConstraintKind(const std::string& type) {
     if (type == "coincident") return ConstraintKind::Coincident;
     if (type == "distance") return ConstraintKind::Distance;
     if (type == "angle") return ConstraintKind::Angle;
+    if (type == "tangent") return ConstraintKind::Tangent;
+    if (type == "point_on_line") return ConstraintKind::PointOnLine;
+    if (type == "symmetric") return ConstraintKind::Symmetric;
+    if (type == "midpoint") return ConstraintKind::Midpoint;
+    if (type == "fixed_point") return ConstraintKind::FixedPoint;
     return ConstraintKind::Unknown;
 }
 
@@ -33,6 +38,11 @@ const char* constraintKindName(ConstraintKind kind) {
         case ConstraintKind::Coincident: return "coincident";
         case ConstraintKind::Distance: return "distance";
         case ConstraintKind::Angle: return "angle";
+        case ConstraintKind::Tangent: return "tangent";
+        case ConstraintKind::PointOnLine: return "point_on_line";
+        case ConstraintKind::Symmetric: return "symmetric";
+        case ConstraintKind::Midpoint: return "midpoint";
+        case ConstraintKind::FixedPoint: return "fixed_point";
         case ConstraintKind::Unknown:
         default: return "unknown";
     }
@@ -459,6 +469,13 @@ int expected_arity(ConstraintKind kind) {
             return 4;
         case ConstraintKind::Angle:
             return 8;
+        case ConstraintKind::Tangent:
+        case ConstraintKind::PointOnLine:
+        case ConstraintKind::Symmetric:
+        case ConstraintKind::Midpoint:
+            return 6;
+        case ConstraintKind::FixedPoint:
+            return 2;
         case ConstraintKind::Unknown:
         default:
             return -1;
@@ -466,7 +483,14 @@ int expected_arity(ConstraintKind kind) {
 }
 
 bool requires_numeric_value(ConstraintKind kind) {
-    return kind == ConstraintKind::Distance || kind == ConstraintKind::Angle;
+    return kind == ConstraintKind::Distance || kind == ConstraintKind::Angle
+        || kind == ConstraintKind::Tangent || kind == ConstraintKind::FixedPoint;
+}
+
+// Constraints that expand into x/y sub-constraints for 2D residuals
+bool needs_xy_expansion(const std::string& type) {
+    return type == "symmetric" || type == "midpoint"
+        || type == "coincident" || type == "concentric";
 }
 
 bool has_numeric_residual_implementation(ConstraintKind kind) {
@@ -481,6 +505,12 @@ bool has_numeric_residual_implementation(ConstraintKind kind) {
         case ConstraintKind::Angle:
         case ConstraintKind::Concentric:
         case ConstraintKind::Coincident:
+            return true;
+        case ConstraintKind::Tangent:
+        case ConstraintKind::PointOnLine:
+        case ConstraintKind::Symmetric:
+        case ConstraintKind::Midpoint:
+        case ConstraintKind::FixedPoint:
             return true;
         case ConstraintKind::Unknown:
         default:
@@ -677,8 +707,8 @@ void populate_jacobian_analysis(const std::vector<ConstraintSpec>& constraints,
         set(vars[j], xj);
     }
 
-    Eigen::FullPivLU<Eigen::MatrixXd> lu(J);
-    analysis.jacobianRank = static_cast<int>(lu.rank());
+    Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(J);
+    analysis.jacobianRank = static_cast<int>(qr.rank());
     analysis.dofEstimate = std::max(0, analysis.jacobianColumnCount - analysis.jacobianRank);
     analysis.redundantConstraintEstimate = std::max(0, analysis.jacobianRowCount - analysis.jacobianRank);
     analysis.structuralState = classify_structural_state(
@@ -972,6 +1002,19 @@ public:
             return out;
         }
 
+        // Expand 2D constraints (symmetric, midpoint) into x/y sub-constraint pairs
+        std::vector<ConstraintSpec> expanded;
+        for (const auto& c : constraints) {
+            if (needs_xy_expansion(c.type)) {
+                ConstraintSpec cx = c; cx.value = 0.0; // x-component
+                ConstraintSpec cy = c; cy.value = 1.0; // y-component
+                expanded.push_back(cx);
+                expanded.push_back(cy);
+            } else {
+                expanded.push_back(c);
+            }
+        }
+
         // Residuals (extendable): returns r(c), ok indicates all inputs present
         auto residual = [&](const ConstraintSpec& c, bool& ok)->double {
             ok = true;
@@ -1006,8 +1049,7 @@ public:
                 double n1 = std::sqrt(v1x*v1x + v1y*v1y), n2 = std::sqrt(v2x*v2x + v2y*v2y);
                 if (n1==0.0 || n2==0.0) { ok=true; return 0.0; }
                 // Use sine of angle as residual (want 0)
-                double s = std::abs(v1x*v2y - v1y*v2x) / (n1*n2);
-                return s;
+                return (v1x*v2y - v1y*v2x) / (n1*n2);
             }
             if (c.type == "perpendicular" && c.vars.size() >= 8) {
                 bool okv[8]; for (int i=0;i<8;++i) okv[i]=false;
@@ -1034,16 +1076,14 @@ public:
                 double x0 = get(c.vars[0], ok0), y0 = get(c.vars[1], ok1);
                 double x1 = get(c.vars[2], ok2), y1 = get(c.vars[3], ok3);
                 if (!(ok0&&ok1&&ok2&&ok3)) { ok=false; return 0.0; }
-                double dx = x1 - x0, dy = y1 - y0;
-                return std::sqrt(dx*dx + dy*dy);
+                return (c.value.has_value() && *c.value > 0.5) ? (y1 - y0) : (x1 - x0);
             }
             if (c.type == "concentric" && c.vars.size() >= 4) {
                 bool ok0=false, ok1=false, ok2=false, ok3=false;
                 double cx0 = get(c.vars[0], ok0), cy0 = get(c.vars[1], ok1);
                 double cx1 = get(c.vars[2], ok2), cy1 = get(c.vars[3], ok3);
                 if (!(ok0&&ok1&&ok2&&ok3)) { ok=false; return 0.0; }
-                double dx = cx1 - cx0, dy = cy1 - cy0;
-                return std::sqrt(dx*dx + dy*dy);
+                return (c.value.has_value() && *c.value > 0.5) ? (cy1 - cy0) : (cx1 - cx0);
             }
             if (c.type == "angle" && c.vars.size() >= 8 && c.value.has_value()) {
                 bool okv[8]; for (int i=0;i<8;++i) okv[i]=false;
@@ -1060,16 +1100,77 @@ public:
                 double currentAngle = std::acos(cosA);
                 return currentAngle - *c.value;
             }
+            // Tangent (line-circle): |dist(line, center) - r|
+            // vars: p0x, p0y, p1x, p1y, cx, cy (6 params), value = radius
+            if (c.type == "tangent" && c.vars.size() >= 6 && c.value.has_value()) {
+                bool okv[6]; for (int i=0;i<6;++i) okv[i]=false;
+                double p0x = get(c.vars[0], okv[0]), p0y = get(c.vars[1], okv[1]);
+                double p1x = get(c.vars[2], okv[2]), p1y = get(c.vars[3], okv[3]);
+                double cx  = get(c.vars[4], okv[4]), cy  = get(c.vars[5], okv[5]);
+                for (int i=0;i<6;++i) if (!okv[i]) { ok=false; return 0.0; }
+                double dx = p1x-p0x, dy = p1y-p0y;
+                double len = std::sqrt(dx*dx + dy*dy);
+                if (len < 1e-15) { ok=true; return 0.0; }
+                double dist = std::abs((cx-p0x)*dy - (cy-p0y)*dx) / len;
+                return dist - *c.value;
+            }
+            // PointOnLine: (p-a) × (b-a) / |b-a|
+            // vars: px, py, ax, ay, bx, by (6 params)
+            if (c.type == "point_on_line" && c.vars.size() >= 6) {
+                bool okv[6]; for (int i=0;i<6;++i) okv[i]=false;
+                double px = get(c.vars[0], okv[0]), py = get(c.vars[1], okv[1]);
+                double ax = get(c.vars[2], okv[2]), ay = get(c.vars[3], okv[3]);
+                double bx = get(c.vars[4], okv[4]), by = get(c.vars[5], okv[5]);
+                for (int i=0;i<6;++i) if (!okv[i]) { ok=false; return 0.0; }
+                double dx = bx-ax, dy = by-ay;
+                double len = std::sqrt(dx*dx + dy*dy);
+                if (len < 1e-15) { ok=true; return 0.0; }
+                return ((px-ax)*dy - (py-ay)*dx) / len;
+            }
+            // Symmetric: mid(p1,p2) - center (2 residuals packed as distance)
+            // vars: p1x, p1y, p2x, p2y, cx, cy (6 params)
+            if (c.type == "symmetric" && c.vars.size() >= 6) {
+                bool okv[6]; for (int i=0;i<6;++i) okv[i]=false;
+                double p1x = get(c.vars[0], okv[0]), p1y = get(c.vars[1], okv[1]);
+                double p2x = get(c.vars[2], okv[2]), p2y = get(c.vars[3], okv[3]);
+                double cx  = get(c.vars[4], okv[4]), cy  = get(c.vars[5], okv[5]);
+                for (int i=0;i<6;++i) if (!okv[i]) { ok=false; return 0.0; }
+                // Use value field to select component: 0 (or absent) = x, 1 = y
+                double mx = (p1x+p2x)*0.5 - cx, my = (p1y+p2y)*0.5 - cy;
+                return (c.value.has_value() && *c.value > 0.5) ? my : mx;
+            }
+            // Midpoint: p - (a+b)/2 (distance)
+            // vars: px, py, ax, ay, bx, by (6 params)
+            if (c.type == "midpoint" && c.vars.size() >= 6) {
+                bool okv[6]; for (int i=0;i<6;++i) okv[i]=false;
+                double px = get(c.vars[0], okv[0]), py = get(c.vars[1], okv[1]);
+                double ax = get(c.vars[2], okv[2]), ay = get(c.vars[3], okv[3]);
+                double bx = get(c.vars[4], okv[4]), by = get(c.vars[5], okv[5]);
+                for (int i=0;i<6;++i) if (!okv[i]) { ok=false; return 0.0; }
+                double dx = px - (ax+bx)*0.5, dy = py - (ay+by)*0.5;
+                return (c.value.has_value() && *c.value > 0.5) ? dy : dx;
+            }
+            // FixedPoint: p - target (distance)
+            // vars: px, py (2 params), value encodes target via two constraints or as distance to origin
+            // Simple form: vars: px, py; value.has_value() with target encoded as two separate fixed_point constraints
+            if (c.type == "fixed_point" && c.vars.size() >= 2 && c.value.has_value()) {
+                bool ok0=false, ok1=false;
+                double val = get(c.vars[0], ok0);
+                (void)get(c.vars[1], ok1); // ensure binding exists
+                ok = ok0 && ok1;
+                if (!ok) return 0.0;
+                return val - *c.value;  // single-variable pin
+            }
             ok = true; return 0.0; // unsupported constraints return 0 residual
         };
 
         // Collect unique variables
         std::vector<VarRef> vars;
         auto add_unique = [&](const VarRef& v){ for (auto& u : vars) if (u.id==v.id && u.key==v.key) return; vars.push_back(v); };
-        for (const auto& c : constraints) for (const auto& v : c.vars) add_unique(v);
+        for (const auto& c : expanded) for (const auto& v : c.vars) add_unique(v);
 
         const size_t n = vars.size();
-        const size_t m = constraints.size();
+        const size_t m = expanded.size();
         if (n == 0 || m == 0) {
              out.ok = true;
              out.iterations = 0;
@@ -1085,7 +1186,7 @@ public:
         auto write_x = [&](const Eigen::VectorXd& currX){ for (size_t j=0;j<n;j++) set(vars[j], currX[j]); };
 
         populate_jacobian_analysis(
-            constraints,
+            expanded,
             vars,
             set,
             x,
@@ -1118,70 +1219,501 @@ public:
         }
 
         // Error norm function
-        auto eval_norm = [&](){ double n=0.0; for (const auto& c: constraints){ bool okc=false; double rr=residual(c, okc); n += rr*rr; } return std::sqrt(n); };
+        auto eval_norm = [&](){ double s=0.0; for (const auto& c: expanded){ bool okc=false; double rr=residual(c, okc); s += rr*rr; } return std::sqrt(s); };
+
+        // --- Partitioned solving: extract connected components via variable sharing ---
+        // Build constraint-variable adjacency and BFS to find components
+        std::unordered_map<std::string, int> var_index_map;
+        for (size_t j = 0; j < n; ++j) var_index_map[vars[j].id + "." + vars[j].key] = static_cast<int>(j);
+
+        std::vector<std::vector<int>> constraint_vars_idx(m);
+        std::vector<std::vector<int>> var_constraints(n);
+        for (size_t i = 0; i < m; ++i) {
+            for (const auto& v : expanded[i].vars) {
+                auto it = var_index_map.find(v.id + "." + v.key);
+                if (it != var_index_map.end()) {
+                    constraint_vars_idx[i].push_back(it->second);
+                    var_constraints[static_cast<size_t>(it->second)].push_back(static_cast<int>(i));
+                }
+            }
+        }
+
+        // BFS to find connected components
+        struct Component { std::vector<int> constraint_indices; std::vector<int> var_indices; };
+        std::vector<Component> components;
+        std::vector<bool> visited_c(m, false), visited_v(n, false);
+        for (size_t start = 0; start < m; ++start) {
+            if (visited_c[start]) continue;
+            Component comp;
+            std::vector<int> pending_c{static_cast<int>(start)}, pending_v;
+            while (!pending_c.empty() || !pending_v.empty()) {
+                while (!pending_c.empty()) {
+                    int ci = pending_c.back(); pending_c.pop_back();
+                    if (ci < 0 || visited_c[static_cast<size_t>(ci)]) continue;
+                    visited_c[static_cast<size_t>(ci)] = true;
+                    comp.constraint_indices.push_back(ci);
+                    for (int vi : constraint_vars_idx[static_cast<size_t>(ci)]) pending_v.push_back(vi);
+                }
+                while (!pending_v.empty()) {
+                    int vi = pending_v.back(); pending_v.pop_back();
+                    if (vi < 0 || visited_v[static_cast<size_t>(vi)]) continue;
+                    visited_v[static_cast<size_t>(vi)] = true;
+                    comp.var_indices.push_back(vi);
+                    for (int ci : var_constraints[static_cast<size_t>(vi)]) pending_c.push_back(ci);
+                }
+            }
+            if (!comp.constraint_indices.empty()) components.push_back(std::move(comp));
+        }
 
         write_x(x);
-        double prev = eval_norm();
-        int it = 0;
-        double lambda = 1e-3; // damping
+        int total_iters = 0;
+        bool all_ok = true;
 
-        // Levenberg-Marquardt
-        for (; it < maxIters_; ++it) {
-            // 1. Residual vector
-            Eigen::VectorXd rvec(m);
+        // Solve each component independently
+        for (const auto& comp : components) {
+            const size_t cm = comp.constraint_indices.size();
+            const size_t cn = comp.var_indices.size();
+            if (cm == 0 || cn == 0) continue;
+
+            // Map from component-local to global indices
+            std::vector<int> ci = comp.constraint_indices;
+            std::vector<int> vi = comp.var_indices;
+
+            auto comp_eval_norm = [&]() {
+                double s = 0.0;
+                for (int idx : ci) { bool okc=false; double rr=residual(expanded[static_cast<size_t>(idx)], okc); s += rr*rr; }
+                return std::sqrt(s);
+            };
+
+            double prev = comp_eval_norm();
+            double lambda = 1e-3;
+
+            for (int it = 0; it < maxIters_; ++it) {
+                total_iters++;
+                // Residual
+                Eigen::VectorXd rvec(cm);
+                for (size_t r = 0; r < cm; ++r) { bool okc=false; rvec[r] = residual(expanded[static_cast<size_t>(ci[r])], okc); }
+
+                // Jacobian (cm x cn)
+                Eigen::MatrixXd J(cm, cn);
+                const double eps = 1e-6;
+                for (size_t j = 0; j < cn; ++j) {
+                    int gj = vi[j];
+                    double xj = x[gj];
+                    set(vars[static_cast<size_t>(gj)], xj + eps);
+                    for (size_t r = 0; r < cm; ++r) {
+                        bool okc=false;
+                        J(r, j) = (residual(expanded[static_cast<size_t>(ci[r])], okc) - rvec[r]) / eps;
+                    }
+                    set(vars[static_cast<size_t>(gj)], xj);
+                }
+
+                Eigen::MatrixXd A = J.transpose() * J;
+                A.diagonal().array() += lambda;
+                Eigen::VectorXd delta = A.ldlt().solve(-J.transpose() * rvec);
+
+                // Apply delta to global x
+                Eigen::VectorXd newX = x;
+                for (size_t j = 0; j < cn; ++j) newX[vi[j]] += delta[j];
+                write_x(newX);
+                double newNorm = comp_eval_norm();
+
+                if (newNorm < prev) {
+                    x = newX; prev = newNorm;
+                    lambda = std::max(1e-10, lambda * 0.1);
+                } else {
+                    write_x(x);
+                    lambda *= 10.0;
+                }
+                if (prev <= tol_) break;
+            }
+            if (prev > tol_) all_ok = false;
+        }
+
+        write_x(x);
+        double finalErr = eval_norm();
+        out.ok = all_ok && (finalErr <= tol_);
+        out.iterations = total_iters;
+        out.finalError = finalErr;
+        out.message = (out.ok ? "Converged (partitioned LM)" : "Stopped (max iters or stagnation)");
+        return out;
+    }
+};
+
+class DogLegSolver : public ISolver {
+    int maxIters_ = 80;
+    double tol_ = 1e-6;
+public:
+    void setMaxIterations(int iters) override { maxIters_ = iters; }
+    void setTolerance(double tol) override { tol_ = tol; }
+
+    SolveResult solve(std::vector<ConstraintSpec>& constraints) override {
+        SolveResult r;
+        const auto report = validate_constraints(constraints, nullptr);
+        r.diagnostics = report.diagnostics;
+        r.redundancyGroups = report.redundancyGroups;
+        r.analysis = report.analysis;
+        r.ok = r.diagnostics.empty();
+        r.iterations = 0;
+        r.finalError = 0.0;
+        r.message = r.ok ? "Converged (no-op stub)" : "Constraint validation failed";
+        return r;
+    }
+
+    SolveResult solveWithBindings(std::vector<ConstraintSpec>& constraints, const GetVar& get, const SetVar& set) override {
+        // Reuse MinimalSolver's validation and residual setup
+        SolveResult out;
+        const auto report = validate_constraints(constraints, &get);
+        out.diagnostics = report.diagnostics;
+        out.redundancyGroups = report.redundancyGroups;
+        out.analysis = report.analysis;
+        if (!out.diagnostics.empty()) {
+            out.ok = false;
+            out.iterations = 0;
+            out.finalError = 0.0;
+            out.message = "Constraint validation failed";
+            return out;
+        }
+
+        // Same residual lambda as MinimalSolver
+        auto residual = [&](const ConstraintSpec& c, bool& ok)->double {
+            ok = true;
+            if (c.type == "horizontal" && c.vars.size() >= 2) {
+                bool ok0=false, ok1=false;
+                double y0 = get(c.vars[0], ok0); double y1 = get(c.vars[1], ok1);
+                ok = ok0 && ok1; return (ok ? (y1 - y0) : 0.0);
+            }
+            if (c.type == "vertical" && c.vars.size() >= 2) {
+                bool ok0=false, ok1=false;
+                double x0 = get(c.vars[0], ok0); double x1 = get(c.vars[1], ok1);
+                ok = ok0 && ok1; return (ok ? (x1 - x0) : 0.0);
+            }
+            if (c.type == "distance" && c.vars.size() >= 4 && c.value.has_value()) {
+                bool ok0=false, ok1=false, ok2=false, ok3=false;
+                double x0 = get(c.vars[0], ok0), y0 = get(c.vars[1], ok1);
+                double x1 = get(c.vars[2], ok2), y1 = get(c.vars[3], ok3);
+                if (!(ok0&&ok1&&ok2&&ok3)) { ok=false; return 0.0; }
+                double dx = x1 - x0, dy = y1 - y0;
+                return std::sqrt(dx*dx + dy*dy) - *c.value;
+            }
+            if (c.type == "parallel" && c.vars.size() >= 8) {
+                bool okv[8]; for (int i=0;i<8;++i) okv[i]=false;
+                double x0 = get(c.vars[0], okv[0]), y0 = get(c.vars[1], okv[1]);
+                double x1 = get(c.vars[2], okv[2]), y1 = get(c.vars[3], okv[3]);
+                double x2 = get(c.vars[4], okv[4]), y2 = get(c.vars[5], okv[5]);
+                double x3 = get(c.vars[6], okv[6]), y3 = get(c.vars[7], okv[7]);
+                for (int i=0;i<8;++i) if (!okv[i]) { ok=false; return 0.0; }
+                double v1x = x1-x0, v1y = y1-y0, v2x = x3-x2, v2y = y3-y2;
+                double n1 = std::sqrt(v1x*v1x + v1y*v1y), n2 = std::sqrt(v2x*v2x + v2y*v2y);
+                if (n1==0.0 || n2==0.0) { ok=true; return 0.0; }
+                return std::abs(v1x*v2y - v1y*v2x) / (n1*n2);
+            }
+            if (c.type == "perpendicular" && c.vars.size() >= 8) {
+                bool okv[8]; for (int i=0;i<8;++i) okv[i]=false;
+                double x0 = get(c.vars[0], okv[0]), y0 = get(c.vars[1], okv[1]);
+                double x1 = get(c.vars[2], okv[2]), y1 = get(c.vars[3], okv[3]);
+                double x2 = get(c.vars[4], okv[4]), y2 = get(c.vars[5], okv[5]);
+                double x3 = get(c.vars[6], okv[6]), y3 = get(c.vars[7], okv[7]);
+                for (int i=0;i<8;++i) if (!okv[i]) { ok=false; return 0.0; }
+                double v1x = x1-x0, v1y = y1-y0, v2x = x3-x2, v2y = y3-y2;
+                double n1 = std::sqrt(v1x*v1x + v1y*v1y), n2 = std::sqrt(v2x*v2x + v2y*v2y);
+                if (n1==0.0 || n2==0.0) { ok=true; return 0.0; }
+                return (v1x*v2x + v1y*v2y) / (n1*n2);
+            }
+            if (c.type == "equal" && c.vars.size() >= 2) {
+                bool ok0=false, ok1=false;
+                double a = get(c.vars[0], ok0); double b = get(c.vars[1], ok1);
+                ok = ok0 && ok1; return (ok ? (a - b) : 0.0);
+            }
+            if (c.type == "coincident" && c.vars.size() >= 4) {
+                bool ok0=false, ok1=false, ok2=false, ok3=false;
+                double x0 = get(c.vars[0], ok0), y0 = get(c.vars[1], ok1);
+                double x1 = get(c.vars[2], ok2), y1 = get(c.vars[3], ok3);
+                if (!(ok0&&ok1&&ok2&&ok3)) { ok=false; return 0.0; }
+                return (c.value.has_value() && *c.value > 0.5) ? (y1 - y0) : (x1 - x0);
+            }
+            if (c.type == "concentric" && c.vars.size() >= 4) {
+                bool ok0=false, ok1=false, ok2=false, ok3=false;
+                double cx0 = get(c.vars[0], ok0), cy0 = get(c.vars[1], ok1);
+                double cx1 = get(c.vars[2], ok2), cy1 = get(c.vars[3], ok3);
+                if (!(ok0&&ok1&&ok2&&ok3)) { ok=false; return 0.0; }
+                return (c.value.has_value() && *c.value > 0.5) ? (cy1 - cy0) : (cx1 - cx0);
+            }
+            if (c.type == "angle" && c.vars.size() >= 8 && c.value.has_value()) {
+                bool okv[8]; for (int i=0;i<8;++i) okv[i]=false;
+                double x0 = get(c.vars[0], okv[0]), y0 = get(c.vars[1], okv[1]);
+                double x1 = get(c.vars[2], okv[2]), y1 = get(c.vars[3], okv[3]);
+                double x2 = get(c.vars[4], okv[4]), y2 = get(c.vars[5], okv[5]);
+                double x3 = get(c.vars[6], okv[6]), y3 = get(c.vars[7], okv[7]);
+                for (int i=0;i<8;++i) if (!okv[i]) { ok=false; return 0.0; }
+                double v1x = x1-x0, v1y = y1-y0, v2x = x3-x2, v2y = y3-y2;
+                double n1 = std::sqrt(v1x*v1x + v1y*v1y), n2 = std::sqrt(v2x*v2x + v2y*v2y);
+                if (n1==0.0 || n2==0.0) { ok=true; return 0.0; }
+                double cosA = std::max(-1.0, std::min(1.0, (v1x*v2x + v1y*v2y) / (n1*n2)));
+                return std::acos(cosA) - *c.value;
+            }
+            if (c.type == "tangent" && c.vars.size() >= 6 && c.value.has_value()) {
+                bool okv[6]; for (int i=0;i<6;++i) okv[i]=false;
+                double p0x = get(c.vars[0], okv[0]), p0y = get(c.vars[1], okv[1]);
+                double p1x = get(c.vars[2], okv[2]), p1y = get(c.vars[3], okv[3]);
+                double cx  = get(c.vars[4], okv[4]), cy  = get(c.vars[5], okv[5]);
+                for (int i=0;i<6;++i) if (!okv[i]) { ok=false; return 0.0; }
+                double dx = p1x-p0x, dy = p1y-p0y;
+                double len = std::sqrt(dx*dx + dy*dy);
+                if (len < 1e-15) return 0.0;
+                double dist = std::abs((cx-p0x)*dy - (cy-p0y)*dx) / len;
+                return dist - *c.value;
+            }
+            if (c.type == "point_on_line" && c.vars.size() >= 6) {
+                bool okv[6]; for (int i=0;i<6;++i) okv[i]=false;
+                double px = get(c.vars[0], okv[0]), py = get(c.vars[1], okv[1]);
+                double ax = get(c.vars[2], okv[2]), ay = get(c.vars[3], okv[3]);
+                double bx = get(c.vars[4], okv[4]), by = get(c.vars[5], okv[5]);
+                for (int i=0;i<6;++i) if (!okv[i]) { ok=false; return 0.0; }
+                double dx = bx-ax, dy = by-ay;
+                double len = std::sqrt(dx*dx + dy*dy);
+                if (len < 1e-15) return 0.0;
+                return ((px-ax)*dy - (py-ay)*dx) / len;
+            }
+            if (c.type == "symmetric" && c.vars.size() >= 6) {
+                bool okv[6]; for (int i=0;i<6;++i) okv[i]=false;
+                double p1x = get(c.vars[0], okv[0]), p1y = get(c.vars[1], okv[1]);
+                double p2x = get(c.vars[2], okv[2]), p2y = get(c.vars[3], okv[3]);
+                double cx  = get(c.vars[4], okv[4]), cy  = get(c.vars[5], okv[5]);
+                for (int i=0;i<6;++i) if (!okv[i]) { ok=false; return 0.0; }
+                // Use value field to select component: 0 (or absent) = x, 1 = y
+                double mx = (p1x+p2x)*0.5 - cx, my = (p1y+p2y)*0.5 - cy;
+                return (c.value.has_value() && *c.value > 0.5) ? my : mx;
+            }
+            if (c.type == "midpoint" && c.vars.size() >= 6) {
+                bool okv[6]; for (int i=0;i<6;++i) okv[i]=false;
+                double px = get(c.vars[0], okv[0]), py = get(c.vars[1], okv[1]);
+                double ax = get(c.vars[2], okv[2]), ay = get(c.vars[3], okv[3]);
+                double bx = get(c.vars[4], okv[4]), by = get(c.vars[5], okv[5]);
+                for (int i=0;i<6;++i) if (!okv[i]) { ok=false; return 0.0; }
+                double dx = px - (ax+bx)*0.5, dy = py - (ay+by)*0.5;
+                return (c.value.has_value() && *c.value > 0.5) ? dy : dx;
+            }
+            if (c.type == "fixed_point" && c.vars.size() >= 2 && c.value.has_value()) {
+                bool ok0=false, ok1=false;
+                double px = get(c.vars[0], ok0); (void)get(c.vars[1], ok1);
+                ok = ok0 && ok1; if (!ok) return 0.0;
+                return px - *c.value;
+            }
+            ok = true; return 0.0;
+        };
+
+        // Collect unique variables
+        std::vector<VarRef> vars;
+        auto add_unique = [&](const VarRef& v){ for (auto& u : vars) if (u.id==v.id && u.key==v.key) return; vars.push_back(v); };
+        for (const auto& c : constraints) for (const auto& v : c.vars) add_unique(v);
+
+        const size_t n = vars.size();
+        const size_t m = constraints.size();
+        if (n == 0 || m == 0) {
+            out.ok = true; out.iterations = 0; out.finalError = 0.0;
+            out.analysis.jacobianColumnCount = static_cast<int>(n);
+            return out;
+        }
+
+        Eigen::VectorXd x(n);
+        for (size_t j=0;j<n;j++){ bool okv=false; x[j]=get(vars[j], okv); }
+
+        auto write_x = [&](const Eigen::VectorXd& currX){ for (size_t j=0;j<n;j++) set(vars[j], currX[j]); };
+
+        populate_jacobian_analysis(constraints, vars, set, x, residual,
+            out.analysis, &out.structuralGroups, &out.redundancySubsets);
+        collect_conflict_groups(out.structuralGroups, out);
+        collect_problematic_constraint_indices(out.structuralGroups, out);
+        out.primaryRedundancyBasisConstraintIndices.clear();
+        out.primaryRedundantConstraintIndices.clear();
+        out.smallestRedundancyBasisConstraintIndices.clear();
+        out.smallestRedundantConstraintIndices.clear();
+        out.analysis.primaryRedundancyVariableKeys.clear();
+        out.analysis.smallestRedundancyVariableKeys.clear();
+        if (!out.redundancySubsets.empty()) {
+            out.primaryRedundancyBasisConstraintIndices = out.redundancySubsets.front().basisConstraintIndices;
+            out.primaryRedundantConstraintIndices = out.redundancySubsets.front().redundantConstraintIndices;
+            out.analysis.primaryRedundancyVariableKeys = out.redundancySubsets.front().variableKeys;
+            const auto smallest_it = std::find_if(
+                out.redundancySubsets.begin(), out.redundancySubsets.end(),
+                [&](const ConstraintRedundancySubset& subset) {
+                    return subset.anchorConstraintIndex == out.analysis.smallestRedundancySubsetAnchorConstraintIndex;
+                });
+            if (smallest_it != out.redundancySubsets.end()) {
+                out.smallestRedundancyBasisConstraintIndices = smallest_it->basisConstraintIndices;
+                out.smallestRedundantConstraintIndices = smallest_it->redundantConstraintIndices;
+                out.analysis.smallestRedundancyVariableKeys = smallest_it->variableKeys;
+            }
+        }
+
+        auto eval_residuals = [&](Eigen::VectorXd& rvec) {
             for (size_t i=0; i<m; ++i) { bool okc=false; rvec[i] = residual(constraints[i], okc); }
+        };
+        auto eval_norm = [&]() {
+            double s=0.0;
+            for (const auto& c: constraints){ bool okc=false; double rr=residual(c, okc); s += rr*rr; }
+            return std::sqrt(s);
+        };
 
-            // 2. Jacobian J (m x n)
+        write_x(x);
+        double trustRadius = 1.0;
+        const double trustMax = 100.0;
+        const double trustMin = 1e-12;
+        int it = 0;
+
+        for (; it < maxIters_; ++it) {
+            write_x(x);
+            double currentNorm = eval_norm();
+            if (currentNorm <= tol_) break;
+
+            // Residual vector
+            Eigen::VectorXd rvec(m);
+            eval_residuals(rvec);
+
+            // Jacobian (numerical)
             Eigen::MatrixXd J(m, n);
-            const double eps = 1e-6;
+            const double eps = 1e-7;
             for (size_t j=0; j<n; ++j) {
                 double xj = x[j];
-                set(vars[j], xj + eps); // Perturb
+                set(vars[j], xj + eps);
                 for (size_t i=0; i<m; ++i) {
                     bool okc=false;
-                    double r2 = residual(constraints[i], okc);
-                    J(i, j) = (r2 - rvec[i]) / eps;
+                    J(i, j) = (residual(constraints[i], okc) - rvec[i]) / eps;
                 }
-                set(vars[j], xj); // Restore
+                set(vars[j], xj);
             }
 
-            // 3. Normal Equations: (J^T J + lambda I) delta = -J^T r
-            Eigen::MatrixXd A = J.transpose() * J;
-            A.diagonal().array() += lambda;
-            Eigen::VectorXd b = -J.transpose() * rvec;
+            // Gradient g = J^T * r
+            Eigen::VectorXd g = J.transpose() * rvec;
 
-            // Solve using LDLT (fast for symmetric positive definite)
-            // Or ColPivHouseholderQR for robustness if rank deficient
-            Eigen::VectorXd delta = A.ldlt().solve(b);
+            // Gauss-Newton step: solve J^T J delta_gn = -J^T r
+            Eigen::MatrixXd JtJ = J.transpose() * J;
+            Eigen::VectorXd delta_gn = JtJ.colPivHouseholderQr().solve(-g);
 
-            // 4. Update and check
+            // Steepest descent step: delta_sd = -alpha * g where alpha = ||g||^2 / ||J*g||^2
+            Eigen::VectorXd Jg = J * g;
+            double g_norm2 = g.squaredNorm();
+            double Jg_norm2 = Jg.squaredNorm();
+            double alpha = (Jg_norm2 > 1e-30) ? (g_norm2 / Jg_norm2) : 1.0;
+            Eigen::VectorXd delta_sd = -alpha * g;
+
+            // DogLeg interpolation
+            Eigen::VectorXd delta;
+            double gn_norm = delta_gn.norm();
+            double sd_norm = delta_sd.norm();
+
+            if (gn_norm <= trustRadius) {
+                // Gauss-Newton step is within trust region
+                delta = delta_gn;
+            } else if (sd_norm >= trustRadius) {
+                // Steepest descent step is outside trust region; scale it
+                delta = (trustRadius / sd_norm) * delta_sd;
+            } else {
+                // Interpolate between steepest descent and Gauss-Newton
+                Eigen::VectorXd diff = delta_gn - delta_sd;
+                double a_coeff = diff.squaredNorm();
+                double b_coeff = 2.0 * delta_sd.dot(diff);
+                double c_coeff = delta_sd.squaredNorm() - trustRadius * trustRadius;
+                double discriminant = b_coeff * b_coeff - 4.0 * a_coeff * c_coeff;
+                double beta = (-b_coeff + std::sqrt(std::max(0.0, discriminant))) / (2.0 * a_coeff);
+                beta = std::max(0.0, std::min(1.0, beta));
+                delta = delta_sd + beta * diff;
+            }
+
+            // Trial step
             Eigen::VectorXd newX = x + delta;
             write_x(newX);
             double newNorm = eval_norm();
 
-            if (newNorm < prev) {
+            // Predicted reduction
+            Eigen::VectorXd predicted_r = rvec + J * delta;
+            double predicted_norm = predicted_r.norm();
+            double actual_reduction = currentNorm * currentNorm - newNorm * newNorm;
+            double predicted_reduction = currentNorm * currentNorm - predicted_norm * predicted_norm;
+
+            double rho = (predicted_reduction > 1e-30) ? (actual_reduction / predicted_reduction) : 0.0;
+
+            if (rho > 0.0 && newNorm < currentNorm) {
                 // Accept step
                 x = newX;
-                prev = newNorm;
-                lambda = std::max(1e-10, lambda * 0.1);
             } else {
                 // Reject step
-                write_x(x); // Reset world
-                lambda *= 10.0;
+                write_x(x);
             }
 
-            if (prev <= tol_) break;
+            // Update trust radius
+            if (rho < 0.25) {
+                trustRadius = std::max(trustMin, trustRadius * 0.25);
+            } else if (rho > 0.75) {
+                trustRadius = std::min(trustMax, trustRadius * 2.0);
+            }
+
+            if (newNorm <= tol_) break;
         }
 
         write_x(x);
-        out.ok = (prev <= tol_); 
-        out.iterations = it; 
-        out.finalError = prev;
-        out.message = (out.ok ? "Converged (Eigen LM)" : "Stopped (max iters or stagnation)");
+        double finalErr = eval_norm();
+        out.ok = (finalErr <= tol_);
+        out.iterations = it;
+        out.finalError = finalErr;
+
+        // If DogLeg didn't converge, fallback to LM
+        if (!out.ok) {
+            // Reset to current x and try LM
+            double lambda = 1e-3;
+            double prev = finalErr;
+            for (int lmIt = 0; lmIt < maxIters_; ++lmIt) {
+                Eigen::VectorXd rvec(m);
+                eval_residuals(rvec);
+                Eigen::MatrixXd J(m, n);
+                const double eps2 = 1e-6;
+                for (size_t j=0; j<n; ++j) {
+                    double xj = x[j];
+                    set(vars[j], xj + eps2);
+                    for (size_t i=0; i<m; ++i) {
+                        bool okc=false;
+                        J(i, j) = (residual(constraints[i], okc) - rvec[i]) / eps2;
+                    }
+                    set(vars[j], xj);
+                }
+                Eigen::MatrixXd A = J.transpose() * J;
+                A.diagonal().array() += lambda;
+                Eigen::VectorXd b = -J.transpose() * rvec;
+                Eigen::VectorXd delta2 = A.ldlt().solve(b);
+                Eigen::VectorXd newX2 = x + delta2;
+                write_x(newX2);
+                double newNorm2 = eval_norm();
+                if (newNorm2 < prev) {
+                    x = newX2; prev = newNorm2;
+                    lambda = std::max(1e-10, lambda * 0.1);
+                } else {
+                    write_x(x);
+                    lambda *= 10.0;
+                }
+                it++;
+                if (prev <= tol_) break;
+            }
+            write_x(x);
+            finalErr = eval_norm();
+            out.ok = (finalErr <= tol_);
+            out.iterations = it;
+            out.finalError = finalErr;
+        }
+
+        out.message = out.ok ? "Converged (DogLeg+LM)" : "Stopped (max iters)";
         return out;
     }
 };
 
 ISolver* createMinimalSolver() { return new MinimalSolver(); }
+
+ISolver* createSolver(SolverAlgorithm algo) {
+    switch (algo) {
+        case SolverAlgorithm::LM: return new MinimalSolver();
+        case SolverAlgorithm::DogLeg: return new DogLegSolver();
+        default: return new DogLegSolver();
+    }
+}
 
 } // namespace core

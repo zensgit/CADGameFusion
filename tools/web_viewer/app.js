@@ -26,12 +26,42 @@ function setEditorMode() {
   }
 }
 
+// Workspace bootstrap state — lazily initialized when switching to editor mode.
+let workspaceInstance = null;
+let workspaceBootstrapPromise = null;
+
+async function ensureWorkspaceBootstrapped() {
+  if (workspaceInstance) return workspaceInstance;
+  if (workspaceBootstrapPromise) return workspaceBootstrapPromise;
+  workspaceBootstrapPromise = (async () => {
+    const editor = await import('./ui/workspace.js');
+    workspaceInstance = editor.bootstrapCadWorkspace({ params });
+    return workspaceInstance;
+  })();
+  return workspaceBootstrapPromise;
+}
+
+// Public API exposed for cross-module use (e.g. preview_app.js DXF/DWG bridge).
+window.__vemcadApp = {
+  /**
+   * Switch to editor mode and load the given document JSON payload.
+   * Safe to call from preview_app.js when the desktop bridge delivers a
+   * converted DXF/DWG document.
+   */
+  async switchToEditor(documentJson) {
+    setEditorMode();
+    const ws = await ensureWorkspaceBootstrapped();
+    if (ws && typeof ws.importPayload === 'function') {
+      ws.importPayload(documentJson, { fitView: true });
+    }
+  },
+};
+
 async function bootstrap() {
   const isEditorMode = mode === 'editor' || mode === 'cad' || mode === 'draft';
   if (isEditorMode) {
     setEditorMode();
-    const editor = await import('./ui/workspace.js');
-    editor.bootstrapCadWorkspace({ params });
+    workspaceInstance = await ensureWorkspaceBootstrapped();
     return;
   }
 

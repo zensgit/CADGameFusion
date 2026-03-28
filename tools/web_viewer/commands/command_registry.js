@@ -13,6 +13,7 @@ import {
   extractLineSegments,
   lineLineIntersection,
   rotateEntity,
+  scaleEntity,
   subtract,
   normalizeVector,
   perpendicular,
@@ -21,6 +22,21 @@ import {
   dot,
   transformEntityByDelta,
 } from '../tools/geometry.js';
+import {
+  isDirectEditableInsertTextProxyEntity,
+  isDirectEditableSourceTextEntity,
+  isInsertGroupEntity,
+  isSourceGroupEntity,
+  listEditableInsertTextMembers,
+  listInsertGroupTextMembers,
+  listSourceGroupTextMembers,
+  summarizeReleasedInsertGroupMembers,
+  resolveSourceTextGuide,
+  summarizeInsertGroupMembers,
+  summarizeSourceGroupMembers,
+} from '../insert_group.js';
+import { suggestFilletRadius, suggestChamferDistance } from '../tools/two_target_pick_tool_helpers.js';
+import { resolveEffectiveEntityColor } from '../line_style.js';
 
 function nowMs() {
   if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') {
@@ -105,20 +121,196 @@ function isReadOnlyEntity(entity) {
   return !!entity && (entity.readOnly === true || entity.type === 'unsupported' || entity.editMode === 'proxy');
 }
 
+function hasSameEntityIds(left, right) {
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
+  const expected = new Set(right.map((id) => Math.trunc(Number(id))));
+  for (const id of left) {
+    const normalized = Math.trunc(Number(id));
+    if (!expected.has(normalized)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isTransformSafeSourceGroupProxy(entity) {
+  if (!entity || !isSourceGroupEntity(entity)) return false;
+  return entity.type === 'line'
+    || entity.type === 'polyline'
+    || entity.type === 'circle'
+    || entity.type === 'arc'
+    || entity.type === 'text';
+}
+
+function resolveWholeSourceGroupTransformSelection(ctx, selectionIds) {
+  if (!Array.isArray(selectionIds) || selectionIds.length === 0) return null;
+  const primaryId = Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null;
+  const primary = ctx.document.getEntity(primaryId) || ctx.document.getEntity(selectionIds[0]);
+  if (!isSourceGroupEntity(primary)) return null;
+  const summary = summarizeSourceGroupMembers(ctx.document.listEntities(), primary, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.readOnlyIds.length === 0) return null;
+  if (summary.memberIds.length <= 1) return null;
+  if (!hasSameEntityIds(selectionIds, summary.memberIds)) return null;
+  return {
+    ...summary,
+    groupKind: isInsertGroupEntity(primary) ? 'insert' : 'source',
+    memberIdSet: new Set(summary.memberIds),
+  };
+}
+
+function canTransformSelectedEntity(entity, wholeSourceGroupSelection) {
+  if (!entity) return false;
+  if (!isReadOnlyEntity(entity)) return true;
+  return !!wholeSourceGroupSelection
+    && wholeSourceGroupSelection.memberIdSet.has(entity.id)
+    && isTransformSafeSourceGroupProxy(entity);
+}
+
+function formatWholeSourceGroupTransformMessage(verb, entityCount, wholeSourceGroupSelection) {
+  if (!wholeSourceGroupSelection) return '';
+  if (wholeSourceGroupSelection.groupKind === 'insert') {
+    return `${verb} insert group (${entityCount} entities, including ${wholeSourceGroupSelection.readOnlyIds.length} proxy)`;
+  }
+  return `${verb} source group (${entityCount} entities, including ${wholeSourceGroupSelection.readOnlyIds.length} read-only)`;
+}
+
 function stripImportedProvenanceForCreatedEntity(entity) {
   if (!entity || typeof entity !== 'object') return entity;
   const next = { ...entity };
   delete next.groupId;
+  delete next.colorSource;
+  delete next.colorAci;
   delete next.sourceType;
   delete next.editMode;
   delete next.proxyKind;
   delete next.blockName;
   delete next.hatchId;
   delete next.hatchPattern;
+  delete next.sourceBundleId;
   delete next.dimType;
   delete next.dimStyle;
+  delete next.sourceTextPos;
+  delete next.sourceTextRotation;
+  delete next.sourceAnchor;
+  delete next.leaderLanding;
+  delete next.leaderElbow;
+  delete next.sourceAnchorDriverId;
+  delete next.sourceAnchorDriverType;
+  delete next.sourceAnchorDriverKind;
   delete next.dimTextPos;
   delete next.dimTextRotation;
+  return next;
+}
+
+function isReleasableInsertEntity(entity) {
+  return !!entity
+    && (entity.type === 'line'
+      || entity.type === 'polyline'
+      || entity.type === 'circle'
+      || entity.type === 'arc'
+      || entity.type === 'text');
+}
+
+function buildReleasedInsertEntity(entity, layer = null) {
+  if (!entity || typeof entity !== 'object') return entity;
+  const next = { ...cloneValue(entity) };
+  const archive = entity.type === 'text' && String(entity?.sourceType || '').trim().toUpperCase() === 'INSERT'
+    ? {
+      sourceType: typeof entity?.sourceType === 'string' ? entity.sourceType.trim() : '',
+      editMode: typeof entity?.editMode === 'string' ? entity.editMode.trim() : '',
+      proxyKind: typeof entity?.proxyKind === 'string' ? entity.proxyKind.trim() : '',
+      name: typeof entity?.name === 'string' ? entity.name.trim() : '',
+      groupId: Number.isFinite(entity?.groupId) ? Math.trunc(Number(entity.groupId)) : undefined,
+      blockName: typeof entity?.blockName === 'string' ? entity.blockName.trim() : '',
+      textKind: typeof entity?.textKind === 'string' ? entity.textKind.trim() : '',
+      attributeTag: typeof entity?.attributeTag === 'string' ? entity.attributeTag.trim() : '',
+      attributeDefault: typeof entity?.attributeDefault === 'string' ? entity.attributeDefault : undefined,
+      attributePrompt: typeof entity?.attributePrompt === 'string' ? entity.attributePrompt : undefined,
+      attributeFlags: Number.isFinite(entity?.attributeFlags) ? Math.trunc(entity.attributeFlags) : undefined,
+      attributeInvisible: typeof entity?.attributeInvisible === 'boolean' ? entity.attributeInvisible : undefined,
+      attributeConstant: typeof entity?.attributeConstant === 'boolean' ? entity.attributeConstant : undefined,
+      attributeVerify: typeof entity?.attributeVerify === 'boolean' ? entity.attributeVerify : undefined,
+      attributePreset: typeof entity?.attributePreset === 'boolean' ? entity.attributePreset : undefined,
+      attributeLockPosition: typeof entity?.attributeLockPosition === 'boolean' ? entity.attributeLockPosition : undefined,
+    }
+    : null;
+  next.groupId = undefined;
+  next.sourceType = undefined;
+  next.editMode = undefined;
+  next.proxyKind = undefined;
+  next.blockName = undefined;
+  next.sourceAnchor = undefined;
+  next.leaderLanding = undefined;
+  next.leaderElbow = undefined;
+  next.sourceAnchorDriverId = undefined;
+  next.sourceAnchorDriverType = undefined;
+  next.sourceAnchorDriverKind = undefined;
+  next.textKind = undefined;
+  next.attributeTag = undefined;
+  next.attributeDefault = undefined;
+  next.attributePrompt = undefined;
+  next.attributeFlags = undefined;
+  next.attributeInvisible = undefined;
+  next.attributeConstant = undefined;
+  next.attributeVerify = undefined;
+  next.attributePreset = undefined;
+  next.attributeLockPosition = undefined;
+  next.sourceTextPos = undefined;
+  next.sourceTextRotation = undefined;
+  next.readOnly = false;
+  next.releasedInsertArchive = archive;
+  if (String(next.colorSource || '').trim().toUpperCase() === 'BYBLOCK') {
+    next.color = resolveEffectiveEntityColor(entity, layer);
+    next.colorSource = 'TRUECOLOR';
+    next.colorAci = null;
+  }
+  if (String(next.lineType || '').trim().toUpperCase() === 'BYBLOCK') {
+    next.lineType = 'CONTINUOUS';
+  }
+  return next;
+}
+
+function isReleasableSourceEntity(entity) {
+  return !!entity
+    && (entity.type === 'line'
+      || entity.type === 'polyline'
+      || entity.type === 'circle'
+      || entity.type === 'arc'
+      || entity.type === 'text');
+}
+
+function buildReleasedSourceEntity(entity, layer = null) {
+  if (!entity || typeof entity !== 'object') return entity;
+  const next = { ...cloneValue(entity) };
+  next.groupId = undefined;
+  next.sourceType = undefined;
+  next.editMode = undefined;
+  next.proxyKind = undefined;
+  next.blockName = undefined;
+  next.hatchId = undefined;
+  next.hatchPattern = undefined;
+  next.sourceBundleId = undefined;
+  next.dimType = undefined;
+  next.dimStyle = undefined;
+  next.sourceTextPos = undefined;
+  next.sourceTextRotation = undefined;
+  next.sourceAnchor = undefined;
+  next.leaderLanding = undefined;
+  next.leaderElbow = undefined;
+  next.sourceAnchorDriverId = undefined;
+  next.sourceAnchorDriverType = undefined;
+  next.sourceAnchorDriverKind = undefined;
+  next.dimTextPos = undefined;
+  next.dimTextRotation = undefined;
+  next.readOnly = false;
+  if (String(next.colorSource || '').trim().toUpperCase() === 'BYBLOCK') {
+    next.color = resolveEffectiveEntityColor(entity, layer);
+    next.colorSource = 'TRUECOLOR';
+    next.colorAci = null;
+  }
+  if (String(next.lineType || '').trim().toUpperCase() === 'BYBLOCK') {
+    next.lineType = 'CONTINUOUS';
+  }
   return next;
 }
 
@@ -126,6 +318,25 @@ function runDeleteSelection(ctx) {
   const ids = [...ctx.selection.entityIds];
   if (ids.length === 0) {
     return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to delete' };
+  }
+  const wholeSourceGroupSelection = resolveWholeSourceGroupTransformSelection(ctx, ids);
+  if (wholeSourceGroupSelection && wholeSourceGroupSelection.groupKind === 'insert') {
+    const removed = ctx.document.removeEntities(ids);
+    ctx.selection.clear();
+    return {
+      ok: true,
+      changed: removed.length > 0,
+      message: `Deleted insert group (${ids.length} entities, including ${wholeSourceGroupSelection.readOnlyIds.length} proxy)`,
+    };
+  }
+  if (wholeSourceGroupSelection && wholeSourceGroupSelection.groupKind === 'source') {
+    const removed = ctx.document.removeEntities(ids);
+    ctx.selection.clear();
+    return {
+      ok: true,
+      changed: removed.length > 0,
+      message: `Deleted source group (${ids.length} entities, including ${wholeSourceGroupSelection.readOnlyIds.length} read-only)`,
+    };
   }
   const editableIds = [];
   const readOnlyIds = [];
@@ -161,6 +372,481 @@ function runDeleteSelection(ctx) {
   };
 }
 
+function runSelectInsertGroup(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to expand into an insert group' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Insert group target not found' };
+  }
+  if (!isInsertGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_INSERT_GROUP', message: 'Selected entity is not part of an INSERT group' };
+  }
+  const summary = summarizeInsertGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_EMPTY', message: 'No INSERT group members found in the current space/layout' };
+  }
+  const ids = summary.memberIds;
+  const primaryId = ids.includes(targetId) ? targetId : ids[0];
+  const currentIds = Array.isArray(ctx.selection.entityIds) ? ctx.selection.entityIds : [];
+  const unchanged = currentIds.length === ids.length
+    && currentIds.every((id, index) => id === ids[index])
+    && ctx.selection.primaryId === primaryId;
+  if (unchanged) {
+    return { ok: true, changed: false, message: `Insert group already selected (${ids.length} entities)` };
+  }
+  ctx.selection.setSelection(ids, primaryId);
+  return {
+    ok: true,
+    changed: true,
+    message: `Selected insert group (${ids.length} entities)`,
+  };
+}
+
+function runSelectReleasedInsertGroup(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No released insert text selected' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Released insert text target not found' };
+  }
+  const summary = summarizeReleasedInsertGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'RELEASED_INSERT_GROUP_MISSING', message: 'Released insert text has no surviving imported insert group in the current space/layout' };
+  }
+  const ids = summary.memberIds;
+  const primaryId = ids[0];
+  const currentIds = Array.isArray(ctx.selection.entityIds) ? ctx.selection.entityIds : [];
+  const unchanged = currentIds.length === ids.length
+    && currentIds.every((id, index) => id === ids[index])
+    && ctx.selection.primaryId === primaryId;
+  if (unchanged) {
+    return { ok: true, changed: false, message: `Released insert group already selected (${ids.length} entities)` };
+  }
+  ctx.selection.setSelection(ids, primaryId);
+  return {
+    ok: true,
+    changed: true,
+    message: `Selected released insert group (${ids.length} entities)`,
+  };
+}
+
+function runSelectSourceGroup(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to expand into a source group' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Source group target not found' };
+  }
+  if (!isSourceGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_SOURCE_GROUP', message: 'Selected entity is not part of a source group' };
+  }
+  const summary = summarizeSourceGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_EMPTY', message: 'No source-group members found in the current space/layout' };
+  }
+  const ids = summary.memberIds;
+  const primaryId = ids.includes(targetId) ? targetId : ids[0];
+  const currentIds = Array.isArray(ctx.selection.entityIds) ? ctx.selection.entityIds : [];
+  const unchanged = currentIds.length === ids.length
+    && currentIds.every((id, index) => id === ids[index])
+    && ctx.selection.primaryId === primaryId;
+  if (unchanged) {
+    return { ok: true, changed: false, message: `Source group already selected (${ids.length} entities)` };
+  }
+  ctx.selection.setSelection(ids, primaryId);
+  return {
+    ok: true,
+    changed: true,
+    message: `Selected source group (${ids.length} entities)`,
+  };
+}
+
+function runSelectEditableInsertGroup(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to narrow to editable insert members' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Insert group target not found' };
+  }
+  if (!isInsertGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_INSERT_GROUP', message: 'Selected entity is not part of an INSERT group' };
+  }
+  const summary = summarizeInsertGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_EMPTY', message: 'No INSERT group members found in the current space/layout' };
+  }
+  if (summary.editableIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_NOT_EDITABLE', message: 'Selected INSERT group has no editable members' };
+  }
+  const ids = summary.editableIds;
+  const primaryId = ids.includes(targetId) ? targetId : ids[0];
+  const currentIds = Array.isArray(ctx.selection.entityIds) ? ctx.selection.entityIds : [];
+  const unchanged = currentIds.length === ids.length
+    && currentIds.every((id, index) => id === ids[index])
+    && ctx.selection.primaryId === primaryId;
+  if (unchanged) {
+    return {
+      ok: true,
+      changed: false,
+      message: `Editable insert members already selected (${ids.length} of ${summary.memberIds.length})`,
+    };
+  }
+  ctx.selection.setSelection(ids, primaryId);
+  return {
+    ok: true,
+    changed: true,
+    message: `Selected editable insert members (${ids.length} of ${summary.memberIds.length})`,
+  };
+}
+
+function runSelectInsertGroupText(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to narrow to insert text' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Insert text target not found' };
+  }
+  if (!isInsertGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_INSERT_GROUP', message: 'Selected entity is not part of an INSERT group with text' };
+  }
+  const summary = summarizeInsertGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_EMPTY', message: 'No INSERT group members found in the current space/layout' };
+  }
+  const textMembers = listInsertGroupTextMembers(summary.members, target);
+  if (textMembers.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_HAS_NO_TEXT', message: 'Selected INSERT group has no text members to select' };
+  }
+  const textIds = textMembers.map((entity) => entity.id);
+  const primaryId = textIds.includes(targetId) ? targetId : textIds[0];
+  const currentIds = Array.isArray(ctx.selection.entityIds) ? ctx.selection.entityIds : [];
+  const unchanged = currentIds.length === textIds.length
+    && currentIds.every((id, index) => id === textIds[index])
+    && ctx.selection.primaryId === primaryId;
+  if (unchanged) {
+    return {
+      ok: true,
+      changed: false,
+      message: `Insert text already selected (${textIds.length} of ${summary.memberIds.length} entities)`,
+    };
+  }
+  ctx.selection.setSelection(textIds, primaryId);
+  return {
+    ok: true,
+    changed: true,
+    message: `Selected insert text (${textIds.length} of ${summary.memberIds.length} entities)`,
+  };
+}
+
+function runSelectEditableInsertGroupText(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to narrow to editable insert text' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Editable insert text target not found' };
+  }
+  if (!isInsertGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_INSERT_GROUP', message: 'Selected entity is not part of an INSERT group with editable text' };
+  }
+  const summary = summarizeInsertGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_EMPTY', message: 'No INSERT group members found in the current space/layout' };
+  }
+  const editableTextMembers = listEditableInsertTextMembers(summary.members, target);
+  if (editableTextMembers.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_HAS_NO_EDITABLE_TEXT', message: 'Selected INSERT group has no editable text members to select' };
+  }
+  const editableTextIds = editableTextMembers.map((entity) => entity.id);
+  const primaryId = editableTextIds.includes(targetId) ? targetId : editableTextIds[0];
+  const currentIds = Array.isArray(ctx.selection.entityIds) ? ctx.selection.entityIds : [];
+  const unchanged = currentIds.length === editableTextIds.length
+    && currentIds.every((id, index) => id === editableTextIds[index])
+    && ctx.selection.primaryId === primaryId;
+  if (unchanged) {
+    return {
+      ok: true,
+      changed: false,
+      message: `Editable insert text already selected (${editableTextIds.length} of ${summary.memberIds.length} entities)`,
+    };
+  }
+  ctx.selection.setSelection(editableTextIds, primaryId);
+  return {
+    ok: true,
+    changed: true,
+    message: `Selected editable insert text (${editableTextIds.length} of ${summary.memberIds.length} entities)`,
+  };
+}
+
+function runReleaseInsertGroup(ctx, payload) {
+  const resolved = resolveReleasableInsertGroup(ctx, payload);
+  if (!resolved.ok) {
+    return resolved;
+  }
+  const { summary, targetId } = resolved;
+  let changed = false;
+  for (const entity of summary.members) {
+    const layer = ctx.document.getLayer(entity.layerId);
+    const next = buildReleasedInsertEntity(entity, layer);
+    changed = ctx.document.updateEntity(entity.id, next) || changed;
+  }
+  const ids = summary.memberIds;
+  const primaryId = ids.includes(targetId) ? targetId : ids[0];
+  ctx.selection.setSelection(ids, primaryId);
+  return {
+    ok: true,
+    changed,
+    message: `Released insert group to editable geometry (${ids.length} entities)`,
+  };
+}
+
+function resolveReleasableInsertGroup(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to release from imported insert group' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Insert group target not found' };
+  }
+  if (!isInsertGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_INSERT_GROUP', message: 'Selected entity is not part of an INSERT group' };
+  }
+  const summary = summarizeInsertGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_EMPTY', message: 'No INSERT group members found in the current space/layout' };
+  }
+  const unreleasable = summary.members.filter((entity) => !isReleasableInsertEntity(entity));
+  if (unreleasable.length > 0) {
+    return {
+      ok: false,
+      changed: false,
+      error_code: 'UNSUPPORTED_INSERT_MEMBER',
+      message: `Insert group contains ${unreleasable.length} unsupported member(s)`,
+    };
+  }
+  const locked = summary.members.find((entity) => ctx.document.getLayer(entity.layerId)?.locked === true);
+  if (locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Insert group contains entities on locked layers' };
+  }
+  return { ok: true, changed: false, targetId, target, summary };
+}
+
+function runEditInsertText(ctx, payload) {
+  const resolved = resolveReleasableInsertGroup(ctx, payload);
+  if (!resolved.ok) {
+    return resolved;
+  }
+  const { summary, target, targetId } = resolved;
+  const textMembers = listInsertGroupTextMembers(summary.members, target);
+  if (textMembers.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_HAS_NO_TEXT', message: 'Selected INSERT group has no text members to edit' };
+  }
+  let changed = false;
+  for (const entity of textMembers) {
+    const layer = ctx.document.getLayer(entity.layerId);
+    const next = buildReleasedInsertEntity(entity, layer);
+    changed = ctx.document.updateEntity(entity.id, next) || changed;
+  }
+  const textIds = textMembers.map((entity) => entity.id);
+  const primaryId = textIds.includes(targetId) ? targetId : textIds[0];
+  ctx.selection.setSelection(textIds, primaryId);
+  return {
+    ok: true,
+    changed,
+    message: `Released insert text to editable geometry (${textIds.length} of ${summary.memberIds.length} entities)`,
+  };
+}
+
+function resolveReleasableSourceGroup(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to release from imported source group' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Source group target not found' };
+  }
+  if (!isSourceGroupEntity(target) || isInsertGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_SOURCE_GROUP', message: 'Selected entity is not part of a releasable source group' };
+  }
+  const summary = summarizeSourceGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_EMPTY', message: 'No source-group members found in the current space/layout' };
+  }
+  const unreleasable = summary.members.filter((entity) => !isReleasableSourceEntity(entity));
+  if (unreleasable.length > 0) {
+    return {
+      ok: false,
+      changed: false,
+      error_code: 'UNSUPPORTED_SOURCE_MEMBER',
+      message: `Source group contains ${unreleasable.length} unsupported member(s)`,
+    };
+  }
+  const locked = summary.members.find((entity) => ctx.document.getLayer(entity.layerId)?.locked === true);
+  if (locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Source group contains entities on locked layers' };
+  }
+  return { ok: true, changed: false, targetId, target, summary };
+}
+
+function applyReleasedSourceGroup(ctx, summary) {
+  let changed = false;
+  for (const entity of summary.members) {
+    const layer = ctx.document.getLayer(entity.layerId);
+    const next = buildReleasedSourceEntity(entity, layer);
+    changed = ctx.document.updateEntity(entity.id, next) || changed;
+  }
+  return changed;
+}
+
+function runReleaseSourceGroup(ctx, payload) {
+  const resolved = resolveReleasableSourceGroup(ctx, payload);
+  if (!resolved.ok) {
+    return resolved;
+  }
+  const { summary, targetId } = resolved;
+  const changed = applyReleasedSourceGroup(ctx, summary);
+  const ids = summary.memberIds;
+  const primaryId = ids.includes(targetId) ? targetId : ids[0];
+  ctx.selection.setSelection(ids, primaryId);
+  return {
+    ok: true,
+    changed,
+    message: `Released source group to editable geometry (${ids.length} entities)`,
+  };
+}
+
+function runEditSourceGroupText(ctx, payload) {
+  const resolved = resolveReleasableSourceGroup(ctx, payload);
+  if (!resolved.ok) {
+    return resolved;
+  }
+  const { summary, target, targetId } = resolved;
+  const textMembers = listSourceGroupTextMembers(summary.members, target);
+  if (textMembers.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_HAS_NO_TEXT', message: 'Selected source group has no text members to edit' };
+  }
+  const changed = applyReleasedSourceGroup(ctx, summary);
+  const textIds = textMembers.map((entity) => entity.id);
+  const primaryId = textIds.includes(targetId) ? targetId : textIds[0];
+  ctx.selection.setSelection(textIds, primaryId);
+  return {
+    ok: true,
+    changed,
+    message: `Released source group and selected source text (${textIds.length} of ${summary.memberIds.length} entities)`,
+  };
+}
+
+function runSelectSourceGroupText(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to narrow to source text' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Source text target not found' };
+  }
+  if (!isSourceGroupEntity(target) || isInsertGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_SOURCE_GROUP', message: 'Selected entity is not part of a source group with text' };
+  }
+  const summary = summarizeSourceGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_EMPTY', message: 'No source-group members found in the current space/layout' };
+  }
+  const textMembers = listSourceGroupTextMembers(summary.members, target);
+  if (textMembers.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_HAS_NO_TEXT', message: 'Selected source group has no text members to select' };
+  }
+  const textIds = textMembers.map((entity) => entity.id);
+  const primaryId = textIds.includes(targetId) ? targetId : textIds[0];
+  const currentIds = Array.isArray(ctx.selection.entityIds) ? ctx.selection.entityIds : [];
+  const unchanged = currentIds.length === textIds.length
+    && currentIds.every((id, index) => id === textIds[index])
+    && ctx.selection.primaryId === primaryId;
+  if (unchanged) {
+    return {
+      ok: true,
+      changed: false,
+      message: `Source text already selected (${textIds.length} of ${summary.memberIds.length} entities)`,
+    };
+  }
+  ctx.selection.setSelection(textIds, primaryId);
+  return {
+    ok: true,
+    changed: true,
+    message: `Selected source text (${textIds.length} of ${summary.memberIds.length} entities)`,
+  };
+}
+
+function runSelectSourceAnchorDriver(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to resolve source anchor driver' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Source anchor target not found' };
+  }
+  if (!isSourceGroupEntity(target) || isInsertGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_SOURCE_GROUP', message: 'Selected entity is not part of a source group with anchor guide' };
+  }
+  const guide = resolveSourceTextGuide(ctx.document.listEntities(), target);
+  if (!guide?.anchor || !Number.isFinite(guide.anchorDriverId)) {
+    return { ok: false, changed: false, error_code: 'GROUP_HAS_NO_ANCHOR_DRIVER', message: 'Selected source group has no selectable anchor driver' };
+  }
+  const driver = ctx.document.getEntity(guide.anchorDriverId);
+  if (!driver) {
+    return { ok: false, changed: false, error_code: 'ANCHOR_DRIVER_MISSING', message: 'Source anchor driver not found' };
+  }
+  const nextIds = [guide.anchorDriverId];
+  const currentIds = Array.isArray(ctx.selection.entityIds) ? ctx.selection.entityIds : [];
+  const unchanged = currentIds.length === 1
+    && currentIds[0] === guide.anchorDriverId
+    && ctx.selection.primaryId === guide.anchorDriverId;
+  if (unchanged) {
+    return { ok: true, changed: false, message: `Source anchor driver already selected (${guide.anchorDriverLabel || driver.type})` };
+  }
+  ctx.selection.setSelection(nextIds, guide.anchorDriverId);
+  return {
+    ok: true,
+    changed: true,
+    message: `Selected source anchor driver (${guide.anchorDriverLabel || driver.type})`,
+  };
+}
+
 function runMoveSelection(ctx, payload) {
   const ids = [...ctx.selection.entityIds];
   if (ids.length === 0) {
@@ -169,6 +855,7 @@ function runMoveSelection(ctx, payload) {
   if (!payload?.delta || !Number.isFinite(payload.delta.x) || !Number.isFinite(payload.delta.y)) {
     return { ok: false, changed: false, error_code: 'INVALID_DELTA', message: 'Missing move delta' };
   }
+  const wholeSourceGroupSelection = resolveWholeSourceGroupTransformSelection(ctx, ids);
   let changed = false;
   let attempted = 0;
   let readOnlySkipped = 0;
@@ -176,7 +863,7 @@ function runMoveSelection(ctx, payload) {
     const entity = ctx.document.getEntity(id);
     if (!entity) continue;
     attempted += 1;
-    if (isReadOnlyEntity(entity)) {
+    if (!canTransformSelectedEntity(entity, wholeSourceGroupSelection)) {
       readOnlySkipped += 1;
       continue;
     }
@@ -193,6 +880,13 @@ function runMoveSelection(ctx, payload) {
       message: `Moved ${Math.max(0, attempted - readOnlySkipped)}/${attempted} entities (skipped ${readOnlySkipped} read-only)`,
     };
   }
+  if (wholeSourceGroupSelection && wholeSourceGroupSelection.readOnlyIds.length > 0) {
+    return {
+      ok: true,
+      changed,
+      message: formatWholeSourceGroupTransformMessage('Moved', ids.length, wholeSourceGroupSelection),
+    };
+  }
   return { ok: true, changed, message: `Moved ${ids.length} entities` };
 }
 
@@ -203,6 +897,65 @@ function runCopySelection(ctx, payload) {
   }
   if (!payload?.delta || !Number.isFinite(payload.delta.x) || !Number.isFinite(payload.delta.y)) {
     return { ok: false, changed: false, error_code: 'INVALID_DELTA', message: 'Missing copy delta' };
+  }
+  const wholeSourceGroupSelection = resolveWholeSourceGroupTransformSelection(ctx, ids);
+  if (wholeSourceGroupSelection && wholeSourceGroupSelection.groupKind === 'insert') {
+    const unreleasable = wholeSourceGroupSelection.members.filter((entity) => !isReleasableInsertEntity(entity));
+    if (unreleasable.length > 0) {
+      return {
+        ok: false,
+        changed: false,
+        error_code: 'UNSUPPORTED_INSERT_MEMBER',
+        message: `Insert group contains ${unreleasable.length} unsupported member(s)`,
+      };
+    }
+    const copied = [];
+    for (const id of ids) {
+      const entity = ctx.document.getEntity(id);
+      if (!entity) continue;
+      const detached = buildReleasedInsertEntity(entity, ctx.document.getLayer(entity.layerId));
+      const next = transformEntityByDelta(detached, payload.delta);
+      delete next.id;
+      const created = ctx.document.addEntity(next);
+      if (created) copied.push(created.id);
+    }
+    if (copied.length > 0) {
+      ctx.selection.setSelection(copied, copied[0]);
+    }
+    return {
+      ok: true,
+      changed: copied.length > 0,
+      message: `Copied insert group as detached geometry (${copied.length} entities)`,
+    };
+  }
+  if (wholeSourceGroupSelection && wholeSourceGroupSelection.groupKind === 'source') {
+    const unreleasable = wholeSourceGroupSelection.members.filter((entity) => !isReleasableSourceEntity(entity));
+    if (unreleasable.length > 0) {
+      return {
+        ok: false,
+        changed: false,
+        error_code: 'UNSUPPORTED_SOURCE_MEMBER',
+        message: `Source group contains ${unreleasable.length} unsupported member(s)`,
+      };
+    }
+    const copied = [];
+    for (const id of ids) {
+      const entity = ctx.document.getEntity(id);
+      if (!entity) continue;
+      const detached = buildReleasedSourceEntity(entity, ctx.document.getLayer(entity.layerId));
+      const next = transformEntityByDelta(detached, payload.delta);
+      delete next.id;
+      const created = ctx.document.addEntity(next);
+      if (created) copied.push(created.id);
+    }
+    if (copied.length > 0) {
+      ctx.selection.setSelection(copied, copied[0]);
+    }
+    return {
+      ok: true,
+      changed: copied.length > 0,
+      message: `Copied source group as detached geometry (${copied.length} entities)`,
+    };
   }
   const copied = [];
   let attempted = 0;
@@ -990,6 +1743,67 @@ function trimCircleToArc(circleEntity, tangentAngle, pickAngle) {
   if (pickInA && !pickInB) return candidateA;
   if (pickInB && !pickInA) return candidateB;
   return candidateA;
+}
+
+/**
+ * P2.3: Transfer constraints from trimmed entity endpoints to fillet arc tangent points.
+ * When a fillet trims two entities at their intersection and inserts an arc,
+ * constraints referencing the old intersection vertex should be remapped to the
+ * arc's start/end points (the tangent points).
+ *
+ * @param {object} ctx - command context with document
+ * @param {number} entity1Id - first trimmed entity id
+ * @param {number} entity2Id - second trimmed entity id
+ * @param {{x:number,y:number}} oldVertex - the original intersection point
+ * @param {number} arcId - the new fillet arc entity id
+ * @param {{x:number,y:number}} arcStart - arc tangent point on entity1
+ * @param {{x:number,y:number}} arcEnd - arc tangent point on entity2
+ */
+function transferFilletConstraints(ctx, entity1Id, entity2Id, oldVertex, arcId, arcStart, arcEnd) {
+  if (!ctx.document?.listConstraints) return;
+  const constraints = ctx.document.listConstraints();
+  if (!constraints || constraints.length === 0) return;
+  const tol = 1e-6;
+  const near = (a, b) => a && b && Math.abs(a.x - b.x) < tol && Math.abs(a.y - b.y) < tol;
+
+  for (const c of constraints) {
+    if (!Array.isArray(c.refs) || c.refs.length < 2) continue;
+    // Check if any ref pair (x,y) references oldVertex on entity1 or entity2
+    for (let i = 0; i + 1 < c.refs.length; i += 2) {
+      const refX = c.refs[i];
+      const refY = c.refs[i + 1];
+      if (typeof refX !== 'string' || typeof refY !== 'string') continue;
+      // Parse "entityId.param" pattern
+      const matchX = refX.match(/^(\d+)\.(x|start_x|end_x|cx)$/);
+      const matchY = refY.match(/^(\d+)\.(y|start_y|end_y|cy)$/);
+      if (!matchX || !matchY) continue;
+      const refEntityId = Number(matchX[1]);
+      if (refEntityId !== entity1Id && refEntityId !== entity2Id) continue;
+      // Get the referenced point value
+      const ent = ctx.document.getEntity(refEntityId);
+      if (!ent) continue;
+      let refPoint = null;
+      if (ent.type === 'line') {
+        if (matchX[2] === 'start_x' || matchX[2] === 'x') refPoint = ent.start;
+        if (matchX[2] === 'end_x') refPoint = ent.end;
+      }
+      if (!refPoint || !near(refPoint, oldVertex)) continue;
+      // Remap: point on entity1 → arcStart, point on entity2 → arcEnd
+      const newPoint = (refEntityId === entity1Id) ? arcStart : arcEnd;
+      if (!newPoint) continue;
+      // Update the constraint refs to point to the arc entity
+      const newRefX = `${arcId}.${refEntityId === entity1Id ? 'start_x' : 'end_x'}`;
+      const newRefY = `${arcId}.${refEntityId === entity1Id ? 'start_y' : 'end_y'}`;
+      c.refs[i] = newRefX;
+      c.refs[i + 1] = newRefY;
+      // Persist the updated constraint
+      if (ctx.document.removeConstraint && ctx.document.addConstraint) {
+        ctx.document.removeConstraint(c.id);
+        ctx.document.addConstraint(c);
+      }
+      break; // only remap one vertex per constraint
+    }
+  }
 }
 
 function runFilletLineArc(ctx, lineTgt, arcTgt, linePick, radius) {
@@ -1834,7 +2648,7 @@ function runFilletSelectionByPick(ctx, payload) {
   if (!pick1 || !Number.isFinite(pick1.x) || !Number.isFinite(pick1.y) || !pick2 || !Number.isFinite(pick2.x) || !Number.isFinite(pick2.y)) {
     return { ok: false, changed: false, error_code: 'INVALID_PICK', message: 'Fillet: missing pick points' };
   }
-  const radius = Number(payload?.radius);
+  let radius = Number(payload?.radius);
   if (!Number.isFinite(radius) || radius <= 1e-9) {
     return { ok: false, changed: false, error_code: 'INVALID_RADIUS', message: 'Fillet: invalid radius' };
   }
@@ -1922,6 +2736,14 @@ function runFilletSelectionByPick(ctx, payload) {
       return runFilletPolylineArc(ctx, polyTgt, arcTgt, polyPick, radius);
     }
     return { ok: false, changed: false, error_code: 'UNSUPPORTED', message: 'Fillet: arc+polyline not supported' };
+  }
+
+  // Auto-suggest fillet radius when both targets are lines and radius is the tool default
+  if (radius === 1.0 && (target1.kind === 'line' || target1.kind === 'polyline') && (target2.kind === 'line' || target2.kind === 'polyline')) {
+    const suggested = suggestFilletRadius(target1.segStart, target1.segEnd, target2.segStart, target2.segEnd);
+    if (suggested != null && suggested > 1e-9) {
+      radius = suggested;
+    }
   }
 
   const inter = lineLineIntersection(target1.segStart, target1.segEnd, target2.segStart, target2.segEnd, false, false);
@@ -2695,9 +3517,9 @@ function runChamferSelectionByPick(ctx, payload) {
     return { ok: false, changed: false, error_code: 'INVALID_PICK', message: 'Chamfer: missing pick points' };
   }
 
-  const d1 = Number(payload?.d1);
+  let d1 = Number(payload?.d1);
   const d2Input = Number(payload?.d2);
-  const d2 = Number.isFinite(d2Input) && d2Input > 1e-9 ? d2Input : d1;
+  let d2 = Number.isFinite(d2Input) && d2Input > 1e-9 ? d2Input : d1;
   if (!Number.isFinite(d1) || d1 <= 1e-9 || !Number.isFinite(d2) || d2 <= 1e-9) {
     return { ok: false, changed: false, error_code: 'INVALID_DISTANCE', message: 'Chamfer: invalid distance' };
   }
@@ -2748,6 +3570,15 @@ function runChamferSelectionByPick(ctx, payload) {
       return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Chamfer: layer ${name} is locked` };
     }
   }
+  // Auto-suggest chamfer distance when both targets are lines and distances are the tool default
+  if (d1 === 1.0 && d2 === 1.0 && (target1.kind === 'line' || target1.kind === 'polyline') && (target2.kind === 'line' || target2.kind === 'polyline')) {
+    const suggested = suggestChamferDistance(target1.segStart, target1.segEnd, target2.segStart, target2.segEnd);
+    if (suggested != null && suggested > 1e-9) {
+      d1 = suggested;
+      d2 = suggested;
+    }
+  }
+
   const inter = lineLineIntersection(target1.segStart, target1.segEnd, target2.segStart, target2.segEnd, false, false);
   if (!inter) {
     return { ok: false, changed: false, error_code: 'NO_INTERSECTION', message: 'Chamfer: lines are parallel' };
@@ -3173,6 +4004,7 @@ function runRotateSelection(ctx, payload) {
   if (!center || !Number.isFinite(center.x) || !Number.isFinite(center.y) || !Number.isFinite(angle)) {
     return { ok: false, changed: false, error_code: 'INVALID_ROTATE', message: 'Missing rotate center/angle' };
   }
+  const wholeSourceGroupSelection = resolveWholeSourceGroupTransformSelection(ctx, ids);
   let changed = false;
   let attempted = 0;
   let readOnlySkipped = 0;
@@ -3180,7 +4012,7 @@ function runRotateSelection(ctx, payload) {
     const entity = ctx.document.getEntity(id);
     if (!entity) continue;
     attempted += 1;
-    if (isReadOnlyEntity(entity)) {
+    if (!canTransformSelectedEntity(entity, wholeSourceGroupSelection)) {
       readOnlySkipped += 1;
       continue;
     }
@@ -3197,7 +4029,397 @@ function runRotateSelection(ctx, payload) {
       message: `Rotated ${Math.max(0, attempted - readOnlySkipped)}/${attempted} entities (skipped ${readOnlySkipped} read-only)`,
     };
   }
+  if (wholeSourceGroupSelection && wholeSourceGroupSelection.readOnlyIds.length > 0) {
+    return {
+      ok: true,
+      changed,
+      message: formatWholeSourceGroupTransformMessage('Rotated', ids.length, wholeSourceGroupSelection),
+    };
+  }
   return { ok: true, changed, message: `Rotated ${ids.length} entities` };
+}
+
+function runScaleSelection(ctx, payload) {
+  const ids = [...ctx.selection.entityIds];
+  if (ids.length === 0) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to scale' };
+  }
+  const center = payload?.center;
+  const factor = payload?.factor;
+  if (!center || !Number.isFinite(center.x) || !Number.isFinite(center.y) || !Number.isFinite(factor) || factor <= EPSILON) {
+    return { ok: false, changed: false, error_code: 'INVALID_SCALE', message: 'Missing scale center/factor' };
+  }
+  const wholeSourceGroupSelection = resolveWholeSourceGroupTransformSelection(ctx, ids);
+  let changed = false;
+  let attempted = 0;
+  let readOnlySkipped = 0;
+  for (const id of ids) {
+    const entity = ctx.document.getEntity(id);
+    if (!entity) continue;
+    attempted += 1;
+    if (!canTransformSelectedEntity(entity, wholeSourceGroupSelection)) {
+      readOnlySkipped += 1;
+      continue;
+    }
+    const next = scaleEntity(entity, center, factor);
+    changed = ctx.document.updateEntity(id, next) || changed;
+  }
+  if (!changed && attempted > 0 && readOnlySkipped === attempted) {
+    return { ok: false, changed: false, error_code: 'UNSUPPORTED_READ_ONLY', message: 'Selected entities are read-only proxies' };
+  }
+  if (readOnlySkipped > 0) {
+    return {
+      ok: true,
+      changed,
+      message: `Scaled ${Math.max(0, attempted - readOnlySkipped)}/${attempted} entities (skipped ${readOnlySkipped} read-only)`,
+    };
+  }
+  if (wholeSourceGroupSelection && wholeSourceGroupSelection.readOnlyIds.length > 0) {
+    return {
+      ok: true,
+      changed,
+      message: formatWholeSourceGroupTransformMessage('Scaled', ids.length, wholeSourceGroupSelection),
+    };
+  }
+  return { ok: true, changed, message: `Scaled ${ids.length} entities` };
+}
+
+function hasSourceTextPlacement(entity) {
+  return isDirectEditableSourceTextEntity(entity)
+    && entity.sourceTextPos
+    && Number.isFinite(entity.sourceTextPos.x)
+    && Number.isFinite(entity.sourceTextPos.y)
+    && Number.isFinite(entity.sourceTextRotation);
+}
+
+function isDimensionSourceTextEntity(entity) {
+  return isDirectEditableSourceTextEntity(entity)
+    && String(entity.sourceType || '').trim().toUpperCase() === 'DIMENSION';
+}
+
+function isLeaderSourceTextEntity(entity) {
+  return isDirectEditableSourceTextEntity(entity)
+    && String(entity.sourceType || '').trim().toUpperCase() === 'LEADER';
+}
+
+function hasSourceTextPlacementDrift(entity) {
+  if (!hasSourceTextPlacement(entity)) return false;
+  const currentX = Number(entity.position?.x);
+  const currentY = Number(entity.position?.y);
+  const currentRotation = Number(entity.rotation);
+  return Math.abs(currentX - Number(entity.sourceTextPos.x)) > 1e-9
+    || Math.abs(currentY - Number(entity.sourceTextPos.y)) > 1e-9
+    || Math.abs(currentRotation - Number(entity.sourceTextRotation)) > 1e-9;
+}
+
+function buildSourceTextPlacementResetPatch(entity) {
+  if (!hasSourceTextPlacement(entity)) return null;
+  const next = {
+    position: {
+      x: Number(entity.sourceTextPos.x),
+      y: Number(entity.sourceTextPos.y),
+    },
+    rotation: Number(entity.sourceTextRotation),
+  };
+  if (String(entity.sourceType || '').trim().toUpperCase() === 'DIMENSION') {
+    next.dimTextPos = { ...next.position };
+    next.dimTextRotation = next.rotation;
+  }
+  return next;
+}
+
+function buildDimensionOppositeTextSidePatch(entity, guide) {
+  if (!isDimensionSourceTextEntity(entity) || !guide?.anchor || !guide?.sourceOffset) return null;
+  const anchorX = Number(guide.anchor.x);
+  const anchorY = Number(guide.anchor.y);
+  const offsetX = Number(guide.sourceOffset.x);
+  const offsetY = Number(guide.sourceOffset.y);
+  const rotation = Number.isFinite(entity.sourceTextRotation)
+    ? Number(entity.sourceTextRotation)
+    : Number(entity.rotation);
+  if (!Number.isFinite(anchorX) || !Number.isFinite(anchorY) || !Number.isFinite(offsetX) || !Number.isFinite(offsetY) || !Number.isFinite(rotation)) {
+    return null;
+  }
+  const position = {
+    x: anchorX - offsetX,
+    y: anchorY - offsetY,
+  };
+  return {
+    position,
+    rotation,
+    dimTextPos: { ...position },
+    dimTextRotation: rotation,
+  };
+}
+
+function buildLeaderOppositeLandingSidePatch(entity, guide) {
+  if (!isLeaderSourceTextEntity(entity) || !guide?.anchor || !guide?.sourceOffset || !guide?.elbowPoint) return null;
+  const landingDirection = normalizeVector(subtract(guide.anchor, guide.elbowPoint));
+  if (!landingDirection) return null;
+  const normalDirection = perpendicular(landingDirection);
+  const sourceOffset = {
+    x: Number(guide.sourceOffset.x),
+    y: Number(guide.sourceOffset.y),
+  };
+  if (!Number.isFinite(sourceOffset.x) || !Number.isFinite(sourceOffset.y)) return null;
+  const parallel = dot(sourceOffset, landingDirection);
+  const normal = dot(sourceOffset, normalDirection);
+  if (!Number.isFinite(parallel) || !Number.isFinite(normal)) return null;
+  const mirroredOffset = add(scale(landingDirection, parallel), scale(normalDirection, -normal));
+  const position = add(guide.anchor, mirroredOffset);
+  const rotation = Number.isFinite(entity.sourceTextRotation)
+    ? Number(entity.sourceTextRotation)
+    : Number(entity.rotation);
+  if (!Number.isFinite(position.x) || !Number.isFinite(position.y) || !Number.isFinite(rotation)) {
+    return null;
+  }
+  return {
+    position,
+    rotation,
+  };
+}
+
+function buildDirectEditableSourceTextPatch(entity, patch) {
+  if (!isDirectEditableSourceTextEntity(entity) || !patch || typeof patch !== 'object') return null;
+  const allowedKeys = new Set(['value', 'position', 'height', 'rotation']);
+  const patchKeys = Object.keys(patch);
+  if (patchKeys.length === 0 || patchKeys.some((key) => !allowedKeys.has(key))) {
+    return null;
+  }
+
+  const next = {};
+  if (Object.prototype.hasOwnProperty.call(patch, 'value')) {
+    next.value = String(patch.value ?? entity.value ?? '');
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'height')) {
+    const height = Number(patch.height);
+    if (!Number.isFinite(height)) return null;
+    next.height = Math.max(0.1, height);
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'rotation')) {
+    const rotation = Number(patch.rotation);
+    if (!Number.isFinite(rotation)) return null;
+    next.rotation = rotation;
+    if (String(entity.sourceType || '').trim().toUpperCase() === 'DIMENSION') {
+      next.dimTextRotation = rotation;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'position')) {
+    const position = patch.position;
+    const x = Number(position?.x);
+    const y = Number(position?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    next.position = { x, y };
+    if (String(entity.sourceType || '').trim().toUpperCase() === 'DIMENSION') {
+      next.dimTextPos = { x, y };
+    }
+  }
+
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function buildDirectEditableInsertTextProxyPatch(entity, patch) {
+  if (!isDirectEditableInsertTextProxyEntity(entity) || !patch || typeof patch !== 'object') return null;
+  const patchKeys = Object.keys(patch);
+  const positionUnlocked = typeof entity?.attributeLockPosition === 'boolean'
+    && entity.attributeLockPosition !== true;
+  const allowedKeys = new Set(positionUnlocked ? ['value', 'position'] : ['value']);
+  if (patchKeys.length === 0 || patchKeys.some((key) => !allowedKeys.has(key))) {
+    return null;
+  }
+  const nextPatch = {};
+  if (Object.prototype.hasOwnProperty.call(patch, 'value')) {
+    const nextValue = String(patch.value ?? entity.value ?? '');
+    nextPatch.value = nextValue;
+    if (String(entity?.textKind || '').trim().toLowerCase() === 'attdef') {
+      nextPatch.attributeDefault = nextValue;
+    }
+  }
+  if (positionUnlocked && Object.prototype.hasOwnProperty.call(patch, 'position')) {
+    const position = patch.position;
+    const x = Number(position?.x);
+    const y = Number(position?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    nextPatch.position = { x, y };
+  }
+  return Object.keys(nextPatch).length > 0 ? nextPatch : null;
+}
+
+function runResetSourceTextPlacement(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to reset source text placement' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'Source text target not found' };
+  }
+  if (!isSourceGroupEntity(target) || isInsertGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_SOURCE_GROUP', message: 'Selected entity is not part of a source group with text placement' };
+  }
+  const summary = summarizeSourceGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_EMPTY', message: 'No source-group members found in the current space/layout' };
+  }
+  const textMembers = listSourceGroupTextMembers(summary.members, target);
+  if (textMembers.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_HAS_NO_TEXT', message: 'Selected source group has no text members to reset' };
+  }
+  const resettable = textMembers.filter((entity) => hasSourceTextPlacement(entity));
+  if (resettable.length === 0) {
+    return { ok: false, changed: false, error_code: 'SOURCE_TEXT_PLACEMENT_UNAVAILABLE', message: 'Selected source text has no preserved source placement' };
+  }
+  const locked = resettable.find((entity) => ctx.document.getLayer(entity.layerId)?.locked === true);
+  if (locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'Source text placement reset targets a locked layer' };
+  }
+  let changed = false;
+  let changedCount = 0;
+  for (const entity of resettable) {
+    if (!hasSourceTextPlacementDrift(entity)) continue;
+    const patch = buildSourceTextPlacementResetPatch(entity);
+    if (!patch) continue;
+    changed = ctx.document.updateEntity(entity.id, patch) || changed;
+    changedCount += 1;
+  }
+  if (!changed) {
+    return {
+      ok: true,
+      changed: false,
+      message: `Source text placement already matches source (${resettable.length} of ${summary.memberIds.length} entities)`,
+    };
+  }
+  return {
+    ok: true,
+    changed,
+    message: `Reset source text placement (${changedCount} of ${summary.memberIds.length} entities)`,
+  };
+}
+
+function runFlipDimensionTextSide(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to flip DIMENSION text side' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'DIMENSION text target not found' };
+  }
+  if (!isSourceGroupEntity(target) || isInsertGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_SOURCE_GROUP', message: 'Selected entity is not part of a DIMENSION source group' };
+  }
+  const summary = summarizeSourceGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_EMPTY', message: 'No source-group members found in the current space/layout' };
+  }
+  const dimensionTextMembers = summary.members.filter((entity) => isDimensionSourceTextEntity(entity));
+  if (dimensionTextMembers.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_HAS_NO_DIMENSION_TEXT', message: 'Selected source group has no DIMENSION text to flip' };
+  }
+  const locked = dimensionTextMembers.find((entity) => ctx.document.getLayer(entity.layerId)?.locked === true);
+  if (locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'DIMENSION text side flip targets a locked layer' };
+  }
+  let changed = false;
+  let changedCount = 0;
+  for (const entity of dimensionTextMembers) {
+    const guide = resolveSourceTextGuide(ctx.document.listEntities(), entity);
+    const patch = buildDimensionOppositeTextSidePatch(entity, guide);
+    if (!patch) continue;
+    const nextX = Number(patch.position?.x);
+    const nextY = Number(patch.position?.y);
+    const nextRotation = Number(patch.rotation);
+    const currentX = Number(entity.position?.x);
+    const currentY = Number(entity.position?.y);
+    const currentRotation = Number(entity.rotation);
+    if (
+      Math.abs(currentX - nextX) <= 1e-9
+      && Math.abs(currentY - nextY) <= 1e-9
+      && Math.abs(currentRotation - nextRotation) <= 1e-9
+    ) {
+      continue;
+    }
+    changed = ctx.document.updateEntity(entity.id, patch) || changed;
+    changedCount += 1;
+  }
+  if (!changed) {
+    return {
+      ok: true,
+      changed: false,
+      message: `DIMENSION text already uses the opposite side (${dimensionTextMembers.length} of ${summary.memberIds.length} entities)`,
+    };
+  }
+  return {
+    ok: true,
+    changed,
+    message: `Applied opposite DIMENSION text side (${changedCount} of ${summary.memberIds.length} entities)`,
+  };
+}
+
+function runFlipLeaderLandingSide(ctx, payload) {
+  const targetId = Number.isFinite(payload?.targetId)
+    ? Math.trunc(Number(payload.targetId))
+    : (Number.isFinite(ctx.selection.primaryId) ? Math.trunc(Number(ctx.selection.primaryId)) : null);
+  if (!Number.isFinite(targetId)) {
+    return { ok: false, changed: false, error_code: 'NO_SELECTION', message: 'No selection to flip LEADER landing side' };
+  }
+  const target = ctx.document.getEntity(targetId);
+  if (!target) {
+    return { ok: false, changed: false, error_code: 'INVALID_TARGET', message: 'LEADER text target not found' };
+  }
+  if (!isSourceGroupEntity(target) || isInsertGroupEntity(target)) {
+    return { ok: false, changed: false, error_code: 'NOT_SOURCE_GROUP', message: 'Selected entity is not part of a LEADER source group' };
+  }
+  const summary = summarizeSourceGroupMembers(ctx.document.listEntities(), target, { isReadOnly: isReadOnlyEntity });
+  if (!summary || summary.memberIds.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_EMPTY', message: 'No source-group members found in the current space/layout' };
+  }
+  const leaderTextMembers = summary.members.filter((entity) => isLeaderSourceTextEntity(entity));
+  if (leaderTextMembers.length === 0) {
+    return { ok: false, changed: false, error_code: 'GROUP_HAS_NO_LEADER_TEXT', message: 'Selected source group has no LEADER text to flip' };
+  }
+  const locked = leaderTextMembers.find((entity) => ctx.document.getLayer(entity.layerId)?.locked === true);
+  if (locked) {
+    return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'LEADER landing side flip targets a locked layer' };
+  }
+  let changed = false;
+  let changedCount = 0;
+  for (const entity of leaderTextMembers) {
+    const guide = resolveSourceTextGuide(ctx.document.listEntities(), entity);
+    const patch = buildLeaderOppositeLandingSidePatch(entity, guide);
+    if (!patch) continue;
+    const nextX = Number(patch.position?.x);
+    const nextY = Number(patch.position?.y);
+    const nextRotation = Number(patch.rotation);
+    const currentX = Number(entity.position?.x);
+    const currentY = Number(entity.position?.y);
+    const currentRotation = Number(entity.rotation);
+    if (
+      Math.abs(currentX - nextX) <= 1e-9
+      && Math.abs(currentY - nextY) <= 1e-9
+      && Math.abs(currentRotation - nextRotation) <= 1e-9
+    ) {
+      continue;
+    }
+    changed = ctx.document.updateEntity(entity.id, patch) || changed;
+    changedCount += 1;
+  }
+  if (!changed) {
+    return {
+      ok: true,
+      changed: false,
+      message: `LEADER text already uses the opposite landing side (${leaderTextMembers.length} of ${summary.memberIds.length} entities)`,
+    };
+  }
+  return {
+    ok: true,
+    changed,
+    message: `Applied opposite LEADER landing side (${changedCount} of ${summary.memberIds.length} entities)`,
+  };
 }
 
 function resolveBoundarySegments(ctx, boundaryId) {
@@ -3696,15 +4918,22 @@ function runPropertyPatch(ctx, payload) {
     if (!entity) continue;
     attempted += 1;
 
-    if (isReadOnlyEntity(entity)) {
-      readOnlySkipped += 1;
+    const currentLayer = ctx.document.getLayer(entity.layerId);
+    const targetLayerId = Number.isFinite(patch?.layerId) ? Number(patch.layerId) : entity.layerId;
+    const layer = ctx.document.getLayer(targetLayerId);
+    if (currentLayer?.locked || layer?.locked) {
+      lockedSkipped += 1;
       continue;
     }
 
-    const targetLayerId = Number.isFinite(patch?.layerId) ? Number(patch.layerId) : entity.layerId;
-    const layer = ctx.document.getLayer(targetLayerId);
-    if (layer?.locked) {
-      lockedSkipped += 1;
+    if (isReadOnlyEntity(entity)) {
+      const directPatch = buildDirectEditableSourceTextPatch(entity, patch)
+        || buildDirectEditableInsertTextProxyPatch(entity, patch);
+      if (!directPatch) {
+        readOnlySkipped += 1;
+        continue;
+      }
+      changed = ctx.document.updateEntity(id, directPatch) || changed;
       continue;
     }
 
@@ -3719,9 +4948,11 @@ function runPropertyPatch(ctx, payload) {
       if (attempted === 1) {
         const id = ids.find((entityId) => !!ctx.document.getEntity(entityId));
         const entity = id ? ctx.document.getEntity(id) : null;
+        const currentLayer = Number.isFinite(entity?.layerId) ? ctx.document.getLayer(entity.layerId) : null;
         const layerId = Number.isFinite(patch?.layerId) ? Number(patch.layerId) : entity?.layerId;
         const layer = Number.isFinite(layerId) ? ctx.document.getLayer(layerId) : null;
-        const name = layer?.name ?? String(layerId ?? '');
+        const lockedLayer = currentLayer?.locked ? currentLayer : layer;
+        const name = lockedLayer?.name ?? String(lockedLayer?.id ?? layerId ?? '');
         return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: `Layer ${name} is locked` };
       }
       return { ok: false, changed: false, error_code: 'LAYER_LOCKED', message: 'All selected entities are on locked layers' };
@@ -4007,6 +5238,12 @@ export function registerCadCommands(commandBus, context) {
       execute: (ctx, payload) => withSnapshot(ctx, 'selection.rotate', () => runRotateSelection(ctx, payload)),
     },
     {
+      id: 'selection.scale',
+      label: 'Scale Selection',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.scale', () => runScaleSelection(ctx, payload)),
+    },
+    {
       id: 'selection.trim',
       label: 'Trim',
       canExecute: (ctx) => hasSelection(ctx),
@@ -4023,6 +5260,96 @@ export function registerCadCommands(commandBus, context) {
       label: 'Patch Properties',
       canExecute: (ctx) => selectedEntities(ctx).length > 0,
       execute: (ctx, payload) => runPropertyPatchWithHistory(ctx, payload),
+    },
+    {
+      id: 'selection.insertGroup',
+      label: 'Select Insert Group',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.insertGroup', () => runSelectInsertGroup(ctx, payload)),
+    },
+    {
+      id: 'selection.releasedInsertGroup',
+      label: 'Select Released Insert Group',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.releasedInsertGroup', () => runSelectReleasedInsertGroup(ctx, payload)),
+    },
+    {
+      id: 'selection.sourceGroup',
+      label: 'Select Source Group',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.sourceGroup', () => runSelectSourceGroup(ctx, payload)),
+    },
+    {
+      id: 'selection.insertEditableGroup',
+      label: 'Select Editable Insert Members',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.insertEditableGroup', () => runSelectEditableInsertGroup(ctx, payload)),
+    },
+    {
+      id: 'selection.insertSelectText',
+      label: 'Select Insert Text',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.insertSelectText', () => runSelectInsertGroupText(ctx, payload)),
+    },
+    {
+      id: 'selection.insertSelectEditableText',
+      label: 'Select Editable Insert Text',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.insertSelectEditableText', () => runSelectEditableInsertGroupText(ctx, payload)),
+    },
+    {
+      id: 'selection.insertReleaseGroup',
+      label: 'Release Insert Group',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.insertReleaseGroup', () => runReleaseInsertGroup(ctx, payload)),
+    },
+    {
+      id: 'selection.insertEditText',
+      label: 'Release And Edit Insert Text',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.insertEditText', () => runEditInsertText(ctx, payload)),
+    },
+    {
+      id: 'selection.sourceReleaseGroup',
+      label: 'Release Source Group',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.sourceReleaseGroup', () => runReleaseSourceGroup(ctx, payload)),
+    },
+    {
+      id: 'selection.sourceEditGroupText',
+      label: 'Release And Edit Source Text',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.sourceEditGroupText', () => runEditSourceGroupText(ctx, payload)),
+    },
+    {
+      id: 'selection.sourceResetTextPlacement',
+      label: 'Reset Source Text Placement',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.sourceResetTextPlacement', () => runResetSourceTextPlacement(ctx, payload)),
+    },
+    {
+      id: 'selection.dimensionFlipTextSide',
+      label: 'Use Opposite DIMENSION Text Side',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.dimensionFlipTextSide', () => runFlipDimensionTextSide(ctx, payload)),
+    },
+    {
+      id: 'selection.leaderFlipLandingSide',
+      label: 'Use Opposite LEADER Landing Side',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.leaderFlipLandingSide', () => runFlipLeaderLandingSide(ctx, payload)),
+    },
+    {
+      id: 'selection.sourceSelectText',
+      label: 'Select Source Text',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.sourceSelectText', () => runSelectSourceGroupText(ctx, payload)),
+    },
+    {
+      id: 'selection.sourceSelectAnchorDriver',
+      label: 'Select Source Anchor Driver',
+      canExecute: (ctx) => hasSelection(ctx),
+      execute: (ctx, payload) => withSnapshot(ctx, 'selection.sourceSelectAnchorDriver', () => runSelectSourceAnchorDriver(ctx, payload)),
     },
     {
       id: 'selection.box',
@@ -4120,5 +5447,17 @@ export function computeRotatePayload(center, referencePoint, targetPoint) {
   return {
     center,
     angle: angleDelta(start, end),
+  };
+}
+
+export function computeScalePayload(center, referencePoint, targetPoint) {
+  const baseDistance = distance(center, referencePoint);
+  const targetDistance = distance(center, targetPoint);
+  if (!Number.isFinite(baseDistance) || !Number.isFinite(targetDistance) || baseDistance <= EPSILON || targetDistance <= EPSILON) {
+    return null;
+  }
+  return {
+    center,
+    factor: targetDistance / baseDistance,
   };
 }

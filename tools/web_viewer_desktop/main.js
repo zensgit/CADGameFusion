@@ -3,21 +3,41 @@ const { spawn, execFile } = require("child_process");
 const os = require("os");
 const path = require("path");
 const fs = require("fs");
+const {
+  extractCadOpenPathsFromCommandLine,
+  normalizeCadOpenPath,
+} = require("./open_file_handoff");
+const {
+  canRegisterMacFileAssociations,
+  resolveLaunchServicesRegisterTool,
+  resolveMacAppBundlePath,
+} = require("./launch_services_registration");
 
 const DEFAULT_WIDTH = 1280;
 const DEFAULT_HEIGHT = 800;
 const DEFAULT_ROUTER_URL = "http://127.0.0.1:9000";
+const DEFAULT_PACKAGED_ROUTER_URL = "http://127.0.0.1:19100";
 const DEFAULT_ROUTER_EMIT = "json,gltf,meta";
 const DEFAULT_ROUTER_TIMEOUT_MS = 60000;
 const DEFAULT_DWG_TIMEOUT_MS = 60000;
 const DEFAULT_ROUTER_START_TIMEOUT_MS = 15000;
 const DEFAULT_ROUTER_HEALTH_TIMEOUT_MS = 1500;
 const DEFAULT_SMOKE_VIEWER_TIMEOUT_MS = 30000;
+const MAX_RECENT_CAD_FILES = 8;
+const RECENT_CAD_FILES_STORE = "recent_cad_files.json";
 
 let routerProcess = null;
 let routerStartPromise = null;
 let routerCleanupRegistered = false;
 let mainWindow = null;
+let rendererCadOpenReady = false;
+let pendingCadOpenPaths = [];
+let recentCadFiles = [];
+let recentCadFilesLoaded = false;
+
+function getDefaultRouterUrl() {
+  return app.isPackaged ? DEFAULT_PACKAGED_ROUTER_URL : DEFAULT_ROUTER_URL;
+}
 
 function getArg(name) {
   const index = process.argv.indexOf(name);
@@ -27,8 +47,242 @@ function getArg(name) {
   return "";
 }
 
+const HEADLESS_SMOKE_DWG_MODE = Boolean(getArg("--smoke-dwg"));
+const HAS_SINGLE_INSTANCE_LOCK = HEADLESS_SMOKE_DWG_MODE ? true : app.requestSingleInstanceLock();
+if (!HAS_SINGLE_INSTANCE_LOCK) {
+  app.quit();
+}
+
 function normalizeBaseUrl(value) {
   return value ? value.replace(/\/+$/, "") : "";
+}
+
+function queueCadOpenPath(candidate, cwd = process.cwd()) {
+  const resolved = normalizeCadOpenPath(candidate, cwd);
+  if (!resolved || pendingCadOpenPaths.includes(resolved)) {
+    return "";
+  }
+  pendingCadOpenPaths.push(resolved);
+  return resolved;
+}
+
+function queueCadOpenPathsFromArgv(argv = [], cwd = process.cwd()) {
+  const queued = [];
+  for (const candidate of extractCadOpenPathsFromCommandLine(argv, cwd)) {
+    const resolved = queueCadOpenPath(candidate, cwd);
+    if (resolved) {
+      queued.push(resolved);
+    }
+  }
+  return queued;
+}
+
+function focusMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
+  }
+  mainWindow.focus();
+}
+
+function flushPendingCadOpenPaths() {
+  if (!rendererCadOpenReady || !mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  while (pendingCadOpenPaths.length > 0) {
+    const filePath = pendingCadOpenPaths.shift();
+    sendOpenCadRequest({ path: filePath });
+  }
+  focusMainWindow();
+}
+
+function ensureCadOpenWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+  }
+  focusMainWindow();
+  flushPendingCadOpenPaths();
+}
+
+function getRecentCadFilesStorePath() {
+  return path.join(app.getPath("userData"), RECENT_CAD_FILES_STORE);
+}
+
+function normalizeRecentCadFileEntry(entry = {}) {
+  const resolvedPath = normalizeCadOpenPath(entry.path);
+  if (!resolvedPath) {
+    return null;
+  }
+  const label = typeof entry.label === "string" ? entry.label.trim() : "";
+  const fallbackLabel = path.basename(resolvedPath, path.extname(resolvedPath)) || path.basename(resolvedPath);
+  const lastOpenedAt = typeof entry.lastOpenedAt === "string" && entry.lastOpenedAt.trim()
+    ? entry.lastOpenedAt.trim()
+    : new Date(0).toISOString();
+  return {
+    path: resolvedPath,
+    label: label || fallbackLabel,
+    lastOpenedAt,
+  };
+}
+
+function loadRecentCadFiles() {
+  if (recentCadFilesLoaded) {
+    return recentCadFiles;
+  }
+  recentCadFilesLoaded = true;
+  try {
+    const storePath = getRecentCadFilesStorePath();
+    if (!fs.existsSync(storePath)) {
+      recentCadFiles = [];
+      return recentCadFiles;
+    }
+    const raw = fs.readFileSync(storePath, "utf8");
+    const parsed = JSON.parse(raw);
+    recentCadFiles = Array.isArray(parsed)
+      ? parsed
+          .map((entry) => normalizeRecentCadFileEntry(entry))
+          .filter(Boolean)
+          .slice(0, MAX_RECENT_CAD_FILES)
+      : [];
+  } catch {
+    recentCadFiles = [];
+  }
+  return recentCadFiles;
+}
+
+function persistRecentCadFiles() {
+  const storePath = getRecentCadFilesStorePath();
+  fs.mkdirSync(path.dirname(storePath), { recursive: true });
+  fs.writeFileSync(storePath, `${JSON.stringify(recentCadFiles, null, 2)}\n`, "utf8");
+}
+
+function listRecentCadFiles() {
+  return loadRecentCadFiles().map((entry) => ({
+    ...entry,
+    fileName: path.basename(entry.path),
+    directory: path.dirname(entry.path),
+    extension: path.extname(entry.path).replace(/^\./, "").toLowerCase(),
+    exists: fs.existsSync(entry.path),
+  }));
+}
+
+function broadcastRecentCadFilesChanged() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  mainWindow.webContents.send("vemcad:recent-cad-files-changed", {
+    entries: listRecentCadFiles(),
+  });
+}
+
+function syncRecentCadFilesUi() {
+  if (app.isReady()) {
+    installAppMenu();
+  }
+  broadcastRecentCadFilesChanged();
+}
+
+function rememberRecentCadFile(filePath, label = "") {
+  const normalizedEntry = normalizeRecentCadFileEntry({
+    path: filePath,
+    label,
+    lastOpenedAt: new Date().toISOString(),
+  });
+  if (!normalizedEntry) {
+    return listRecentCadFiles();
+  }
+  const nextEntries = [
+    normalizedEntry,
+    ...loadRecentCadFiles().filter((entry) => entry.path !== normalizedEntry.path),
+  ].slice(0, MAX_RECENT_CAD_FILES);
+  recentCadFiles = nextEntries;
+  persistRecentCadFiles();
+  try {
+    app.addRecentDocument(normalizedEntry.path);
+  } catch {
+    // Optional OS integration only.
+  }
+  syncRecentCadFilesUi();
+  return listRecentCadFiles();
+}
+
+function clearRecentCadFiles() {
+  loadRecentCadFiles();
+  recentCadFiles = [];
+  persistRecentCadFiles();
+  try {
+    app.clearRecentDocuments();
+  } catch {
+    // Optional OS integration only.
+  }
+  syncRecentCadFilesUi();
+  return listRecentCadFiles();
+}
+
+function registerDesktopFileAssociations() {
+  if (process.platform !== "darwin") {
+    return Promise.resolve({
+      ok: false,
+      error: "File-association registration is only available on macOS.",
+      error_code: "FILE_ASSOCIATIONS_UNSUPPORTED_PLATFORM",
+    });
+  }
+  const appBundlePath = resolveMacAppBundlePath(process.execPath);
+  if (!appBundlePath || !fs.existsSync(appBundlePath)) {
+    return Promise.resolve({
+      ok: false,
+      error: "Packaged app bundle path not available for registration.",
+      error_code: "FILE_ASSOCIATIONS_APP_BUNDLE_NOT_FOUND",
+    });
+  }
+  const toolPath = resolveLaunchServicesRegisterTool();
+  if (!canRegisterMacFileAssociations(process.execPath, toolPath)) {
+    return Promise.resolve({
+      ok: false,
+      error: "macOS LaunchServices registration tool not available.",
+      error_code: "FILE_ASSOCIATIONS_TOOL_NOT_FOUND",
+    });
+  }
+  return new Promise((resolve) => {
+    execFile(toolPath, ["-f", appBundlePath], { encoding: "utf8" }, (error, stdout = "", stderr = "") => {
+      if (error) {
+        resolve({
+          ok: false,
+          error: error.message || "LaunchServices registration failed.",
+          error_code: "FILE_ASSOCIATIONS_REGISTER_FAILED",
+          app_bundle: appBundlePath,
+          tool: toolPath,
+          stdout,
+          stderr,
+        });
+        return;
+      }
+      resolve({
+        ok: true,
+        app_bundle: appBundlePath,
+        tool: toolPath,
+        stdout,
+        stderr,
+      });
+    });
+  });
+}
+
+function resolveSmokeOpenFileSelection() {
+  const explicit =
+    getArg("--smoke-open-file") ||
+    process.env.VEMCAD_SMOKE_OPEN_FILE_PATH ||
+    process.env.CADGF_SMOKE_OPEN_FILE_PATH ||
+    "";
+  if (!explicit) {
+    return { configured: false, path: "" };
+  }
+  return {
+    configured: true,
+    path: path.resolve(explicit),
+  };
 }
 
 function resolvePythonExecutable() {
@@ -43,17 +297,45 @@ function getHomeDir() {
   return process.env.HOME || process.env.USERPROFILE || "";
 }
 
+function sanitizeSuggestedFilename(value, fallback = "vemcad_export.json") {
+  const base = path.basename(String(value || fallback).trim() || fallback);
+  const sanitized = base.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
+  return sanitized || fallback;
+}
+
+function resolveDesktopExportDir() {
+  return (
+    process.env.VEMCAD_DESKTOP_EXPORT_DIR ||
+    process.env.CADGF_DESKTOP_EXPORT_DIR ||
+    ""
+  );
+}
+
 function resolveDwg2DxfBinary(overrides = {}) {
   const opts = normalizeSettings(overrides);
-  const explicitOverride = coerceString(opts.dwg2dxfBin);
+  const explicitOverride = getExplicitStringSetting(opts, "dwg2dxfBin");
+  if (explicitOverride !== null) {
+    return explicitOverride;
+  }
   const explicit =
-    explicitOverride ||
     process.env.VEMCAD_DWG2DXF_BIN ||
     process.env.CADGF_DWG2DXF_BIN ||
     process.env.DWG2DXF_BIN ||
     "";
   if (explicit) {
     return explicit;
+  }
+  const bundledBinaryNames = process.platform === "win32" ? ["dwg2dxf.exe"] : ["dwg2dxf"];
+  const bundledCandidates = getBundledCadResourceRoots().flatMap((root) =>
+    bundledBinaryNames.flatMap((name) => [
+      path.join(root, "dwg_service", "bin", name),
+      path.join(root, "tools", name),
+      path.join(root, "bin", name),
+    ])
+  );
+  const bundledBinary = pickFirstExistingPath(bundledCandidates);
+  if (bundledBinary) {
+    return bundledBinary;
   }
   const candidates = [
     "/usr/local/bin/dwg2dxf",
@@ -64,6 +346,116 @@ function resolveDwg2DxfBinary(overrides = {}) {
     if (fs.existsSync(candidate)) {
       return candidate;
     }
+  }
+  return "";
+}
+
+function resolveDwgPluginPath(overrides = {}) {
+  const opts = normalizeSettings(overrides);
+  const explicitOverride = getExplicitStringSetting(opts, "dwgPluginPath");
+  if (explicitOverride !== null) {
+    return explicitOverride;
+  }
+  const explicit =
+    getArg("--dwg-plugin") ||
+    process.env.VEMCAD_DWG_PLUGIN ||
+    process.env.CADGF_DWG_PLUGIN ||
+    "";
+  if (explicit) {
+    return explicit;
+  }
+  return detectRouterPaths().dwgPluginPath || "";
+}
+
+function normalizeDwgRouteMode(value) {
+  const normalized = coerceString(value).toLowerCase();
+  if (normalized === "direct-plugin" || normalized === "local-convert") {
+    return normalized;
+  }
+  return "auto";
+}
+
+function resolveDwgRouteMode(overrides = {}) {
+  const opts = normalizeSettings(overrides);
+  return normalizeDwgRouteMode(
+    opts.dwgRouteMode ||
+    getArg("--dwg-route") ||
+    process.env.VEMCAD_DWG_ROUTE_MODE ||
+    process.env.CADGF_DWG_ROUTE_MODE ||
+    "auto"
+  );
+}
+
+function resolveDwgReadiness(overrides = {}) {
+  const normalized = normalizeSettings(overrides);
+  const config = resolveDwgConfig(normalized);
+  const dwg2dxf = resolveDwg2DxfBinary(normalized);
+  const dwgPluginPath = resolveDwgPluginPath(normalized);
+  const cadRuntime = detectCadRuntime();
+  const dwgServicePath = detectDwgServicePath(normalized);
+  const directPluginReady = !!dwgPluginPath;
+  const localConvertReady = !!config.dwgConvertCmd;
+  const routeMode = resolveDwgRouteMode(normalized);
+  let route = "";
+  if (routeMode === "direct-plugin") {
+    route = directPluginReady ? "direct-plugin" : "";
+  } else if (routeMode === "local-convert") {
+    route = localConvertReady ? "local-convert" : "";
+  } else {
+    route = directPluginReady ? "direct-plugin" : (localConvertReady ? "local-convert" : "");
+  }
+  return {
+    route,
+    route_mode: routeMode,
+    direct_plugin_ready: directPluginReady,
+    local_convert_ready: localConvertReady,
+    dwg_plugin_path: dwgPluginPath,
+    dwg_convert_cmd: config.dwgConvertCmd,
+    dwg2dxf_bin: dwg2dxf,
+    dwg_service_path: dwgServicePath,
+    cad_runtime_root: cadRuntime.cadRuntimeRoot,
+    cad_runtime_source: cadRuntime.cadRuntimeSource,
+    cad_runtime_ready: cadRuntime.cadRuntimeReady,
+    router_service_path: cadRuntime.routerServicePath,
+    plm_convert_path: cadRuntime.plmConvertPath,
+    viewer_root: cadRuntime.viewerRoot,
+  };
+}
+
+function buildDwgNotReadyHint(readiness = {}) {
+  if (readiness.route) {
+    return "";
+  }
+  if (readiness.route_mode === "direct-plugin") {
+    return "DWG Route Mode is Direct Plugin. Set DWG Plugin Path, or switch route mode back to Auto or Local Convert in Settings.";
+  }
+  if (readiness.route_mode === "local-convert") {
+    return "DWG Route Mode is Local Convert. Set DWG Convert Command, or switch route mode back to Auto or Direct Plugin in Settings.";
+  }
+  return "Set DWG Plugin Path for direct import, or set DWG Convert Command for local conversion in Settings.";
+}
+
+function buildOpenFailureHint(result = {}, prepared = {}, overrides = {}) {
+  const errorCode = coerceString(result.error_code || prepared.error_code).toUpperCase();
+  if (errorCode === "DWG_NOT_READY") {
+    return buildDwgNotReadyHint({
+      ...resolveDwgReadiness(overrides),
+      ...prepared,
+      ...result,
+    });
+  }
+  if (
+    errorCode === "ROUTER_NOT_CONFIGURED" ||
+    errorCode === "ROUTER_NOT_AVAILABLE" ||
+    errorCode === "ROUTER_START_NOT_CONFIGURED" ||
+    errorCode === "ROUTER_START_FAILED" ||
+    errorCode === "ROUTER_START_TIMEOUT"
+  ) {
+    return buildRouterRecoveryHint({
+      ...resolveRouterReadiness(overrides),
+      ...prepared,
+      ...result,
+    }, errorCode);
   }
   return "";
 }
@@ -83,6 +475,128 @@ function getCadgfRootCandidates() {
   return candidates;
 }
 
+function getBundledCadResourceRoots() {
+  const explicit =
+    process.env.VEMCAD_DESKTOP_RESOURCE_ROOT ||
+    process.env.CADGF_DESKTOP_RESOURCE_ROOT ||
+    "";
+  const packagedCandidates = [
+    path.join(process.resourcesPath || "", "cad_resources"),
+    path.join(process.resourcesPath || "", "bundled_resources"),
+  ];
+  const devCandidates = [
+    path.join(__dirname, "bundled_resources"),
+    ...packagedCandidates,
+  ];
+  const candidates = [
+    explicit,
+    ...(app.isPackaged ? packagedCandidates : devCandidates),
+  ];
+  const roots = [];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const resolved = path.resolve(candidate);
+    if (!roots.includes(resolved)) {
+      roots.push(resolved);
+    }
+  }
+  return roots;
+}
+
+function getCadRuntimeCandidates() {
+  const explicit =
+    process.env.VEMCAD_DESKTOP_RESOURCE_ROOT ||
+    process.env.CADGF_DESKTOP_RESOURCE_ROOT ||
+    "";
+  const packagedCandidates = [
+    { root: path.join(process.resourcesPath || "", "cad_resources"), source: "packaged-cad-resources" },
+    { root: path.join(process.resourcesPath || "", "bundled_resources"), source: "packaged-bundled-resources" },
+  ];
+  const devCandidates = [
+    { root: path.join(__dirname, "bundled_resources"), source: "dev-bundled-resources" },
+    ...packagedCandidates,
+  ];
+  const repoCandidates = getCadgfRootCandidates().map((root) => ({
+    root,
+    source: "repo-root",
+  }));
+  const ordered = [
+    ...(explicit ? [{ root: explicit, source: "explicit-resource-root" }] : []),
+    ...(app.isPackaged ? packagedCandidates : devCandidates),
+    ...repoCandidates,
+  ];
+  const candidates = [];
+  for (const entry of ordered) {
+    if (!entry.root) continue;
+    const resolved = path.resolve(entry.root);
+    if (!candidates.some((candidate) => candidate.root === resolved)) {
+      candidates.push({ root: resolved, source: entry.source });
+    }
+  }
+  return candidates;
+}
+
+function detectCadRuntime() {
+  for (const candidate of getCadRuntimeCandidates()) {
+    const root = candidate.root;
+    if (!root || !fs.existsSync(root)) {
+      continue;
+    }
+    const routerServicePath = pickFirstExistingPath([
+      path.join(root, "router", "plm_router_service.py"),
+      path.join(root, "tools", "plm_router_service.py"),
+      path.join(root, "plm_router_service.py"),
+    ]) || "";
+    const plmConvertPath = pickFirstExistingPath([
+      path.join(root, "tools", "plm_convert.py"),
+      path.join(root, "plm_convert.py"),
+    ]) || "";
+    const viewerIndexPath = pickFirstExistingPath([
+      path.join(root, "tools", "web_viewer", "index.html"),
+      path.join(root, "web_viewer", "index.html"),
+    ]) || "";
+    const documentSchemaPath = pickFirstExistingPath([
+      path.join(root, "schemas", "document.schema.json"),
+    ]) || "";
+    const manifestSchemaPath = pickFirstExistingPath([
+      path.join(root, "schemas", "plm_manifest.schema.json"),
+    ]) || "";
+    if (!(routerServicePath || plmConvertPath || viewerIndexPath || documentSchemaPath || manifestSchemaPath)) {
+      continue;
+    }
+    return {
+      cadRuntimeRoot: root,
+      cadRuntimeSource: candidate.source,
+      cadRuntimeReady: Boolean(
+        routerServicePath &&
+        plmConvertPath &&
+        viewerIndexPath &&
+        documentSchemaPath &&
+        manifestSchemaPath
+      ),
+      routerServicePath,
+      plmConvertPath,
+      viewerRoot: viewerIndexPath ? path.dirname(viewerIndexPath) : "",
+      documentSchemaPath,
+      manifestSchemaPath,
+    };
+  }
+  return {
+    cadRuntimeRoot: "",
+    cadRuntimeSource: "",
+    cadRuntimeReady: false,
+    routerServicePath: "",
+    plmConvertPath: "",
+    viewerRoot: "",
+    documentSchemaPath: "",
+    manifestSchemaPath: "",
+  };
+}
+
+function detectRouterServiceScriptPath() {
+  return detectCadRuntime().routerServicePath || "";
+}
+
 function pickFirstExistingPath(candidates) {
   for (const candidate of candidates) {
     if (candidate && fs.existsSync(candidate)) {
@@ -93,6 +607,7 @@ function pickFirstExistingPath(candidates) {
 }
 
 function detectRouterPaths() {
+  const bundledRoots = getBundledCadResourceRoots();
   const roots = getCadgfRootCandidates();
   const buildDirs = ["build_vcpkg", "build", "build_novcpkg"];
   const pluginExt = process.platform === "win32" ? ".dll" : (process.platform === "darwin" ? ".dylib" : ".so");
@@ -108,6 +623,39 @@ function detectRouterPaths() {
   let dwgPluginPath = "";
   let convertCliPath = "";
   let repoRoot = "";
+
+  for (const bundledRoot of bundledRoots) {
+    if (!bundledRoot || !fs.existsSync(bundledRoot)) {
+      continue;
+    }
+    if (!pluginPath) {
+      const pluginCandidates = pluginNames.flatMap((name) => [
+        path.join(bundledRoot, "router", "plugins", name),
+        path.join(bundledRoot, "plugins", name),
+      ]);
+      pluginPath = pickFirstExistingPath(pluginCandidates) || pluginPath;
+    }
+    if (!dwgPluginPath) {
+      const dwgCandidates = dwgPluginNames.flatMap((name) => [
+        path.join(bundledRoot, "router", "plugins", name),
+        path.join(bundledRoot, "plugins", name),
+      ]);
+      dwgPluginPath = pickFirstExistingPath(dwgCandidates) || dwgPluginPath;
+    }
+    if (!convertCliPath) {
+      const convertCandidates = convertCliNames.flatMap((name) => [
+        path.join(bundledRoot, "router", "tools", name),
+        path.join(bundledRoot, "tools", name),
+      ]);
+      convertCliPath = pickFirstExistingPath(convertCandidates) || convertCliPath;
+    }
+    if ((pluginPath || convertCliPath || dwgPluginPath) && !repoRoot) {
+      repoRoot = bundledRoot;
+    }
+    if (pluginPath && dwgPluginPath && convertCliPath) {
+      break;
+    }
+  }
 
   for (const root of roots) {
     if (!root || !fs.existsSync(root)) {
@@ -171,6 +719,24 @@ function coerceNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function hasOwnSetting(settings, key) {
+  return Boolean(settings && typeof settings === "object" && Object.prototype.hasOwnProperty.call(settings, key));
+}
+
+function getExplicitStringSetting(settings, key) {
+  if (!hasOwnSetting(settings, key)) {
+    return null;
+  }
+  return coerceString(settings[key]);
+}
+
+function getExplicitNumberSetting(settings, key) {
+  if (!hasOwnSetting(settings, key)) {
+    return null;
+  }
+  return coerceNumber(settings[key]);
+}
+
 function parseAutoStartOverride(value) {
   if (value === undefined || value === null || value === "" || value === "default") {
     return null;
@@ -194,18 +760,21 @@ function splitCommand(command) {
 
 function resolveDwgConfig(overrides = {}) {
   const opts = normalizeSettings(overrides);
-  let dwgConvertCmd =
-    coerceString(opts.dwgConvertCmd) ||
-    getArg("--dwg-convert-cmd") ||
-    process.env.VEMCAD_DWG_CONVERT_CMD ||
-    process.env.CADGF_DWG_CONVERT_CMD ||
-    process.env.CADGF_ROUTER_DWG_CONVERT_CMD ||
-    "";
-  if (!dwgConvertCmd) {
+  const explicitDwgConvertCmd = getExplicitStringSetting(opts, "dwgConvertCmd");
+  let dwgConvertCmd = explicitDwgConvertCmd !== null
+    ? explicitDwgConvertCmd
+    : (
+      getArg("--dwg-convert-cmd") ||
+      process.env.VEMCAD_DWG_CONVERT_CMD ||
+      process.env.CADGF_DWG_CONVERT_CMD ||
+      process.env.CADGF_ROUTER_DWG_CONVERT_CMD ||
+      ""
+    );
+  if (!dwgConvertCmd && explicitDwgConvertCmd === null) {
     dwgConvertCmd = detectDwgConvertCmd(opts);
   }
   const timeoutValue =
-    coerceNumber(opts.dwgTimeoutMs) ??
+    getExplicitNumberSetting(opts, "dwgTimeoutMs") ??
     Number.parseInt(
       process.env.VEMCAD_DWG_CONVERT_TIMEOUT_MS || process.env.CADGF_DWG_CONVERT_TIMEOUT_MS || "",
       10
@@ -233,8 +802,11 @@ function detectDwgConvertCmd(overrides = {}) {
 
 function detectDwgServicePath(overrides = {}) {
   const opts = normalizeSettings(overrides);
-  const explicitDir =
-    coerceString(opts.dwgServicePath) ||
+  const explicitDir = getExplicitStringSetting(opts, "dwgServicePath");
+  if (explicitDir !== null) {
+    return explicitDir;
+  }
+  const configuredDir =
     process.env.VEMCAD_DWG_SERVICE_PATH ||
     process.env.VEMCAD_DWG_SERVICE_DIR ||
     process.env.CADGF_DWG_SERVICE_PATH ||
@@ -243,7 +815,11 @@ function detectDwgServicePath(overrides = {}) {
   const repoRoot = path.resolve(__dirname, "..", "..");
   const home = getHomeDir();
   const candidates = [
-    explicitDir,
+    configuredDir,
+    ...getBundledCadResourceRoots().flatMap((root) => [
+      path.join(root, "dwg_service"),
+      path.join(root, "cadgf-dwg-service"),
+    ]),
     path.join(repoRoot, "cadgf-dwg-service"),
     path.join(repoRoot, "..", "cadgf-dwg-service"),
   ];
@@ -272,28 +848,51 @@ function resolveRouterStartConfig(overrides = {}) {
     autoStartOverride !== null
       ? autoStartOverride
       : getArg("--router-auto-start") || process.env.VEMCAD_ROUTER_AUTO_START || "";
-  const startCmdOverride = coerceString(opts.routerStartCmd);
+  const startCmdOverride = getExplicitStringSetting(opts, "routerStartCmd");
   const startCmdValue =
-    startCmdOverride ||
-    getArg("--router-start-cmd") ||
-    process.env.VEMCAD_ROUTER_START_CMD ||
-    process.env.CADGF_ROUTER_START_CMD ||
-    "";
-  const startCwdOverride = coerceString(opts.routerStartCwd);
+    startCmdOverride !== null
+      ? startCmdOverride
+      : (
+        getArg("--router-start-cmd") ||
+        process.env.VEMCAD_ROUTER_START_CMD ||
+        process.env.CADGF_ROUTER_START_CMD ||
+        ""
+      );
+  const startCwdOverride = getExplicitStringSetting(opts, "routerStartCwd");
   const startCwdValue =
-    startCwdOverride ||
-    process.env.VEMCAD_ROUTER_START_CWD ||
-    process.env.CADGF_ROUTER_START_CWD ||
-    "";
-  const timeoutOverride = coerceNumber(opts.routerStartTimeoutMs);
+    startCwdOverride !== null
+      ? startCwdOverride
+      : (
+        process.env.VEMCAD_ROUTER_START_CWD ||
+        process.env.CADGF_ROUTER_START_CWD ||
+        ""
+      );
+  const timeoutOverride = getExplicitNumberSetting(opts, "routerStartTimeoutMs");
+  const routerUrlOverride = getExplicitStringSetting(opts, "routerUrl");
   const timeoutValue =
     timeoutOverride ??
     Number.parseInt(process.env.VEMCAD_ROUTER_START_TIMEOUT_MS || process.env.CADGF_ROUTER_START_TIMEOUT_MS || "", 10);
+  const routerUrl =
+    routerUrlOverride !== null
+      ? routerUrlOverride
+      : (
+        getArg("--router-url") ||
+        process.env.VEMCAD_ROUTER_URL ||
+        process.env.CADGF_ROUTER_URL ||
+        getDefaultRouterUrl()
+      );
+  const canAutostartByDefault = isLocalHost((() => {
+    try {
+      return new URL(routerUrl).hostname;
+    } catch {
+      return "";
+    }
+  })()) && Boolean(startCmdValue || detectRouterServiceScriptPath());
   return {
     autoStart:
       autoStartOverride !== null
         ? autoStartOverride
-        : (autoStartValue ? parseBool(autoStartValue) : !app.isPackaged),
+        : (autoStartValue ? parseBool(autoStartValue) : canAutostartByDefault),
     startCmd: startCmdValue,
     startCwd: startCwdValue,
     timeoutMs: Number.isFinite(timeoutValue) ? timeoutValue : DEFAULT_ROUTER_START_TIMEOUT_MS
@@ -312,9 +911,6 @@ function resolveStartCommand(config, routerUrl, overrides = {}) {
       cwd: startConfig.startCwd
     };
   }
-  if (app.isPackaged) {
-    return { cmd: [], cwd: "" };
-  }
   let parsed;
   try {
     parsed = new URL(routerUrl);
@@ -324,9 +920,8 @@ function resolveStartCommand(config, routerUrl, overrides = {}) {
   if (!isLocalHost(parsed.hostname)) {
     return { cmd: [], cwd: "" };
   }
-  const repoRoot = path.resolve(__dirname, "..", "..");
-  const routerScript = path.join(repoRoot, "tools", "plm_router_service.py");
-  if (!fs.existsSync(routerScript)) {
+  const routerScript = detectRouterServiceScriptPath();
+  if (!routerScript) {
     return { cmd: [], cwd: "" };
   }
   const pythonBin = resolvePythonExecutable();
@@ -334,11 +929,14 @@ function resolveStartCommand(config, routerUrl, overrides = {}) {
   if (parsed.port) {
     cmd.push("--port", parsed.port);
   }
-  const pluginPath = config.plugin
-    ? (path.isAbsolute(config.plugin) ? config.plugin : path.join(repoRoot, config.plugin))
+  const detectedRouter = detectRouterPaths();
+  const routerPlugin = config.plugin || detectedRouter.pluginPath || "";
+  const routerConvertCli = config.convertCli || detectedRouter.convertCliPath || "";
+  const pluginPath = routerPlugin
+    ? (path.isAbsolute(routerPlugin) ? routerPlugin : path.join(repoRoot, routerPlugin))
     : "";
-  const convertCliPath = config.convertCli
-    ? (path.isAbsolute(config.convertCli) ? config.convertCli : path.join(repoRoot, config.convertCli))
+  const convertCliPath = routerConvertCli
+    ? (path.isAbsolute(routerConvertCli) ? routerConvertCli : path.join(repoRoot, routerConvertCli))
     : "";
   if (pluginPath) {
     cmd.push("--default-plugin", pluginPath);
@@ -349,7 +947,7 @@ function resolveStartCommand(config, routerUrl, overrides = {}) {
   if (config.authToken) {
     cmd.push("--auth-token", config.authToken);
   }
-  return { cmd, cwd: repoRoot };
+  return { cmd, cwd: path.dirname(routerScript) };
 }
 
 function quoteArg(value) {
@@ -361,7 +959,8 @@ function quoteArg(value) {
 }
 
 function buildRouterStartCmdSuggestion(routerUrl, pluginPath, convertCliPath, repoRoot) {
-  if (!repoRoot) return "";
+  const routerScript = detectRouterServiceScriptPath();
+  if (!routerScript) return "";
   let parsed;
   try {
     parsed = new URL(routerUrl);
@@ -371,12 +970,8 @@ function buildRouterStartCmdSuggestion(routerUrl, pluginPath, convertCliPath, re
   if (!isLocalHost(parsed.hostname)) {
     return "";
   }
-  const scriptPath = path.join(repoRoot, "tools", "plm_router_service.py");
-  if (!fs.existsSync(scriptPath)) {
-    return "";
-  }
   const pythonBin = resolvePythonExecutable();
-  const args = [pythonBin, scriptPath, "--host", parsed.hostname];
+  const args = [pythonBin, routerScript, "--host", parsed.hostname];
   if (parsed.port) {
     args.push("--port", parsed.port);
   }
@@ -387,6 +982,70 @@ function buildRouterStartCmdSuggestion(routerUrl, pluginPath, convertCliPath, re
     args.push("--default-convert-cli", convertCliPath);
   }
   return args.map(quoteArg).join(" ");
+}
+
+function resolveRouterReadiness(overrides = {}) {
+  const normalized = normalizeSettings(overrides);
+  const config = resolveRouterConfig(normalized);
+  const detectedRouter = detectRouterPaths();
+  const cadRuntime = detectCadRuntime();
+  const routerUrl = normalizeBaseUrl(config.routerUrl);
+  const routerPlugin = config.plugin || detectedRouter.pluginPath || "";
+  const routerConvertCli = config.convertCli || detectedRouter.convertCliPath || "";
+  const startConfig = resolveRouterStartConfig(normalized);
+  const startSuggestion = buildRouterStartCmdSuggestion(
+    routerUrl,
+    routerPlugin,
+    routerConvertCli,
+    detectedRouter.repoRoot
+  );
+  const configuredStartCmd = startConfig.startCmd;
+  const effectiveStartCmd = configuredStartCmd || startSuggestion;
+  return {
+    router_url: routerUrl,
+    router_plugin: routerPlugin,
+    router_convert_cli: routerConvertCli,
+    router_auto_start: startConfig.autoStart ? "on" : "off",
+    router_start_ready: !!effectiveStartCmd,
+    router_start_source: configuredStartCmd ? "configured" : (effectiveStartCmd ? "auto-detected" : ""),
+    router_start_cmd: effectiveStartCmd,
+    router_start_cmd_suggested: configuredStartCmd ? startSuggestion : "",
+    cad_runtime_root: cadRuntime.cadRuntimeRoot,
+    cad_runtime_source: cadRuntime.cadRuntimeSource,
+    cad_runtime_ready: cadRuntime.cadRuntimeReady,
+    router_service_path: cadRuntime.routerServicePath,
+    plm_convert_path: cadRuntime.plmConvertPath,
+    viewer_root: cadRuntime.viewerRoot,
+  };
+}
+
+function buildRouterRecoveryHint(readiness = {}, errorCode = "") {
+  const code = coerceString(errorCode).toUpperCase();
+  if (code === "ROUTER_NOT_CONFIGURED") {
+    return "Set Router URL in Settings before opening CAD files.";
+  }
+  if (code === "ROUTER_NOT_AVAILABLE") {
+    if (readiness.router_auto_start === "off") {
+      return "Router Auto Start is Off. Start the router manually, or switch Router Auto Start back to Default/On in Settings.";
+    }
+    if (!readiness.router_start_ready) {
+      return "Router is not reachable and no Router Start Command is ready. Set Router Start Command, or restore a local router URL so the desktop can auto-detect one in Settings.";
+    }
+    return "Router is not reachable. Review Router URL, Router Start Command, and local router dependencies in Settings.";
+  }
+  if (code === "ROUTER_START_NOT_CONFIGURED") {
+    return "Router Auto Start is enabled, but no Router Start Command is ready. Set Router Start Command, or switch Router Auto Start Off and start the router manually.";
+  }
+  if (code === "ROUTER_START_FAILED") {
+    if (readiness.router_start_source === "configured" && readiness.router_start_cmd_suggested) {
+      return "Configured Router Start Command failed. Fix Router Start Command in Settings, or click Use Recommended to restore the detected local router start command.";
+    }
+    return "Check Router Start Command, Router Plugin, and Router Convert CLI in Settings.";
+  }
+  if (code === "ROUTER_START_TIMEOUT") {
+    return "Check Router Start Command, Router Plugin, and Router Convert CLI in Settings.";
+  }
+  return "";
 }
 
 async function checkRouterHealth(routerUrl) {
@@ -454,12 +1113,19 @@ function registerRouterCleanup() {
 
 async function ensureRouterReady(overrides = {}) {
   const config = resolveRouterConfig(overrides);
+  const readiness = resolveRouterReadiness(overrides);
   const routerUrl = normalizeBaseUrl(config.routerUrl);
   if (!routerUrl) {
-    return { ok: false, error: "Router URL not configured.", error_code: "ROUTER_NOT_CONFIGURED" };
+    return {
+      ok: false,
+      error: "Router URL not configured.",
+      error_code: "ROUTER_NOT_CONFIGURED",
+      hint: buildRouterRecoveryHint(readiness, "ROUTER_NOT_CONFIGURED"),
+      ...readiness,
+    };
   }
   if (await checkRouterHealth(routerUrl)) {
-    return { ok: true };
+    return { ok: true, ...readiness };
   }
 
   const startConfig = resolveRouterStartConfig(overrides);
@@ -467,7 +1133,9 @@ async function ensureRouterReady(overrides = {}) {
     return {
       ok: false,
       error: "Router not reachable. Start it or enable VEMCAD_ROUTER_AUTO_START.",
-      error_code: "ROUTER_NOT_AVAILABLE"
+      error_code: "ROUTER_NOT_AVAILABLE",
+      hint: buildRouterRecoveryHint(readiness, "ROUTER_NOT_AVAILABLE"),
+      ...readiness,
     };
   }
 
@@ -481,33 +1149,64 @@ async function ensureRouterReady(overrides = {}) {
       return {
         ok: false,
         error: "Router start command not configured. Set VEMCAD_ROUTER_START_CMD.",
-        error_code: "ROUTER_START_NOT_CONFIGURED"
+        error_code: "ROUTER_START_NOT_CONFIGURED",
+        hint: buildRouterRecoveryHint(readiness, "ROUTER_START_NOT_CONFIGURED"),
+        ...readiness,
       };
     }
+    let spawnErrorPromise = null;
     try {
       routerProcess = spawn(cmd[0], cmd.slice(1), { cwd: cwd || undefined, stdio: "ignore" });
       registerRouterCleanup();
-      routerProcess.on("exit", () => {
-        routerProcess = null;
+      const startedProcess = routerProcess;
+      spawnErrorPromise = new Promise((resolve) => {
+        startedProcess.once("error", (error) => {
+          if (routerProcess === startedProcess) {
+            routerProcess = null;
+          }
+          resolve(error);
+        });
+      });
+      startedProcess.on("exit", () => {
+        if (routerProcess === startedProcess) {
+          routerProcess = null;
+        }
       });
     } catch (error) {
       routerProcess = null;
       return {
         ok: false,
         error: `Failed to start router: ${error?.message || "unknown error"}`,
-        error_code: "ROUTER_START_FAILED"
+        error_code: "ROUTER_START_FAILED",
+        hint: buildRouterRecoveryHint(readiness, "ROUTER_START_FAILED"),
+        ...readiness,
       };
     }
 
-    const ready = await waitForRouter(routerUrl, startConfig.timeoutMs);
+    const readyState = await Promise.race([
+      waitForRouter(routerUrl, startConfig.timeoutMs).then((ready) => ({ type: "ready", ready })),
+      spawnErrorPromise.then((error) => ({ type: "error", error })),
+    ]);
+    if (readyState.type === "error") {
+      return {
+        ok: false,
+        error: `Failed to start router: ${readyState.error?.message || "unknown error"}`,
+        error_code: "ROUTER_START_FAILED",
+        hint: buildRouterRecoveryHint(readiness, "ROUTER_START_FAILED"),
+        ...readiness,
+      };
+    }
+    const ready = readyState.ready;
     if (!ready) {
       return {
         ok: false,
         error: "Router did not become ready in time.",
-        error_code: "ROUTER_START_TIMEOUT"
+        error_code: "ROUTER_START_TIMEOUT",
+        hint: buildRouterRecoveryHint(readiness, "ROUTER_START_TIMEOUT"),
+        ...readiness,
       };
     }
-    return { ok: true, started: true };
+    return { ok: true, started: true, ...readiness };
   })();
 
   const result = await routerStartPromise;
@@ -563,73 +1262,232 @@ async function runDwgConvert(command, timeoutMs) {
   });
 }
 
+// P2.5: tryConvertDwg — attempt a single converter cmd and return { ok, dxfPath, converter }.
+// outputDir must already exist. On success the caller owns the produced file.
+async function tryConvertDwg(inputPath, outputDir, converterCmd, timeoutMs, converterLabel) {
+  const baseName = path.parse(inputPath).name || path.basename(inputPath);
+  const outputPath = path.join(outputDir, `${baseName}.dxf`);
+  const cmd = buildDwgConvertCommand(converterCmd, inputPath, outputPath);
+  const result = await runDwgConvert(cmd, timeoutMs);
+  if (!result.ok) {
+    return { ok: false, converter: converterLabel, error: result.error, error_code: result.error_code };
+  }
+  if (!fs.existsSync(outputPath)) {
+    return { ok: false, converter: converterLabel, error: "DWG conversion did not produce output.", error_code: "DWG_CONVERT_FAILED" };
+  }
+  return { ok: true, dxfPath: outputPath, converter: converterLabel };
+}
+
+// P2.5: Build ODA File Converter command template (outputs DXF in outputDir).
+function buildOdaConverterCmd(inputPath, outputDir) {
+  // ODAFileConverter <input_folder> <output_folder> <version> <format> <recurse> <audit>
+  // We pass the file's parent dir as input folder; ODA converts all DWGs found there.
+  // The caller passes the same tmpDir as outputDir so ODA writes <basename>.dxf there.
+  // No {input}/{output} tokens — buildDwgConvertCommand will treat this as a full command.
+  const inputDir = path.dirname(inputPath);
+  return `ODAFileConverter "${inputDir}" "${outputDir}" ACAD2018 DXF 0 1`;
+}
+
+// P2.5: Build QCAD command template.
+function buildQcadConverterCmd() {
+  // qcad -allow-multiple-instances -no-gui -autorun scripts/Convert/Convert.js -src {input} -dst {output}
+  return `qcad -allow-multiple-instances -no-gui -autorun scripts/Convert/Convert.js -src {input} -dst {output}`;
+}
+
 async function maybeConvertDwg(filePath, settings = {}) {
   const ext = path.extname(filePath).toLowerCase();
   if (ext !== ".dwg") {
     return { ok: true, path: filePath, labelOverride: "" };
   }
   const config = resolveDwgConfig(settings);
-  if (!config.dwgConvertCmd) {
+
+  // P2.5: DWG converter cascade — LibreDWG → ODA → QCAD.
+  // Build the candidate list; each entry has { label, cmd }.
+  const candidates = [];
+
+  // 1. LibreDWG (dwg2dxf) — the primary converter, driven by existing config.
+  if (config.dwgConvertCmd) {
+    candidates.push({ label: "LibreDWG", cmd: config.dwgConvertCmd });
+  }
+
+  // 2. ODA File Converter — separate CLI shape; use a fixed template.
+  candidates.push({ label: "ODA", cmd: buildOdaConverterCmd(filePath, "PLACEHOLDER_OUTPUT_DIR") });
+
+  // 3. QCAD — {input}/{output} template.
+  candidates.push({ label: "QCAD", cmd: buildQcadConverterCmd() });
+
+  if (candidates.length === 0) {
     return {
       ok: false,
       error: "DWG converter not configured or auto-detected. Set VEMCAD_DWG_CONVERT_CMD.",
       error_code: "DWG_CONVERT_NOT_CONFIGURED"
     };
   }
+
   const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "vemcad-dwg-"));
   const baseName = path.parse(filePath).name || path.basename(filePath);
-  const outputPath = path.join(tmpDir, `${baseName}.dxf`);
-  const cmd = buildDwgConvertCommand(config.dwgConvertCmd, filePath, outputPath);
-  const result = await runDwgConvert(cmd, config.timeoutMs);
-  if (!result.ok) {
-    await fs.promises.rm(tmpDir, { recursive: true, force: true });
-    return result;
+  let lastError = null;
+
+  for (const candidate of candidates) {
+    // For ODA the output dir is the tmpDir we already created; rebuild its cmd with the real dir.
+    const effectiveCmd = candidate.label === "ODA"
+      ? buildOdaConverterCmd(filePath, tmpDir)
+      : candidate.cmd;
+
+    const attempt = await tryConvertDwg(filePath, tmpDir, effectiveCmd, config.timeoutMs, candidate.label);
+    if (attempt.ok) {
+      console.log(`[DWG] converter cascade: ${candidate.label} succeeded for ${path.basename(filePath)}`);
+      return { ok: true, path: attempt.dxfPath, cleanupDir: tmpDir, labelOverride: baseName };
+    }
+    console.log(`[DWG] converter cascade: ${candidate.label} failed — ${attempt.error}`);
+    lastError = attempt;
   }
-  if (!fs.existsSync(outputPath)) {
-    await fs.promises.rm(tmpDir, { recursive: true, force: true });
-    return { ok: false, error: "DWG conversion did not produce output.", error_code: "DWG_CONVERT_FAILED" };
+
+  await fs.promises.rm(tmpDir, { recursive: true, force: true });
+  return {
+    ok: false,
+    error: lastError?.error || "All DWG converters failed.",
+    error_code: lastError?.error_code || "DWG_CONVERT_FAILED"
+  };
+}
+
+async function resolveDwgOpenPlan(filePath, settings = {}) {
+  const ext = path.extname(filePath).toLowerCase();
+  const readiness = resolveDwgReadiness(settings);
+  if (ext !== ".dwg") {
+    return {
+      ok: true,
+      route: "passthrough",
+      route_mode: readiness.route_mode,
+      path: filePath,
+      labelOverride: "",
+      cleanupDir: "",
+      routerPlugin: coerceString(normalizeSettings(settings).routerPlugin),
+      dwgPluginPath: "",
+    };
   }
-  return { ok: true, path: outputPath, cleanupDir: tmpDir, labelOverride: baseName };
+
+  if (readiness.direct_plugin_ready) {
+    if (readiness.route === "direct-plugin") {
+      return {
+        ok: true,
+        route: "direct-plugin",
+        route_mode: readiness.route_mode,
+        path: filePath,
+        labelOverride: "",
+        cleanupDir: "",
+        routerPlugin: readiness.dwg_plugin_path,
+        dwgPluginPath: readiness.dwg_plugin_path,
+      };
+    }
+  }
+
+  if (!readiness.route) {
+    return {
+      ok: false,
+      error: "DWG open path not configured. Provide a DWG plugin path or a DWG converter command.",
+      error_code: "DWG_NOT_READY",
+      hint: buildDwgNotReadyHint(readiness),
+      ...readiness,
+    };
+  }
+
+  const prepared = await maybeConvertDwg(filePath, settings);
+  return {
+    ...prepared,
+    route: prepared.ok ? "local-convert" : "unavailable",
+    route_mode: readiness.route_mode,
+    routerPlugin: coerceString(normalizeSettings(settings).routerPlugin),
+    dwgPluginPath: "",
+  };
+}
+
+function attachDwgOpenFacts(result = {}, prepared = {}) {
+  return {
+    ...result,
+    route: result.route || prepared.route || "",
+    route_mode: result.route_mode || prepared.route_mode || "",
+    dwg_plugin_path: result.dwg_plugin_path || prepared.dwgPluginPath || "",
+    router_plugin: result.router_plugin || prepared.routerPlugin || "",
+  };
+}
+
+function attachOpenResultDiagnostics(result = {}, prepared = {}, overrides = {}) {
+  const merged = attachDwgOpenFacts(result, prepared);
+  if (merged.ok || merged.canceled || merged.hint) {
+    return merged;
+  }
+  const hint = buildOpenFailureHint(merged, prepared, overrides);
+  return hint ? { ...merged, hint } : merged;
 }
 
 function resolveRouterConfig(overrides = {}) {
   const opts = normalizeSettings(overrides);
+  const detectedRouter = detectRouterPaths();
+  const routerUrlOverride = getExplicitStringSetting(opts, "routerUrl");
+  const routerPluginOverride = getExplicitStringSetting(opts, "routerPlugin");
+  const routerConvertCliOverride = getExplicitStringSetting(opts, "routerConvertCli");
+  const routerEmitOverride = getExplicitStringSetting(opts, "routerEmit");
+  const projectIdOverride = getExplicitStringSetting(opts, "projectId");
+  const routerAuthTokenOverride = getExplicitStringSetting(opts, "routerAuthToken");
+  const documentLabelPrefixOverride = getExplicitStringSetting(opts, "documentLabelPrefix");
   const routerUrl =
-    coerceString(opts.routerUrl) ||
-    getArg("--router-url") ||
-    process.env.VEMCAD_ROUTER_URL ||
-    process.env.CADGF_ROUTER_URL ||
-    DEFAULT_ROUTER_URL;
+    routerUrlOverride !== null
+      ? routerUrlOverride
+      : (
+        getArg("--router-url") ||
+        process.env.VEMCAD_ROUTER_URL ||
+        process.env.CADGF_ROUTER_URL ||
+        getDefaultRouterUrl()
+      );
   const plugin =
-    coerceString(opts.routerPlugin) ||
-    getArg("--router-plugin") ||
-    process.env.VEMCAD_ROUTER_PLUGIN ||
-    process.env.CADGF_ROUTER_PLUGIN ||
-    "";
+    routerPluginOverride !== null
+      ? routerPluginOverride
+      : (
+        getArg("--router-plugin") ||
+        process.env.VEMCAD_ROUTER_PLUGIN ||
+        process.env.CADGF_ROUTER_PLUGIN ||
+        detectedRouter.pluginPath ||
+        ""
+      );
   const convertCli =
-    coerceString(opts.routerConvertCli) ||
-    getArg("--router-convert-cli") ||
-    process.env.VEMCAD_ROUTER_CONVERT_CLI ||
-    process.env.CADGF_ROUTER_CONVERT_CLI ||
-    "";
+    routerConvertCliOverride !== null
+      ? routerConvertCliOverride
+      : (
+        getArg("--router-convert-cli") ||
+        process.env.VEMCAD_ROUTER_CONVERT_CLI ||
+        process.env.CADGF_ROUTER_CONVERT_CLI ||
+        detectedRouter.convertCliPath ||
+        ""
+      );
   const emit =
-    coerceString(opts.routerEmit) ||
-    getArg("--router-emit") ||
-    process.env.VEMCAD_ROUTER_EMIT ||
-    process.env.CADGF_ROUTER_EMIT ||
-    DEFAULT_ROUTER_EMIT;
+    routerEmitOverride !== null
+      ? routerEmitOverride
+      : (
+        getArg("--router-emit") ||
+        process.env.VEMCAD_ROUTER_EMIT ||
+        process.env.CADGF_ROUTER_EMIT ||
+        DEFAULT_ROUTER_EMIT
+      );
   const projectId =
-    coerceString(opts.projectId) || getArg("--project-id") || process.env.VEMCAD_PROJECT_ID || "";
+    projectIdOverride !== null
+      ? projectIdOverride
+      : (getArg("--project-id") || process.env.VEMCAD_PROJECT_ID || "");
   const authToken =
-    coerceString(opts.routerAuthToken) ||
-    getArg("--router-auth-token") ||
-    process.env.VEMCAD_ROUTER_AUTH_TOKEN ||
-    process.env.CADGF_ROUTER_AUTH_TOKEN ||
-    "";
+    routerAuthTokenOverride !== null
+      ? routerAuthTokenOverride
+      : (
+        getArg("--router-auth-token") ||
+        process.env.VEMCAD_ROUTER_AUTH_TOKEN ||
+        process.env.CADGF_ROUTER_AUTH_TOKEN ||
+        ""
+      );
   const labelPrefix =
-    coerceString(opts.documentLabelPrefix) || process.env.VEMCAD_DOCUMENT_LABEL_PREFIX || "";
+    documentLabelPrefixOverride !== null
+      ? documentLabelPrefixOverride
+      : (process.env.VEMCAD_DOCUMENT_LABEL_PREFIX || "");
   const timeoutValue =
-    coerceNumber(opts.routerTimeoutMs) ??
+    getExplicitNumberSetting(opts, "routerTimeoutMs") ??
     Number.parseInt(process.env.VEMCAD_ROUTER_TIMEOUT_MS || process.env.CADGF_ROUTER_TIMEOUT_MS || "", 10);
   return {
     routerUrl,
@@ -659,6 +1517,8 @@ function buildDefaultSettings() {
 
   const dwgServicePath = detectDwgServicePath();
   const dwg2dxfBin = resolveDwg2DxfBinary();
+  const dwgPluginPath = resolveDwgPluginPath();
+  const dwgRouteMode = resolveDwgRouteMode();
 
   return {
     routerUrl: routerConfig.routerUrl || "",
@@ -682,7 +1542,8 @@ function buildDefaultSettings() {
     dwgServicePath: dwgServicePath || "",
     dwg2dxfBin: dwg2dxfBin || "",
     dwgTimeoutMs: dwgConfig.timeoutMs,
-    dwgPluginPath: detectedRouter.dwgPluginPath || "",
+    dwgRouteMode,
+    dwgPluginPath: dwgPluginPath || "",
   };
 }
 
@@ -713,12 +1574,33 @@ async function convertWithRouter(filePath, labelOverride = "", settings = {}) {
     return routerReady;
   }
   const config = resolveRouterConfig(settings);
+  const detectedRouter = detectRouterPaths();
+  const effectivePlugin = config.plugin || detectedRouter.pluginPath || "";
+  const effectiveConvertCli = config.convertCli || detectedRouter.convertCliPath || "";
   const routerUrl = normalizeBaseUrl(config.routerUrl);
   if (!routerUrl) {
-    return { ok: false, error: "Router URL not configured." };
+    return {
+      ok: false,
+      error: "Router URL not configured.",
+      cad_runtime_root: routerReady.cad_runtime_root || "",
+      cad_runtime_source: routerReady.cad_runtime_source || "",
+      cad_runtime_ready: !!routerReady.cad_runtime_ready,
+      router_service_path: routerReady.router_service_path || "",
+      plm_convert_path: routerReady.plm_convert_path || "",
+      viewer_root: routerReady.viewer_root || "",
+    };
   }
   if (!globalThis.fetch || !globalThis.FormData || !globalThis.Blob) {
-    return { ok: false, error: "Fetch/FormData not available in this runtime." };
+    return {
+      ok: false,
+      error: "Fetch/FormData not available in this runtime.",
+      cad_runtime_root: routerReady.cad_runtime_root || "",
+      cad_runtime_source: routerReady.cad_runtime_source || "",
+      cad_runtime_ready: !!routerReady.cad_runtime_ready,
+      router_service_path: routerReady.router_service_path || "",
+      plm_convert_path: routerReady.plm_convert_path || "",
+      viewer_root: routerReady.viewer_root || "",
+    };
   }
   const endpoint = `${routerUrl}/convert`;
   const baseName = path.basename(filePath);
@@ -730,11 +1612,11 @@ async function convertWithRouter(filePath, labelOverride = "", settings = {}) {
   const form = new FormData();
   const fileBuffer = await fs.promises.readFile(filePath);
   form.append("file", new Blob([fileBuffer]), baseName);
-  if (config.plugin) {
-    form.append("plugin", config.plugin);
+  if (effectivePlugin) {
+    form.append("plugin", effectivePlugin);
   }
-  if (config.convertCli) {
-    form.append("convert_cli", config.convertCli);
+  if (effectiveConvertCli) {
+    form.append("convert_cli", effectiveConvertCli);
   }
   if (config.emit) {
     form.append("emit", config.emit);
@@ -765,7 +1647,13 @@ async function convertWithRouter(filePath, labelOverride = "", settings = {}) {
     clearTimeout(timeoutId);
     return {
       ok: false,
-      error: `Router request failed: ${error?.message || "network error"}`
+      error: `Router request failed: ${error?.message || "network error"}`,
+      cad_runtime_root: routerReady.cad_runtime_root || "",
+      cad_runtime_source: routerReady.cad_runtime_source || "",
+      cad_runtime_ready: !!routerReady.cad_runtime_ready,
+      router_service_path: routerReady.router_service_path || "",
+      plm_convert_path: routerReady.plm_convert_path || "",
+      viewer_root: routerReady.viewer_root || "",
     };
   }
   clearTimeout(timeoutId);
@@ -782,7 +1670,13 @@ async function convertWithRouter(filePath, labelOverride = "", settings = {}) {
     return {
       ok: false,
       error: data?.error || text || `Router error (${response.status})`,
-      error_code: data?.error_code || `HTTP_${response.status}`
+      error_code: data?.error_code || `HTTP_${response.status}`,
+      cad_runtime_root: routerReady.cad_runtime_root || "",
+      cad_runtime_source: routerReady.cad_runtime_source || "",
+      cad_runtime_ready: !!routerReady.cad_runtime_ready,
+      router_service_path: routerReady.router_service_path || "",
+      plm_convert_path: routerReady.plm_convert_path || "",
+      viewer_root: routerReady.viewer_root || "",
     };
   }
 
@@ -790,6 +1684,12 @@ async function convertWithRouter(filePath, labelOverride = "", settings = {}) {
   const parsed = parseViewerUrl(viewerUrl);
   return {
     ok: true,
+    cad_runtime_root: routerReady.cad_runtime_root || "",
+    cad_runtime_source: routerReady.cad_runtime_source || "",
+    cad_runtime_ready: !!routerReady.cad_runtime_ready,
+    router_service_path: routerReady.router_service_path || "",
+    plm_convert_path: routerReady.plm_convert_path || "",
+    viewer_root: routerReady.viewer_root || "",
     viewer_url: viewerUrl,
     manifest_url: parsed.manifestUrl,
     manifest_path: data?.manifest_path || "",
@@ -851,6 +1751,7 @@ async function maybeRunSmokeDwgMode() {
     ok: false,
     smoke_mode: "desktop-open-cad-file",
     input_dwg: selection,
+    dwg_route_mode: resolveDwgRouteMode(overrides),
     router_url: normalizeBaseUrl(routerConfig.routerUrl),
     router_plugin: routerConfig.plugin || detectedRouter.pluginPath || "",
     router_convert_cli: routerConfig.convertCli || detectedRouter.convertCliPath || "",
@@ -868,12 +1769,16 @@ async function maybeRunSmokeDwgMode() {
     if (!fs.existsSync(selection)) {
       throw new Error(`DWG file not found: ${selection}`);
     }
-    prepared = await maybeConvertDwg(selection, overrides);
+    prepared = await resolveDwgOpenPlan(selection, overrides);
     summary.prepared = {
       ok: !!prepared.ok,
+      route: prepared.route || "",
+      route_mode: prepared.route_mode || "",
       path: prepared.path || "",
       cleanup_dir: prepared.cleanupDir || "",
       label_override: prepared.labelOverride || "",
+      router_plugin: prepared.routerPlugin || "",
+      dwg_plugin_path: prepared.dwgPluginPath || "",
       error: prepared.error || "",
       error_code: prepared.error_code || "",
     };
@@ -881,15 +1786,19 @@ async function maybeRunSmokeDwgMode() {
       throw new Error(prepared.error || "DWG prepare failed");
     }
 
-    const converted = await convertWithRouter(prepared.path, prepared.labelOverride || "", overrides);
-    summary.convert = converted;
-    if (!converted.ok) {
-      throw new Error(converted.error || "router convert failed");
+    const converted = await convertWithRouter(
+      prepared.path,
+      prepared.labelOverride || "",
+      prepared.routerPlugin ? { ...overrides, routerPlugin: prepared.routerPlugin } : overrides
+    );
+    summary.convert = attachOpenResultDiagnostics(converted, prepared, overrides);
+    if (!summary.convert.ok) {
+      throw new Error(summary.convert.error || "router convert failed");
     }
 
-    const viewer = await fetchTextWithTimeout(converted.viewer_url, smokeViewerTimeout);
+    const viewer = await fetchTextWithTimeout(summary.convert.viewer_url, smokeViewerTimeout);
     summary.viewer = {
-      url: converted.viewer_url || "",
+      url: summary.convert.viewer_url || "",
       status_code: viewer.status,
       ok: viewer.ok,
       contains_statusbar: viewer.text.includes('id="cad-status-message"'),
@@ -976,6 +1885,7 @@ function createWindow() {
     }
   });
   mainWindow = win;
+  rendererCadOpenReady = false;
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -983,6 +1893,16 @@ function createWindow() {
       return { action: "deny" };
     }
     return { action: "allow" };
+  });
+  win.webContents.on("did-start-loading", () => {
+    if (mainWindow === win) {
+      rendererCadOpenReady = false;
+    }
+  });
+  win.webContents.on("did-finish-load", () => {
+    if (mainWindow === win) {
+      rendererCadOpenReady = false;
+    }
   });
 
   const startUrl = buildStartUrl();
@@ -997,6 +1917,7 @@ function createWindow() {
 
   win.on("closed", () => {
     if (mainWindow === win) {
+      rendererCadOpenReady = false;
       mainWindow = null;
     }
   });
@@ -1007,18 +1928,84 @@ function sendOpenSettings() {
     return;
   }
   mainWindow.webContents.send("vemcad:open-settings");
-  if (!mainWindow.isVisible()) {
-    mainWindow.show();
+  focusMainWindow();
+}
+
+function sendOpenCadRequest(payload = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
   }
-  mainWindow.focus();
+  mainWindow.webContents.send("vemcad:open-cad-request", payload);
+  focusMainWindow();
+}
+
+function buildRecentCadMenuItems() {
+  const recentEntries = listRecentCadFiles();
+  if (!recentEntries.length) {
+    return [{ label: "No Recent CAD Files", enabled: false }];
+  }
+  return [
+    ...recentEntries.map((entry) => ({
+      label: entry.label || path.basename(entry.path),
+      enabled: !!entry.exists,
+      click: () => {
+        queueCadOpenPath(entry.path);
+        ensureCadOpenWindow();
+      },
+    })),
+    { type: "separator" },
+    {
+      label: "Clear Recent CAD Files",
+      click: () => clearRecentCadFiles(),
+    },
+  ];
+}
+
+function buildResumeLatestCadMenuItem() {
+  const latestEntry = listRecentCadFiles()[0] || null;
+  return {
+    label: "Resume Latest CAD",
+    enabled: Boolean(latestEntry?.exists),
+    click: () => {
+      if (!latestEntry?.path) {
+        return;
+      }
+      queueCadOpenPath(latestEntry.path);
+      ensureCadOpenWindow();
+    },
+  };
 }
 
 function installAppMenu() {
   const isMac = process.platform === "darwin";
+  const openCadItem = {
+    label: "Open CAD File...",
+    accelerator: "CmdOrCtrl+O",
+    click: () => {
+      ensureCadOpenWindow();
+      if (rendererCadOpenReady) {
+        sendOpenCadRequest({ path: "" });
+      }
+    },
+  };
   const settingsItem = {
     label: "Settings...",
     accelerator: "CmdOrCtrl+,",
     click: () => sendOpenSettings(),
+  };
+  const fileMenu = {
+    label: "File",
+    submenu: [
+      openCadItem,
+      buildResumeLatestCadMenuItem(),
+      {
+        label: "Open Recent CAD",
+        submenu: buildRecentCadMenuItems(),
+      },
+      { type: "separator" },
+      settingsItem,
+      ...(isMac ? [] : [{ type: "separator" }, { role: "quit" }]),
+    ],
   };
   const template = [
     ...(isMac
@@ -1031,12 +2018,10 @@ function installAppMenu() {
               { role: "quit" },
             ],
           },
+          fileMenu,
         ]
       : [
-          {
-            label: "File",
-            submenu: [settingsItem, { role: "quit" }],
-          },
+          fileMenu,
         ]),
     { role: "editMenu" },
     { role: "viewMenu" },
@@ -1045,64 +2030,214 @@ function installAppMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-ipcMain.handle("vemcad:open-cad-file", async (_event, settings) => {
-  const overrides = normalizeSettings(settings);
-  const result = await dialog.showOpenDialog({
-    properties: ["openFile"],
-    filters: [
-      { name: "CAD Files", extensions: ["dxf", "dwg", "json", "cad"] },
-      { name: "All Files", extensions: ["*"] }
-    ]
-  });
-  if (result.canceled || !result.filePaths.length) {
-    return { ok: false, canceled: true };
+async function openCadSelection(selection, overrides = {}) {
+  const normalizedSelection = typeof selection === "string" ? selection.trim() : "";
+  if (!normalizedSelection) {
+    return {
+      ok: false,
+      error: "CAD file not specified.",
+      error_code: "CAD_FILE_NOT_SPECIFIED",
+    };
   }
-  const selection = result.filePaths[0];
-  const ext = path.extname(selection).toLowerCase();
-
-  // .dwg with DWG importer plugin: send directly to router (no local dwg2dxf step)
-  if (ext === ".dwg") {
-    const detected = detectRouterPaths();
-    if (detected.dwgPluginPath) {
-      const dwgOverrides = { ...overrides, routerPlugin: detected.dwgPluginPath };
-      return await convertWithRouter(selection, "", dwgOverrides);
-    }
+  const resolvedSelection = path.resolve(normalizedSelection);
+  if (!fs.existsSync(resolvedSelection)) {
+    return {
+      ok: false,
+      error: `CAD file not found: ${resolvedSelection}`,
+      error_code: "CAD_FILE_NOT_FOUND",
+    };
   }
-
-  // Fallback: legacy local dwg2dxf conversion for .dwg, passthrough for others
-  const prepared = await maybeConvertDwg(selection, overrides);
+  const prepared = await resolveDwgOpenPlan(resolvedSelection, overrides);
   if (!prepared.ok) {
-    return prepared;
+    return attachOpenResultDiagnostics(prepared, prepared, overrides);
   }
   try {
-    return await convertWithRouter(prepared.path, prepared.labelOverride || "", overrides);
+    const converted = await convertWithRouter(
+      prepared.path,
+      prepared.labelOverride || "",
+      prepared.routerPlugin ? { ...overrides, routerPlugin: prepared.routerPlugin } : overrides
+    );
+    const result = attachOpenResultDiagnostics(converted, prepared, overrides);
+    if (result.ok) {
+      rememberRecentCadFile(
+        resolvedSelection,
+        result.document_label || prepared.labelOverride || path.basename(resolvedSelection, path.extname(resolvedSelection))
+      );
+      // P1.5: Desktop DXF/DWG → editor bridge.
+      // When the conversion produces a document.json, push it to the renderer
+      // so preview_app.js can switch to editor mode and load the document.
+      if (result.output_dir) {
+        const docJsonPath = path.join(result.output_dir, "document.json");
+        if (fs.existsSync(docJsonPath)) {
+          try {
+            const docJsonText = fs.readFileSync(docJsonPath, "utf-8");
+            const documentJson = JSON.parse(docJsonText);
+            if (mainWindow && !mainWindow.isDestroyed()) {
+              mainWindow.webContents.send("vemcad:load-document-into-editor", {
+                documentJson,
+                documentLabel: result.document_label || "",
+                outputDir: result.output_dir,
+              });
+            }
+          } catch {
+            // Non-fatal: preview mode will still work via manifest_url.
+          }
+        }
+      }
+    }
+    return result;
   } finally {
     if (prepared.cleanupDir) {
       await fs.promises.rm(prepared.cleanupDir, { recursive: true, force: true });
     }
   }
+}
+
+ipcMain.handle("vemcad:open-cad-file", async (_event, settings) => {
+  const overrides = normalizeSettings(settings);
+  const smokeSelection = resolveSmokeOpenFileSelection();
+  let selection = "";
+  if (smokeSelection.configured) {
+    if (!smokeSelection.path || !fs.existsSync(smokeSelection.path)) {
+      return {
+        ok: false,
+        error: `Smoke open file not found: ${smokeSelection.path || "<empty>"}`,
+        error_code: "SMOKE_OPEN_FILE_NOT_FOUND",
+      };
+    }
+    selection = smokeSelection.path;
+  } else {
+    const result = await dialog.showOpenDialog({
+      properties: ["openFile"],
+      filters: [
+        { name: "CAD Files", extensions: ["dxf", "dwg", "json", "cad"] },
+        { name: "All Files", extensions: ["*"] }
+      ]
+    });
+    if (result.canceled || !result.filePaths.length) {
+      return { ok: false, canceled: true };
+    }
+    selection = result.filePaths[0];
+  }
+  return openCadSelection(selection, overrides);
+});
+
+ipcMain.handle("vemcad:open-cad-path", async (_event, payload = {}) => {
+  const requestedPath = typeof payload?.path === "string" ? payload.path : "";
+  const overrides = normalizeSettings(payload?.settings);
+  return openCadSelection(requestedPath, overrides);
+});
+
+ipcMain.on("vemcad:renderer-ready", (event) => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  if (event.sender !== mainWindow.webContents) {
+    return;
+  }
+  rendererCadOpenReady = true;
+  broadcastRecentCadFilesChanged();
+  flushPendingCadOpenPaths();
 });
 
 ipcMain.handle("vemcad:get-default-settings", async () => buildDefaultSettings());
 
+ipcMain.handle("vemcad:get-app-info", async () => ({
+  app_name: app.name,
+  app_version: app.getVersion(),
+  is_packaged: app.isPackaged,
+  platform: process.platform,
+  arch: process.arch,
+  electron_version: process.versions.electron || "",
+  chrome_version: process.versions.chrome || "",
+  node_version: process.versions.node || "",
+  exe_path: process.execPath,
+  app_path: app.getAppPath(),
+  app_bundle_path: resolveMacAppBundlePath(process.execPath),
+  can_register_file_associations: process.platform === "darwin" && canRegisterMacFileAssociations(process.execPath),
+  user_data_path: app.getPath("userData"),
+}));
+
+ipcMain.handle("vemcad:get-recent-cad-files", async () => ({
+  entries: listRecentCadFiles(),
+}));
+
+ipcMain.handle("vemcad:clear-recent-cad-files", async () => ({
+  ok: true,
+  entries: clearRecentCadFiles(),
+}));
+
+ipcMain.handle("vemcad:register-file-associations", async () => registerDesktopFileAssociations());
+
+ipcMain.handle("vemcad:save-diagnostics", async (_event, { filename, text } = {}) => {
+  if (typeof text !== "string" || !text.trim()) {
+    return { ok: false, error: "No diagnostics payload provided.", error_code: "NO_DIAGNOSTICS_PAYLOAD" };
+  }
+
+  const safeFilename = sanitizeSuggestedFilename(filename, "vemcad_desktop_diagnostics.json");
+  const payloadBytes = Buffer.byteLength(text, "utf8");
+  const autoExportDir = resolveDesktopExportDir();
+
+  if (autoExportDir) {
+    const exportDir = path.resolve(autoExportDir);
+    fs.mkdirSync(exportDir, { recursive: true });
+    const outputPath = path.join(exportDir, safeFilename);
+    fs.writeFileSync(outputPath, text, "utf8");
+    return {
+      ok: true,
+      path: outputPath,
+      bytes: payloadBytes,
+      mode: "auto-dir",
+    };
+  }
+
+  const downloadsDir = app.getPath("downloads") || app.getPath("documents");
+  const result = await dialog.showSaveDialog({
+    defaultPath: path.join(downloadsDir, safeFilename),
+    filters: [
+      { name: "JSON Files", extensions: ["json"] },
+      { name: "All Files", extensions: ["*"] },
+    ],
+  });
+  if (result.canceled || !result.filePath) {
+    return { ok: false, canceled: true };
+  }
+  fs.writeFileSync(result.filePath, text, "utf8");
+  return {
+    ok: true,
+    path: result.filePath,
+    bytes: payloadBytes,
+    mode: "dialog",
+  };
+});
+
 ipcMain.handle("vemcad:test-router", async (_event, settings) => {
   const overrides = normalizeSettings(settings);
-  const config = resolveRouterConfig(overrides);
-  const routerUrl = normalizeBaseUrl(config.routerUrl);
-  if (!routerUrl) {
-    return { ok: false, error: "Router URL not configured.", error_code: "ROUTER_NOT_CONFIGURED" };
-  }
   const result = await ensureRouterReady(overrides);
   if (!result.ok) {
     return result;
   }
+  const routerUrl = result.router_url || "";
   const healthResult = await fetchRouterHealth(routerUrl);
   const health = healthResult.ok ? healthResult.data : null;
   const healthError = healthResult.ok ? "" : healthResult.error;
   return {
     ok: true,
     started: !!result.started,
+    router_auto_start: result.router_auto_start || "",
+    router_start_ready: !!result.router_start_ready,
+    router_start_source: result.router_start_source || "",
+    router_start_cmd: result.router_start_cmd || "",
+    router_start_cmd_suggested: result.router_start_cmd_suggested || "",
     router_url: routerUrl,
+    router_plugin: result.router_plugin || "",
+    router_convert_cli: result.router_convert_cli || "",
+    cad_runtime_root: result.cad_runtime_root || "",
+    cad_runtime_source: result.cad_runtime_source || "",
+    cad_runtime_ready: !!result.cad_runtime_ready,
+    router_service_path: result.router_service_path || "",
+    plm_convert_path: result.plm_convert_path || "",
+    viewer_root: result.viewer_root || "",
     health,
     health_error: healthError
   };
@@ -1170,32 +2305,54 @@ ipcMain.handle("vemcad:export-dxf", async (_event, { outputDir } = {}) => {
 });
 
 ipcMain.handle("vemcad:test-dwg", async (_event, settings) => {
-  const overrides = normalizeSettings(settings);
-  const config = resolveDwgConfig(overrides);
-  const dwg2dxf = resolveDwg2DxfBinary(overrides);
-  if (!config.dwgConvertCmd) {
+  const readiness = resolveDwgReadiness(settings);
+  if (!readiness.route) {
     return {
       ok: false,
-      error: "DWG converter not configured.",
-      error_code: "DWG_CONVERT_NOT_CONFIGURED",
-      dwg2dxf_bin: dwg2dxf
+      error: "DWG open path not configured. Provide a DWG plugin path or a DWG converter command.",
+      error_code: "DWG_NOT_READY",
+      hint: buildDwgNotReadyHint(readiness),
+      ...readiness,
     };
   }
-  const message = dwg2dxf
-    ? `DWG converter configured. dwg2dxf: ${dwg2dxf}`
-    : "DWG converter configured.";
+  const message = readiness.direct_plugin_ready
+    ? (readiness.local_convert_ready
+      ? `DWG ready via direct plugin (${readiness.dwg_plugin_path}) with local converter fallback.`
+      : `DWG ready via direct plugin (${readiness.dwg_plugin_path}).`)
+    : (readiness.dwg2dxf_bin
+      ? `DWG ready via local conversion. dwg2dxf: ${readiness.dwg2dxf_bin}`
+      : "DWG ready via local conversion.");
   return {
     ok: true,
     message,
-    dwg_convert_cmd: config.dwgConvertCmd,
-    dwg2dxf_bin: dwg2dxf
+    ...readiness,
   };
+});
+
+queueCadOpenPathsFromArgv(process.argv.slice(1), process.cwd());
+
+if (!HEADLESS_SMOKE_DWG_MODE) {
+  app.on("second-instance", (_event, commandLine, workingDirectory) => {
+    queueCadOpenPathsFromArgv(commandLine, workingDirectory || process.cwd());
+    if (app.isReady()) {
+      ensureCadOpenWindow();
+    }
+  });
+}
+
+app.on("open-file", (event, filePath) => {
+  event.preventDefault();
+  queueCadOpenPath(filePath);
+  if (app.isReady()) {
+    ensureCadOpenWindow();
+  }
 });
 
 app.whenReady().then(async () => {
   if (await maybeRunSmokeDwgMode()) {
     return;
   }
+  loadRecentCadFiles();
   createWindow();
   installAppMenu();
   app.on("activate", () => {

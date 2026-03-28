@@ -1,6 +1,30 @@
-import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
-import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
-import { GLTFLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/GLTFLoader.js";
+import * as THREE from "./vendor/three/build/three.module.js";
+import { OrbitControls } from "./vendor/three/examples/jsm/controls/OrbitControls.js";
+import { GLTFLoader } from "./vendor/three/examples/jsm/loaders/GLTFLoader.js";
+import {
+  buildDesktopDiagnosticsSnapshot,
+  DESKTOP_SETTINGS_FIELDS,
+  DESKTOP_SETTINGS_STORAGE_KEY,
+  formatDesktopCombinedStatus,
+  formatDesktopDwgStatus,
+  formatDesktopOpenResult,
+  formatDesktopRouterStatus,
+  formatDesktopStartupStatus,
+  mergeDesktopSettings,
+  pickKnownDesktopSettings,
+  serializeDesktopDiagnostics,
+} from "./desktop_settings.js";
+import { buildCadgfDocumentFocusRegion, buildCadgfDocumentLinePreview } from "./document_preview_fallback.js";
+import { resolveLinePattern, resolveScaledLineWidth } from "./line_style.js";
+
+const THREE_MODULE_URL = new URL("./vendor/three/build/three.module.js", import.meta.url).toString();
+const ORBIT_CONTROLS_URL = new URL("./vendor/three/examples/jsm/controls/OrbitControls.js", import.meta.url).toString();
+const GLTF_LOADER_URL = new URL("./vendor/three/examples/jsm/loaders/GLTFLoader.js", import.meta.url).toString();
+const LINE_SEGMENTS2_URL = new URL("./vendor/three/examples/jsm/lines/LineSegments2.js", import.meta.url).toString();
+const LINE_SEGMENTS_GEOMETRY_URL = new URL("./vendor/three/examples/jsm/lines/LineSegmentsGeometry.js", import.meta.url).toString();
+const LINE_MATERIAL_URL = new URL("./vendor/three/examples/jsm/lines/LineMaterial.js", import.meta.url).toString();
+const THREE_RUNTIME_SOURCE = "vendor/three@0.160.0";
+
 let LineSegments2Ref = null;
 let LineSegmentsGeometryRef = null;
 let LineMaterialRef = null;
@@ -22,6 +46,7 @@ const textStyleMode = (urlParams.get("text_style") || urlParams.get("text_overla
 const lineOverlayMode = (urlParams.get("line_overlay") || urlParams.get("lines") || "").trim().toLowerCase();
 const paperViewportMode = (urlParams.get("paper_viewport") || urlParams.get("layout_viewport") || "").trim().toLowerCase();
 const layoutMode = (urlParams.get("layout") || "").trim();
+const EXPLICIT_SCENE_REQUEST = Boolean((urlParams.get("manifest") || "").trim() || (urlParams.get("gltf") || "").trim());
 
 const USE_TOP_VIEW = viewMode === "top";
 const USE_ORTHO = projectionMode === "ortho";
@@ -37,11 +62,35 @@ const MESH_VISIBLE = !(meshMode === "0" || meshMode === "false" || meshMode === 
 const LINE_OVERLAY_VISIBLE = !(lineOverlayMode === "0" || lineOverlayMode === "false" || lineOverlayMode === "off" || lineOverlayMode === "no");
 const TEXT_STYLE_CLEAN = textStyleMode === "clean" || textStyleMode === "plain";
 const PAPER_VIEWPORT_ENABLED = !(paperViewportMode === "0" || paperViewportMode === "false" || paperViewportMode === "off" || paperViewportMode === "no");
+const VIEWPORT_PRESENTATION_DEFAULT = "default";
+const VIEWPORT_PRESENTATION_DOCUMENT_FALLBACK = "document-fallback";
+const CAD_FALLBACK_CLEAR_COLOR = 0x0b1320;
+const CAD_FALLBACK_TEXT_COLOR = "#e8eefb";
+const CAD_FALLBACK_DIMENSION_TEXT_COLOR = "#f8dc8c";
+const DOCUMENT_FALLBACK_FRAME_PADDING_X_RATIO = 0.12;
+const DOCUMENT_FALLBACK_FRAME_PADDING_Y_RATIO = 0.16;
+const DOCUMENT_FALLBACK_FRAME_PADDING_Z_RATIO = 0.2;
+const DOCUMENT_FALLBACK_FRAME_MIN_PADDING = 2;
 
 const canvas = document.getElementById("viewport");
+const viewportShellEl = document.querySelector(".viewport");
 const statusEl = document.getElementById("status");
 const gltfUrlInput = document.getElementById("gltf-url");
 const loadBtn = document.getElementById("load-btn");
+const openCadBtn = document.getElementById("open-cad-btn");
+const settingsBtn = document.getElementById("settings-btn");
+const recentFilesSectionEl = document.getElementById("recent-files-section");
+const recentFilesListEl = document.getElementById("recent-files-list");
+const recentFilesEmptyEl = document.getElementById("recent-files-empty");
+const recentFilesClearBtn = document.getElementById("recent-files-clear");
+const resumeLatestCadBtn = document.getElementById("resume-latest-cad");
+const registerFileAssociationsBtn = document.getElementById("register-file-associations");
+const desktopBatchPanelEl = document.getElementById("desktop-batch-panel");
+const desktopBatchSummaryEl = document.getElementById("desktop-batch-summary");
+const desktopBatchListEl = document.getElementById("desktop-batch-list");
+const desktopBatchRetryBtn = document.getElementById("desktop-batch-retry");
+const desktopBatchExportBtn = document.getElementById("desktop-batch-export");
+const cadDropOverlayEl = document.getElementById("cad-drop-overlay");
 const meshCountEl = document.getElementById("mesh-count");
 const vertexCountEl = document.getElementById("vertex-count");
 const triangleCountEl = document.getElementById("triangle-count");
@@ -63,7 +112,51 @@ const textFilterStateEl = document.getElementById("text-filter-state");
 const textEntryCountEl = document.getElementById("text-entry-count");
 const textVisibleCountEl = document.getElementById("text-visible-count");
 const textCappedCountEl = document.getElementById("text-capped-count");
+const settingsModal = document.getElementById("settings-modal");
+const settingsForm = document.getElementById("settings-form");
+const settingsStatusEl = document.getElementById("settings-status");
+const settingsCloseBtn = document.getElementById("settings-close");
+const settingsCancelBtn = document.getElementById("settings-cancel");
+const settingsSaveBtn = document.getElementById("settings-save");
+const settingsExportDiagnosticsBtn = document.getElementById("settings-export-diagnostics");
+const settingsRecommendedBtn = document.getElementById("settings-recommended");
+const settingsResetBtn = document.getElementById("settings-reset");
+const settingsTestRouterBtn = document.getElementById("settings-test-router");
+const settingsTestDwgBtn = document.getElementById("settings-test-dwg");
+const hudChipEl = document.querySelector(".hud__chip");
 let textCanvasCtx = null;
+const desktopBridge = typeof window.vemcadDesktop !== "undefined" ? window.vemcadDesktop : null;
+const settingsFieldElements = new Map(
+  DESKTOP_SETTINGS_FIELDS
+    .map((field) => [field.key, document.getElementById(field.id)])
+    .filter(([, element]) => Boolean(element))
+);
+let desktopSettingsDefaults = {};
+let desktopSettingsCurrent = {};
+let desktopSettingsLoaded = false;
+let desktopAppInfo = null;
+let lastDesktopRouterResult = null;
+let lastDesktopDwgResult = null;
+let lastDesktopDiagnostics = null;
+let lastDesktopDiagnosticsExportResult = null;
+const DESKTOP_STARTUP_REPAIR_FIELDS = new Set([
+  "routerUrl",
+  "routerEmit",
+  "routerPlugin",
+  "routerConvertCli",
+  "routerAuthToken",
+  "routerAutoStart",
+  "routerTimeoutMs",
+  "routerStartTimeoutMs",
+  "routerStartCmd",
+  "dwgRouteMode",
+  "dwgPluginPath",
+  "dwgConvertCmd",
+  "dwgServicePath",
+  "dwg2dxfBin",
+  "dwgTimeoutMs",
+]);
+const STARTUP_AUTO_REPAIR_CONFIRMATION = "Startup settings auto-repair applied recommended desktop setup.";
 
 if (UI_HIDDEN) {
   document.body.classList.add("is-ui-hidden");
@@ -99,6 +192,7 @@ camera.position.set(3, 3, 3);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.target.set(0, 0, 0);
+controls.screenSpacePanning = true;
 
 const hemi = new THREE.HemisphereLight(0xffffff, 0x2b2d33, 0.9);
 scene.add(hemi);
@@ -152,11 +246,14 @@ let selectedTextEntryKey = null;
 let highlightedTextSiblingKeys = new Set();
 let currentHighlightInfo = null;
 let lastFocusState = null;
+let lastManifestPreviewState = null;
+let viewportPresentation = VIEWPORT_PRESENTATION_DEFAULT;
 let orthoHalfHeight = 1;
 const textProject = new THREE.Vector3();
 const textProject2 = new THREE.Vector3();
 const textProject3 = new THREE.Vector3();
 const textProject4 = new THREE.Vector3();
+setViewportPresentation(VIEWPORT_PRESENTATION_DEFAULT);
 
 if (typeof window !== "undefined") {
   window.__cadgfPreviewDebug = {
@@ -206,6 +303,37 @@ if (typeof window !== "undefined") {
         linewidth: Number.isFinite(child?.material?.linewidth) ? Number(child.material.linewidth.toFixed(3)) : null,
       }));
     },
+    getRuntimeAssets() {
+      return {
+        source: THREE_RUNTIME_SOURCE,
+        threeModuleUrl: THREE_MODULE_URL,
+        orbitControlsUrl: ORBIT_CONTROLS_URL,
+        gltfLoaderUrl: GLTF_LOADER_URL,
+        lineSegments2Url: LINE_SEGMENTS2_URL,
+        lineSegmentsGeometryUrl: LINE_SEGMENTS_GEOMETRY_URL,
+        lineMaterialUrl: LINE_MATERIAL_URL,
+      };
+    },
+    getLastDesktopDiagnostics() {
+      return lastDesktopDiagnostics ? JSON.parse(JSON.stringify(lastDesktopDiagnostics)) : null;
+    },
+    getLastDesktopDiagnosticsExportResult() {
+      return lastDesktopDiagnosticsExportResult
+        ? JSON.parse(JSON.stringify(lastDesktopDiagnosticsExportResult))
+        : null;
+    },
+    getLastManifestPreviewState() {
+      return lastManifestPreviewState ? JSON.parse(JSON.stringify(lastManifestPreviewState)) : null;
+    },
+    getViewportPresentationState() {
+      return {
+        mode: viewportPresentation,
+        bodyClass: document.body.className,
+        viewportClass: viewportShellEl?.className || "",
+        gridVisible: Boolean(grid?.visible),
+        controlsRotateEnabled: Boolean(controls?.enableRotate),
+      };
+    },
   };
 }
 
@@ -222,9 +350,6 @@ const TEXT_ASCII_WIDTH = 0.6;
 const TEXT_WIDE_WIDTH = 1.0;
 const TEXT_DEFAULT_HEIGHT_WORLD = 1.0;
 const TEXT_LINE_HEIGHT = 1.1;
-const LINE_WEIGHT_DEFAULT = 0.18;
-const LINE_WEIGHT_MIN = 0.05;
-const LINE_WEIGHT_MAX = 2.0;
 const HIGHLIGHT_SELECTED_COLOR = 0xff8b4a;
 const HIGHLIGHT_SELECTED_EMISSIVE = 0x5a2400;
 const HIGHLIGHT_SIBLING_COLOR = 0x2f80ed;
@@ -235,6 +360,419 @@ const HIGHLIGHT_SIBLING_LINEWIDTH_MULTIPLIER = 1.35;
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
   statusEl.style.color = isError ? "#c0392b" : "#5f6b73";
+}
+
+function setSettingsStatus(text, isError = false) {
+  if (!settingsStatusEl) {
+    return;
+  }
+  settingsStatusEl.textContent = text || "Ready.";
+  settingsStatusEl.classList.toggle("is-error", Boolean(isError));
+}
+
+function isSettingsModalOpen() {
+  return Boolean(settingsModal) && !settingsModal.classList.contains("is-hidden");
+}
+
+function loadStoredDesktopSettings() {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return {};
+  }
+  try {
+    const raw = window.localStorage.getItem(DESKTOP_SETTINGS_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    return pickKnownDesktopSettings(JSON.parse(raw));
+  } catch {
+    return {};
+  }
+}
+
+function isStartupReadyResult(routerResult, dwgResult) {
+  if (routerResult && routerResult.ok === false) {
+    return false;
+  }
+  if (dwgResult && dwgResult.ok === false) {
+    return false;
+  }
+  return Boolean(routerResult && dwgResult);
+}
+
+function hasStartupRelevantOverride(storedSettings = {}, defaults = {}) {
+  const normalizedStored = pickKnownDesktopSettings(storedSettings || {});
+  const normalizedDefaults = pickKnownDesktopSettings(defaults || {});
+  let hasOverride = false;
+  DESKTOP_STARTUP_REPAIR_FIELDS.forEach((key) => {
+    if (hasOverride || !Object.prototype.hasOwnProperty.call(normalizedStored, key)) {
+      return;
+    }
+    const storedValue = normalizedStored[key];
+    const defaultValue = Object.prototype.hasOwnProperty.call(normalizedDefaults, key)
+      ? normalizedDefaults[key]
+      : "";
+    if (storedValue !== defaultValue) {
+      hasOverride = true;
+    }
+  });
+  return hasOverride;
+}
+
+function makeStartupRepairedStatusText(statusText = "") {
+  const baseText = String(statusText || "").trim();
+  if (!baseText) {
+    return STARTUP_AUTO_REPAIR_CONFIRMATION;
+  }
+  return `${STARTUP_AUTO_REPAIR_CONFIRMATION}\n\n${baseText}`;
+}
+
+async function tryAutoRepairDesktopStartup(initialRouterResult = null, initialDwgResult = null) {
+  if (!desktopBridge || typeof desktopBridge.getDefaultSettings !== "function") {
+    return false;
+  }
+  if (isStartupReadyResult(initialRouterResult, initialDwgResult)) {
+    return false;
+  }
+  const stored = loadStoredDesktopSettings();
+  await ensureDesktopSettingsLoaded(true);
+  if (!hasStartupRelevantOverride(stored, desktopSettingsDefaults)) {
+    return false;
+  }
+  const defaultsResult = await refreshDesktopStartupStatus({ settingsOverride: desktopSettingsDefaults });
+  if (!isStartupReadyResult(defaultsResult.routerResult, defaultsResult.dwgResult)) {
+    return false;
+  }
+  try {
+    await applyRecommendedDesktopSettings({ persist: true });
+    const repairedResult = await refreshDesktopStartupStatus({ settingsOverride: desktopSettingsCurrent });
+    setStatus(
+      makeStartupRepairedStatusText(formatDesktopStartupStatus(
+        repairedResult.routerResult,
+        repairedResult.dwgResult
+      )),
+      false
+    );
+    return true;
+  } catch (error) {
+    setStatus(`Startup auto-repair failed. ${error?.message || String(error)}`, true);
+    return false;
+  }
+}
+
+function saveStoredDesktopSettings(settings) {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(
+      DESKTOP_SETTINGS_STORAGE_KEY,
+      JSON.stringify(pickKnownDesktopSettings(settings))
+    );
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
+
+function clearStoredDesktopSettings() {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+  try {
+    window.localStorage.removeItem(DESKTOP_SETTINGS_STORAGE_KEY);
+  } catch {
+    // Ignore localStorage failures.
+  }
+}
+
+function populateDesktopSettingsForm(settings = {}) {
+  settingsFieldElements.forEach((element, key) => {
+    const value = Object.prototype.hasOwnProperty.call(settings, key) ? settings[key] : "";
+    element.value = value == null ? "" : String(value);
+  });
+}
+
+function readDesktopSettingsForm() {
+  const draft = {};
+  settingsFieldElements.forEach((element, key) => {
+    draft[key] = element.value;
+  });
+  return pickKnownDesktopSettings(draft);
+}
+
+async function ensureDesktopSettingsLoaded(forceRefresh = false) {
+  if (!desktopBridge || typeof desktopBridge.getDefaultSettings !== "function") {
+    return {};
+  }
+  if (desktopSettingsLoaded && !forceRefresh) {
+    return desktopSettingsCurrent;
+  }
+  const defaults = await desktopBridge.getDefaultSettings();
+  desktopSettingsDefaults = mergeDesktopSettings(defaults || {}, {});
+  desktopSettingsCurrent = mergeDesktopSettings(
+    desktopSettingsDefaults,
+    loadStoredDesktopSettings()
+  );
+  populateDesktopSettingsForm(desktopSettingsCurrent);
+  desktopSettingsLoaded = true;
+  return desktopSettingsCurrent;
+}
+
+async function ensureDesktopAppInfoLoaded(forceRefresh = false) {
+  if (!desktopBridge || typeof desktopBridge.getAppInfo !== "function") {
+    return null;
+  }
+  if (desktopAppInfo && !forceRefresh) {
+    return desktopAppInfo;
+  }
+  desktopAppInfo = await desktopBridge.getAppInfo();
+  return desktopAppInfo;
+}
+
+function applyDesktopSettingsDraft({ persist = false } = {}) {
+  const draft = readDesktopSettingsForm();
+  desktopSettingsCurrent = mergeDesktopSettings(desktopSettingsDefaults, draft);
+  if (persist) {
+    saveStoredDesktopSettings(desktopSettingsCurrent);
+  }
+  return desktopSettingsCurrent;
+}
+
+async function applyRecommendedDesktopSettings({ persist = false } = {}) {
+  await ensureDesktopSettingsLoaded(true);
+  desktopSettingsCurrent = mergeDesktopSettings(desktopSettingsDefaults, {});
+  populateDesktopSettingsForm(desktopSettingsCurrent);
+  if (persist) {
+    clearStoredDesktopSettings();
+  }
+  const { routerResult, dwgResult } = await refreshDesktopCombinedStatus({ settingsOverride: desktopSettingsCurrent });
+  const combinedStatus = formatDesktopCombinedStatus(routerResult, dwgResult);
+  const error = Boolean((routerResult && !routerResult.ok) || (dwgResult && !dwgResult.ok));
+  setSettingsStatus(`Applied recommended desktop setup from detected runtime.\n\n${combinedStatus}`, error);
+  return desktopSettingsCurrent;
+}
+
+function shouldAutoOpenDesktopSettingsForFailure(result) {
+  const errorCode = typeof result?.error_code === "string" ? result.error_code.trim().toUpperCase() : "";
+  return errorCode === "DWG_NOT_READY" ||
+    errorCode === "ROUTER_NOT_CONFIGURED" ||
+    errorCode === "ROUTER_NOT_AVAILABLE" ||
+    errorCode === "ROUTER_START_NOT_CONFIGURED" ||
+    errorCode === "ROUTER_START_FAILED" ||
+    errorCode === "ROUTER_START_TIMEOUT";
+}
+
+async function openDesktopSettingsModal() {
+  if (!settingsModal) {
+    return;
+  }
+  await ensureDesktopSettingsLoaded();
+  populateDesktopSettingsForm(desktopSettingsCurrent);
+  settingsModal.classList.remove("is-hidden");
+  await refreshDesktopCombinedStatus({ settingsOverride: desktopSettingsCurrent });
+}
+
+function closeDesktopSettingsModal({ discardDraft = true } = {}) {
+  if (!settingsModal) {
+    return;
+  }
+  if (discardDraft) {
+    populateDesktopSettingsForm(desktopSettingsCurrent);
+  }
+  settingsModal.classList.add("is-hidden");
+}
+
+async function refreshDesktopDwgStatus({ settingsOverride = null } = {}) {
+  if (!desktopBridge || typeof desktopBridge.testDwg !== "function") {
+    setSettingsStatus("DWG readiness unavailable.");
+    return null;
+  }
+  setSettingsStatus("Checking DWG route...");
+  try {
+    const settings = settingsOverride
+      ? mergeDesktopSettings(desktopSettingsDefaults, settingsOverride)
+      : readDesktopSettingsForm();
+    const result = await desktopBridge.testDwg(settings);
+    lastDesktopDwgResult = result;
+    setSettingsStatus(formatDesktopDwgStatus(result), !result?.ok);
+    return result;
+  } catch (error) {
+    const message = `DWG check failed: ${error?.message || String(error)}`;
+    lastDesktopDwgResult = null;
+    setSettingsStatus(message, true);
+    return null;
+  }
+}
+
+async function refreshDesktopCombinedStatus({ settingsOverride = null } = {}) {
+  const settings = settingsOverride
+    ? mergeDesktopSettings(desktopSettingsDefaults, settingsOverride)
+    : readDesktopSettingsForm();
+  const routerAvailable = desktopBridge && typeof desktopBridge.testRouter === "function";
+  const dwgAvailable = desktopBridge && typeof desktopBridge.testDwg === "function";
+  if (!routerAvailable && !dwgAvailable) {
+    setSettingsStatus("Desktop readiness unavailable.");
+    return { routerResult: null, dwgResult: null };
+  }
+  setSettingsStatus("Checking desktop readiness...");
+  let routerResult = null;
+  let dwgResult = null;
+  try {
+    if (routerAvailable) {
+      routerResult = await desktopBridge.testRouter(settings);
+    }
+    if (dwgAvailable) {
+      dwgResult = await desktopBridge.testDwg(settings);
+    }
+    lastDesktopRouterResult = routerResult;
+    lastDesktopDwgResult = dwgResult;
+    setSettingsStatus(
+      formatDesktopCombinedStatus(routerResult, dwgResult),
+      Boolean((routerResult && !routerResult.ok) || (dwgResult && !dwgResult.ok))
+    );
+    return { routerResult, dwgResult };
+  } catch (error) {
+    const message = `Desktop readiness check failed: ${error?.message || String(error)}`;
+    lastDesktopRouterResult = null;
+    lastDesktopDwgResult = null;
+    setSettingsStatus(message, true);
+    return { routerResult, dwgResult };
+  }
+}
+
+async function refreshDesktopStartupStatus({ settingsOverride = null } = {}) {
+  const settings = settingsOverride
+    ? mergeDesktopSettings(desktopSettingsDefaults, settingsOverride)
+    : await ensureDesktopSettingsLoaded();
+  const routerAvailable = desktopBridge && typeof desktopBridge.testRouter === "function";
+  const dwgAvailable = desktopBridge && typeof desktopBridge.testDwg === "function";
+  if (!routerAvailable && !dwgAvailable) {
+    setStatus("Desktop readiness unavailable. Click Settings.", true);
+    return { routerResult: null, dwgResult: null };
+  }
+  try {
+    let routerResult = null;
+    let dwgResult = null;
+    if (routerAvailable) {
+      routerResult = await desktopBridge.testRouter(settings);
+    }
+    if (dwgAvailable) {
+      dwgResult = await desktopBridge.testDwg(settings);
+    }
+    lastDesktopRouterResult = routerResult;
+    lastDesktopDwgResult = dwgResult;
+    const text = formatDesktopStartupStatus(routerResult, dwgResult);
+    const isError = Boolean((routerResult && !routerResult.ok) || (dwgResult && !dwgResult.ok));
+    setStatus(text, isError);
+    return { routerResult, dwgResult };
+  } catch (error) {
+    setStatus(`Desktop readiness check failed. Click Settings. ${error?.message || String(error)}`, true);
+    return { routerResult: null, dwgResult: null };
+  }
+}
+
+function getDesktopRuntimeAssets() {
+  return {
+    source: THREE_RUNTIME_SOURCE,
+    threeModuleUrl: THREE_MODULE_URL,
+    orbitControlsUrl: ORBIT_CONTROLS_URL,
+    gltfLoaderUrl: GLTF_LOADER_URL,
+    lineSegments2Url: LINE_SEGMENTS2_URL,
+    lineSegmentsGeometryUrl: LINE_SEGMENTS_GEOMETRY_URL,
+    lineMaterialUrl: LINE_MATERIAL_URL,
+  };
+}
+
+function createDesktopDiagnosticsFilename() {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `vemcad_desktop_diagnostics_${stamp}.json`;
+}
+
+function createDesktopBatchReportFilename() {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return `vemcad_desktop_batch_report_${stamp}.json`;
+}
+
+function downloadDesktopDiagnostics(filename, text) {
+  if (typeof document === "undefined" || typeof URL === "undefined") {
+    return false;
+  }
+  const blob = new Blob([text], { type: "application/json" });
+  const blobUrl = URL.createObjectURL(blob);
+  try {
+    const link = document.createElement("a");
+    link.href = blobUrl;
+    link.download = filename;
+    link.style.display = "none";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    return true;
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+  }
+}
+
+async function saveDesktopDiagnostics(filename, text) {
+  if (desktopBridge && typeof desktopBridge.saveDiagnostics === "function") {
+    return desktopBridge.saveDiagnostics({ filename, text });
+  }
+  const ok = downloadDesktopDiagnostics(filename, text);
+  if (!ok) {
+    return {
+      ok: false,
+      error: "Desktop diagnostics export is not available in this runtime.",
+      error_code: "EXPORT_NOT_AVAILABLE",
+    };
+  }
+  return {
+    ok: true,
+    path: filename,
+    bytes: new TextEncoder().encode(text).length,
+    mode: "browser-download",
+  };
+}
+
+async function exportDesktopDiagnostics() {
+  await ensureDesktopSettingsLoaded();
+  await ensureDesktopAppInfoLoaded();
+  const draft = readDesktopSettingsForm();
+  const effectiveSettings = mergeDesktopSettings(desktopSettingsDefaults, draft);
+  const { routerResult, dwgResult } = await refreshDesktopCombinedStatus({ settingsOverride: effectiveSettings });
+  const snapshot = buildDesktopDiagnosticsSnapshot({
+    appInfo: desktopAppInfo,
+    defaults: desktopSettingsDefaults,
+    currentSettings: desktopSettingsCurrent,
+    draftSettings: draft,
+    storedOverrides: loadStoredDesktopSettings(),
+    routerResult,
+    dwgResult,
+    mainStatus: statusEl?.textContent || "",
+    settingsStatus: settingsStatusEl?.textContent || "",
+    runtimeAssets: getDesktopRuntimeAssets(),
+    locationHref: typeof window !== "undefined" ? window.location.href : "",
+  });
+  lastDesktopDiagnostics = snapshot;
+  const filename = createDesktopDiagnosticsFilename();
+  const exportResult = await saveDesktopDiagnostics(filename, serializeDesktopDiagnostics(snapshot));
+  lastDesktopDiagnosticsExportResult = exportResult;
+  const combinedStatus = formatDesktopCombinedStatus(routerResult, dwgResult);
+  const error = Boolean((routerResult && !routerResult.ok) || (dwgResult && !dwgResult.ok));
+  if (!exportResult?.ok) {
+    if (exportResult?.canceled) {
+      setSettingsStatus(`Desktop diagnostics export cancelled.\n\n${combinedStatus}`, false);
+      return snapshot;
+    }
+    setSettingsStatus(
+      `Desktop diagnostics export failed: ${exportResult?.error || "unknown error"}\n\n${combinedStatus}`,
+      true
+    );
+    return snapshot;
+  }
+  setSettingsStatus(
+    `Exported desktop diagnostics: ${exportResult.path || filename}\n\n${combinedStatus}`,
+    error
+  );
+  return snapshot;
 }
 
 function rebuildSelectableObjects() {
@@ -272,6 +810,7 @@ function resetMetadataState() {
   viewportTransforms = [];
   defaultTextHeight = 0;
   hasPaperFrame = false;
+  lastManifestPreviewState = null;
   renderLayerList();
   resetTextOverlay();
 }
@@ -314,31 +853,6 @@ function resolveEntityColor(entity, fallbackLayerId = null, fallbackLayerColor =
   return entityColor || aciColor || layerColor;
 }
 
-function resolveLinePattern(lineType, scale = 1) {
-  if (!lineType) return null;
-  const key = String(lineType).toLowerCase();
-  if (key.includes("continuous") || key.includes("bylayer") || key.includes("byblock")) {
-    return null;
-  }
-  const scaled = (value) => Math.max(0.001, value * scale);
-  if (key.includes("center")) {
-    return { dash: scaled(18), gap: scaled(6) };
-  }
-  if (key.includes("hidden")) {
-    return { dash: scaled(6), gap: scaled(4) };
-  }
-  if (key.includes("phantom")) {
-    return { dash: scaled(12), gap: scaled(4) };
-  }
-  if (key.includes("dot")) {
-    return { dash: scaled(2), gap: scaled(4) };
-  }
-  if (key.includes("dash")) {
-    return { dash: scaled(10), gap: scaled(6) };
-  }
-  return { dash: scaled(8), gap: scaled(4) };
-}
-
 function getDocumentMeta() {
   const meta = documentData?.metadata?.meta;
   return meta && typeof meta === "object" ? meta : {};
@@ -365,6 +879,40 @@ function parsePreviewInt(value) {
 function parsePreviewNumber(value) {
   const num = Number.parseFloat(value);
   return Number.isFinite(num) ? num : null;
+}
+
+function setViewportPresentation(mode = VIEWPORT_PRESENTATION_DEFAULT) {
+  viewportPresentation = mode === VIEWPORT_PRESENTATION_DOCUMENT_FALLBACK
+    ? VIEWPORT_PRESENTATION_DOCUMENT_FALLBACK
+    : VIEWPORT_PRESENTATION_DEFAULT;
+  const useCadFallbackPresentation = viewportPresentation === VIEWPORT_PRESENTATION_DOCUMENT_FALLBACK;
+  document.body.classList.toggle("is-document-fallback-preview", useCadFallbackPresentation);
+  viewportShellEl?.classList.toggle("viewport--document-fallback", useCadFallbackPresentation);
+  if (hudChipEl) {
+    hudChipEl.textContent = useCadFallbackPresentation
+      ? "Scroll: zoom · Drag: pan · Click: inspect"
+      : "Scroll: zoom · Drag: orbit · Shift+click: annotate";
+  }
+  if (useCadFallbackPresentation) {
+    renderer.setClearColor(CAD_FALLBACK_CLEAR_COLOR, 1);
+    scene.background = new THREE.Color(CAD_FALLBACK_CLEAR_COLOR);
+    grid.visible = false;
+    controls.enableRotate = false;
+    controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+    controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+  } else {
+    controls.enableRotate = true;
+    controls.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+    controls.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+    grid.visible = GRID_VISIBLE;
+    if (BG_BLACK) {
+      renderer.setClearColor(0x000000, 1);
+      scene.background = new THREE.Color(0x000000);
+    } else {
+      renderer.setClearColor(0x000000, 0);
+      scene.background = null;
+    }
+  }
 }
 
 function getMeshMetadataSummary() {
@@ -519,6 +1067,12 @@ function updateDocumentMetaState() {
 
 function getSpaceFilter() {
   if (SPACE_FILTER != null) return SPACE_FILTER;
+  if (
+    viewportPresentation === VIEWPORT_PRESENTATION_DOCUMENT_FALLBACK &&
+    lineSlices.some((slice) => Number.isFinite(slice?.space) && slice.space === 0)
+  ) {
+    return 0;
+  }
   if (defaultSpace === 0 || defaultSpace === 1) return defaultSpace;
   return null;
 }
@@ -598,11 +1152,7 @@ function clipSegmentToRect(ax, ay, bx, by, rect) {
 }
 
 function resolveLineWidth(slice) {
-  const weight = Number.isFinite(slice?.line_weight) && slice.line_weight > 0
-    ? slice.line_weight
-    : LINE_WEIGHT_DEFAULT;
-  const scaled = weight * LINE_WEIGHT_SCALE;
-  return Math.min(LINE_WEIGHT_MAX, Math.max(LINE_WEIGHT_MIN, scaled));
+  return resolveScaledLineWidth(slice?.line_weight, { scale: LINE_WEIGHT_SCALE });
 }
 
 function captureMeshMaterialBase(material) {
@@ -900,9 +1450,9 @@ async function loadLineModules() {
     return;
   }
   lineModulesPromise = Promise.all([
-    import("https://unpkg.com/three@0.160.0/examples/jsm/lines/LineSegments2.js"),
-    import("https://unpkg.com/three@0.160.0/examples/jsm/lines/LineSegmentsGeometry.js"),
-    import("https://unpkg.com/three@0.160.0/examples/jsm/lines/LineMaterial.js"),
+    import(LINE_SEGMENTS2_URL),
+    import(LINE_SEGMENTS_GEOMETRY_URL),
+    import(LINE_MATERIAL_URL),
   ])
     .then(([lineSegs, lineGeom, lineMat]) => {
       LineSegments2Ref = lineSegs.LineSegments2;
@@ -1409,7 +1959,11 @@ function updateTextOverlayPositions() {
       maxX: drawX + widthPx + 4,
       maxY: drawY + heightPx + 4
     };
-    textCanvasCtx.fillStyle = (TEXT_STYLE_CLEAN && BG_BLACK) ? "#f5f5f5" : "#1e2329";
+    const useCadFallbackPresentation = viewportPresentation === VIEWPORT_PRESENTATION_DOCUMENT_FALLBACK;
+    const defaultTextColor = useCadFallbackPresentation
+      ? (entry.kind === "dimension" ? CAD_FALLBACK_DIMENSION_TEXT_COLOR : CAD_FALLBACK_TEXT_COLOR)
+      : ((TEXT_STYLE_CLEAN && BG_BLACK) ? "#f5f5f5" : "#1e2329");
+    textCanvasCtx.fillStyle = defaultTextColor;
     const isSelected = selectedTextEntryKey && selectedTextEntryKey === entrySelectionKey(entry);
     const isSiblingHighlighted = highlightedTextSiblingKeys.has(entrySelectionKey(entry));
     if (isSiblingHighlighted && !isSelected) {
@@ -1420,7 +1974,7 @@ function updateTextOverlayPositions() {
       textCanvasCtx.fillRect(entry.screenBounds.minX, entry.screenBounds.minY, widthPx + 8, heightPx + 8);
       textCanvasCtx.strokeRect(entry.screenBounds.minX, entry.screenBounds.minY, widthPx + 8, heightPx + 8);
       textCanvasCtx.restore();
-      textCanvasCtx.fillStyle = (TEXT_STYLE_CLEAN && BG_BLACK) ? "#f5f5f5" : "#1e2329";
+      textCanvasCtx.fillStyle = defaultTextColor;
     }
     if (isSelected) {
       textCanvasCtx.save();
@@ -1430,7 +1984,7 @@ function updateTextOverlayPositions() {
       textCanvasCtx.fillRect(entry.screenBounds.minX, entry.screenBounds.minY, widthPx + 8, heightPx + 8);
       textCanvasCtx.strokeRect(entry.screenBounds.minX, entry.screenBounds.minY, widthPx + 8, heightPx + 8);
       textCanvasCtx.restore();
-      textCanvasCtx.fillStyle = (TEXT_STYLE_CLEAN && BG_BLACK) ? "#f5f5f5" : "#1e2329";
+      textCanvasCtx.fillStyle = defaultTextColor;
     }
     textCanvasCtx.save();
     textCanvasCtx.translate(drawX, drawY);
@@ -1605,6 +2159,245 @@ async function loadManifestArtifacts(manifestUrl, manifest) {
   tryApplyMetadata();
 }
 
+function createDocumentPreviewBoundsBox(bounds) {
+  if (
+    !bounds ||
+    !Number.isFinite(bounds.minX) ||
+    !Number.isFinite(bounds.minY) ||
+    !Number.isFinite(bounds.maxX) ||
+    !Number.isFinite(bounds.maxY)
+  ) {
+    return null;
+  }
+  const box = new THREE.Box3(
+    new THREE.Vector3(bounds.minX, bounds.minY, 0),
+    new THREE.Vector3(bounds.maxX, bounds.maxY, 0)
+  );
+  const sizeVec = box.getSize(new THREE.Vector3());
+  if (sizeVec.lengthSq() === 0) {
+    box.expandByPoint(box.min.clone().addScalar(1));
+  }
+  return box;
+}
+
+function unionPreviewBoxes(baseBox, incomingBox) {
+  if (!baseBox && !incomingBox) return null;
+  if (!baseBox) return incomingBox.clone();
+  if (!incomingBox) return baseBox.clone();
+  return baseBox.clone().union(incomingBox);
+}
+
+function expandPreviewBox(box, {
+  padXRatio = 0.08,
+  padYRatio = 0.08,
+  padZRatio = 0.1,
+  minPadding = 1,
+} = {}) {
+  if (!box || box.isEmpty()) return null;
+  const expanded = box.clone();
+  const size = expanded.getSize(new THREE.Vector3());
+  const span = Math.max(size.x, size.y, size.z, 1);
+  expanded.expandByVector(new THREE.Vector3(
+    Math.max(size.x * padXRatio, minPadding),
+    Math.max(size.y * padYRatio, minPadding),
+    Math.max(span * padZRatio, minPadding * 0.5),
+  ));
+  return expanded;
+}
+
+function buildTextEntriesBounds(entries = textEntries) {
+  if (!Array.isArray(entries) || entries.length === 0) return null;
+  let box = null;
+  entries.forEach((entry) => {
+    const entryBox = buildTextEntryBox(entry);
+    if (!entryBox) return;
+    box = unionPreviewBoxes(box, entryBox);
+  });
+  return box;
+}
+
+function buildRenderedLineGroupBounds(filterFn = null) {
+  if (!lineGroup?.children?.length) return null;
+  let box = null;
+  lineGroup.children.forEach((child) => {
+    if (!child || child.visible === false) return;
+    if (typeof filterFn === "function" && !filterFn(child)) return;
+    const childBox = ensureNonZeroBox(new THREE.Box3().setFromObject(child), 0.5);
+    if (!childBox) return;
+    box = unionPreviewBoxes(box, childBox);
+  });
+  return box;
+}
+
+function quantileSorted(values, ratio) {
+  if (!Array.isArray(values) || values.length === 0) return null;
+  const clamped = Math.min(1, Math.max(0, ratio));
+  const index = Math.min(values.length - 1, Math.max(0, Math.floor((values.length - 1) * clamped)));
+  const value = values[index];
+  return Number.isFinite(value) ? value : null;
+}
+
+function buildRobustRenderedLineGroupBounds(filterFn = null) {
+  if (!lineGroup?.children?.length) return null;
+  const candidates = [];
+  lineGroup.children.forEach((child) => {
+    if (!child || child.visible === false) return;
+    if (typeof filterFn === "function" && !filterFn(child)) return;
+    const box = ensureNonZeroBox(new THREE.Box3().setFromObject(child), 0.5);
+    if (!box) return;
+    const center = box.getCenter(new THREE.Vector3());
+    candidates.push({ box, center });
+  });
+  if (candidates.length === 0) {
+    return null;
+  }
+  if (candidates.length < 12) {
+    return candidates.reduce((acc, item) => unionPreviewBoxes(acc, item.box), null);
+  }
+  const xs = candidates.map((item) => item.center.x).sort((a, b) => a - b);
+  const ys = candidates.map((item) => item.center.y).sort((a, b) => a - b);
+  const robustSeed = new THREE.Box3(
+    new THREE.Vector3(
+      quantileSorted(xs, 0.08) ?? xs[0],
+      quantileSorted(ys, 0.08) ?? ys[0],
+      -1,
+    ),
+    new THREE.Vector3(
+      quantileSorted(xs, 0.92) ?? xs[xs.length - 1],
+      quantileSorted(ys, 0.92) ?? ys[ys.length - 1],
+      1,
+    ),
+  );
+  const expandedSeed = expandPreviewBox(robustSeed, {
+    padXRatio: 0.25,
+    padYRatio: 0.25,
+    padZRatio: 0.1,
+    minPadding: 1,
+  });
+  const focused = candidates.reduce((acc, item) => {
+    if (!expandedSeed?.intersectsBox(item.box)) {
+      return acc;
+    }
+    return unionPreviewBoxes(acc, item.box);
+  }, null);
+  return focused || candidates.reduce((acc, item) => unionPreviewBoxes(acc, item.box), null);
+}
+
+function buildDocumentFallbackFrameBox(bounds, preview = null) {
+  const useViewports = shouldUsePaperViewports();
+  const focusRegion = !useViewports
+    ? buildCadgfDocumentFocusRegion(preview, {
+        sliceFilter: (slice) => !Number.isFinite(slice?.space) || parsePreviewInt(slice.space) === 0,
+      })
+    : null;
+  const geometryBox = createDocumentPreviewBoundsBox(focusRegion?.bounds)
+    || (useViewports
+      ? buildRobustRenderedLineGroupBounds((child) => parsePreviewInt(child?.userData?.cadgfSlice?.space) === 0)
+      : buildRobustRenderedLineGroupBounds())
+    || createDocumentPreviewBoundsBox(bounds);
+  if (!geometryBox) {
+    return null;
+  }
+  const textInclusionBox = expandPreviewBox(geometryBox, {
+    padXRatio: 0.22,
+    padYRatio: 0.28,
+    padZRatio: 0.1,
+    minPadding: DOCUMENT_FALLBACK_FRAME_MIN_PADDING,
+  });
+  const candidateTextEntries = useViewports
+    ? textEntries.filter((entry) => parsePreviewInt(entry?.entity?.space) === 0)
+    : textEntries;
+  const nearbyTextEntries = candidateTextEntries.filter((entry) => {
+    const entryBox = buildTextEntryBox(entry);
+    if (!entryBox || !textInclusionBox) {
+      return false;
+    }
+    return textInclusionBox.intersectsBox(entryBox);
+  });
+  const rawTextBox = buildTextEntriesBounds(nearbyTextEntries);
+  const textClampBox = expandPreviewBox(geometryBox, {
+    padXRatio: 0.18,
+    padYRatio: 0.22,
+    padZRatio: 0.1,
+    minPadding: DOCUMENT_FALLBACK_FRAME_MIN_PADDING,
+  });
+  const clampedTextBox = rawTextBox && textClampBox && !rawTextBox.isEmpty()
+    ? rawTextBox.clone().intersect(textClampBox)
+    : rawTextBox;
+  const textBox = clampedTextBox && !clampedTextBox.isEmpty() ? clampedTextBox : null;
+  const combined = unionPreviewBoxes(geometryBox, textBox);
+  return {
+    box: expandPreviewBox(combined, {
+      padXRatio: DOCUMENT_FALLBACK_FRAME_PADDING_X_RATIO,
+      padYRatio: DOCUMENT_FALLBACK_FRAME_PADDING_Y_RATIO,
+      padZRatio: DOCUMENT_FALLBACK_FRAME_PADDING_Z_RATIO,
+      minPadding: DOCUMENT_FALLBACK_FRAME_MIN_PADDING,
+    }),
+    focusRegion,
+  };
+}
+
+async function applyDocumentFallbackPreview(manifest = null) {
+  const preview = buildCadgfDocumentLinePreview(documentData || {});
+  const outputs = Array.isArray(manifest?.outputs) ? manifest.outputs.filter((value) => typeof value === "string") : [];
+  if (preview.renderableEntityCount > 0 && preview.positions.length > 0 && preview.indices.length > 0) {
+    if (!activeScene) {
+      activeScene = new THREE.Group();
+      scene.add(activeScene);
+    }
+    lineGeometryData = {
+      positions: preview.positions,
+      indices: preview.indices,
+    };
+    lineSlices = preview.slices;
+    setViewportPresentation(VIEWPORT_PRESENTATION_DOCUMENT_FALLBACK);
+    collectTextEntries();
+    await loadLineModules();
+    buildLineOverlay();
+    const fallbackFrame = buildDocumentFallbackFrameBox(preview.bounds, preview);
+    const boundsBox = fallbackFrame?.box || null;
+    if (lineGroup?.children?.length) {
+      frameScene(activeScene, boundsBox, { view: "top" });
+      rebuildSelectableObjects();
+      updateCounts();
+      return {
+        kind: "document-fallback",
+        isError: false,
+        outputs,
+        renderableEntityCount: preview.renderableEntityCount,
+        segmentCount: preview.segmentCount,
+        textEntryCount: textEntries.length,
+        focusRegion: fallbackFrame?.focusRegion || null,
+        statusText: `Loaded document with fallback line preview (${preview.renderableEntityCount} entities, ${preview.segmentCount} segments).`,
+      };
+    }
+  }
+  rebuildSelectableObjects();
+  updateCounts();
+  setViewportPresentation(VIEWPORT_PRESENTATION_DEFAULT);
+  if (textEntries.length > 0) {
+    frameTextEntries();
+    return {
+      kind: "text-only",
+      isError: false,
+      outputs,
+      renderableEntityCount: preview.renderableEntityCount,
+      segmentCount: preview.segmentCount,
+      textEntryCount: textEntries.length,
+      statusText: "Loaded text annotations only. No renderable CAD geometry was produced.",
+    };
+  }
+  return {
+    kind: "metadata-only",
+    isError: true,
+    outputs,
+    renderableEntityCount: preview.renderableEntityCount,
+    segmentCount: preview.segmentCount,
+    textEntryCount: textEntries.length,
+    statusText: "Loaded document metadata only. No renderable preview geometry was produced.",
+  };
+}
+
 async function loadFromManifest(manifestUrl, params) {
   setStatus("Loading manifest...");
   resetMetadataState();
@@ -1621,15 +2414,21 @@ async function loadFromManifest(manifestUrl, params) {
     resetScene();
     activeScene = new THREE.Group();
     scene.add(activeScene);
-    rebuildSelectableObjects();
-    frameTextEntries();
-    updateCounts();
-    setStatus("Loaded document successfully.");
-    return;
+    const previewState = await applyDocumentFallbackPreview(manifest);
+    lastManifestPreviewState = previewState;
+    setStatus(previewState.statusText, previewState.isError);
+    return previewState;
   }
   const resolved = resolveUrl(manifestUrl, gltfName);
   gltfUrlInput.value = resolved;
+  lastManifestPreviewState = {
+    kind: "mesh-gltf-loading",
+    isError: false,
+    outputs: Array.isArray(manifest?.outputs) ? manifest.outputs.filter((value) => typeof value === "string") : [],
+    statusText: "Loading scene...",
+  };
   loadScene(resolved);
+  return lastManifestPreviewState;
 }
 
 function updateCounts() {
@@ -2203,6 +3002,7 @@ function resetScene() {
   selectable = [];
   activeScene = null;
   lastFocusState = null;
+  setViewportPresentation(VIEWPORT_PRESENTATION_DEFAULT);
   clearSelection();
   updateCounts();
 }
@@ -2460,15 +3260,20 @@ function frameTextEntries() {
   frameScene(anchor, box);
 }
 
-function frameScene(object, providedBox = null) {
-  const box = providedBox ?? new THREE.Box3().setFromObject(object);
+function frameScene(object, providedBox = null, options = {}) {
+  const rawBox = providedBox ?? new THREE.Box3().setFromObject(object);
+  const box = ensureNonZeroBox(rawBox?.clone ? rawBox.clone() : rawBox, 0.5);
+  if (!box) return;
   const sizeVec = box.getSize(new THREE.Vector3());
   const size = Math.max(sizeVec.length(), 1);
   const center = box.getCenter(new THREE.Vector3());
+  const aspect = Math.max(canvas.clientWidth / Math.max(canvas.clientHeight, 1), 0.01);
+  const preferTopView = options.view === "top"
+    || viewportPresentation === VIEWPORT_PRESENTATION_DOCUMENT_FALLBACK
+    || USE_TOP_VIEW;
   controls.reset();
   controls.target.copy(center);
   if (USE_ORTHO) {
-    const aspect = canvas.clientWidth / canvas.clientHeight;
     const viewSize = Math.max(sizeVec.x, sizeVec.y, sizeVec.z, 1);
     orthoHalfHeight = viewSize * 0.6;
     const halfWidth = orthoHalfHeight * aspect;
@@ -2479,7 +3284,7 @@ function frameScene(object, providedBox = null) {
     camera.near = -viewSize * 10;
     camera.far = viewSize * 10;
     const dist = viewSize * 2;
-    if (USE_TOP_VIEW) {
+    if (preferTopView) {
       camera.position.set(center.x, center.y, center.z + dist);
     } else {
       camera.position.set(center.x + dist * 0.6, center.y + dist * 0.5, center.z + dist * 0.7);
@@ -2490,13 +3295,20 @@ function frameScene(object, providedBox = null) {
     return;
   }
 
-  if (USE_TOP_VIEW) {
-    camera.position.set(center.x, center.y, center.z + size * 1.8);
+  if (preferTopView) {
+    const fitHeight = Math.max(sizeVec.y, 1);
+    const fitWidth = Math.max(sizeVec.x / aspect, 1);
+    const fitSpan = Math.max(fitHeight, fitWidth, sizeVec.z, 1);
+    const fovRad = THREE.MathUtils.degToRad(camera.fov || 45);
+    const dist = (fitSpan * 0.5) / Math.tan(fovRad / 2) + Math.max(sizeVec.z * 2, fitSpan * 0.25);
+    camera.position.set(center.x, center.y, center.z + dist);
+    camera.near = Math.max(dist / 100, 0.01);
+    camera.far = dist + fitSpan * 20;
   } else {
     camera.position.copy(center).add(new THREE.Vector3(size * 0.6, size * 0.5, size * 0.7));
+    camera.near = Math.max(size / 100, 0.01);
+    camera.far = size * 10;
   }
-  camera.near = Math.max(size / 100, 0.01);
-  camera.far = size * 10;
   camera.updateProjectionMatrix();
 }
 
@@ -2506,6 +3318,7 @@ function loadScene(url) {
   loader.load(
     url,
     (gltf) => {
+      setViewportPresentation(VIEWPORT_PRESENTATION_DEFAULT);
       activeScene = gltf.scene;
       scene.add(activeScene);
       activeScene.traverse((child) => {
@@ -2525,11 +3338,22 @@ function loadScene(url) {
       frameScene(activeScene);
       updateCounts();
       tryApplyMetadata();
+      lastManifestPreviewState = {
+        kind: "mesh-gltf",
+        isError: false,
+        statusText: "Loaded successfully.",
+      };
       setStatus("Loaded successfully.");
     },
     undefined,
     (error) => {
       console.error(error);
+      lastManifestPreviewState = {
+        kind: "mesh-gltf-error",
+        isError: true,
+        statusText: "Failed to load glTF.",
+        error: error?.message || String(error),
+      };
       setStatus("Failed to load glTF.", true);
     }
   );
@@ -2684,6 +3508,10 @@ async function bootstrapScene() {
     loadScene(gltfParam);
     return;
   }
+  if (desktopBridge) {
+    gltfUrlInput.value = "";
+    return;
+  }
   const fallback = gltfUrlInput.value.trim();
   if (fallback) {
     resetMetadataState();
@@ -2695,8 +3523,17 @@ async function bootstrapScene() {
 let lastOutputDir = null;
 const exportDxfBtn = document.getElementById("export-dxf-btn");
 
-if (typeof window.vemcadDesktop !== "undefined" && exportDxfBtn) {
+if (desktopBridge && exportDxfBtn) {
   exportDxfBtn.style.display = "";
+  if (openCadBtn) {
+    openCadBtn.classList.remove("is-hidden");
+  }
+  if (settingsBtn) {
+    settingsBtn.classList.remove("is-hidden");
+  }
+  if (recentFilesSectionEl) {
+    recentFilesSectionEl.classList.remove("is-hidden");
+  }
 
   exportDxfBtn.addEventListener("click", async () => {
     if (!lastOutputDir) {
@@ -2705,7 +3542,7 @@ if (typeof window.vemcadDesktop !== "undefined" && exportDxfBtn) {
     }
     setStatus("Exporting DXF...");
     try {
-      const result = await window.vemcadDesktop.exportDxf({ outputDir: lastOutputDir });
+      const result = await desktopBridge.exportDxf({ outputDir: lastOutputDir });
       if (result && result.ok) {
         setStatus(`DXF exported (${result.size} bytes)`);
       } else {
@@ -2716,18 +3553,870 @@ if (typeof window.vemcadDesktop !== "undefined" && exportDxfBtn) {
     }
   });
 
-  // Wrap openCadFile to capture outputDir from results
-  const origOpen = window.vemcadDesktop.openCadFile;
-  if (origOpen) {
-    window.vemcadDesktop.openCadFile = async (settings) => {
-      const result = await origOpen(settings);
+  const openDesktopCadFile = typeof desktopBridge.openCadFile === "function"
+    ? async (settings) => {
+      const result = await desktopBridge.openCadFile(settings);
       if (result && result.output_dir) {
         lastOutputDir = result.output_dir;
       }
       return result;
+    }
+    : null;
+  const openDesktopCadPath = typeof desktopBridge.openCadPath === "function"
+    ? async (payload) => {
+      const result = await desktopBridge.openCadPath(payload);
+      if (result && result.output_dir) {
+        lastOutputDir = result.output_dir;
+      }
+      return result;
+    }
+    : null;
+  let desktopCadOpenQueue = Promise.resolve();
+  let desktopDropDepth = 0;
+  let desktopRecentCadFiles = [];
+  let desktopCadBatchState = null;
+  let desktopCadBatchSequence = 0;
+  const desktopCadDropExtensions = new Set(["dwg", "dxf", "json", "cad"]);
+
+  function getLatestDesktopRecentCadEntry({ includeMissing = false } = {}) {
+    const latestExisting = desktopRecentCadFiles.find((entry) => entry.exists);
+    if (latestExisting) {
+      return latestExisting;
+    }
+    if (includeMissing && desktopRecentCadFiles.length > 0) {
+      return desktopRecentCadFiles[0];
+    }
+    return null;
+  }
+
+  function canRegisterDesktopFileAssociations() {
+    return Boolean(
+      desktopAppInfo
+      && desktopAppInfo.platform === "darwin"
+      && typeof desktopBridge?.registerFileAssociations === "function"
+    );
+  }
+
+  function normalizeDesktopCadPathCandidate(candidate) {
+    const raw = typeof candidate === "string" ? candidate.trim() : "";
+    if (!raw) {
+      return "";
+    }
+    if (raw.startsWith("file://")) {
+      try {
+        return decodeURIComponent(new URL(raw).pathname || "");
+      } catch {
+        return "";
+      }
+    }
+    return raw;
+  }
+
+  function isDesktopCadPathCandidate(candidate) {
+    const normalized = normalizeDesktopCadPathCandidate(candidate);
+    if (!normalized) {
+      return false;
+    }
+    const dotIndex = normalized.lastIndexOf(".");
+    if (dotIndex < 0) {
+      return false;
+    }
+    return desktopCadDropExtensions.has(normalized.slice(dotIndex + 1).toLowerCase());
+  }
+
+  function collectDesktopDroppedCadSelection(dataTransfer) {
+    const acceptedPaths = [];
+    const rejectedPaths = [];
+    const pushCandidate = (candidate) => {
+      const normalized = normalizeDesktopCadPathCandidate(candidate);
+      if (!normalized) {
+        return;
+      }
+      if (isDesktopCadPathCandidate(normalized)) {
+        if (!acceptedPaths.includes(normalized)) {
+          acceptedPaths.push(normalized);
+        }
+        return;
+      }
+      if (!rejectedPaths.includes(normalized)) {
+        rejectedPaths.push(normalized);
+      }
     };
+    for (const file of Array.from(dataTransfer?.files || [])) {
+      pushCandidate(typeof file?.path === "string" ? file.path : "");
+    }
+    if (typeof dataTransfer?.getData === "function") {
+      for (const uri of String(dataTransfer.getData("text/uri-list") || "").split(/\r?\n/)) {
+        const trimmed = uri.trim();
+        if (!trimmed || trimmed.startsWith("#")) {
+          continue;
+        }
+        pushCandidate(trimmed);
+      }
+      for (const line of String(dataTransfer.getData("text/plain") || "").split(/\r?\n/)) {
+        pushCandidate(line);
+      }
+    }
+    return {
+      acceptedPaths,
+      rejectedPaths,
+    };
+  }
+
+  function formatDesktopBatchFileLabel(candidate) {
+    const normalized = normalizeDesktopCadPathCandidate(candidate);
+    if (!normalized) {
+      return "Unknown file";
+    }
+    const fileName = normalized.split(/[\\/]/).pop() || normalized;
+    return fileName;
+  }
+
+  function createDesktopBatchItem(path, status, detail = "") {
+    return {
+      path,
+      label: formatDesktopBatchFileLabel(path),
+      status,
+      detail,
+    };
+  }
+
+  function beginDesktopCadBatch({ queuedPaths = [], ignoredPaths = [], source = "drop" } = {}) {
+    const normalizedQueued = Array.from(new Set(
+      Array.from(queuedPaths || [])
+        .map((candidate) => normalizeDesktopCadPathCandidate(candidate))
+        .filter(Boolean)
+    ));
+    const normalizedIgnored = Array.from(new Set(
+      Array.from(ignoredPaths || [])
+        .map((candidate) => normalizeDesktopCadPathCandidate(candidate))
+        .filter(Boolean)
+        .filter((candidate) => !normalizedQueued.includes(candidate))
+    ));
+    if (!normalizedQueued.length && !normalizedIgnored.length) {
+      desktopCadBatchState = null;
+      renderDesktopCadBatchState();
+      return null;
+    }
+    desktopCadBatchSequence += 1;
+    desktopCadBatchState = {
+      id: desktopCadBatchSequence,
+      source,
+      queuedTotal: normalizedQueued.length,
+      ignoredTotal: normalizedIgnored.length,
+      startedAt: new Date().toISOString(),
+      items: [
+        ...normalizedQueued.map((candidate) => createDesktopBatchItem(candidate, "queued", "Waiting in queue")),
+        ...normalizedIgnored.map((candidate) => createDesktopBatchItem(candidate, "ignored", "Ignored unsupported drop item")),
+      ],
+    };
+    renderDesktopCadBatchState();
+    return desktopCadBatchState;
+  }
+
+  function updateDesktopCadBatchItem(batchId, inputPath, patch = {}) {
+    if (!desktopCadBatchState || desktopCadBatchState.id !== batchId) {
+      return;
+    }
+    const normalizedPath = normalizeDesktopCadPathCandidate(inputPath);
+    if (!normalizedPath) {
+      return;
+    }
+    const item = desktopCadBatchState.items.find((entry) => entry.path === normalizedPath);
+    if (!item) {
+      return;
+    }
+    Object.assign(item, patch);
+    renderDesktopCadBatchState();
+  }
+
+  function summarizeDesktopCadBatchState(batch) {
+    if (!batch) {
+      return "";
+    }
+    const openedCount = batch.items.filter((entry) => entry.status === "opened").length;
+    const failedCount = batch.items.filter((entry) => entry.status === "failed" || entry.status === "canceled").length;
+    const openingCount = batch.items.filter((entry) => entry.status === "opening").length;
+    const queuedCount = batch.items.filter((entry) => entry.status === "queued").length;
+    const ignoredCount = batch.ignoredTotal || 0;
+    if (batch.queuedTotal === 0) {
+      return ignoredCount === 1 ? "Ignored 1 unsupported file" : `Ignored ${ignoredCount} unsupported files`;
+    }
+    if (openingCount > 0 || queuedCount > 0) {
+      const currentIndex = Math.min(batch.queuedTotal, openedCount + failedCount + openingCount);
+      let summary = `Opening ${currentIndex} / ${batch.queuedTotal}`;
+      if (failedCount > 0) {
+        summary += ` · ${failedCount} failed`;
+      }
+      if (ignoredCount > 0) {
+        summary += ` · ${ignoredCount} ignored`;
+      }
+      return summary;
+    }
+    let summary = `Complete · ${openedCount} opened`;
+    if (failedCount > 0) {
+      summary += ` · ${failedCount} failed`;
+    }
+    if (ignoredCount > 0) {
+      summary += ` · ${ignoredCount} ignored`;
+    }
+    return summary;
+  }
+
+  function getRetryableDesktopCadBatchPaths() {
+    if (!desktopCadBatchState) {
+      return [];
+    }
+    return desktopCadBatchState.items
+      .filter((item) => item.status === "failed" || item.status === "canceled")
+      .map((item) => item.path)
+      .filter(Boolean);
+  }
+
+  function buildDesktopCadBatchReportSnapshot() {
+    return {
+      schema: "vemcad.desktop.batch_report.v1",
+      generated_at: new Date().toISOString(),
+      app: desktopAppInfo,
+      status: String(statusEl?.textContent || "").trim(),
+      settings_status: String(settingsStatusEl?.textContent || "").trim(),
+      location_href: typeof window !== "undefined" ? window.location.href : "",
+      batch: desktopCadBatchState,
+      recent_files: desktopRecentCadFiles,
+    };
+  }
+
+  async function exportDesktopCadBatchReport() {
+    if (!desktopCadBatchState || !desktopCadBatchState.items.length) {
+      setStatus("No batch queue state to export.", true);
+      return null;
+    }
+    await ensureDesktopAppInfoLoaded();
+    const snapshot = buildDesktopCadBatchReportSnapshot();
+    const filename = createDesktopBatchReportFilename();
+    const exportResult = await saveDesktopDiagnostics(filename, `${JSON.stringify(snapshot, null, 2)}\n`);
+    if (!exportResult?.ok) {
+      if (exportResult?.canceled) {
+        setStatus("Desktop batch report export cancelled.");
+        return null;
+      }
+      setStatus(`Desktop batch report export failed: ${exportResult?.error || "unknown error"}`, true);
+      return null;
+    }
+    setStatus(`Exported desktop batch report: ${exportResult.path || filename}`);
+    return exportResult;
+  }
+
+  function renderDesktopOpenQuickActions() {
+    if (resumeLatestCadBtn) {
+      const latestEntry = getLatestDesktopRecentCadEntry({ includeMissing: true });
+      resumeLatestCadBtn.classList.toggle("is-hidden", !latestEntry);
+      resumeLatestCadBtn.disabled = !latestEntry?.exists;
+      resumeLatestCadBtn.textContent = latestEntry
+        ? `Resume Latest: ${latestEntry.label || latestEntry.fileName || latestEntry.path}`
+        : "Resume Latest";
+    }
+    if (registerFileAssociationsBtn) {
+      const available = canRegisterDesktopFileAssociations();
+      registerFileAssociationsBtn.classList.toggle("is-hidden", !available);
+      registerFileAssociationsBtn.textContent = available
+        ? "Register macOS File Open"
+        : "Register macOS File Open";
+    }
+  }
+
+  function renderDesktopCadBatchState() {
+    if (!desktopBatchPanelEl || !desktopBatchSummaryEl || !desktopBatchListEl) {
+      return;
+    }
+    desktopBatchListEl.textContent = "";
+    const retryablePaths = getRetryableDesktopCadBatchPaths();
+    if (desktopBatchRetryBtn) {
+      desktopBatchRetryBtn.classList.toggle("is-hidden", retryablePaths.length === 0);
+    }
+    if (desktopBatchExportBtn) {
+      desktopBatchExportBtn.classList.toggle("is-hidden", !desktopCadBatchState || !desktopCadBatchState.items.length);
+    }
+    if (!desktopCadBatchState || !desktopCadBatchState.items.length) {
+      desktopBatchPanelEl.classList.add("is-hidden");
+      desktopBatchSummaryEl.textContent = "";
+      return;
+    }
+    desktopBatchPanelEl.classList.remove("is-hidden");
+    desktopBatchSummaryEl.textContent = summarizeDesktopCadBatchState(desktopCadBatchState);
+    const statusLabels = {
+      queued: "Queued",
+      opening: "Opening",
+      opened: "Opened",
+      failed: "Failed",
+      canceled: "Canceled",
+      ignored: "Ignored",
+    };
+    for (const item of desktopCadBatchState.items) {
+      const row = document.createElement("div");
+      row.className = "desktop-batch-item";
+      row.dataset.path = item.path;
+      row.dataset.status = item.status;
+      if (item.status === "opening" || item.status === "queued") {
+        row.classList.add("is-opening");
+      } else if (item.status === "opened") {
+        row.classList.add("is-success");
+      } else if (item.status === "failed" || item.status === "canceled") {
+        row.classList.add("is-error");
+      } else if (item.status === "ignored") {
+        row.classList.add("is-ignored");
+      }
+      const header = document.createElement("div");
+      header.className = "desktop-batch-item__header";
+      const name = document.createElement("div");
+      name.className = "desktop-batch-item__name";
+      name.textContent = item.label;
+      const state = document.createElement("div");
+      state.className = "desktop-batch-item__state";
+      state.textContent = statusLabels[item.status] || item.status || "Queued";
+      header.appendChild(name);
+      header.appendChild(state);
+      const meta = document.createElement("div");
+      meta.className = "desktop-batch-item__meta";
+      meta.textContent = item.detail || item.path;
+      row.appendChild(header);
+      row.appendChild(meta);
+      desktopBatchListEl.appendChild(row);
+    }
+  }
+
+  function setDesktopCadDropOverlayVisible(isVisible) {
+    if (!cadDropOverlayEl) {
+      return;
+    }
+    cadDropOverlayEl.classList.toggle("is-hidden", !isVisible);
+    cadDropOverlayEl.classList.toggle("is-active", isVisible);
+    cadDropOverlayEl.setAttribute("aria-hidden", isVisible ? "false" : "true");
+  }
+
+  function syncDesktopRecentCadFiles(payload = {}) {
+    const entries = Array.isArray(payload?.entries)
+      ? payload.entries
+      : (Array.isArray(payload) ? payload : []);
+    desktopRecentCadFiles = entries
+      .map((entry) => ({
+        path: typeof entry?.path === "string" ? entry.path.trim() : "",
+        label: typeof entry?.label === "string" ? entry.label.trim() : "",
+        lastOpenedAt: typeof entry?.lastOpenedAt === "string" ? entry.lastOpenedAt.trim() : "",
+        fileName: typeof entry?.fileName === "string" ? entry.fileName.trim() : "",
+        directory: typeof entry?.directory === "string" ? entry.directory.trim() : "",
+        extension: typeof entry?.extension === "string" ? entry.extension.trim() : "",
+        exists: entry?.exists !== false,
+      }))
+      .filter((entry) => Boolean(entry.path));
+  }
+
+  function formatDesktopRecentCadTimestamp(value) {
+    const timestamp = typeof value === "string" ? value.trim() : "";
+    if (!timestamp) {
+      return "Unknown";
+    }
+    const parsed = new Date(timestamp);
+    if (Number.isNaN(parsed.getTime())) {
+      return timestamp;
+    }
+    return new Intl.DateTimeFormat(undefined, {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }).format(parsed);
+  }
+
+  function renderDesktopRecentCadFiles() {
+    if (!recentFilesSectionEl || !recentFilesListEl || !recentFilesEmptyEl || !recentFilesClearBtn) {
+      return;
+    }
+    recentFilesSectionEl.classList.remove("is-hidden");
+    renderDesktopOpenQuickActions();
+    recentFilesListEl.textContent = "";
+    recentFilesClearBtn.classList.toggle("is-hidden", desktopRecentCadFiles.length === 0);
+    if (desktopRecentCadFiles.length === 0) {
+      recentFilesEmptyEl.classList.remove("is-hidden");
+      return;
+    }
+    recentFilesEmptyEl.classList.add("is-hidden");
+    for (const entry of desktopRecentCadFiles) {
+      const item = document.createElement("div");
+      item.className = "recent-file-item";
+      if (!entry.exists) {
+        item.classList.add("is-missing");
+      }
+      item.dataset.path = entry.path;
+      item.dataset.lastOpenedAt = entry.lastOpenedAt;
+      const button = document.createElement("button");
+      button.className = "recent-file-btn";
+      button.type = "button";
+      button.textContent = entry.label || entry.path;
+      button.dataset.path = entry.path;
+      button.disabled = !entry.exists;
+      if (entry.exists) {
+        button.addEventListener("click", () => {
+          queueDesktopCadOpen({ path: entry.path });
+        });
+      }
+      const meta = document.createElement("div");
+      meta.className = "recent-file-meta";
+      const extensionLabel = entry.extension ? entry.extension.toUpperCase() : "CAD";
+      meta.textContent = entry.exists
+        ? `${extensionLabel} • Last opened: ${formatDesktopRecentCadTimestamp(entry.lastOpenedAt)}\n${entry.directory || entry.path}`
+        : `${extensionLabel} • Missing file\n${entry.path}\nLast opened: ${formatDesktopRecentCadTimestamp(entry.lastOpenedAt)}`;
+      item.appendChild(button);
+      item.appendChild(meta);
+      recentFilesListEl.appendChild(item);
+    }
+  }
+
+  async function refreshDesktopRecentCadFiles() {
+    if (typeof desktopBridge.getRecentCadFiles !== "function") {
+      return;
+    }
+    const payload = await desktopBridge.getRecentCadFiles();
+    syncDesktopRecentCadFiles(payload);
+    renderDesktopRecentCadFiles();
+  }
+
+  async function clearDesktopRecentCadFiles() {
+    if (typeof desktopBridge.clearRecentCadFiles !== "function") {
+      return;
+    }
+    const payload = await desktopBridge.clearRecentCadFiles();
+    syncDesktopRecentCadFiles(payload);
+    renderDesktopRecentCadFiles();
+    setStatus("Recent CAD files cleared.");
+  }
+
+  function queueDesktopCadOpenMany(paths = [], options = {}) {
+    const uniquePaths = Array.from(new Set(
+      Array.from(paths || [])
+        .map((candidate) => (typeof candidate === "string" ? candidate.trim() : ""))
+        .filter(Boolean)
+    ));
+    const ignoredPaths = Array.from(new Set(
+      Array.from(options?.ignoredPaths || [])
+        .map((candidate) => normalizeDesktopCadPathCandidate(candidate))
+        .filter(Boolean)
+        .filter((candidate) => !uniquePaths.includes(candidate))
+    ));
+    const batch = (uniquePaths.length > 1 || ignoredPaths.length > 0 || options?.forceBatch)
+      ? beginDesktopCadBatch({
+        queuedPaths: uniquePaths,
+        ignoredPaths,
+        source: typeof options?.source === "string" ? options.source : "drop",
+      })
+      : null;
+    for (const inputPath of uniquePaths) {
+      queueDesktopCadOpen({ path: inputPath, batchId: batch?.id || 0 });
+    }
+    return desktopCadOpenQueue;
+  }
+
+  async function runDesktopCadOpen({ path = "", batchId = 0 } = {}) {
+    const explicitPath = typeof path === "string" ? path.trim() : "";
+    if (batchId && explicitPath) {
+      updateDesktopCadBatchItem(batchId, explicitPath, {
+        status: "opening",
+        detail: "Opening through desktop CAD pipeline",
+      });
+    }
+    setStatus(explicitPath ? `Opening CAD file: ${explicitPath}` : "Opening CAD file...");
+    try {
+      await ensureDesktopSettingsLoaded();
+      const settings = isSettingsModalOpen()
+        ? applyDesktopSettingsDraft({ persist: false })
+        : desktopSettingsCurrent;
+      const result = explicitPath
+        ? await (openDesktopCadPath
+          ? openDesktopCadPath({ path: explicitPath, settings })
+          : Promise.reject(new Error("Desktop open-cad-path bridge unavailable.")))
+        : await (openDesktopCadFile
+          ? openDesktopCadFile(settings)
+          : Promise.reject(new Error("Desktop open-cad bridge unavailable.")));
+      if (!result || result.canceled) {
+        if (batchId && explicitPath) {
+          updateDesktopCadBatchItem(batchId, explicitPath, {
+            status: "canceled",
+            detail: "Open request canceled",
+          });
+        }
+        setStatus("Open CAD cancelled.");
+        return;
+      }
+      if (!result.ok) {
+        if (batchId && explicitPath) {
+          const failureDetail = result.error_code
+            ? `${result.error_code}: ${result.error || "unknown error"}`
+            : (result.error || "unknown error");
+          updateDesktopCadBatchItem(batchId, explicitPath, {
+            status: "failed",
+            detail: failureDetail,
+          });
+        }
+        const message = result.route
+          ? `Open CAD failed via ${result.route}: ${result.error || "unknown error"}`
+          : `Open CAD failed: ${result.error || "unknown error"}`;
+        setStatus(message, true);
+        if (shouldAutoOpenDesktopSettingsForFailure(result)) {
+          await openDesktopSettingsModal();
+        }
+        if (isSettingsModalOpen()) {
+          setSettingsStatus(formatDesktopOpenResult(result), true);
+        }
+        return;
+      }
+      let previewState = null;
+      if (result.manifest_url) {
+        previewState = await loadFromManifest(result.manifest_url, urlParams);
+      }
+      await refreshDesktopRecentCadFiles();
+      if (batchId && explicitPath) {
+        const routeLabel = typeof result.route === "string" && result.route.trim()
+          ? `Opened via ${result.route.trim()}`
+          : "Opened successfully";
+        const previewDetail = previewState?.kind === "document-fallback"
+          ? `${routeLabel}; document fallback preview active`
+          : previewState?.kind === "text-only"
+            ? `${routeLabel}; text-only preview`
+            : previewState?.kind === "metadata-only"
+              ? `${routeLabel}; no renderable preview geometry`
+              : routeLabel;
+        updateDesktopCadBatchItem(batchId, explicitPath, {
+          status: previewState?.kind === "metadata-only" ? "failed" : "opened",
+          detail: previewDetail,
+        });
+      }
+      const routeLabel = typeof result.route === "string" && result.route.trim()
+        ? ` via ${result.route.trim()}`
+        : "";
+      const documentLabel = result.document_label
+        ? `Opened ${result.document_label}${routeLabel}`
+        : `Opened CAD file${routeLabel}`;
+      if (previewState?.kind === "document-fallback") {
+        setStatus(`${documentLabel} with document fallback preview.`);
+      } else if (previewState?.kind === "text-only") {
+        setStatus(`${documentLabel}, but only text annotations were renderable.`);
+      } else if (previewState?.kind === "metadata-only") {
+        setStatus(`${documentLabel}, but no renderable preview geometry was produced.`, true);
+      } else {
+        setStatus(`${documentLabel}.`);
+      }
+      if (isSettingsModalOpen()) {
+        setSettingsStatus(formatDesktopOpenResult(result));
+      }
+    } catch (error) {
+      if (batchId && explicitPath) {
+        updateDesktopCadBatchItem(batchId, explicitPath, {
+          status: "failed",
+          detail: error?.message || String(error),
+        });
+      }
+      const message = `Open CAD failed: ${error?.message || String(error)}`;
+      setStatus(message, true);
+      if (isSettingsModalOpen()) {
+        setSettingsStatus(message, true);
+      }
+    }
+  }
+
+  function queueDesktopCadOpen(request = {}) {
+    desktopCadOpenQueue = desktopCadOpenQueue
+      .catch(() => null)
+      .then(() => runDesktopCadOpen(request));
+    return desktopCadOpenQueue;
+  }
+
+  if (openCadBtn && (openDesktopCadFile || openDesktopCadPath)) {
+    openCadBtn.addEventListener("click", () => {
+      queueDesktopCadOpen();
+    });
+  }
+
+  if (settingsBtn) {
+    settingsBtn.addEventListener("click", () => {
+      openDesktopSettingsModal().catch((error) => {
+        setSettingsStatus(`Failed to load settings: ${error?.message || String(error)}`, true);
+      });
+    });
+  }
+
+  if (recentFilesClearBtn) {
+    recentFilesClearBtn.addEventListener("click", () => {
+      clearDesktopRecentCadFiles().catch((error) => {
+        setStatus(`Failed to clear recent CAD files: ${error?.message || String(error)}`, true);
+      });
+    });
+  }
+
+  if (resumeLatestCadBtn) {
+    resumeLatestCadBtn.addEventListener("click", () => {
+      const latestEntry = getLatestDesktopRecentCadEntry({ includeMissing: true });
+      if (!latestEntry || !latestEntry.path) {
+        setStatus("No recent CAD file available to resume.", true);
+        return;
+      }
+      if (!latestEntry.exists) {
+        setStatus(`Latest recent CAD file is missing: ${latestEntry.path}`, true);
+        return;
+      }
+      queueDesktopCadOpen({ path: latestEntry.path });
+    });
+  }
+
+  if (registerFileAssociationsBtn) {
+    registerFileAssociationsBtn.addEventListener("click", async () => {
+      try {
+        await ensureDesktopAppInfoLoaded();
+        if (!canRegisterDesktopFileAssociations()) {
+          setStatus("macOS file-open registration is not available in this runtime.", true);
+          return;
+        }
+        const result = await desktopBridge.registerFileAssociations();
+        if (!result?.ok) {
+          setStatus(`Failed to register macOS file-open services: ${result?.error || "unknown error"}`, true);
+          return;
+        }
+        setStatus(`Registered macOS file-open services: ${result.app_bundle || "VemCAD.app"}`);
+      } catch (error) {
+        setStatus(`Failed to register macOS file-open services: ${error?.message || String(error)}`, true);
+      }
+    });
+  }
+
+  if (desktopBatchRetryBtn) {
+    desktopBatchRetryBtn.addEventListener("click", () => {
+      const retryablePaths = getRetryableDesktopCadBatchPaths();
+      if (!retryablePaths.length) {
+        setStatus("No failed batch items available to retry.", true);
+        return;
+      }
+      queueDesktopCadOpenMany(retryablePaths, {
+        source: "batch-retry",
+        forceBatch: true,
+      });
+    });
+  }
+
+  if (desktopBatchExportBtn) {
+    desktopBatchExportBtn.addEventListener("click", () => {
+      exportDesktopCadBatchReport().catch((error) => {
+        setStatus(`Failed to export desktop batch report: ${error?.message || String(error)}`, true);
+      });
+    });
+  }
+
+  if (settingsCloseBtn) {
+    settingsCloseBtn.addEventListener("click", () => closeDesktopSettingsModal({ discardDraft: true }));
+  }
+  if (settingsCancelBtn) {
+    settingsCancelBtn.addEventListener("click", () => closeDesktopSettingsModal({ discardDraft: true }));
+  }
+  if (settingsModal) {
+    settingsModal.addEventListener("click", (event) => {
+      if (event.target instanceof Element && event.target.hasAttribute("data-modal-close")) {
+        closeDesktopSettingsModal({ discardDraft: true });
+      }
+    });
+  }
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && isSettingsModalOpen()) {
+      closeDesktopSettingsModal({ discardDraft: true });
+    }
+  });
+
+  if (settingsSaveBtn) {
+    settingsSaveBtn.addEventListener("click", async () => {
+      await ensureDesktopSettingsLoaded();
+      applyDesktopSettingsDraft({ persist: true });
+      populateDesktopSettingsForm(desktopSettingsCurrent);
+      setSettingsStatus("Settings saved locally.");
+      closeDesktopSettingsModal({ discardDraft: false });
+    });
+  }
+
+  if (settingsRecommendedBtn) {
+    settingsRecommendedBtn.addEventListener("click", async () => {
+      try {
+        await applyRecommendedDesktopSettings({ persist: true });
+      } catch (error) {
+        setSettingsStatus(`Failed to apply recommended desktop setup: ${error?.message || String(error)}`, true);
+      }
+    });
+  }
+
+  if (settingsResetBtn) {
+    settingsResetBtn.addEventListener("click", async () => {
+      await ensureDesktopSettingsLoaded(true);
+      clearStoredDesktopSettings();
+      desktopSettingsCurrent = mergeDesktopSettings(desktopSettingsDefaults, {});
+      populateDesktopSettingsForm(desktopSettingsCurrent);
+      await refreshDesktopCombinedStatus({ settingsOverride: desktopSettingsCurrent });
+    });
+  }
+
+  if (settingsTestRouterBtn) {
+    settingsTestRouterBtn.addEventListener("click", async () => {
+      setSettingsStatus("Testing router...");
+      try {
+        await ensureDesktopSettingsLoaded();
+        const result = await desktopBridge.testRouter(readDesktopSettingsForm());
+        lastDesktopRouterResult = result;
+        setSettingsStatus(formatDesktopRouterStatus(result), !result?.ok);
+      } catch (error) {
+        lastDesktopRouterResult = null;
+        setSettingsStatus(`Router test failed: ${error?.message || String(error)}`, true);
+      }
+    });
+  }
+
+  if (settingsTestDwgBtn) {
+    settingsTestDwgBtn.addEventListener("click", async () => {
+      await ensureDesktopSettingsLoaded();
+      await refreshDesktopDwgStatus();
+    });
+  }
+
+  if (settingsExportDiagnosticsBtn) {
+    settingsExportDiagnosticsBtn.addEventListener("click", async () => {
+      try {
+        await exportDesktopDiagnostics();
+      } catch (error) {
+        setSettingsStatus(`Failed to export desktop diagnostics: ${error?.message || String(error)}`, true);
+      }
+    });
+  }
+
+  if (typeof desktopBridge.onOpenSettings === "function") {
+    desktopBridge.onOpenSettings(() => {
+      openDesktopSettingsModal().catch((error) => {
+        setSettingsStatus(`Failed to load settings: ${error?.message || String(error)}`, true);
+      });
+    });
+  }
+  if (typeof desktopBridge.onOpenCadRequest === "function") {
+    desktopBridge.onOpenCadRequest((payload = {}) => {
+      queueDesktopCadOpen({ path: typeof payload?.path === "string" ? payload.path : "" });
+    });
+  }
+  if (typeof desktopBridge.onRecentCadFilesChanged === "function") {
+    desktopBridge.onRecentCadFilesChanged((payload = {}) => {
+      syncDesktopRecentCadFiles(payload);
+      renderDesktopRecentCadFiles();
+    });
+  }
+  // P1.5: Desktop DXF/DWG → editor bridge.
+  // When main.js pushes a converted document.json, switch to editor mode and
+  // load the document.  window.__vemcadApp is set up by app.js.
+  if (typeof desktopBridge.onLoadDocumentIntoEditor === "function") {
+    desktopBridge.onLoadDocumentIntoEditor((payload = {}) => {
+      const documentJson = payload?.documentJson;
+      if (!documentJson || typeof documentJson !== "object") {
+        return;
+      }
+      const vemcadApp = typeof window.__vemcadApp !== "undefined" ? window.__vemcadApp : null;
+      if (vemcadApp && typeof vemcadApp.switchToEditor === "function") {
+        vemcadApp.switchToEditor(documentJson).catch((error) => {
+          setStatus(`Editor load failed: ${error?.message || String(error)}`, true);
+        });
+      }
+    });
+  }
+  if (viewportShellEl && openDesktopCadPath) {
+    const isCadDragEvent = (event) => {
+      const types = Array.from(event?.dataTransfer?.types || []);
+      return types.includes("Files") || types.includes("text/uri-list") || types.includes("text/plain");
+    };
+    viewportShellEl.addEventListener("dragenter", (event) => {
+      if (!isCadDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      desktopDropDepth += 1;
+      setDesktopCadDropOverlayVisible(true);
+    });
+    viewportShellEl.addEventListener("dragover", (event) => {
+      if (!isCadDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = "copy";
+      }
+      setDesktopCadDropOverlayVisible(true);
+    });
+    viewportShellEl.addEventListener("dragleave", (event) => {
+      if (!isCadDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      desktopDropDepth = Math.max(0, desktopDropDepth - 1);
+      if (desktopDropDepth === 0) {
+        setDesktopCadDropOverlayVisible(false);
+      }
+    });
+    viewportShellEl.addEventListener("drop", (event) => {
+      if (!isCadDragEvent(event)) {
+        return;
+      }
+      event.preventDefault();
+      desktopDropDepth = 0;
+      setDesktopCadDropOverlayVisible(false);
+      const droppedSelection = collectDesktopDroppedCadSelection(event.dataTransfer);
+      const droppedCadPaths = droppedSelection.acceptedPaths;
+      const rejectedPaths = droppedSelection.rejectedPaths;
+      if (!droppedCadPaths.length) {
+        if (rejectedPaths.length > 0) {
+          queueDesktopCadOpenMany([], { source: "drop", ignoredPaths: rejectedPaths });
+          setStatus(`Drop a DWG, DXF, JSON, or CAD file to open it. Ignored ${rejectedPaths.length} unsupported item${rejectedPaths.length === 1 ? "" : "s"}.`, true);
+          return;
+        }
+        setStatus("Drop a DWG, DXF, JSON, or CAD file to open it.", true);
+        return;
+      }
+      if (droppedCadPaths.length > 1 || rejectedPaths.length > 0) {
+        let message = `Queued ${droppedCadPaths.length} CAD file${droppedCadPaths.length === 1 ? "" : "s"} from drop.`;
+        if (rejectedPaths.length > 0) {
+          message += ` Ignored ${rejectedPaths.length} unsupported item${rejectedPaths.length === 1 ? "" : "s"}.`;
+        }
+        setStatus(message, rejectedPaths.length > 0 && droppedCadPaths.length === 0);
+      }
+      queueDesktopCadOpenMany(droppedCadPaths, { source: "drop", ignoredPaths: rejectedPaths });
+    });
+  }
+  refreshDesktopRecentCadFiles().catch((error) => {
+    setStatus(`Failed to load recent CAD files: ${error?.message || String(error)}`, true);
+  });
+  ensureDesktopAppInfoLoaded()
+    .then(() => {
+      renderDesktopOpenQuickActions();
+    })
+    .catch(() => {
+      // Desktop app info is optional for browser-only runs.
+    });
+  if (typeof desktopBridge.notifyRendererReady === "function") {
+    desktopBridge.notifyRendererReady();
   }
 }
 
-bootstrapScene();
+bootstrapScene()
+  .then(() => {
+    if (desktopBridge && !EXPLICIT_SCENE_REQUEST) {
+      return refreshDesktopStartupStatus()
+        .then((result) => tryAutoRepairDesktopStartup(
+          result.routerResult,
+          result.dwgResult
+        ));
+    }
+    return null;
+  })
+  .catch((error) => {
+    console.error("web_viewer bootstrap failed", error);
+    setStatus(`Failed to initialize viewer: ${error?.message || String(error)}`, true);
+  });
 animate();
