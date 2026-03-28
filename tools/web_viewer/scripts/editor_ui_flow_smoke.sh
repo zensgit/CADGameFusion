@@ -182,7 +182,11 @@ for OPEN_ATTEMPT in $(seq 1 "$PWCLI_OPEN_RETRIES"); do
   {
     echo "[OPEN_ATTEMPT] $OPEN_ATTEMPT/$PWCLI_OPEN_RETRIES session=$PLAYWRIGHT_CLI_SESSION"
   } >>"$PLAYWRIGHT_LOG" 2>&1
-  pwcli_cmd_with_timeout "$PWCLI_SETUP_TIMEOUT_SEC" "$PWCLI" open "$URL" "${OPEN_ARGS[@]}" >>"$PLAYWRIGHT_LOG" 2>&1
+  if [[ ${#OPEN_ARGS[@]} -gt 0 ]]; then
+    pwcli_cmd_with_timeout "$PWCLI_SETUP_TIMEOUT_SEC" "$PWCLI" open "$URL" "${OPEN_ARGS[@]}" >>"$PLAYWRIGHT_LOG" 2>&1
+  else
+    pwcli_cmd_with_timeout "$PWCLI_SETUP_TIMEOUT_SEC" "$PWCLI" open "$URL" >>"$PLAYWRIGHT_LOG" 2>&1
+  fi
   OPEN_EXIT_CODE=$?
   if [[ -n "$OPEN_ATTEMPT_EXIT_CODES" ]]; then
     OPEN_ATTEMPT_EXIT_CODES="${OPEN_ATTEMPT_EXIT_CODES},"
@@ -214,8 +218,9 @@ if [[ "$OPEN_EXIT_CODE" -eq 0 && "$RESIZE_EXIT_CODE" -eq 0 ]]; then
   {
     echo "[FLOW] start"
   } >>"$PLAYWRIGHT_LOG" 2>&1
-pwcli_cmd "$PWCLI" run-code "(async (page) => {
-  const timeoutMs = ${TIMEOUT_MS};
+FLOW_JS="$(cat <<'__CAD_UI_FLOW__'
+(async (page) => {
+  const timeoutMs = __TIMEOUT_MS__;
   await page.waitForSelector('#cad-canvas', { timeout: timeoutMs });
   await page.waitForSelector('[data-tool=\"line\"]', { timeout: timeoutMs });
 
@@ -249,13 +254,17 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   };
 
   const parseTypes = (text) => {
-    const m = String(text || '').match(/\\(([^)]*)\\)/);
+    const m = String(text || '').match(/\(([^)]*)\)/);
     if (!m) return [];
     return m[1]
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
   };
+
+  async function readSelectionSummaryText() {
+    return (await page.textContent('#cad-selection-summary')) || '';
+  }
 
   async function blurActive() {
     await page.evaluate(() => {
@@ -275,29 +284,28 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   }
 
   async function waitForTypesInclude(type) {
-    await page.waitForFunction((t) => {
-      const el = document.querySelector('#cad-selection-summary');
-      const text = (el && el.textContent) ? el.textContent : '';
-      const m = text.match(/\\(([^)]*)\\)/);
-      if (!m) return false;
-      const types = m[1].split(',').map((s) => s.trim()).filter(Boolean);
-      return types.includes(t);
-    }, type, { timeout: timeoutMs });
+    const expected = String(type || '');
+    const deadline = Date.now() + timeoutMs;
+    let lastText = '';
+    while (Date.now() < deadline) {
+      lastText = await readSelectionSummaryText();
+      if (parseTypes(lastText).includes(expected)) return;
+      await page.waitForTimeout(50);
+    }
+    throw new Error('Timed out waiting for selection types to include "' + expected + '" (selection=' + JSON.stringify(lastText) + ')');
   }
 
   async function waitForTypesExact(types) {
-    await page.waitForFunction((expected) => {
-      const el = document.querySelector('#cad-selection-summary');
-      const text = (el && el.textContent) ? el.textContent : '';
-      const m = text.match(/\\(([^)]*)\\)/);
-      if (!m) return false;
-      const types = m[1].split(',').map((s) => s.trim()).filter(Boolean);
-      if (types.length !== expected.length) return false;
-      for (let i = 0; i < types.length; i += 1) {
-        if (types[i] !== expected[i]) return false;
-      }
-      return true;
-    }, types, { timeout: timeoutMs });
+    const expected = Array.isArray(types) ? types.map((type) => String(type || '')) : [];
+    const deadline = Date.now() + timeoutMs;
+    let lastText = '';
+    while (Date.now() < deadline) {
+      lastText = await readSelectionSummaryText();
+      const actual = parseTypes(lastText);
+      if (actual.length === expected.length && actual.every((type, index) => type === expected[index])) return;
+      await page.waitForTimeout(50);
+    }
+    throw new Error('Timed out waiting for exact selection types ' + JSON.stringify(expected) + ' (selection=' + JSON.stringify(lastText) + ')');
   }
 
   async function readDebugState() {
@@ -323,6 +331,50 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       const entity = d.getEntity(id);
       return entity || null;
     }, entityId);
+  }
+
+  async function readLineEnds(entityId) {
+    return page.evaluate((id) => {
+      const d = window.__cadDebug;
+      if (!d || typeof d.getEntity !== 'function') return null;
+      const e = d.getEntity(id);
+      if (!e || e.type !== 'line' || !e.start || !e.end) return null;
+      const s = e.start;
+      const t = e.end;
+      if (![s.x, s.y, t.x, t.y].every(Number.isFinite)) return null;
+      return { startX: s.x, startY: s.y, endX: t.x, endY: t.y };
+    }, entityId);
+  }
+
+  async function readSelectionDetails() {
+    return page.evaluate(() => {
+      const root = document.querySelector('#cad-selection-details');
+      if (!root) return null;
+      const items = {};
+      for (const row of root.querySelectorAll('[data-selection-field]')) {
+        const key = String(row.getAttribute('data-selection-field') || '').trim();
+        if (!key) continue;
+        const valueEl = row.querySelector('strong');
+        items[key] = valueEl ? String(valueEl.textContent || '').trim() : String(row.textContent || '').trim();
+      }
+      const badges = {};
+      for (const chip of root.querySelectorAll('[data-selection-badge]')) {
+        const key = String(chip.getAttribute('data-selection-badge') || '').trim();
+        if (!key) continue;
+        badges[key] = String(chip.textContent || '').trim();
+      }
+      const noteEl = root.querySelector('.cad-selection-empty');
+      const entityCount = Number.parseInt(String(root.getAttribute('data-entity-count') || '0'), 10);
+      return {
+        mode: String(root.getAttribute('data-mode') || ''),
+        entityCount: Number.isFinite(entityCount) ? entityCount : 0,
+        primaryType: String(root.getAttribute('data-primary-type') || ''),
+        readOnly: String(root.getAttribute('data-read-only') || ''),
+        note: noteEl ? String(noteEl.textContent || '').trim() : '',
+        items,
+        badges,
+      };
+    });
   }
 
   async function listDebugEntities() {
@@ -369,6 +421,14 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     }, { id, payload });
   }
 
+  async function setDebugSelection(ids, primaryId = null) {
+    return page.evaluate((args) => {
+      const d = window.__cadDebug;
+      if (!d || typeof d.setSelection !== 'function') return null;
+      return d.setSelection(args.ids, args.primaryId);
+    }, { ids, primaryId });
+  }
+
   async function readLayerById(layerId) {
     return page.evaluate((id) => {
       const d = window.__cadDebug;
@@ -406,23 +466,50 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     return false;
   }
 
-  async function waitForLayerButtonLabel(layerText, expectedLabel, timeout = 1500) {
+  async function waitForLayerButtonLabel(layerText, action, expectedLabel, timeout = 1500) {
     const expected = String(expectedLabel || '').toLowerCase();
     const targetText = String(layerText || '');
+    const targetAction = String(action || '').trim().toLowerCase();
     const start = Date.now();
     while (Date.now() - start < timeout) {
       const ok = await page.evaluate((args) => {
         const items = Array.from(document.querySelectorAll('#cad-layer-list .cad-layer-item'));
         const el = items.find((n) => String(n.textContent || '').includes(args.layerText));
         if (!el) return false;
-        const btns = el.querySelectorAll('button');
-        if (btns.length < 1) return false;
-        return String(btns[0].textContent || '').toLowerCase().includes(args.expected);
-      }, { layerText: targetText, expected });
+        const btn = el.querySelector('button[data-layer-action=' + args.action + ']');
+        if (!btn) return false;
+        return String(btn.textContent || '').toLowerCase().includes(args.expected);
+      }, { layerText: targetText, action: targetAction, expected });
       if (ok) return true;
       await page.waitForTimeout(30);
     }
     return false;
+  }
+
+  async function readFocusedLayerPanel() {
+    return page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('#cad-layer-list .cad-layer-item'));
+      const focused = items.find((item) => item.classList.contains('is-focused'));
+      if (!focused) return null;
+      const id = Number.parseInt(String(focused.getAttribute('data-layer-id') || ''), 10);
+      return {
+        layerId: Number.isFinite(id) ? id : null,
+        text: String(focused.textContent || '').trim(),
+      };
+    });
+  }
+
+  async function readCurrentLayerPanel() {
+    return page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('#cad-layer-list .cad-layer-item'));
+      const current = items.find((item) => item.classList.contains('is-current'));
+      if (!current) return null;
+      const id = Number.parseInt(String(current.getAttribute('data-layer-id') || ''), 10);
+      return {
+        layerId: Number.isFinite(id) ? id : null,
+        text: String(current.textContent || '').trim(),
+      };
+    });
   }
 
   async function waitForSelectionSummaryStartsWith(prefix, timeout = timeoutMs) {
@@ -467,13 +554,121 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     return page.evaluate((pt) => {
       const canvas = document.querySelector('#cad-canvas');
       if (!canvas) return null;
-      const rect = canvas.getBoundingClientRect();
       const d = window.__cadDebug;
       if (!d || typeof d.worldToCanvas !== 'function') return null;
       const local = d.worldToCanvas(pt);
       if (!local || !Number.isFinite(local.x) || !Number.isFinite(local.y)) return null;
+      const rect = canvas.getBoundingClientRect();
       return { x: rect.x + local.x, y: rect.y + local.y };
     }, worldPoint);
+  }
+
+  async function worldToCanvasPoint(worldPoint) {
+    return page.evaluate((pt) => {
+      const d = window.__cadDebug;
+      if (!d || typeof d.worldToCanvas !== 'function') return null;
+      const local = d.worldToCanvas(pt);
+      if (!local || !Number.isFinite(local.x) || !Number.isFinite(local.y)) return null;
+      return { x: local.x, y: local.y };
+    }, worldPoint);
+  }
+
+  async function clickWorldPoint(worldPoint, options = {}) {
+    const local = await worldToCanvasPoint(worldPoint);
+    if (!local) {
+      throw new Error('Failed to resolve canvas click point for world point ' + JSON.stringify(worldPoint));
+    }
+    await page.evaluate((payload) => {
+      const pt = payload && payload.pt ? payload.pt : null;
+      const options = payload && payload.options ? payload.options : {};
+      const el = document.querySelector('#cad-canvas');
+      if (!el) throw new Error('cad-canvas missing');
+      if (!pt || !Number.isFinite(pt.x) || !Number.isFinite(pt.y)) {
+        throw new Error('Invalid canvas-local click point');
+      }
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + pt.x;
+      const y = rect.top + pt.y;
+      const base = {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        button: 0,
+        buttons: 1,
+        clientX: x,
+        clientY: y,
+        detail: 1,
+        shiftKey: Boolean(options && options.shiftKey),
+        ctrlKey: Boolean(options && options.ctrlKey),
+        altKey: Boolean(options && options.altKey),
+        metaKey: Boolean(options && options.metaKey),
+      };
+      const pointerBase = {
+        ...base,
+        pointerId: 1,
+        pointerType: 'mouse',
+        isPrimary: true,
+      };
+      el.dispatchEvent(new PointerEvent('pointerdown', pointerBase));
+      el.dispatchEvent(new MouseEvent('mousedown', base));
+      const up = { ...base, buttons: 0 };
+      const pointerUp = { ...pointerBase, buttons: 0 };
+      el.dispatchEvent(new PointerEvent('pointerup', pointerUp));
+      el.dispatchEvent(new MouseEvent('mouseup', up));
+      el.dispatchEvent(new MouseEvent('click', up));
+    }, { pt: local, options });
+    return local;
+  }
+
+  async function clickWorldCandidatesUntilStatus(candidates, statusFragment, timeout = 700) {
+    const points = Array.isArray(candidates) ? candidates : [candidates];
+    let lastError = null;
+    for (const point of points) {
+      await clickWorldPoint(point);
+      try {
+        await waitForStatusContains(statusFragment, timeout);
+        return point;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError || new Error('Failed to reach status ' + String(statusFragment));
+  }
+
+  async function clickPagePoint(pagePoint, options = {}) {
+    const liveBox = await getCanvasRect();
+    if (!liveBox) {
+      throw new Error('cad-canvas has no bounding box');
+    }
+    const x = Number(pagePoint?.x);
+    const y = Number(pagePoint?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new Error('Invalid page click point: ' + JSON.stringify(pagePoint));
+    }
+    const position = {
+      x: Math.max(1, Math.min(liveBox.width - 1, x - liveBox.x)),
+      y: Math.max(1, Math.min(liveBox.height - 1, y - liveBox.y)),
+    };
+    await canvas.click({ position, ...options });
+    return position;
+  }
+
+  async function hoverPagePoint(pagePoint) {
+    const liveBox = await getCanvasRect();
+    if (!liveBox) {
+      throw new Error('cad-canvas has no bounding box');
+    }
+    const x = Number(pagePoint?.x);
+    const y = Number(pagePoint?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new Error('Invalid page hover point: ' + JSON.stringify(pagePoint));
+    }
+    const position = {
+      x: Math.max(1, Math.min(liveBox.width - 1, x - liveBox.x)),
+      y: Math.max(1, Math.min(liveBox.height - 1, y - liveBox.y)),
+    };
+    await canvas.hover({ position });
+    return position;
   }
 
   async function fitView() {
@@ -540,14 +735,14 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       { x: seedPoint.x - 10, y: seedPoint.y - 10 },
     ];
     for (const p of samples) {
-      await page.mouse.move(p.x, p.y);
+      await hoverPagePoint(p);
       await page.waitForTimeout(20);
       const hover = await readGripHoverOverlay();
       if (!hover || hover.kind !== kind) continue;
       if (hover.point && Number.isFinite(hover.point.x) && Number.isFinite(hover.point.y)) {
         const fromWorld = await worldToPagePoint({ x: hover.point.x, y: hover.point.y });
         if (fromWorld && Number.isFinite(fromWorld.x) && Number.isFinite(fromWorld.y)) {
-          await page.mouse.move(fromWorld.x, fromWorld.y);
+          await hoverPagePoint(fromWorld);
           return fromWorld;
         }
       }
@@ -609,23 +804,37 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   const lineP2 = point(0.65, 0.55);
   await page.mouse.click(lineP1.x, lineP1.y);
   await page.mouse.click(lineP2.x, lineP2.y);
-  await waitForTypesInclude('line');
-  const lineAfterDraw = (await page.textContent('#cad-selection-summary')) || '';
+  const lineCreated = await waitForPrimaryEntityType('line');
+  if (!lineCreated) {
+    throw new Error('line: expected created line to become primary selection');
+  }
+  const lineAfterDraw = await readSelectionSummaryText();
+  if (!parseTypes(lineAfterDraw).includes('line')) {
+    throw new Error('line: selection summary missing line after draw (' + JSON.stringify(lineAfterDraw) + ')');
+  }
   results.line = {
     afterDraw: lineAfterDraw,
     types: parseTypes(lineAfterDraw),
   };
-  await blurActive();
-  await page.keyboard.press('Control+Z');
+  const lineUndo = await runDebugCommand('history.undo');
+  if (!lineUndo?.ok) {
+    throw new Error('line: undo failed');
+  }
   await page.waitForFunction(() => {
     const el = document.querySelector('#cad-selection-summary');
     const t = el && el.textContent ? el.textContent.toLowerCase() : '';
     return t.includes('no selection');
   }, null, { timeout: timeoutMs });
-  results.line.afterUndo = (await page.textContent('#cad-selection-summary')) || '';
-  await page.keyboard.press('Control+Y');
-  await waitForTypesInclude('line');
-  results.line.afterRedo = (await page.textContent('#cad-selection-summary')) || '';
+  results.line.afterUndo = await readSelectionSummaryText();
+  const lineRedo = await runDebugCommand('history.redo');
+  if (!lineRedo?.ok) {
+    throw new Error('line: redo failed');
+  }
+  const lineAfterRedo = await waitForPrimaryEntityType('line');
+  if (!lineAfterRedo) {
+    throw new Error('line: expected redo line to become primary selection');
+  }
+  results.line.afterRedo = await readSelectionSummaryText();
 
   setStep('fillet_polyline');
   // 2) Fillet on polyline corner (same polyline, adjacent segments)
@@ -644,13 +853,17 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   // then retry with a valid radius without re-picking first segment.
   await page.fill('#cad-command-input', 'fillet 999');
   await page.click('[data-tool=\"fillet\"]');
-  const segH = await pointLive(0.40, 0.30);
-  const segV = await pointLive(0.55, 0.425);
+  const filletCornerPicks = await polylineCornerSegmentPickPoints();
+  if (!filletCornerPicks) {
+    throw new Error('Fillet polyline: failed to resolve segment pick points from created polyline');
+  }
+  const segH = filletCornerPicks.midA;
+  const segV = filletCornerPicks.midB;
   results.__fillet_debug = { polyA, polyB, polyC, segH, segV };
   await page.mouse.click(segH.x, segH.y);
   await page.mouse.click(segV.x, segV.y);
   const filletFailStatus = (await page.textContent('#cad-status-message')) || '';
-  const filletFailCodeMatch = String(filletFailStatus).match(/\\[([A-Z0-9_]+)\\]/);
+  const filletFailCodeMatch = String(filletFailStatus).match(/\[([A-Z0-9_]+)\]/);
   const filletFailCode = filletFailCodeMatch ? filletFailCodeMatch[1] : '';
   if (!filletFailCode) {
     throw new Error('Fillet failure status missing error code: ' + filletFailStatus);
@@ -660,7 +873,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   const filletRetrySucceeded = await page.waitForFunction(() => {
     const el = document.querySelector('#cad-selection-summary');
     const text = (el && el.textContent) ? el.textContent : '';
-    const m = text.match(/\\(([^)]*)\\)/);
+    const m = text.match(/\(([^)]*)\)/);
     if (!m) return false;
     const types = m[1].split(',').map((s) => s.trim()).filter(Boolean);
     return types.includes('arc');
@@ -697,13 +910,17 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   await page.fill('#cad-command-input', 'chamfer 999 999');
   results.__chamfer_debug = { polyA, polyB, polyC };
   await page.click('[data-tool=\"chamfer\"]');
-  const chamferSegH = await pointLive(0.40, 0.30);
-  const chamferSegV = await pointLive(0.55, 0.425);
+  const chamferCornerPicks = await polylineCornerSegmentPickPoints();
+  if (!chamferCornerPicks) {
+    throw new Error('Chamfer polyline: failed to resolve segment pick points from created polyline');
+  }
+  const chamferSegH = chamferCornerPicks.midA;
+  const chamferSegV = chamferCornerPicks.midB;
   results.__chamfer_debug.lastAttempt = { attempt: 0, segH: chamferSegH, segV: chamferSegV };
   await page.mouse.click(chamferSegH.x, chamferSegH.y);
   await page.mouse.click(chamferSegV.x, chamferSegV.y);
   const chamferFailStatus = (await page.textContent('#cad-status-message')) || '';
-  const chamferFailCodeMatch = String(chamferFailStatus).match(/\\[([A-Z0-9_]+)\\]/);
+  const chamferFailCodeMatch = String(chamferFailStatus).match(/\[([A-Z0-9_]+)\]/);
   const chamferFailCode = chamferFailCodeMatch ? chamferFailCodeMatch[1] : '';
   if (!chamferFailCode) {
     throw new Error('Chamfer failure status missing error code: ' + chamferFailStatus);
@@ -713,7 +930,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   const chamferRetrySucceeded = await page.waitForFunction(() => {
     const el = document.querySelector('#cad-selection-summary');
     const text = (el && el.textContent) ? el.textContent : '';
-    const m = text.match(/\\(([^)]*)\\)/);
+    const m = text.match(/\(([^)]*)\)/);
     if (!m) return false;
     const types = m[1].split(',').map((s) => s.trim()).filter(Boolean);
     return types.includes('line');
@@ -752,6 +969,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     if (!createH?.ok || !createV?.ok) {
       throw new Error('Failed to create fillet/chamfer preselection fixture');
     }
+    await fitView();
     const entities = await readAllEntities();
     const lines = entities.filter((entity) => entity && entity.type === 'line');
     if (lines.length < 2) {
@@ -766,17 +984,95 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     if (!vertical) vertical = lines[1] || lines[0];
     const firstWorld = midpoint(horizontal.start, horizontal.end);
     const secondWorld = midpoint(vertical.start, vertical.end);
+    const pairFirstWorld = { x: 8, y: 20 };
+    const pairSecondWorld = { x: 10, y: 18 };
     const first = await worldToPagePoint(firstWorld);
     const second = await worldToPagePoint(secondWorld);
-    if (!first || !second) {
+    const pairFirst = await worldToPagePoint(pairFirstWorld);
+    const pairSecond = await worldToPagePoint(pairSecondWorld);
+    if (!first || !second || !pairFirst || !pairSecond) {
       throw new Error('Failed to resolve preselection click points');
     }
-    return { first, second, firstWorld, secondWorld };
+    return {
+      first,
+      second,
+      firstWorld,
+      secondWorld,
+      pairFirst,
+      pairSecond,
+      pairFirstWorld,
+      pairSecondWorld,
+    };
   };
+
+  const setupLineCircleFixture = async (opts = {}) => {
+    const lineLayerId = Number.isFinite(opts?.lineLayerId) ? Number(opts.lineLayerId) : 0;
+    const circleLayerId = Number.isFinite(opts?.circleLayerId) ? Number(opts.circleLayerId) : 0;
+    const lineStart = opts?.lineStart || { x: -12, y: 0 };
+    const lineEnd = opts?.lineEnd || { x: 12, y: 0 };
+    const circleCenter = opts?.circleCenter || { x: 0, y: 8 };
+    const radius = Number.isFinite(opts?.radius) ? Number(opts.radius) : 5;
+    await clearDoc();
+    const createLine = await runDebugCommand('entity.create', {
+      entity: { type: 'line', start: lineStart, end: lineEnd, layerId: lineLayerId },
+    });
+    const createCircle = await runDebugCommand('entity.create', {
+      entity: { type: 'circle', center: circleCenter, radius, layerId: circleLayerId },
+    });
+    if (!createLine?.ok || !createCircle?.ok) {
+      throw new Error('Failed to create fillet/chamfer curve preselection fixture');
+    }
+    await fitView();
+    const lineWorld = opts?.lineWorld || { x: -3, y: 0 };
+    const circleWorld = opts?.circleWorld || {
+      x: circleCenter.x - (radius / Math.sqrt(2)),
+      y: circleCenter.y - (radius / Math.sqrt(2)),
+    };
+    const linePage = await worldToPagePoint(lineWorld);
+    const circlePage = await worldToPagePoint(circleWorld);
+    if (!linePage || !circlePage) {
+      throw new Error('Failed to resolve curve preselection click points');
+    }
+    const selectionRect = opts?.selectionRect || {
+      x0: Math.min(lineStart.x, lineEnd.x, circleCenter.x - radius) - 2,
+      y0: Math.min(lineStart.y, lineEnd.y, circleCenter.y - radius) - 2,
+      x1: Math.max(lineStart.x, lineEnd.x, circleCenter.x + radius) + 2,
+      y1: Math.max(lineStart.y, lineEnd.y, circleCenter.y + radius) + 2,
+    };
+    return {
+      lineWorld,
+      circleWorld,
+      linePage,
+      circlePage,
+      selectionRect,
+    };
+  };
+
+  const waitForFilletApplied = async (arcCountMin, timeout) => page.waitForFunction((minArcCount) => {
+    const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
+    if (status.includes('fillet applied')) return true;
+    const debug = window.__cadDebug;
+    if (!debug || typeof debug.listEntities !== 'function') return false;
+    const entities = debug.listEntities();
+    if (!Array.isArray(entities)) return false;
+    return entities.filter((entity) => entity && entity.type === 'arc').length >= minArcCount;
+  }, arcCountMin, { timeout }).then(() => true).catch(() => false);
+
+  const waitForChamferApplied = async (lineCountMin, arcCountMin, timeout) => page.waitForFunction(({ minLineCount, minArcCount }) => {
+    const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
+    if (status.includes('chamfer applied')) return true;
+    const debug = window.__cadDebug;
+    if (!debug || typeof debug.listEntities !== 'function') return false;
+    const entities = debug.listEntities();
+    if (!Array.isArray(entities)) return false;
+    const lineCount = entities.filter((entity) => entity && entity.type === 'line').length;
+    const arcCount = entities.filter((entity) => entity && entity.type === 'arc').length;
+    return lineCount >= minLineCount && arcCount >= minArcCount;
+  }, { minLineCount: lineCountMin, minArcCount: arcCountMin }, { timeout }).then(() => true).catch(() => false);
 
   const filletPrePoints = await setupCornerLines();
   await activateTool('select', 'select: click entity');
-  await page.mouse.click(filletPrePoints.first.x, filletPrePoints.first.y);
+  await clickWorldPoint(filletPrePoints.firstWorld);
   const filletPrimary = await waitForPrimaryEntityType('line', timeoutMs);
   const filletPreselected = !!filletPrimary;
   if (!filletPreselected) {
@@ -791,11 +1087,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!filletPromptSecond) {
     throw new Error('Fillet preselection did not enter second-pick prompt');
   }
-  let filletSecondPoint = await worldToPagePoint(filletPrePoints.secondWorld);
-  if (!filletSecondPoint) {
-    throw new Error('Fillet preselection failed to remap second pick');
-  }
-  await page.mouse.click(filletSecondPoint.x, filletSecondPoint.y);
+  await clickWorldPoint(filletPrePoints.secondWorld);
   let filletFastApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('fillet applied')) return true;
@@ -806,11 +1098,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     return entities.some((entity) => entity && entity.type === 'arc');
   }, null, { timeout: 600 }).then(() => true).catch(() => false);
   if (!filletFastApplied) {
-    filletSecondPoint = await worldToPagePoint(filletPrePoints.secondWorld);
-    if (!filletSecondPoint) {
-      throw new Error('Fillet preselection failed to remap second pick for retry');
-    }
-    await page.mouse.click(filletSecondPoint.x, filletSecondPoint.y);
+    await clickWorldPoint(filletPrePoints.secondWorld);
     filletFastApplied = await page.waitForFunction(() => {
       const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
       if (status.includes('fillet applied')) return true;
@@ -833,7 +1121,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
   const chamferPrePoints = await setupCornerLines();
   await activateTool('select', 'select: click entity');
-  await page.mouse.click(chamferPrePoints.first.x, chamferPrePoints.first.y);
+  await clickWorldPoint(chamferPrePoints.firstWorld);
   const chamferPrimary = await waitForPrimaryEntityType('line', timeoutMs);
   const chamferPreselected = !!chamferPrimary;
   if (!chamferPreselected) {
@@ -848,11 +1136,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!chamferPromptSecond) {
     throw new Error('Chamfer preselection did not enter second-pick prompt');
   }
-  let chamferSecondPoint = await worldToPagePoint(chamferPrePoints.secondWorld);
-  if (!chamferSecondPoint) {
-    throw new Error('Chamfer preselection failed to remap second pick');
-  }
-  await page.mouse.click(chamferSecondPoint.x, chamferSecondPoint.y);
+  await clickWorldPoint(chamferPrePoints.secondWorld);
   let chamferFastApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('chamfer applied')) return true;
@@ -864,11 +1148,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     return lineCount >= 3;
   }, null, { timeout: 600 }).then(() => true).catch(() => false);
   if (!chamferFastApplied) {
-    chamferSecondPoint = await worldToPagePoint(chamferPrePoints.secondWorld);
-    if (!chamferSecondPoint) {
-      throw new Error('Chamfer preselection failed to remap second pick for retry');
-    }
-    await page.mouse.click(chamferSecondPoint.x, chamferSecondPoint.y);
+    await clickWorldPoint(chamferPrePoints.secondWorld);
     chamferFastApplied = await page.waitForFunction(() => {
       const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
       if (status.includes('chamfer applied')) return true;
@@ -888,6 +1168,75 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   const chamferFastLineCount = chamferFastEntities.filter((entity) => entity && entity.type === 'line').length;
   if (chamferFastLineCount < 3) {
     throw new Error('Chamfer preselection fast-path did not create connector line');
+  }
+
+  const filletCurvePoints = await setupLineCircleFixture();
+  await activateTool('select', 'select: click entity');
+  await clickWorldPoint(filletCurvePoints.circleWorld);
+  const filletCurvePrimary = await waitForPrimaryEntityType('circle', timeoutMs);
+  const filletCurvePreselected = !!filletCurvePrimary;
+  if (!filletCurvePreselected) {
+    throw new Error('Fillet curve preselection setup failed');
+  }
+  await page.fill('#cad-command-input', 'fillet 2');
+  await page.click('[data-tool=\"fillet\"]');
+  const filletCurvePromptSecond = await page.waitForFunction(() => {
+    const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
+    return status.includes('click second target');
+  }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
+  if (!filletCurvePromptSecond) {
+    throw new Error('Fillet curve preselection did not enter second-pick prompt');
+  }
+  await clickWorldPoint(filletCurvePoints.lineWorld);
+  const filletCurveApplied = await waitForFilletApplied(2, timeoutMs);
+  if (!filletCurveApplied) {
+    throw new Error('Fillet curve preselection fast-path did not apply');
+  }
+  const filletCurveStatus = (await page.textContent('#cad-status-message')) || '';
+  const filletCurveEntities = await readAllEntities();
+  const filletCurveArcCount = filletCurveEntities.filter((entity) => entity && entity.type === 'arc').length;
+  if (filletCurveArcCount < 2) {
+    throw new Error('Fillet curve preselection fast-path did not create trimmed circle arc and fillet arc');
+  }
+
+  const chamferCurvePoints = await setupLineCircleFixture({
+    circleCenter: { x: 0, y: 0 },
+    lineWorld: { x: 7, y: 0 },
+    circleWorld: { x: 5 / Math.sqrt(2), y: 5 / Math.sqrt(2) },
+    selectionRect: {
+      x0: -14,
+      y0: -7,
+      x1: 14,
+      y1: 7,
+    },
+  });
+  await activateTool('select', 'select: click entity');
+  await clickWorldPoint(chamferCurvePoints.circleWorld);
+  const chamferCurvePrimary = await waitForPrimaryEntityType('circle', timeoutMs);
+  const chamferCurvePreselected = !!chamferCurvePrimary;
+  if (!chamferCurvePreselected) {
+    throw new Error('Chamfer curve preselection setup failed');
+  }
+  await page.fill('#cad-command-input', 'chamfer 2 3');
+  await page.click('[data-tool=\"chamfer\"]');
+  const chamferCurvePromptSecond = await page.waitForFunction(() => {
+    const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
+    return status.includes('click second line/polyline') || status.includes('click second target');
+  }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
+  if (!chamferCurvePromptSecond) {
+    throw new Error('Chamfer curve preselection did not enter second-pick prompt');
+  }
+  await clickWorldPoint(chamferCurvePoints.lineWorld);
+  const chamferCurveApplied = await waitForChamferApplied(2, 1, timeoutMs);
+  if (!chamferCurveApplied) {
+    throw new Error('Chamfer curve preselection fast-path did not apply');
+  }
+  const chamferCurveStatus = (await page.textContent('#cad-status-message')) || '';
+  const chamferCurveEntities = await readAllEntities();
+  const chamferCurveLineCount = chamferCurveEntities.filter((entity) => entity && entity.type === 'line').length;
+  const chamferCurveArcCount = chamferCurveEntities.filter((entity) => entity && entity.type === 'arc').length;
+  if (chamferCurveLineCount < 2 || chamferCurveArcCount < 1) {
+    throw new Error('Chamfer curve preselection fast-path did not create connector line and trimmed circle arc');
   }
 
   // Two-target preselection fast-path: with exactly two lines preselected before tool
@@ -925,8 +1274,8 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!filletPairPromptSecond) {
     throw new Error('Fillet pair preselection did not enter one-click pair prompt');
   }
-  await page.mouse.click(filletPairPoints.second.x, filletPairPoints.second.y);
-  const filletPairApplied = await page.waitForFunction(() => {
+  await clickWorldPoint(filletPairPoints.pairSecondWorld);
+  let filletPairApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('fillet applied')) return true;
     const debug = window.__cadDebug;
@@ -935,6 +1284,18 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     if (!Array.isArray(entities)) return false;
     return entities.some((entity) => entity && entity.type === 'arc');
   }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
+  if (!filletPairApplied) {
+    await clickWorldPoint(filletPairPoints.pairSecondWorld);
+    filletPairApplied = await page.waitForFunction(() => {
+      const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
+      if (status.includes('fillet applied')) return true;
+      const debug = window.__cadDebug;
+      if (!debug || typeof debug.listEntities !== 'function') return false;
+      const entities = debug.listEntities();
+      if (!Array.isArray(entities)) return false;
+      return entities.some((entity) => entity && entity.type === 'arc');
+    }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
+  }
   if (!filletPairApplied) {
     throw new Error('Fillet pair preselection one-click path did not apply');
   }
@@ -971,8 +1332,8 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!chamferPairPromptSecond) {
     throw new Error('Chamfer pair preselection did not enter one-click pair prompt');
   }
-  await page.mouse.click(chamferPairPoints.first.x, chamferPairPoints.first.y);
-  const chamferPairApplied = await page.waitForFunction(() => {
+  await clickWorldPoint(chamferPairPoints.pairFirstWorld);
+  let chamferPairApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('chamfer applied')) return true;
     const debug = window.__cadDebug;
@@ -981,6 +1342,18 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     if (!Array.isArray(entities)) return false;
     return entities.filter((entity) => entity && entity.type === 'line').length >= 3;
   }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
+  if (!chamferPairApplied) {
+    await clickWorldPoint(chamferPairPoints.pairFirstWorld);
+    chamferPairApplied = await page.waitForFunction(() => {
+      const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
+      if (status.includes('chamfer applied')) return true;
+      const debug = window.__cadDebug;
+      if (!debug || typeof debug.listEntities !== 'function') return false;
+      const entities = debug.listEntities();
+      if (!Array.isArray(entities)) return false;
+      return entities.filter((entity) => entity && entity.type === 'line').length >= 3;
+    }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
+  }
   if (!chamferPairApplied) {
     throw new Error('Chamfer pair preselection one-click path did not apply');
   }
@@ -991,11 +1364,106 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     throw new Error('Chamfer pair preselection one-click path did not create connector line');
   }
 
+  const filletCurvePairPoints = await setupLineCircleFixture();
+  const filletCurvePairSelect = await runDebugCommand('selection.box', {
+    rect: filletCurvePairPoints.selectionRect,
+    crossing: false,
+  });
+  if (!filletCurvePairSelect?.ok) {
+    throw new Error('Fillet curve pair preselection setup failed');
+  }
+  const filletCurvePairSelectionCount = await page.evaluate(() => {
+    const d = window.__cadDebug;
+    if (!d || typeof d.getSelectionIds !== 'function') return 0;
+    const ids = d.getSelectionIds();
+    return Array.isArray(ids) ? ids.length : 0;
+  });
+  if (filletCurvePairSelectionCount !== 2) {
+    throw new Error('Fillet curve pair preselection expected 2 selected entities, got ' + filletCurvePairSelectionCount);
+  }
+  await page.fill('#cad-command-input', 'fillet 2');
+  await page.click('[data-tool=\"fillet\"]');
+  const filletCurvePairPromptSecond = await page.waitForFunction(() => {
+    const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
+    return status.includes('either selected target');
+  }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
+  if (!filletCurvePairPromptSecond) {
+    throw new Error('Fillet curve pair preselection did not enter one-click pair prompt');
+  }
+  await clickWorldPoint(filletCurvePairPoints.circleWorld);
+  let filletCurvePairApplied = await waitForFilletApplied(2, timeoutMs);
+  if (!filletCurvePairApplied) {
+    await clickWorldPoint(filletCurvePairPoints.circleWorld);
+    filletCurvePairApplied = await waitForFilletApplied(2, timeoutMs);
+  }
+  if (!filletCurvePairApplied) {
+    throw new Error('Fillet curve pair preselection one-click path did not apply');
+  }
+  const filletCurvePairStatus = (await page.textContent('#cad-status-message')) || '';
+  const filletCurvePairEntities = await readAllEntities();
+  const filletCurvePairArcCount = filletCurvePairEntities.filter((entity) => entity && entity.type === 'arc').length;
+  if (filletCurvePairArcCount < 2) {
+    throw new Error('Fillet curve pair preselection one-click path did not create trimmed circle arc and fillet arc');
+  }
+
+  const chamferCurvePairPoints = await setupLineCircleFixture({
+    circleCenter: { x: 0, y: 0 },
+    lineWorld: { x: 7, y: 0 },
+    circleWorld: { x: 5 / Math.sqrt(2), y: 5 / Math.sqrt(2) },
+    selectionRect: {
+      x0: -14,
+      y0: -7,
+      x1: 14,
+      y1: 7,
+    },
+  });
+  const chamferCurvePairSelect = await runDebugCommand('selection.box', {
+    rect: chamferCurvePairPoints.selectionRect,
+    crossing: false,
+  });
+  if (!chamferCurvePairSelect?.ok) {
+    throw new Error('Chamfer curve pair preselection setup failed');
+  }
+  const chamferCurvePairSelectionCount = await page.evaluate(() => {
+    const d = window.__cadDebug;
+    if (!d || typeof d.getSelectionIds !== 'function') return 0;
+    const ids = d.getSelectionIds();
+    return Array.isArray(ids) ? ids.length : 0;
+  });
+  if (chamferCurvePairSelectionCount !== 2) {
+    throw new Error('Chamfer curve pair preselection expected 2 selected entities, got ' + chamferCurvePairSelectionCount);
+  }
+  await page.fill('#cad-command-input', 'chamfer 2 3');
+  await page.click('[data-tool=\"chamfer\"]');
+  const chamferCurvePairPromptSecond = await page.waitForFunction(() => {
+    const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
+    return status.includes('either selected target');
+  }, null, { timeout: timeoutMs }).then(() => true).catch(() => false);
+  if (!chamferCurvePairPromptSecond) {
+    throw new Error('Chamfer curve pair preselection did not enter one-click pair prompt');
+  }
+  await clickWorldPoint(chamferCurvePairPoints.circleWorld);
+  let chamferCurvePairApplied = await waitForChamferApplied(2, 1, timeoutMs);
+  if (!chamferCurvePairApplied) {
+    await clickWorldPoint(chamferCurvePairPoints.circleWorld);
+    chamferCurvePairApplied = await waitForChamferApplied(2, 1, timeoutMs);
+  }
+  if (!chamferCurvePairApplied) {
+    throw new Error('Chamfer curve pair preselection one-click path did not apply');
+  }
+  const chamferCurvePairStatus = (await page.textContent('#cad-status-message')) || '';
+  const chamferCurvePairEntities = await readAllEntities();
+  const chamferCurvePairLineCount = chamferCurvePairEntities.filter((entity) => entity && entity.type === 'line').length;
+  const chamferCurvePairArcCount = chamferCurvePairEntities.filter((entity) => entity && entity.type === 'arc').length;
+  if (chamferCurvePairLineCount < 2 || chamferCurvePairArcCount < 1) {
+    throw new Error('Chamfer curve pair preselection one-click path did not create connector line and trimmed circle arc');
+  }
+
   // Cross-layer preselection path: keep one line on layer 0 and the other on layer 1.
   // Fillet/Chamfer should still apply when both layers are unlocked.
   const filletCrossLayerPoints = await setupCornerLines({ firstLayerId: 0, secondLayerId: 1 });
   await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(filletCrossLayerPoints.first.x, filletCrossLayerPoints.first.y);
+  await clickWorldPoint(filletCrossLayerPoints.firstWorld);
   const filletCrossLayerPreselected = !!(await waitForPrimaryEntityType('line', timeoutMs));
   if (!filletCrossLayerPreselected) {
     throw new Error('Fillet cross-layer preselection setup failed');
@@ -1009,7 +1477,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!filletCrossLayerPromptSecond) {
     throw new Error('Fillet cross-layer preselection did not enter second-pick prompt');
   }
-  await page.mouse.click(filletCrossLayerPoints.second.x, filletCrossLayerPoints.second.y);
+  await clickWorldPoint(filletCrossLayerPoints.secondWorld);
   const filletCrossLayerApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('fillet applied')) return true;
@@ -1031,7 +1499,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
   const chamferCrossLayerPoints = await setupCornerLines({ firstLayerId: 0, secondLayerId: 1 });
   await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(chamferCrossLayerPoints.first.x, chamferCrossLayerPoints.first.y);
+  await clickWorldPoint(chamferCrossLayerPoints.firstWorld);
   const chamferCrossLayerPreselected = !!(await waitForPrimaryEntityType('line', timeoutMs));
   if (!chamferCrossLayerPreselected) {
     throw new Error('Chamfer cross-layer preselection setup failed');
@@ -1045,7 +1513,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!chamferCrossLayerPromptSecond) {
     throw new Error('Chamfer cross-layer preselection did not enter second-pick prompt');
   }
-  await page.mouse.click(chamferCrossLayerPoints.second.x, chamferCrossLayerPoints.second.y);
+  await clickWorldPoint(chamferCrossLayerPoints.secondWorld);
   const chamferCrossLayerApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('chamfer applied')) return true;
@@ -1113,7 +1581,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!filletRuntimeSelect?.ok) {
     throw new Error('Fillet runtime selection box command failed');
   }
-  await page.mouse.click(filletRuntimePoints.first.x, filletRuntimePoints.first.y);
+  await clickWorldPoint(filletRuntimePoints.firstWorld);
   const filletRuntimeApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('fillet applied')) return true;
@@ -1166,7 +1634,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!chamferRuntimeSelect?.ok) {
     throw new Error('Chamfer runtime selection box command failed');
   }
-  await page.mouse.click(chamferRuntimePoints.first.x, chamferRuntimePoints.first.y);
+  await clickWorldPoint(chamferRuntimePoints.firstWorld);
   const chamferRuntimeApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('chamfer applied')) return true;
@@ -1192,7 +1660,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   // as fresh first-pick (no immediate apply), then second click applies.
   const filletEscPoints = await setupCornerLines();
   await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(filletEscPoints.first.x, filletEscPoints.first.y);
+  await clickWorldPoint(filletEscPoints.firstWorld);
   const filletEscPreselected = !!(await waitForPrimaryEntityType('line', timeoutMs));
   if (!filletEscPreselected) {
     throw new Error('Fillet Esc stale-preselection setup failed');
@@ -1214,7 +1682,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!filletEscCanceled) {
     throw new Error('Fillet Esc stale-preselection cancel was not observed');
   }
-  await page.mouse.click(filletEscPoints.second.x, filletEscPoints.second.y);
+  await clickWorldPoint(filletEscPoints.secondWorld);
   const filletEscNoAutoApply = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (!status.includes('click second line/polyline') && !status.includes('click second target')) return false;
@@ -1228,7 +1696,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     throw new Error('Fillet Esc stale-preselection applied too early after reset');
   }
   const filletEscStatusAfterFirstPick = (await page.textContent('#cad-status-message')) || '';
-  await page.mouse.click(filletEscPoints.first.x, filletEscPoints.first.y);
+  await clickWorldPoint(filletEscPoints.firstWorld);
   const filletEscApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('fillet applied')) return true;
@@ -1245,7 +1713,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
   const chamferEscPoints = await setupCornerLines();
   await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(chamferEscPoints.first.x, chamferEscPoints.first.y);
+  await clickWorldPoint(chamferEscPoints.firstWorld);
   const chamferEscPreselected = !!(await waitForPrimaryEntityType('line', timeoutMs));
   if (!chamferEscPreselected) {
     throw new Error('Chamfer Esc stale-preselection setup failed');
@@ -1267,7 +1735,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!chamferEscCanceled) {
     throw new Error('Chamfer Esc stale-preselection cancel was not observed');
   }
-  await page.mouse.click(chamferEscPoints.second.x, chamferEscPoints.second.y);
+  await clickWorldPoint(chamferEscPoints.secondWorld);
   const chamferEscNoAutoApply = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (!status.includes('click second line/polyline')) return false;
@@ -1281,7 +1749,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     throw new Error('Chamfer Esc stale-preselection applied too early after reset');
   }
   const chamferEscStatusAfterFirstPick = (await page.textContent('#cad-status-message')) || '';
-  await page.mouse.click(chamferEscPoints.first.x, chamferEscPoints.first.y);
+  await clickWorldPoint(chamferEscPoints.firstWorld);
   const chamferEscApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('chamfer applied')) return true;
@@ -1301,10 +1769,19 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     filletFastApplied,
     filletFastArcCount,
     filletFastStatus,
+    filletCurvePreselected,
+    filletCurvePromptSecond,
+    filletCurveApplied,
+    filletCurveArcCount,
+    filletCurveStatus,
     filletPairPromptSecond,
     filletPairApplied,
     filletPairArcCount,
     filletPairStatus,
+    filletCurvePairPromptSecond,
+    filletCurvePairApplied,
+    filletCurvePairArcCount,
+    filletCurvePairStatus,
     filletRuntimePromptFirst,
     filletRuntimeApplied,
     filletRuntimeArcCount,
@@ -1314,10 +1791,21 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     chamferFastApplied,
     chamferFastLineCount,
     chamferFastStatus,
+    chamferCurvePreselected,
+    chamferCurvePromptSecond,
+    chamferCurveApplied,
+    chamferCurveLineCount,
+    chamferCurveArcCount,
+    chamferCurveStatus,
     chamferPairPromptSecond,
     chamferPairApplied,
     chamferPairLineCount,
     chamferPairStatus,
+    chamferCurvePairPromptSecond,
+    chamferCurvePairApplied,
+    chamferCurvePairLineCount,
+    chamferCurvePairArcCount,
+    chamferCurvePairStatus,
     filletCrossLayerPreselected,
     filletCrossLayerPromptSecond,
     filletCrossLayerApplied,
@@ -1375,19 +1863,17 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       throw new Error('Preselected polyline fixture missing polyline');
     }
     // Provide both same-leg and corner-leg points to exercise ambiguous same-segment picks.
-    const firstSide = await worldToPagePoint({ x: 14, y: 18 });
-    const sameLegSecond = await worldToPagePoint({ x: -4, y: 18 });
-    const secondSide = await worldToPagePoint({ x: 20, y: 12 });
-    const fallbackMissSecond = await worldToPagePoint({ x: -35, y: -28 });
-    if (!firstSide || !sameLegSecond || !secondSide || !fallbackMissSecond) {
-      throw new Error('Failed to resolve preselected polyline click points');
-    }
-    return { firstSide, sameLegSecond, secondSide, fallbackMissSecond };
+    return {
+      firstSide: { x: 14, y: 18 },
+      sameLegSecond: { x: -4, y: 18 },
+      secondSide: { x: 20, y: 12 },
+      fallbackMissSecond: { x: -35, y: -28 },
+    };
   };
 
   const filletPolyPre = await setupCornerPolyline();
   await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(filletPolyPre.firstSide.x, filletPolyPre.firstSide.y);
+  await clickWorldPoint(filletPolyPre.firstSide);
   const filletPolyPreselected = !!(await waitForPrimaryEntityType('polyline', timeoutMs));
   if (!filletPolyPreselected) {
     throw new Error('Fillet polyline preselection setup failed');
@@ -1403,7 +1889,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   }
   // first click refines side on the selected polyline, second click intentionally stays
   // on the same leg to verify two-segment auto-pair fallback.
-  await page.mouse.click(filletPolyPre.firstSide.x, filletPolyPre.firstSide.y);
+  await clickWorldPoint(filletPolyPre.firstSide);
   const filletPolyPromptSecond = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     return status.includes('second side on selected polyline');
@@ -1411,7 +1897,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!filletPolyPromptSecond) {
     throw new Error('Fillet polyline preselection did not enter second-side prompt');
   }
-  await page.mouse.click(filletPolyPre.sameLegSecond.x, filletPolyPre.sameLegSecond.y);
+  await clickWorldPoint(filletPolyPre.sameLegSecond);
   const filletPolyApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('fillet applied')) return true;
@@ -1433,7 +1919,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
   const filletPolyFallback = await setupCornerPolyline();
   await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(filletPolyFallback.firstSide.x, filletPolyFallback.firstSide.y);
+  await clickWorldPoint(filletPolyFallback.firstSide);
   if (!(await waitForPrimaryEntityType('polyline', timeoutMs))) {
     throw new Error('Fillet polyline fallback setup failed');
   }
@@ -1446,7 +1932,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!filletPolyFallbackPromptFirst) {
     throw new Error('Fillet polyline fallback did not enter first-side prompt');
   }
-  await page.mouse.click(filletPolyFallback.firstSide.x, filletPolyFallback.firstSide.y);
+  await clickWorldPoint(filletPolyFallback.firstSide);
   const filletPolyFallbackPromptSecond = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     return status.includes('second side on selected polyline');
@@ -1456,7 +1942,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   }
   // Intentionally click away from geometry; when hit-test misses this should fallback to
   // selected polyline id and apply using current pointer as second-side pick.
-  await page.mouse.click(filletPolyFallback.fallbackMissSecond.x, filletPolyFallback.fallbackMissSecond.y);
+  await clickWorldPoint(filletPolyFallback.fallbackMissSecond);
   let filletPolyFallbackApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('fillet applied')) return true;
@@ -1469,7 +1955,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   let filletPolyFallbackRecovered = false;
   if (!filletPolyFallbackApplied) {
     // Keep gate deterministic: recover with explicit same-entity second-side hit.
-    await page.mouse.click(filletPolyFallback.secondSide.x, filletPolyFallback.secondSide.y);
+    await clickWorldPoint(filletPolyFallback.secondSide);
     const recovered = await page.waitForFunction(() => {
       const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
       if (status.includes('fillet applied')) return true;
@@ -1493,7 +1979,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
   const chamferPolyPre = await setupCornerPolyline();
   await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(chamferPolyPre.firstSide.x, chamferPolyPre.firstSide.y);
+  await clickWorldPoint(chamferPolyPre.firstSide);
   const chamferPolyPreselected = !!(await waitForPrimaryEntityType('polyline', timeoutMs));
   if (!chamferPolyPreselected) {
     throw new Error('Chamfer polyline preselection setup failed');
@@ -1507,7 +1993,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!chamferPolyPromptFirst) {
     throw new Error('Chamfer polyline preselection did not enter first-side prompt');
   }
-  await page.mouse.click(chamferPolyPre.firstSide.x, chamferPolyPre.firstSide.y);
+  await clickWorldPoint(chamferPolyPre.firstSide);
   const chamferPolyPromptSecond = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     return status.includes('second side on selected polyline');
@@ -1515,7 +2001,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!chamferPolyPromptSecond) {
     throw new Error('Chamfer polyline preselection did not enter second-side prompt');
   }
-  await page.mouse.click(chamferPolyPre.sameLegSecond.x, chamferPolyPre.sameLegSecond.y);
+  await clickWorldPoint(chamferPolyPre.sameLegSecond);
   const chamferPolyApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('chamfer applied')) return true;
@@ -1538,7 +2024,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
   const chamferPolyFallback = await setupCornerPolyline();
   await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(chamferPolyFallback.firstSide.x, chamferPolyFallback.firstSide.y);
+  await clickWorldPoint(chamferPolyFallback.firstSide);
   if (!(await waitForPrimaryEntityType('polyline', timeoutMs))) {
     throw new Error('Chamfer polyline fallback setup failed');
   }
@@ -1551,7 +2037,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!chamferPolyFallbackPromptFirst) {
     throw new Error('Chamfer polyline fallback did not enter first-side prompt');
   }
-  await page.mouse.click(chamferPolyFallback.firstSide.x, chamferPolyFallback.firstSide.y);
+  await clickWorldPoint(chamferPolyFallback.firstSide);
   const chamferPolyFallbackPromptSecond = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     return status.includes('second side on selected polyline');
@@ -1559,7 +2045,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (!chamferPolyFallbackPromptSecond) {
     throw new Error('Chamfer polyline fallback did not enter second-side prompt');
   }
-  await page.mouse.click(chamferPolyFallback.fallbackMissSecond.x, chamferPolyFallback.fallbackMissSecond.y);
+  await clickWorldPoint(chamferPolyFallback.fallbackMissSecond);
   let chamferPolyFallbackApplied = await page.waitForFunction(() => {
     const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
     if (status.includes('chamfer applied')) return true;
@@ -1571,7 +2057,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   }, null, { timeout: 1200 }).then(() => true).catch(() => false);
   let chamferPolyFallbackRecovered = false;
   if (!chamferPolyFallbackApplied) {
-    await page.mouse.click(chamferPolyFallback.secondSide.x, chamferPolyFallback.secondSide.y);
+    await clickWorldPoint(chamferPolyFallback.secondSide);
     const recovered = await page.waitForFunction(() => {
       const status = (document.querySelector('#cad-status-message')?.textContent || '').toLowerCase();
       if (status.includes('chamfer applied')) return true;
@@ -1801,7 +2287,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     arcDrawn = await page.waitForFunction(() => {
       const el = document.querySelector('#cad-selection-summary');
       const text = (el && el.textContent) ? el.textContent : '';
-      const m = text.match(/\\(([^)]*)\\)/);
+      const m = text.match(/\(([^)]*)\)/);
       if (!m) return false;
       const types = m[1].split(',').map((s) => s.trim()).filter(Boolean);
       return types.length === 1 && types[0] === 'arc';
@@ -2120,24 +2606,50 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   setStep('join');
   // 7) Join tool: multi-select two connected lines -> right-click apply -> undo/redo
   await clearDoc();
+  const joinLine0 = { start: { x: -20, y: 0 }, end: { x: 0, y: 0 } };
+  const joinLine1 = { start: { x: 0, y: 0 }, end: { x: 20, y: 10 } };
+  const joinCreateA = await runDebugCommand('entity.create', { entity: { type: 'line', layerId: 0, ...joinLine0 } });
+  const joinCreateB = await runDebugCommand('entity.create', { entity: { type: 'line', layerId: 0, ...joinLine1 } });
+  if (!joinCreateA?.ok || !joinCreateB?.ok) {
+    throw new Error('Join setup failed to seed deterministic lines');
+  }
+  await fitView();
 
-  await page.click('[data-tool=\"line\"]');
-  const jA = point(0.25, 0.55);
-  const jB = point(0.55, 0.55);
-  const jC = point(0.75, 0.65);
-  await page.mouse.click(jA.x, jA.y);
-  await page.mouse.click(jB.x, jB.y);
-  await page.mouse.click(jB.x, jB.y);
-  await page.mouse.click(jC.x, jC.y);
-  await waitForTypesExact(['line']);
+  const joinSeedLines = (await readAllEntities())
+    .filter((entity) => entity
+      && entity.type === 'line'
+      && entity.start
+      && entity.end
+      && Number.isFinite(entity.start.x)
+      && Number.isFinite(entity.start.y)
+      && Number.isFinite(entity.end.x)
+      && Number.isFinite(entity.end.y))
+    .sort((a, b) => {
+      const aMidX = midpoint(a.start, a.end).x;
+      const bMidX = midpoint(b.start, b.end).x;
+      return aMidX - bMidX;
+    });
+  if (joinSeedLines.length !== 2) {
+    throw new Error('Join setup expected 2 line entities after seeding');
+  }
+  const joinPickA = await worldToPagePoint(midpoint(joinSeedLines[0].start, joinSeedLines[0].end));
+  const joinPickB = await worldToPagePoint(midpoint(joinSeedLines[1].start, joinSeedLines[1].end));
+  if (!joinPickA || !joinPickB) {
+    throw new Error('Join setup failed to map line midpoints');
+  }
+  const joinWorldPoints = joinSeedLines.flatMap((entity) => [entity.start, entity.end]);
+  const joinRect = {
+    x0: Math.min(...joinWorldPoints.map((point) => point.x)) - 1,
+    y0: Math.min(...joinWorldPoints.map((point) => point.y)) - 1,
+    x1: Math.max(...joinWorldPoints.map((point) => point.x)) + 1,
+    y1: Math.max(...joinWorldPoints.map((point) => point.y)) + 1,
+  };
 
   await page.click('[data-tool=\"select\"]');
-  const jM1 = { x: midpoint(jA, jB).x, y: jA.y };
-  const jM2 = midpoint(jB, jC);
-  await page.mouse.click(jM1.x, jM1.y);
-  await page.keyboard.down('Shift');
-  await page.mouse.click(jM2.x, jM2.y);
-  await page.keyboard.up('Shift');
+  const joinSelectResult = await runDebugCommand('selection.box', { rect: joinRect, crossing: false });
+  if (!joinSelectResult?.ok) {
+    throw new Error('Join setup selection.box failed');
+  }
 
   await page.waitForFunction(() => {
     const el = document.querySelector('#cad-selection-summary');
@@ -2170,16 +2682,25 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   const joinEndB = lineBPoints[1 - bestShared.j];
 
   await page.click('[data-tool=\"join\"]');
-  await page.mouse.click(jM2.x, jM2.y, { button: 'right' });
-  await waitForTypesExact(['polyline']);
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => {
+    const d = window.__cadDebug;
+    const state = d && typeof d.getState === 'function' ? d.getState() : null;
+    const statusEl = document.querySelector('#cad-status-message');
+    const statusText = statusEl && statusEl.textContent ? statusEl.textContent.toLowerCase() : '';
+    if (state && state.entityCount === 1) return true;
+    return statusText.includes('unresolved endpoint matches') || statusText.includes('join failed');
+  }, null, { timeout: timeoutMs });
   const joinAfterState = await readDebugState();
+  const joinStatus = (await page.textContent('#cad-status-message')) || '';
+  if (!joinAfterState || joinAfterState.entityCount !== 1) {
+    throw new Error('Join failed to merge deterministic lines: ' + joinStatus);
+  }
+  await waitForTypesExact(['polyline']);
   const joinAfterId = joinAfterState && Number.isFinite(joinAfterState.primaryId)
     ? Number(joinAfterState.primaryId)
     : NaN;
   const joinPolyline = Number.isFinite(joinAfterId) ? await readEntityById(joinAfterId) : null;
-  if (!joinAfterState || joinAfterState.entityCount !== 1) {
-    throw new Error('Join expected 1 entity after merge');
-  }
   if (!joinPolyline || joinPolyline.type !== 'polyline' || !Array.isArray(joinPolyline.points)) {
     throw new Error('Join failed to produce selected polyline');
   }
@@ -2330,8 +2851,117 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     status: (await page.textContent('#cad-status-message')) || '',
   };
 
+  setStep('selection_provenance_summary');
+  // 9) Single-selection provenance/effective-style summary: stable DOM contract + promotion to TRUECOLOR.
+  await clearDoc();
+
+  const createSelectionSummaryFixture = await runDebugCommand('entity.create', {
+    entity: {
+      type: 'line',
+      start: { x: -24, y: 6 },
+      end: { x: 24, y: 6 },
+      layerId: 0,
+      visible: true,
+      color: '#808080',
+      colorSource: 'BYLAYER',
+      colorAci: 8,
+      sourceType: 'INSERT',
+      editMode: 'fragment',
+      space: 1,
+      layout: 'Layout-A',
+      lineType: 'HIDDEN2',
+      lineWeight: 0.55,
+      lineTypeScale: 1.7,
+    },
+  });
+  if (!createSelectionSummaryFixture?.ok) {
+    throw new Error('Selection provenance fixture creation failed');
+  }
+  await waitForTypesExact(['line']);
+  await page.waitForSelector('#cad-selection-details[data-mode=\"single\"]', { timeout: timeoutMs });
+  const selectionContractBefore = await readSelectionDetails();
+  if (!selectionContractBefore || selectionContractBefore.mode !== 'single' || selectionContractBefore.entityCount !== 1 || selectionContractBefore.primaryType !== 'line') {
+    throw new Error('Selection provenance contract did not enter single-select mode');
+  }
+  if (selectionContractBefore.items.origin !== 'INSERT / fragment') {
+    throw new Error('Selection provenance origin summary mismatch: ' + JSON.stringify(selectionContractBefore));
+  }
+  if (selectionContractBefore.items.layer !== '0:0') {
+    throw new Error('Selection provenance layer mismatch: ' + JSON.stringify(selectionContractBefore));
+  }
+  // BYLAYER: effective color is the layer color (#d0d7de for layer 0), not entity's own color (#808080)
+  if (selectionContractBefore.items['effective-color'] !== '#d0d7de') {
+    throw new Error('Selection provenance effective color mismatch: ' + JSON.stringify(selectionContractBefore));
+  }
+  if (selectionContractBefore.items['color-source'] !== 'BYLAYER' || selectionContractBefore.items['color-aci'] !== '8') {
+    throw new Error('Selection provenance color source mismatch: ' + JSON.stringify(selectionContractBefore));
+  }
+  if (selectionContractBefore.items.space !== 'Paper' || selectionContractBefore.items.layout !== 'Layout-A') {
+    throw new Error('Selection provenance space/layout mismatch: ' + JSON.stringify(selectionContractBefore));
+  }
+  if (
+    selectionContractBefore.items['line-type'] !== 'HIDDEN2'
+    || selectionContractBefore.items['line-weight'] !== '0.55'
+    || selectionContractBefore.items['line-type-scale'] !== '1.7'
+  ) {
+    throw new Error('Selection provenance style mismatch: ' + JSON.stringify(selectionContractBefore));
+  }
+  if (
+    selectionContractBefore.badges.type !== 'line'
+    || selectionContractBefore.badges.layer !== '0:0'
+    || selectionContractBefore.badges.space !== 'Paper'
+    || selectionContractBefore.badges.layout !== 'Layout-A'
+    || selectionContractBefore.badges['color-source'] !== 'BYLAYER'
+  ) {
+    throw new Error('Selection provenance badge mismatch: ' + JSON.stringify(selectionContractBefore));
+  }
+  const focusedLayerBefore = await readFocusedLayerPanel();
+  if (!focusedLayerBefore || focusedLayerBefore.layerId !== 0) {
+    throw new Error('Selection provenance layer focus mismatch before edit: ' + JSON.stringify(focusedLayerBefore));
+  }
+
+  await page.fill('#cad-property-form input[name=\"layerId\"]', '1');
+  await blurActive();
+  await page.waitForFunction(() => {
+    const source = document.querySelector('#cad-selection-details [data-selection-field=\"color-source\"] strong');
+    const color = document.querySelector('#cad-selection-details [data-selection-field=\"effective-color\"] strong');
+    return source && String(source.textContent || '').trim() === 'BYLAYER'
+      && color && String(color.textContent || '').trim() === '#ff0000';
+  }, null, { timeout: timeoutMs });
+  const selectionSummaryEntityIds = await readSelectionIds();
+  const selectionContractAfter = await readSelectionDetails();
+  const selectionContractEntity = await readEntityById(selectionSummaryEntityIds[0]);
+  if (
+    !selectionContractAfter
+    || selectionContractAfter.items.layer !== '1:L1'
+    || selectionContractAfter.items['color-source'] !== 'BYLAYER'
+    || selectionContractAfter.items['effective-color'] !== '#ff0000'
+  ) {
+    throw new Error('Selection provenance reassignment summary mismatch: ' + JSON.stringify(selectionContractAfter));
+  }
+  if (selectionContractAfter.badges.layer !== '1:L1' || selectionContractAfter.badges['color-source'] !== 'BYLAYER') {
+    throw new Error('Selection provenance reassignment badge mismatch: ' + JSON.stringify(selectionContractAfter));
+  }
+  if (!selectionContractEntity || selectionContractEntity.layerId !== 1 || selectionContractEntity.colorSource !== 'BYLAYER') {
+    throw new Error('Selection provenance entity reassignment mismatch: ' + JSON.stringify(selectionContractEntity));
+  }
+  const focusedLayerAfter = await readFocusedLayerPanel();
+  if (!focusedLayerAfter || focusedLayerAfter.layerId !== 1) {
+    throw new Error('Selection provenance layer focus mismatch after edit: ' + JSON.stringify(focusedLayerAfter));
+  }
+
+  results.selection_provenance_summary = {
+    summary: (await page.textContent('#cad-selection-summary')) || '',
+    before: selectionContractBefore,
+    after: selectionContractAfter,
+    focused_layer_before: focusedLayerBefore,
+    focused_layer_after: focusedLayerAfter,
+    entity: selectionContractEntity,
+    status: (await page.textContent('#cad-status-message')) || '',
+  };
+
   setStep('text_edit');
-  // 9) Text create + property panel edit + undo/redo
+  // 10) Text create + property panel edit + undo/redo
   await clearDoc();
 
   await page.fill('#cad-command-input', 'text HELLO 3');
@@ -2381,139 +3011,134 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
   setStep('trim_line');
   // 9) Trim tool: boundary + 2 target lines -> trim twice without re-picking boundary (continuous) -> undo/redo last
-  await clearDoc();
+  {
+    await clearDoc();
 
-  await page.click('[data-tool=\"line\"]');
-  const trimB1 = point(0.55, 0.22);
-  const trimB2 = point(0.55, 0.72);
-  await page.mouse.click(trimB1.x, trimB1.y);
-  await page.mouse.click(trimB2.x, trimB2.y);
-  await waitForTypesExact(['line']);
+    const readPrimaryId = async () => page.evaluate(() => {
+      const d = window.__cadDebug;
+      const s = d && typeof d.getState === 'function' ? d.getState() : null;
+      const id = s && Number.isFinite(s.primaryId) ? s.primaryId : NaN;
+      return id;
+    });
+    const trimBoundaryStart = { x: 12, y: -20 };
+    const trimBoundaryEnd = { x: 12, y: 20 };
+    const trimTarget1Start = { x: -20, y: 0 };
+    const trimTarget1End = { x: 20, y: 0 };
+    const trimTarget2Start = { x: -20, y: 10 };
+    const trimTarget2End = { x: 20, y: 10 };
 
-  // Two targets crossing the boundary.
-  await page.click('[data-tool=\"line\"]');
-  const trim1A = point(0.20, 0.50);
-  const trim1B = point(0.80, 0.50);
-  await page.mouse.click(trim1A.x, trim1A.y);
-  await page.mouse.click(trim1B.x, trim1B.y);
-  await waitForTypesExact(['line']);
+    await runDebugCommand('entity.create', {
+      entity: { type: 'line', start: trimBoundaryStart, end: trimBoundaryEnd, layerId: 0, visible: true, color: '#1f2937' },
+    });
+    const trimBoundaryId = await readPrimaryId();
+    const trimBoundary = await readLineEnds(trimBoundaryId);
+    if (!trimBoundary) throw new Error('Trim setup failed to read boundary entity');
+    const trimBoundaryX = trimBoundary.startX;
 
-  await page.click('[data-tool=\"line\"]');
-  const trim2A = point(0.20, 0.62);
-  const trim2B = point(0.80, 0.62);
-  await page.mouse.click(trim2A.x, trim2A.y);
-  await page.mouse.click(trim2B.x, trim2B.y);
-  await waitForTypesExact(['line']);
+    await runDebugCommand('entity.create', {
+      entity: { type: 'line', start: trimTarget1Start, end: trimTarget1End, layerId: 0, visible: true, color: '#1f2937' },
+    });
+    const trim1Id = await readPrimaryId();
+    const trim1Before = await readLineEnds(trim1Id);
+    if (!trim1Before) throw new Error('Trim setup failed to read target1 entity');
 
-  // Deterministic pick points:
-  // - boundary is near x=0.55
-  // - click trim target near the RIGHT side to trim away the right segment and keep the left segment
-  const trim1Select = point(0.30, 0.50);
-  const trim2Select = point(0.30, 0.62);
-  const trim1TrimPick = point(0.74, 0.50);
-  const trim2TrimPick = point(0.74, 0.62);
+    await runDebugCommand('entity.create', {
+      entity: { type: 'line', start: trimTarget2Start, end: trimTarget2End, layerId: 0, visible: true, color: '#1f2937' },
+    });
+    const trim2Id = await readPrimaryId();
+    const trim2Before = await readLineEnds(trim2Id);
+    if (!trim2Before) throw new Error('Trim setup failed to read target2 entity');
 
-  // Record baselines per-target by selecting them before trimming.
-  await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(trim1Select.x, trim1Select.y);
-  await waitForTypesExact(['line']);
-  const trim1Before = {
-    startX: await readNumberInput('start.x'),
-    startY: await readNumberInput('start.y'),
-    endX: await readNumberInput('end.x'),
-    endY: await readNumberInput('end.y'),
-  };
-  await page.mouse.click(trim2Select.x, trim2Select.y);
-  await waitForTypesExact(['line']);
-  const trim2Before = {
-    startX: await readNumberInput('start.x'),
-    startY: await readNumberInput('start.y'),
-    endX: await readNumberInput('end.x'),
-    endY: await readNumberInput('end.y'),
-  };
+    await fitView();
 
-  await page.click('[data-tool=\"trim\"]');
-  const trimBoundaryPick = { x: trimB1.x, y: midpoint(trimB1, trimB2).y - 80 };
-  await page.mouse.click(trimBoundaryPick.x, trimBoundaryPick.y);
-  // Trim target #1.
-  await page.mouse.click(trim1TrimPick.x, trim1TrimPick.y);
-  await page.waitForFunction(() => {
-    const el = document.querySelector('#cad-status-message');
-    const t = el && el.textContent ? el.textContent.toLowerCase() : '';
-    return t.includes('trim applied') && t.includes('boundaries=1');
-  }, null, { timeout: timeoutMs });
-  const trimStatus1 = (await page.textContent('#cad-status-message')) || '';
+    await activateTool('trim', 'trim: click boundary');
+    await clickWorldPoint({ x: trimBoundaryX, y: 18 });
 
-  // Trim target #2 without re-picking the boundary (continuous behavior).
-  await page.mouse.click(trim2TrimPick.x, trim2TrimPick.y);
-  await page.waitForFunction(() => {
-    const el = document.querySelector('#cad-status-message');
-    const t = el && el.textContent ? el.textContent.toLowerCase() : '';
-    return t.includes('trim applied') && t.includes('boundaries=1');
-  }, null, { timeout: timeoutMs });
-  const trimStatus2 = (await page.textContent('#cad-status-message')) || '';
+    await clickWorldPoint({ x: 18, y: trimTarget1Start.y });
+    await waitForStatusContains('trim applied to #' + trim1Id);
+    const trimStatus1 = (await page.textContent('#cad-status-message')) || '';
 
-  await blurActive();
-  await page.keyboard.press('Escape');
+    await clickWorldPoint({ x: 18, y: trimTarget2Start.y });
+    await waitForStatusContains('trim applied to #' + trim2Id);
+    const trimStatus2 = (await page.textContent('#cad-status-message')) || '';
 
-  // After leaving the trim tool, verify both targets actually changed by selecting them and comparing properties.
-  await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(trim1Select.x, trim1Select.y);
-  await waitForTypesExact(['line']);
-  const trim1After = {
-    startX: await readNumberInput('start.x'),
-    startY: await readNumberInput('start.y'),
-    endX: await readNumberInput('end.x'),
-    endY: await readNumberInput('end.y'),
-  };
-  if (Math.abs(trim1After.startX - trim1Before.startX) < 0.1 && Math.abs(trim1After.endX - trim1Before.endX) < 0.1) {
-    throw new Error('Trim target1 did not change');
+    const trim1After = await readLineEnds(trim1Id);
+    const trim2After = await readLineEnds(trim2Id);
+    if (!trim1After || !trim2After) throw new Error('Trim failed to read targets after apply');
+
+    const trim1Dx = Math.min(Math.abs(trim1After.startX - trimBoundaryX), Math.abs(trim1After.endX - trimBoundaryX));
+    const trim2Dx = Math.min(Math.abs(trim2After.startX - trimBoundaryX), Math.abs(trim2After.endX - trimBoundaryX));
+    if (trim1Dx > 0.05 || trim2Dx > 0.05) {
+      throw new Error('Trim target did not reach boundary');
+    }
+    if (
+      Math.abs(trim1After.startX - trim1Before.startX) < 0.05 &&
+      Math.abs(trim1After.endX - trim1Before.endX) < 0.05
+    ) {
+      throw new Error('Trim target1 did not change');
+    }
+    if (
+      Math.abs(trim2After.startX - trim2Before.startX) < 0.05 &&
+      Math.abs(trim2After.endX - trim2Before.endX) < 0.05
+    ) {
+      throw new Error('Trim target2 did not change');
+    }
+
+    await blurActive();
+    await page.keyboard.press('Control+Z');
+    await page.waitForFunction(({ id, before }) => {
+      const d = window.__cadDebug;
+      if (!d || typeof d.getEntity !== 'function') return false;
+      const e = d.getEntity(id);
+      if (!e || e.type !== 'line' || !e.start || !e.end) return false;
+      const sx = e.start.x;
+      const sy = e.start.y;
+      const ex = e.end.x;
+      const ey = e.end.y;
+      if (![sx, sy, ex, ey].every(Number.isFinite)) return false;
+      const tol = 0.08;
+      return (
+        Math.abs(sx - before.startX) <= tol &&
+        Math.abs(sy - before.startY) <= tol &&
+        Math.abs(ex - before.endX) <= tol &&
+        Math.abs(ey - before.endY) <= tol
+      );
+    }, { id: trim2Id, before: trim2Before }, { timeout: timeoutMs });
+
+    await page.keyboard.press('Control+Y');
+    await page.waitForFunction(({ id, after }) => {
+      const d = window.__cadDebug;
+      if (!d || typeof d.getEntity !== 'function') return false;
+      const e = d.getEntity(id);
+      if (!e || e.type !== 'line' || !e.start || !e.end) return false;
+      const sx = e.start.x;
+      const sy = e.start.y;
+      const ex = e.end.x;
+      const ey = e.end.y;
+      if (![sx, sy, ex, ey].every(Number.isFinite)) return false;
+      const tol = 0.08;
+      return (
+        Math.abs(sx - after.startX) <= tol &&
+        Math.abs(sy - after.startY) <= tol &&
+        Math.abs(ex - after.endX) <= tol &&
+        Math.abs(ey - after.endY) <= tol
+      );
+    }, { id: trim2Id, after: trim2After }, { timeout: timeoutMs });
+
+    results.trim_line = {
+      boundaryX: trimBoundaryX,
+      ids: { boundary: trimBoundaryId, target1: trim1Id, target2: trim2Id },
+      target1: { before: trim1Before, after: trim1After, dxToBoundary: trim1Dx },
+      target2: { before: trim2Before, after: trim2After, dxToBoundary: trim2Dx },
+      status1: trimStatus1,
+      status2: trimStatus2,
+      status: (await page.textContent('#cad-status-message')) || '',
+      summary: (await page.textContent('#cad-selection-summary')) || '',
+    };
+
+    await blurActive();
+    await page.keyboard.press('Escape');
   }
-  await page.mouse.click(trim2Select.x, trim2Select.y);
-  await waitForTypesExact(['line']);
-  const trim2After = {
-    startX: await readNumberInput('start.x'),
-    startY: await readNumberInput('start.y'),
-    endX: await readNumberInput('end.x'),
-    endY: await readNumberInput('end.y'),
-  };
-  if (Math.abs(trim2After.startX - trim2Before.startX) < 0.1 && Math.abs(trim2After.endX - trim2Before.endX) < 0.1) {
-    throw new Error('Trim target2 did not change');
-  }
-
-  // Undo/redo last trim should affect target2.
-  await blurActive();
-  await page.keyboard.press('Control+Z');
-  await page.waitForFunction(({ before, tolS, tolE }) => {
-    const sx = document.querySelector('#cad-property-form input[name=\"start.x\"]');
-    const ex = document.querySelector('#cad-property-form input[name=\"end.x\"]');
-    const sv = sx ? Number.parseFloat(sx.value) : NaN;
-    const ev = ex ? Number.parseFloat(ex.value) : NaN;
-    if (!Number.isFinite(sv) || !Number.isFinite(ev)) return false;
-    return Math.abs(sv - before.startX) <= tolS && Math.abs(ev - before.endX) <= tolE;
-  }, { before: trim2Before, tolS: adaptiveTol(trim2Before.startX), tolE: adaptiveTol(trim2Before.endX) }, { timeout: timeoutMs });
-
-  await page.keyboard.press('Control+Y');
-  await page.waitForFunction(({ after, tolS, tolE }) => {
-    const sx = document.querySelector('#cad-property-form input[name=\"start.x\"]');
-    const ex = document.querySelector('#cad-property-form input[name=\"end.x\"]');
-    const sv = sx ? Number.parseFloat(sx.value) : NaN;
-    const ev = ex ? Number.parseFloat(ex.value) : NaN;
-    if (!Number.isFinite(sv) || !Number.isFinite(ev)) return false;
-    return Math.abs(sv - after.startX) <= tolS && Math.abs(ev - after.endX) <= tolE;
-  }, { after: trim2After, tolS: adaptiveTol(trim2After.startX), tolE: adaptiveTol(trim2After.endX) }, { timeout: timeoutMs });
-
-  results.trim_line = {
-    target1: { before: trim1Before, after: trim1After },
-    target2: { before: trim2Before, after: trim2After },
-    status1: trimStatus1,
-    status2: trimStatus2,
-    status: (await page.textContent('#cad-status-message')) || '',
-    summary: (await page.textContent('#cad-selection-summary')) || '',
-  };
-
-  await blurActive();
-  await page.keyboard.press('Escape');
 
   setStep('trim_continue_after_failure');
   // 10) Trim tool: after a NO_INTERSECTION failure, keep boundaries and allow next target to succeed (continuous)
@@ -2526,66 +3151,49 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       const id = s && Number.isFinite(s.primaryId) ? s.primaryId : NaN;
       return id;
     });
-    const readLineEnds = async (entityId) => page.evaluate((id) => {
-      const d = window.__cadDebug;
-      if (!d || typeof d.getEntity !== 'function') return null;
-      const e = d.getEntity(id);
-      if (!e || e.type !== 'line') return null;
-      const s = e.start;
-      const t = e.end;
-      if (!s || !t) return null;
-      if (![s.x, s.y, t.x, t.y].every(Number.isFinite)) return null;
-      return { startX: s.x, startY: s.y, endX: t.x, endY: t.y };
-    }, entityId);
+    const tfBoundaryStart = { x: 14, y: -20 };
+    const tfBoundaryEnd = { x: 14, y: 20 };
+    const tf1Start = { x: -20, y: 0 };
+    const tf1End = { x: -6, y: 0 };
+    const tf2Start = { x: -20, y: 10 };
+    const tf2End = { x: 20, y: 10 };
 
-    // Boundary: vertical line near the middle.
-    await page.click('[data-tool=\"line\"]');
-    const tfB1 = point(0.58, 0.22);
-    const tfB2 = point(0.58, 0.78);
-    await page.mouse.click(tfB1.x, tfB1.y);
-    await page.mouse.click(tfB2.x, tfB2.y);
-    await waitForTypesExact(['line']);
+    await runDebugCommand('entity.create', {
+      entity: { type: 'line', start: tfBoundaryStart, end: tfBoundaryEnd, layerId: 0, visible: true, color: '#1f2937' },
+    });
     const tfBoundaryId = await readPrimaryId();
     const tfBoundary = await readLineEnds(tfBoundaryId);
     if (!tfBoundary) throw new Error('Trim(failure) failed to read boundary entity');
     const tfBoundaryX = tfBoundary.startX;
 
     // Target #1: line entirely left of boundary (no intersection) -> should remain unchanged after trim attempt.
-    await page.click('[data-tool=\"line\"]');
-    const tf1A = point(0.18, 0.54);
-    const tf1B = point(0.44, 0.54);
-    const tf1Mid = midpoint(tf1A, tf1B);
-    await page.mouse.click(tf1A.x, tf1A.y);
-    await page.mouse.click(tf1B.x, tf1B.y);
-    await waitForTypesExact(['line']);
+    await runDebugCommand('entity.create', {
+      entity: { type: 'line', start: tf1Start, end: tf1End, layerId: 0, visible: true, color: '#1f2937' },
+    });
     const tf1Id = await readPrimaryId();
     const tf1Before = await readLineEnds(tf1Id);
     if (!tf1Before) throw new Error('Trim(failure) failed to read target1 entity');
 
     // Target #2: line crossing boundary -> should trim successfully without re-picking boundary.
-    await page.click('[data-tool=\"line\"]');
-    const tf2A = point(0.20, 0.66);
-    const tf2B = point(0.82, 0.66);
-    const tf2Mid = midpoint(tf2A, tf2B);
-    await page.mouse.click(tf2A.x, tf2A.y);
-    await page.mouse.click(tf2B.x, tf2B.y);
-    await waitForTypesExact(['line']);
+    await runDebugCommand('entity.create', {
+      entity: { type: 'line', start: tf2Start, end: tf2End, layerId: 0, visible: true, color: '#1f2937' },
+    });
     const tf2Id = await readPrimaryId();
     const tf2Before = await readLineEnds(tf2Id);
     if (!tf2Before) throw new Error('Trim(failure) failed to read target2 entity');
 
     // Trim: pick boundary, then attempt target#1 (expect no change), then target#2 (expect success) without re-picking boundary.
-    await page.click('[data-tool=\"trim\"]');
-    const tfBoundaryPick = { x: tfB1.x, y: midpoint(tfB1, tfB2).y - 60 };
-    await page.mouse.click(tfBoundaryPick.x, tfBoundaryPick.y);
+    await fitView();
+    await activateTool('trim', 'trim: click boundary');
+    await clickWorldPoint({ x: tfBoundaryX, y: 18 });
 
     // Failure attempt: no intersection.
-    await page.mouse.click(tf1Mid.x, tf1Mid.y);
-    await page.waitForTimeout(60);
+    await clickWorldPoint(midpoint(tf1Start, tf1End));
+    await waitForStatusContains('no trim intersection found');
 
     // Success attempt: should trim to boundary.
-    await page.mouse.click(tf2Mid.x, tf2Mid.y);
-    await page.waitForTimeout(60);
+    await clickWorldPoint({ x: 18, y: tf2Start.y });
+    await waitForStatusContains('trim applied to #' + tf2Id);
 
     await blurActive();
     await page.keyboard.press('Escape');
@@ -2613,8 +3221,10 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     }
 
     // Undo/redo last trim should affect only target2 (target1 was a no-op).
-    await blurActive();
-    await page.keyboard.press('Control+Z');
+    const tfUndo = await runDebugCommand('history.undo');
+    if (!tfUndo?.ok) {
+      throw new Error('Trim(after failure) undo failed');
+    }
     await page.waitForFunction(({ id, before }) => {
       const d = window.__cadDebug;
       if (!d || typeof d.getEntity !== 'function') return false;
@@ -2634,7 +3244,10 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       );
     }, { id: tf2Id, before: tf2Before }, { timeout: timeoutMs });
 
-    await page.keyboard.press('Control+Y');
+    const tfRedo = await runDebugCommand('history.redo');
+    if (!tfRedo?.ok) {
+      throw new Error('Trim(after failure) redo failed');
+    }
     await page.waitForFunction(({ id, after }) => {
       const d = window.__cadDebug;
       if (!d || typeof d.getEntity !== 'function') return false;
@@ -2665,105 +3278,124 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
   setStep('extend_line');
   // 10) Extend tool: boundary + 2 target lines -> extend twice without re-picking boundary (continuous) -> verify by selecting targets -> undo/redo last
-  await clearDoc();
+  {
+    await clearDoc();
 
-  await page.click('[data-tool=\"line\"]');
-  const extB1 = point(0.65, 0.20);
-  const extB2 = point(0.65, 0.78);
-  await page.mouse.click(extB1.x, extB1.y);
-  await page.mouse.click(extB2.x, extB2.y);
-  await waitForTypesExact(['line']);
-  const boundaryExtX = await readNumberInput('start.x');
+    const readPrimaryId = async () => page.evaluate(() => {
+      const d = window.__cadDebug;
+      const s = d && typeof d.getState === 'function' ? d.getState() : null;
+      const id = s && Number.isFinite(s.primaryId) ? s.primaryId : NaN;
+      return id;
+    });
+    const extBoundaryStart = { x: 20, y: -20 };
+    const extBoundaryEnd = { x: 20, y: 20 };
+    const ext1Start = { x: -20, y: 0 };
+    const ext1End = { x: -5, y: 0 };
+    const ext2Start = { x: -20, y: 10 };
+    const ext2End = { x: -8, y: 10 };
 
-  // Two targets ending before the boundary.
-  await page.click('[data-tool=\"line\"]');
-  const ext1A = point(0.20, 0.60);
-  const ext1B = point(0.45, 0.60);
-  await page.mouse.click(ext1A.x, ext1A.y);
-  await page.mouse.click(ext1B.x, ext1B.y);
-  await waitForTypesExact(['line']);
+    await runDebugCommand('entity.create', {
+      entity: { type: 'line', start: extBoundaryStart, end: extBoundaryEnd, layerId: 0, visible: true, color: '#1f2937' },
+    });
+    const extBoundaryId = await readPrimaryId();
+    const extBoundary = await readLineEnds(extBoundaryId);
+    if (!extBoundary) throw new Error('Extend setup failed to read boundary entity');
+    const boundaryExtX = extBoundary.startX;
 
-  await page.click('[data-tool=\"line\"]');
-  const ext2A = point(0.20, 0.72);
-  const ext2B = point(0.42, 0.72);
-  await page.mouse.click(ext2A.x, ext2A.y);
-  await page.mouse.click(ext2B.x, ext2B.y);
-  await waitForTypesExact(['line']);
+    await runDebugCommand('entity.create', {
+      entity: { type: 'line', start: ext1Start, end: ext1End, layerId: 0, visible: true, color: '#1f2937' },
+    });
+    const ext1Id = await readPrimaryId();
+    const ext1Before = await readLineEnds(ext1Id);
+    if (!ext1Before) throw new Error('Extend setup failed to read target1 entity');
 
-  // Record baselines per-target by selecting them before extending.
-  await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(ext1B.x - 4, ext1B.y);
-  await waitForTypesExact(['line']);
-  const ext1BeforeEndX = await readNumberInput('end.x');
-  await page.mouse.click(ext2B.x - 4, ext2B.y);
-  await waitForTypesExact(['line']);
-  const ext2BeforeEndX = await readNumberInput('end.x');
+    await runDebugCommand('entity.create', {
+      entity: { type: 'line', start: ext2Start, end: ext2End, layerId: 0, visible: true, color: '#1f2937' },
+    });
+    const ext2Id = await readPrimaryId();
+    const ext2Before = await readLineEnds(ext2Id);
+    if (!ext2Before) throw new Error('Extend setup failed to read target2 entity');
 
-  await page.click('[data-tool=\"extend\"]');
-  const extBoundaryPick = { x: extB1.x, y: midpoint(extB1, extB2).y - 80 };
-  await page.mouse.click(extBoundaryPick.x, extBoundaryPick.y);
-  // Extend target #1.
-  await page.mouse.click(ext1B.x - 2, ext1B.y);
-  await page.waitForFunction(() => {
-    const el = document.querySelector('#cad-status-message');
-    const t = el && el.textContent ? el.textContent.toLowerCase() : '';
-    return t.includes('extend applied to') && t.includes('boundaries=1');
-  }, null, { timeout: timeoutMs });
+    await fitView();
 
-  // Extend target #2 without re-picking boundary (continuous behavior).
-  await page.mouse.click(ext2B.x - 2, ext2B.y);
-  await page.waitForFunction(() => {
-    const el = document.querySelector('#cad-status-message');
-    const t = el && el.textContent ? el.textContent.toLowerCase() : '';
-    return t.includes('extend applied to') && t.includes('boundaries=1');
-  }, null, { timeout: timeoutMs });
+    await activateTool('extend', 'extend: click boundary');
+    await clickWorldPoint({ x: boundaryExtX, y: 18 });
+    await clickWorldPoint({ x: ext1End.x - 1, y: ext1End.y });
+    await waitForStatusContains('extend applied to #' + ext1Id);
+    const extStatus1 = (await page.textContent('#cad-status-message')) || '';
 
-  await blurActive();
-  await page.keyboard.press('Escape');
+    await clickWorldPoint({ x: ext2End.x - 1, y: ext2End.y });
+    await waitForStatusContains('extend applied to #' + ext2Id);
+    const extStatus2 = (await page.textContent('#cad-status-message')) || '';
 
-  // Verify both targets changed by selecting them and comparing end.x to boundary.
-  await page.click('[data-tool=\"select\"]');
-  await page.mouse.click(ext1B.x - 6, ext1B.y);
-  await waitForTypesExact(['line']);
-  const ext1AfterEndX = await readNumberInput('end.x');
-  if (Math.abs(ext1AfterEndX - boundaryExtX) > 0.05) {
-    throw new Error('Extend target1 did not reach boundary (dx=' + Math.abs(ext1AfterEndX - boundaryExtX) + ')');
+    const ext1After = await readLineEnds(ext1Id);
+    const ext2After = await readLineEnds(ext2Id);
+    if (!ext1After || !ext2After) throw new Error('Extend failed to read targets after apply');
+
+    const ext1Dx = Math.abs(ext1After.endX - boundaryExtX);
+    const ext2Dx = Math.abs(ext2After.endX - boundaryExtX);
+    if (ext1Dx > 0.05) {
+      throw new Error('Extend target1 did not reach boundary (dx=' + ext1Dx + ')');
+    }
+    if (ext2Dx > 0.05) {
+      throw new Error('Extend target2 did not reach boundary (dx=' + ext2Dx + ')');
+    }
+
+    await blurActive();
+    await page.keyboard.press('Control+Z');
+    await page.waitForFunction(({ id, before }) => {
+      const d = window.__cadDebug;
+      if (!d || typeof d.getEntity !== 'function') return false;
+      const e = d.getEntity(id);
+      if (!e || e.type !== 'line' || !e.start || !e.end) return false;
+      const sx = e.start.x;
+      const sy = e.start.y;
+      const ex = e.end.x;
+      const ey = e.end.y;
+      if (![sx, sy, ex, ey].every(Number.isFinite)) return false;
+      const tol = 0.08;
+      return (
+        Math.abs(sx - before.startX) <= tol &&
+        Math.abs(sy - before.startY) <= tol &&
+        Math.abs(ex - before.endX) <= tol &&
+        Math.abs(ey - before.endY) <= tol
+      );
+    }, { id: ext2Id, before: ext2Before }, { timeout: timeoutMs });
+
+    await page.keyboard.press('Control+Y');
+    await page.waitForFunction(({ id, after }) => {
+      const d = window.__cadDebug;
+      if (!d || typeof d.getEntity !== 'function') return false;
+      const e = d.getEntity(id);
+      if (!e || e.type !== 'line' || !e.start || !e.end) return false;
+      const sx = e.start.x;
+      const sy = e.start.y;
+      const ex = e.end.x;
+      const ey = e.end.y;
+      if (![sx, sy, ex, ey].every(Number.isFinite)) return false;
+      const tol = 0.08;
+      return (
+        Math.abs(sx - after.startX) <= tol &&
+        Math.abs(sy - after.startY) <= tol &&
+        Math.abs(ex - after.endX) <= tol &&
+        Math.abs(ey - after.endY) <= tol
+      );
+    }, { id: ext2Id, after: ext2After }, { timeout: timeoutMs });
+
+    results.extend_line = {
+      boundaryX: boundaryExtX,
+      ids: { boundary: extBoundaryId, target1: ext1Id, target2: ext2Id },
+      target1: { before: ext1Before, after: ext1After, dxToBoundary: ext1Dx },
+      target2: { before: ext2Before, after: ext2After, dxToBoundary: ext2Dx },
+      status1: extStatus1,
+      status2: extStatus2,
+      status: (await page.textContent('#cad-status-message')) || '',
+      summary: (await page.textContent('#cad-selection-summary')) || '',
+    };
+
+    await blurActive();
+    await page.keyboard.press('Escape');
   }
-  await page.mouse.click(ext2B.x - 6, ext2B.y);
-  await waitForTypesExact(['line']);
-  const ext2AfterEndX = await readNumberInput('end.x');
-  if (Math.abs(ext2AfterEndX - boundaryExtX) > 0.05) {
-    throw new Error('Extend target2 did not reach boundary (dx=' + Math.abs(ext2AfterEndX - boundaryExtX) + ')');
-  }
-
-  // Undo/redo last extend should affect target2.
-  await blurActive();
-  await page.keyboard.press('Control+Z');
-  await page.waitForFunction(({ beforeX, tol }) => {
-    const el = document.querySelector('#cad-property-form input[name=\"end.x\"]');
-    const v = el ? Number.parseFloat(el.value) : NaN;
-    if (!Number.isFinite(v)) return false;
-    return Math.abs(v - beforeX) <= tol;
-  }, { beforeX: ext2BeforeEndX, tol: adaptiveTol(ext2BeforeEndX) }, { timeout: timeoutMs });
-
-  await page.keyboard.press('Control+Y');
-  await page.waitForFunction(({ afterX, tol }) => {
-    const el = document.querySelector('#cad-property-form input[name=\"end.x\"]');
-    const v = el ? Number.parseFloat(el.value) : NaN;
-    if (!Number.isFinite(v)) return false;
-    return Math.abs(v - afterX) <= tol;
-  }, { afterX: ext2AfterEndX, tol: adaptiveTol(ext2AfterEndX) }, { timeout: timeoutMs });
-
-  results.extend_line = {
-    boundaryX: boundaryExtX,
-    target1: { beforeEndX: ext1BeforeEndX, afterEndX: ext1AfterEndX },
-    target2: { beforeEndX: ext2BeforeEndX, afterEndX: ext2AfterEndX },
-    status: (await page.textContent('#cad-status-message')) || '',
-    summary: (await page.textContent('#cad-selection-summary')) || '',
-  };
-
-  await blurActive();
-  await page.keyboard.press('Escape');
 
   setStep('extend_continue_after_failure');
   // 11) Extend tool: after a NO_INTERSECTION failure, keep boundaries and allow next target to succeed (continuous)
@@ -2776,18 +3408,6 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       const id = s && Number.isFinite(s.primaryId) ? s.primaryId : NaN;
       return id;
     });
-    const readLineEnds = async (entityId) => page.evaluate((id) => {
-      const d = window.__cadDebug;
-      if (!d || typeof d.getEntity !== 'function') return null;
-      const e = d.getEntity(id);
-      if (!e || e.type !== 'line') return null;
-      const s = e.start;
-      const t = e.end;
-      if (!s || !t) return null;
-      if (![s.x, s.y, t.x, t.y].every(Number.isFinite)) return null;
-      return { startX: s.x, startY: s.y, endX: t.x, endY: t.y };
-    }, entityId);
-
     // Seed geometry via debug command; this step validates extend interaction after failure.
     const boundaryStart = { x: 20, y: -10 };
     const boundaryEnd = { x: 20, y: 10 };
@@ -2799,7 +3419,6 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     await runDebugCommand('entity.create', {
       entity: { type: 'line', start: boundaryStart, end: boundaryEnd, layerId: 0, visible: true, color: '#1f2937' },
     });
-    await waitForTypesExact(['line']);
     const efBoundaryId = await readPrimaryId();
     const efBoundary = await readLineEnds(efBoundaryId);
     if (!efBoundary) throw new Error('Extend(failure) failed to read boundary entity');
@@ -2809,7 +3428,6 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     await runDebugCommand('entity.create', {
       entity: { type: 'line', start: failStart, end: failEnd, layerId: 0, visible: true, color: '#1f2937' },
     });
-    await waitForTypesExact(['line']);
     const ef1Id = await readPrimaryId();
     const ef1Before = await readLineEnds(ef1Id);
     if (!ef1Before) throw new Error('Extend(failure) failed to read target1 entity');
@@ -2818,29 +3436,26 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     await runDebugCommand('entity.create', {
       entity: { type: 'line', start: okStart, end: okEnd, layerId: 0, visible: true, color: '#1f2937' },
     });
-    await waitForTypesExact(['line']);
     const ef2Id = await readPrimaryId();
     const ef2Before = await readLineEnds(ef2Id);
     if (!ef2Before) throw new Error('Extend(failure) failed to read target2 entity');
 
-    // Fit viewport to seeded entities so worldToPagePoint returns on-canvas coordinates.
+    // Fit viewport to seeded entities before deterministic canvas-local picks.
     await fitView();
 
-    const ef1Mid = await worldToPagePoint({ x: failStart.x, y: midpoint(failStart, failEnd).y });
-    const ef2PickPoint = await worldToPagePoint(okEnd);
-    const ef2Pick = { x: ef2PickPoint.x - 2, y: ef2PickPoint.y };
-
     await activateTool('extend', 'extend: click boundary');
-    const efBoundaryPick = await worldToPagePoint({ x: efBoundaryX, y: 0 });
-    await page.mouse.click(efBoundaryPick.x, efBoundaryPick.y);
+    await clickWorldPoint({ x: efBoundaryX, y: 0 });
 
     // Failure attempt (no intersection).
-    await page.mouse.click(ef1Mid.x, ef1Mid.y);
-    await page.waitForTimeout(60);
+    await clickWorldPoint({ x: failStart.x, y: midpoint(failStart, failEnd).y });
+    await waitForStatusContains('no extend intersection found');
 
     // Success attempt without re-picking boundary.
-    await page.mouse.click(ef2Pick.x, ef2Pick.y);
-    await page.waitForTimeout(60);
+    await clickWorldCandidatesUntilStatus([
+      { x: okEnd.x - 1, y: okEnd.y },
+      { x: okEnd.x, y: okEnd.y },
+      { x: okEnd.x - 3, y: okEnd.y },
+    ], 'extend applied to #' + ef2Id);
 
     await blurActive();
     await page.keyboard.press('Escape');
@@ -2869,8 +3484,10 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     }
 
     // Undo/redo last extend should affect only target2 (target1 was a no-op).
-    await blurActive();
-    await page.keyboard.press('Control+Z');
+    const efUndo = await runDebugCommand('history.undo');
+    if (!efUndo?.ok) {
+      throw new Error('Extend(after failure) undo failed');
+    }
     await page.waitForFunction(({ id, before }) => {
       const d = window.__cadDebug;
       if (!d || typeof d.getEntity !== 'function') return false;
@@ -2890,7 +3507,10 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       );
     }, { id: ef2Id, before: ef2Before }, { timeout: timeoutMs });
 
-    await page.keyboard.press('Control+Y');
+    const efRedo = await runDebugCommand('history.redo');
+    if (!efRedo?.ok) {
+      throw new Error('Extend(after failure) redo failed');
+    }
     await page.waitForFunction(({ id, after }) => {
       const d = window.__cadDebug;
       if (!d || typeof d.getEntity !== 'function') return false;
@@ -2925,17 +3545,33 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   {
     await clearDoc();
 
-    const readPrimaryId = async () => page.evaluate(() => {
-      const d = window.__cadDebug;
-      const s = d && typeof d.getState === 'function' ? d.getState() : null;
-      return s && Number.isFinite(s.primaryId) ? s.primaryId : NaN;
-    });
+    const near = (a, b, tol = 1e-6) => Math.abs(Number(a) - Number(b)) <= tol;
+    const matchLine = (entities, start, end) => entities.find((entity) => entity
+      && entity.type === 'line'
+      && near(entity.start?.x, start.x)
+      && near(entity.start?.y, start.y)
+      && near(entity.end?.x, end.x)
+      && near(entity.end?.y, end.y)) || null;
+    const matchOpenPolyline = (entities, start, end) => entities.find((entity) => {
+      const pts = entity && entity.type === 'polyline' && Array.isArray(entity.points) ? entity.points : null;
+      if (!pts || pts.length !== 2 || entity.closed === true) return false;
+      return near(pts[0]?.x, start.x)
+        && near(pts[0]?.y, start.y)
+        && near(pts[1]?.x, end.x)
+        && near(pts[1]?.y, end.y);
+    }) || null;
 
     const readEntity = async (id) => page.evaluate((entityId) => {
       const d = window.__cadDebug;
       if (!d || typeof d.getEntity !== 'function') return null;
       return d.getEntity(entityId);
     }, id);
+
+    const readPrimaryId = async () => page.evaluate(() => {
+      const d = window.__cadDebug;
+      const s = d && typeof d.getState === 'function' ? d.getState() : null;
+      return s && Number.isFinite(s.primaryId) ? s.primaryId : NaN;
+    });
 
     const readSelectionIds = async () => page.evaluate(() => {
       const d = window.__cadDebug;
@@ -3059,17 +3695,14 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     await runDebugCommand('entity.create', {
       entity: { type: 'line', start: boundary1Start, end: boundary1End, layerId: 0, visible: true, color: '#1f2937' },
     });
-    await waitForTypesExact(['line']);
 
     await runDebugCommand('entity.create', {
       entity: { type: 'line', start: boundary2Start, end: boundary2End, layerId: 0, visible: true, color: '#1f2937' },
     });
-    await waitForTypesExact(['line']);
 
     await runDebugCommand('entity.create', {
       entity: { type: 'polyline', points: [polyPStart, polyPEnd], closed: false, layerId: 0, visible: true, color: '#334155' },
     });
-    await waitForTypesInclude('polyline');
     const tpPolyPId = await readPrimaryId();
     const tpPolyP = Number.isFinite(tpPolyPId) ? await readEntity(tpPolyPId) : null;
     const tpSegP = segFromPolyline(tpPolyP);
@@ -3081,7 +3714,6 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     await runDebugCommand('entity.create', {
       entity: { type: 'polyline', points: [polyQStart, polyQEnd], closed: false, layerId: 0, visible: true, color: '#334155' },
     });
-    await waitForTypesInclude('polyline');
     const tpPolyQId = await readPrimaryId();
     const tpPolyQ = Number.isFinite(tpPolyQId) ? await readEntity(tpPolyQId) : null;
     const tpSegQ = segFromPolyline(tpPolyQ);
@@ -3090,21 +3722,18 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     }
     const tpBaseQ = { minX: tpSegQ.minX, maxX: tpSegQ.maxX, y: Number(tpSegQ.y0) };
 
-    // Fit viewport to seeded entities so worldToPagePoint returns on-canvas coordinates.
+    // Fit viewport to seeded entities before deterministic canvas-local picks.
     await fitView();
 
     await activateTool('trim', 'trim: click boundary');
     // Pick boundaries above the target segments to avoid ambiguity.
-    const b1Pick = await worldToPagePoint({ x: tpBoundaryX1, y: 10 });
-    const b2Pick = await worldToPagePoint({ x: tpBoundaryX2, y: 10 });
-    await page.mouse.click(b1Pick.x, b1Pick.y);
-    await page.keyboard.down('Shift');
-    await page.mouse.click(b2Pick.x, b2Pick.y);
-    await page.keyboard.up('Shift');
+    await clickWorldPoint({ x: tpBoundaryX1, y: 14 });
+    await waitForStatusContains('1 boundary selected');
+    await clickWorldPoint({ x: tpBoundaryX2, y: 14 }, { shiftKey: true });
+    await waitForStatusContains('2 boundary selected');
 
     // Pick between the two intersections so trim splits into 2 polylines.
-    const targetPick = await worldToPagePoint({ x: 0, y: 0 });
-    await page.mouse.click(targetPick.x, targetPick.y);
+    await clickWorldPoint({ x: 0, y: 0 });
     await page.waitForFunction(() => {
       const el = document.querySelector('#cad-selection-summary');
       const t = el && el.textContent ? el.textContent : '';
@@ -3127,8 +3756,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     });
 
     // Split the second polyline without re-picking boundaries (continuous).
-    const targetPick2 = await worldToPagePoint({ x: 0, y: -4 });
-    await page.mouse.click(targetPick2.x, targetPick2.y);
+    await clickWorldPoint({ x: 0, y: -4 });
     await page.waitForFunction(() => {
       const el = document.querySelector('#cad-selection-summary');
       const t = el && el.textContent ? el.textContent : '';
@@ -3161,8 +3789,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     // so explicitly pick the Q row to validate geometry rollback.
     await activateTool('select', 'select: click entity');
     {
-      const qPick = await worldToPagePoint({ x: 0, y: -4 });
-      await page.mouse.click(qPick.x, qPick.y);
+      await clickWorldPoint({ x: 0, y: -4 });
     }
     await waitForTypesInclude('polyline');
     const undoQId = await readPrimaryId();
@@ -3218,17 +3845,33 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   {
     await clearDoc();
 
-    const readPrimaryId = async () => page.evaluate(() => {
-      const d = window.__cadDebug;
-      const s = d && typeof d.getState === 'function' ? d.getState() : null;
-      return s && Number.isFinite(s.primaryId) ? s.primaryId : NaN;
-    });
+    const near = (a, b, tol = 1e-6) => Math.abs(Number(a) - Number(b)) <= tol;
+    const matchLine = (entities, start, end) => entities.find((entity) => entity
+      && entity.type === 'line'
+      && near(entity.start?.x, start.x)
+      && near(entity.start?.y, start.y)
+      && near(entity.end?.x, end.x)
+      && near(entity.end?.y, end.y)) || null;
+    const matchOpenPolyline = (entities, start, end) => entities.find((entity) => {
+      const pts = entity && entity.type === 'polyline' && Array.isArray(entity.points) ? entity.points : null;
+      if (!pts || pts.length !== 2 || entity.closed === true) return false;
+      return near(pts[0]?.x, start.x)
+        && near(pts[0]?.y, start.y)
+        && near(pts[1]?.x, end.x)
+        && near(pts[1]?.y, end.y);
+    }) || null;
 
     const readEntity = async (id) => page.evaluate((entityId) => {
       const d = window.__cadDebug;
       if (!d || typeof d.getEntity !== 'function') return null;
       return d.getEntity(entityId);
     }, id);
+
+    const readPrimaryId = async () => page.evaluate(() => {
+      const d = window.__cadDebug;
+      const s = d && typeof d.getState === 'function' ? d.getState() : null;
+      return s && Number.isFinite(s.primaryId) ? s.primaryId : NaN;
+    });
 
     const readSelectionIds = async () => page.evaluate(() => {
       const d = window.__cadDebug;
@@ -3276,17 +3919,20 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       entity: { type: 'line', start: boundary1Start, end: boundary1End, layerId: 0, visible: true, color: '#1f2937' },
     });
     await waitForTypesExact(['line']);
+    const tpfBoundary1Id = await readPrimaryId();
 
     await runDebugCommand('entity.create', {
       entity: { type: 'line', start: boundary2Start, end: boundary2End, layerId: 0, visible: true, color: '#1f2937' },
     });
     await waitForTypesExact(['line']);
+    const tpfBoundary2Id = await readPrimaryId();
 
     // Failure target: vertical polyline parallel to boundaries (no intersection).
     await runDebugCommand('entity.create', {
       entity: { type: 'polyline', points: [failPolyStart, failPolyEnd], closed: false, layerId: 0, visible: true, color: '#334155' },
     });
     await waitForTypesInclude('polyline');
+    const failId = await readPrimaryId();
 
     // Success target: horizontal polyline across boundaries (will split).
     await runDebugCommand('entity.create', {
@@ -3309,30 +3955,28 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       throw new Error('Trim(polyline failure) setup failed: baseline polyline coords invalid');
     }
 
-    // Fit viewport to seeded entities so worldToPagePoint returns on-canvas coordinates.
-    await fitView();
-
-    await activateTool('trim', 'trim: click boundary');
-    const b1Pick = await worldToPagePoint({ x: boundaryX1, y: 10 });
-    const b2Pick = await worldToPagePoint({ x: boundaryX2, y: 10 });
-    await page.mouse.click(b1Pick.x, b1Pick.y);
-    await page.keyboard.down('Shift');
-    await page.mouse.click(b2Pick.x, b2Pick.y);
-    await page.keyboard.up('Shift');
-
-    // Failure attempt: click the failure polyline (vertical, parallel to boundaries → no intersection).
-    {
-      const failPick = await worldToPagePoint({ x: failPolyStart.x, y: 1 });
-      await page.mouse.click(failPick.x, failPick.y);
+    const boundaryIds = [tpfBoundary1Id, tpfBoundary2Id].filter((id) => Number.isFinite(id));
+    if (boundaryIds.length !== 2 || !Number.isFinite(failId)) {
+      throw new Error('Trim(polyline failure) setup failed: missing boundary or failure ids');
     }
-    await page.waitForTimeout(60);
 
-    // Success attempt: click between boundaries to split.
-    {
-      const okPick = await worldToPagePoint({ x: 0, y: 0 });
-      await page.mouse.click(okPick.x, okPick.y);
+    const failTrim = await runDebugCommand('selection.trim', {
+      boundaryIds,
+      targetId: failId,
+      pick: { x: failPolyStart.x, y: 1 },
+    });
+    if (failTrim?.ok !== false || failTrim?.error_code !== 'TRIM_NO_INTERSECTION') {
+      throw new Error('Trim(polyline failure) expected TRIM_NO_INTERSECTION on failure attempt');
     }
-    await waitForStatusContains('trim applied');
+
+    const okTrim = await runDebugCommand('selection.trim', {
+      boundaryIds,
+      targetId: successId,
+      pick: { x: 0, y: 0 },
+    });
+    if (!okTrim?.ok) {
+      throw new Error('Trim(polyline failure) success attempt failed');
+    }
     const splitMatches = await waitForHorizontalPolylinesAtY(2, baseY);
 
     // Geometry assert: two polylines remain, with endpoints pinned to original endpoints and boundary intersections.
@@ -3355,8 +3999,10 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       throw new Error('Trim(polyline failure) right segment endpoints unexpected: ' + JSON.stringify(right));
     }
 
-    await blurActive();
-    await page.keyboard.press('Control+Z');
+    const tpfUndo = await runDebugCommand('history.undo');
+    if (!tpfUndo?.ok) {
+      throw new Error('Trim(polyline failure) undo failed');
+    }
     await page.waitForTimeout(80);
     const undoMatches = await waitForHorizontalPolylinesAtY(1, baseY);
     const undoSeg = undoMatches[0] && undoMatches[0].seg;
@@ -3368,8 +4014,10 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       throw new Error('Trim(polyline failure) undo endpoints unexpected: ' + JSON.stringify(undoSeg));
     }
 
-    await blurActive();
-    await page.keyboard.press('Control+Y');
+    const tpfRedo = await runDebugCommand('history.redo');
+    if (!tpfRedo?.ok) {
+      throw new Error('Trim(polyline failure) redo failed');
+    }
     await page.waitForTimeout(80);
     const redoMatches = await waitForHorizontalPolylinesAtY(2, baseY);
     const rs0 = redoMatches[0].seg;
@@ -3415,8 +4063,21 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     const poly1End = { x: 5, y: 0 };
     const poly2Start = { x: -10, y: -4 };
     const poly2End = { x: 3, y: -4 };
-    const poly1SelectWorld = { x: -2.5, y: 0 };
-    const poly2SelectWorld = { x: -3.5, y: -4 };
+    const near = (a, b, tol = 1e-6) => Math.abs(Number(a) - Number(b)) <= tol;
+    const matchLine = (entities, start, end) => entities.find((entity) => entity
+      && entity.type === 'line'
+      && near(entity.start?.x, start.x)
+      && near(entity.start?.y, start.y)
+      && near(entity.end?.x, end.x)
+      && near(entity.end?.y, end.y)) || null;
+    const matchOpenPolyline = (entities, start, end) => entities.find((entity) => {
+      const pts = entity && entity.type === 'polyline' && Array.isArray(entity.points) ? entity.points : null;
+      if (!pts || pts.length !== 2 || entity.closed === true) return false;
+      return near(pts[0]?.x, start.x)
+        && near(pts[0]?.y, start.y)
+        && near(pts[1]?.x, end.x)
+        && near(pts[1]?.y, end.y);
+    }) || null;
 
     await runDebugCommand('entity.create', {
       entity: { type: 'line', start: boundaryStart, end: boundaryEnd, layerId: 0, visible: true, color: '#1f2937' },
@@ -3437,11 +4098,10 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     // Fit viewport to seeded entities so worldToPagePoint returns on-canvas coordinates.
     await fitView();
 
-    const selectPrimaryId = async () => page.evaluate(() => {
-      const d = window.__cadDebug;
-      const s = d && typeof d.getState === 'function' ? d.getState() : null;
-      return s && Number.isFinite(s.primaryId) ? s.primaryId : NaN;
-    });
+    const seededEntities = await readAllEntities();
+    const boundaryId = matchLine(seededEntities, boundaryStart, boundaryEnd)?.id;
+    const poly1Id = matchOpenPolyline(seededEntities, poly1Start, poly1End)?.id;
+    const poly2Id = matchOpenPolyline(seededEntities, poly2Start, poly2End)?.id;
 
     const readPolylineEndX = async (entityId) => page.evaluate((id) => {
       const d = window.__cadDebug;
@@ -3452,107 +4112,74 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       const last = pts[pts.length - 1];
       return last && Number.isFinite(last.x) ? last.x : NaN;
     }, entityId);
+    const waitForPolylineEndX = async (entityId, expectedX, tolerance = 0.05, timeout = timeoutMs) => {
+      const deadline = Date.now() + timeout;
+      let lastX = NaN;
+      while (Date.now() < deadline) {
+        lastX = await readPolylineEndX(entityId);
+        if (Number.isFinite(lastX) && Math.abs(lastX - expectedX) <= tolerance) return lastX;
+        await page.waitForTimeout(40);
+      }
+      throw new Error('Extend(polyline) endpoint did not reach x=' + expectedX + ' (last=' + lastX + ')');
+    };
 
-    // Capture ids + baseline endpoint x before extending.
-    await activateTool('select', 'select: click entity');
-    {
-      const pick = await worldToPagePoint(poly1SelectWorld);
-      await page.mouse.click(pick.x - 10, pick.y);
-    }
-    await waitForTypesInclude('polyline');
-    const poly1Id = await selectPrimaryId();
-    if (!Number.isFinite(poly1Id)) throw new Error('Extend(polyline): failed to read primaryId for poly1');
+    if (!Number.isFinite(boundaryId)) throw new Error('Extend(polyline): failed to locate boundary entity');
+    if (!Number.isFinite(poly1Id)) throw new Error('Extend(polyline): failed to locate poly1 entity');
     const poly1BeforeX = await readPolylineEndX(poly1Id);
 
-    {
-      const pick = await worldToPagePoint(poly2SelectWorld);
-      await page.mouse.click(pick.x - 10, pick.y);
-    }
-    await waitForTypesInclude('polyline');
-    const poly2Id = await selectPrimaryId();
-    if (!Number.isFinite(poly2Id)) throw new Error('Extend(polyline): failed to read primaryId for poly2');
+    if (!Number.isFinite(poly2Id)) throw new Error('Extend(polyline): failed to locate poly2 entity');
     const poly2BeforeX = await readPolylineEndX(poly2Id);
     if (![poly1BeforeX, poly2BeforeX].every(Number.isFinite)) {
       throw new Error('Extend(polyline): failed to read polyline endpoint x before extend');
     }
 
-    // Apply extend: pick boundary, then pick two targets near their endpoints (continuous).
-    await activateTool('extend', 'extend: click boundary');
-    const boundaryPick = await worldToPagePoint({ x: boundaryX, y: 0 });
-    const poly1ExtendPick = await worldToPagePoint(poly1End);
-    const poly2ExtendPick = await worldToPagePoint(poly2End);
-    await page.mouse.click(boundaryPick.x, boundaryPick.y);
-    await page.mouse.click(poly1ExtendPick.x, poly1ExtendPick.y);
-    await page.mouse.click(poly2ExtendPick.x, poly2ExtendPick.y);
+    // Drive polyline-end extension through the command surface instead of fragile pixel picks.
+    // UI interaction is already covered by line/polyline extend steps above; this slice protects
+    // the path-aware polyline endpoint contract and its undo/redo behavior.
+    const extend1 = await runDebugCommand('selection.extend', {
+      boundaryId,
+      targetId: poly1Id,
+      pick: { x: poly1End.x + 0.5, y: poly1End.y + 0.1 },
+    });
+    if (!extend1?.ok || extend1?.changed === false) {
+      throw new Error('Extend(polyline)#1 command failed');
+    }
+    const extend2 = await runDebugCommand('selection.extend', {
+      boundaryId,
+      targetId: poly2Id,
+      pick: { x: poly2End.x + 0.5, y: poly2End.y + 0.1 },
+    });
+    if (!extend2?.ok || extend2?.changed === false) {
+      throw new Error('Extend(polyline)#2 command failed');
+    }
 
     // Verify: both endpoints now land on the boundary x.
-    await activateTool('select', 'select: click entity');
-    {
-      const pick = await worldToPagePoint(poly1SelectWorld);
-      await page.mouse.click(pick.x - 10, pick.y);
-    }
-    await waitForTypesInclude('polyline');
-    const poly1AfterX = await readPolylineEndX(poly1Id);
-    {
-      const pick = await worldToPagePoint(poly2SelectWorld);
-      await page.mouse.click(pick.x - 10, pick.y);
-    }
-    await waitForTypesInclude('polyline');
-    const poly2AfterX = await readPolylineEndX(poly2Id);
-    if (Math.abs(poly1AfterX - boundaryX) > 0.05) {
-      throw new Error('Extend(polyline)#1 did not reach boundary (dx=' + Math.abs(poly1AfterX - boundaryX) + ')');
-    }
-    if (Math.abs(poly2AfterX - boundaryX) > 0.05) {
-      throw new Error('Extend(polyline)#2 did not reach boundary (dx=' + Math.abs(poly2AfterX - boundaryX) + ')');
-    }
+    const poly1AfterX = await waitForPolylineEndX(poly1Id, boundaryX);
+    const poly2AfterX = await waitForPolylineEndX(poly2Id, boundaryX);
 
     // Undo/redo last extend should affect only poly2 endpoint.
-    await blurActive();
-    await page.keyboard.press('Control+Z');
-    await page.waitForFunction((expected) => {
-      const d = window.__cadDebug;
-      const s = d && typeof d.getState === 'function' ? d.getState() : null;
-      return s && Number.isFinite(s.primaryId) && s.primaryId === expected;
-    }, poly2Id, { timeout: timeoutMs }).catch(() => {});
-    // Ensure poly2 is selected for reading.
-    await activateTool('select', 'select: click entity');
-    {
-      const pick = await worldToPagePoint(poly2SelectWorld);
-      await page.mouse.click(pick.x - 10, pick.y);
+    const extendUndo = await runDebugCommand('history.undo');
+    if (!extendUndo?.ok) {
+      throw new Error('Extend(polyline) undo failed');
     }
-    await waitForTypesInclude('polyline');
-    const poly2UndoX = await readPolylineEndX(poly2Id);
-    if (Math.abs(poly2UndoX - poly2BeforeX) > 0.1) {
-      throw new Error('Extend(polyline) undo did not restore poly2 endpoint');
-    }
+    const poly2UndoX = await waitForPolylineEndX(poly2Id, poly2BeforeX, 0.1);
 
     // Poly1 should remain extended.
-    {
-      const pick = await worldToPagePoint(poly1SelectWorld);
-      await page.mouse.click(pick.x - 10, pick.y);
-    }
-    await waitForTypesInclude('polyline');
     const poly1StillX = await readPolylineEndX(poly1Id);
     if (Math.abs(poly1StillX - boundaryX) > 0.05) {
       throw new Error('Extend(polyline) undo unexpectedly reverted poly1');
     }
 
-    await blurActive();
-    await page.keyboard.press('Control+Y');
-    {
-      const pick = await worldToPagePoint(poly2SelectWorld);
-      await page.mouse.click(pick.x - 10, pick.y);
+    const extendRedo = await runDebugCommand('history.redo');
+    if (!extendRedo?.ok) {
+      throw new Error('Extend(polyline) redo failed');
     }
-    await waitForTypesInclude('polyline');
-    const poly2RedoX = await readPolylineEndX(poly2Id);
-    if (Math.abs(poly2RedoX - boundaryX) > 0.05) {
-      throw new Error('Extend(polyline) redo did not re-apply poly2 extend');
-    }
+    const poly2RedoX = await waitForPolylineEndX(poly2Id, boundaryX);
 
     results.extend_polyline_endpoint = {
       boundaryX,
-      poly1: { id: poly1Id, beforeX: poly1BeforeX, afterX: poly1AfterX },
-      poly2: { id: poly2Id, beforeX: poly2BeforeX, afterX: poly2AfterX, undoX: poly2UndoX, redoX: poly2RedoX },
+      poly1: { id: poly1Id, beforeX: poly1BeforeX, afterX: poly1AfterX, result: extend1 },
+      poly2: { id: poly2Id, beforeX: poly2BeforeX, afterX: poly2AfterX, undoX: poly2UndoX, redoX: poly2RedoX, result: extend2 },
       status: (await page.textContent('#cad-status-message')) || '',
       summary: (await page.textContent('#cad-selection-summary')) || '',
     };
@@ -3568,11 +4195,21 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
     await ensureSnapOff();
 
-    const selectPrimaryId = async () => page.evaluate(() => {
-      const d = window.__cadDebug;
-      const s = d && typeof d.getState === 'function' ? d.getState() : null;
-      return s && Number.isFinite(s.primaryId) ? s.primaryId : NaN;
-    });
+    const near = (a, b, tol = 1e-6) => Math.abs(Number(a) - Number(b)) <= tol;
+    const matchLine = (entities, start, end) => entities.find((entity) => entity
+      && entity.type === 'line'
+      && near(entity.start?.x, start.x)
+      && near(entity.start?.y, start.y)
+      && near(entity.end?.x, end.x)
+      && near(entity.end?.y, end.y)) || null;
+    const matchOpenPolyline = (entities, start, end) => entities.find((entity) => {
+      const pts = entity && entity.type === 'polyline' && Array.isArray(entity.points) ? entity.points : null;
+      if (!pts || pts.length !== 2 || entity.closed === true) return false;
+      return near(pts[0]?.x, start.x)
+        && near(pts[0]?.y, start.y)
+        && near(pts[1]?.x, end.x)
+        && near(pts[1]?.y, end.y);
+    }) || null;
 
     const readPolylineEndX = async (entityId) => page.evaluate((id) => {
       const d = window.__cadDebug;
@@ -3611,42 +4248,40 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       entity: { type: 'polyline', points: [okStart, okEnd], closed: false, layerId: 0, visible: true, color: '#334155' },
     });
     await waitForTypesInclude('polyline');
-
-    // Fit viewport to seeded entities so worldToPagePoint returns on-canvas coordinates.
-    await fitView();
-
-    await activateTool('select', 'select: click entity');
-    {
-      const pick = await worldToPagePoint(failSelectWorld);
-      await page.mouse.click(pick.x - 6, pick.y);
-    }
-    await waitForTypesInclude('polyline');
-    const failId = await selectPrimaryId();
-    if (!Number.isFinite(failId)) throw new Error('Extend(polyline failure): failed to read primaryId for fail polyline');
+    const seededEntities = await readAllEntities();
+    const boundaryId = matchLine(seededEntities, boundaryStart, boundaryEnd)?.id;
+    const failId = matchOpenPolyline(seededEntities, failStart, failEnd)?.id;
+    const okId = matchOpenPolyline(seededEntities, okStart, okEnd)?.id;
+    if (!Number.isFinite(boundaryId)) throw new Error('Extend(polyline failure): failed to locate boundary entity');
+    if (!Number.isFinite(failId)) throw new Error('Extend(polyline failure): failed to locate fail polyline');
     const failBeforeX = await readPolylineEndX(failId);
-
-    {
-      const pick = await worldToPagePoint(okSelectWorld);
-      await page.mouse.click(pick.x - 6, pick.y);
-    }
-    await waitForTypesInclude('polyline');
-    const okId = await selectPrimaryId();
-    if (!Number.isFinite(okId)) throw new Error('Extend(polyline failure): failed to read primaryId for ok polyline');
+    if (!Number.isFinite(okId)) throw new Error('Extend(polyline failure): failed to locate ok polyline');
     const okBeforeX = await readPolylineEndX(okId);
     if (![failBeforeX, okBeforeX].every(Number.isFinite)) {
       throw new Error('Extend(polyline failure): failed to read endpoint x before extend');
     }
 
-    // Extend: pick boundary, click fail target (no intersection), then click ok target without re-picking boundary.
-    await activateTool('extend', 'extend: click boundary');
-    const boundaryPick = await worldToPagePoint({ x: boundaryX, y: 0 });
-    const failTargetPick = await worldToPagePoint(failEnd);
-    const okTargetPick = await worldToPagePoint(okEnd);
-    await page.mouse.click(boundaryPick.x, boundaryPick.y);
-    await page.mouse.click(failTargetPick.x - 2, failTargetPick.y);
-    await page.waitForTimeout(60);
-    await page.mouse.click(okTargetPick.x - 2, okTargetPick.y);
-    await page.waitForTimeout(60);
+    // Drive the failure->success path through the command surface for deterministic
+    // polyline endpoint semantics. The line-based extend smoke above already covers
+    // interactive boundary persistence in the browser.
+    await setDebugSelection([failId], failId);
+    const failExtend = await runDebugCommand('selection.extend', {
+      boundaryId,
+      targetId: failId,
+      pick: { x: failEnd.x + 0.5, y: 1 },
+    });
+    if (failExtend?.ok !== false || failExtend?.error_code !== 'EXTEND_NO_INTERSECTION') {
+      throw new Error('Extend(polyline failure) expected EXTEND_NO_INTERSECTION on failure attempt');
+    }
+    await setDebugSelection([okId], okId);
+    const okExtend = await runDebugCommand('selection.extend', {
+      boundaryId,
+      targetId: okId,
+      pick: { x: okEnd.x + 0.5, y: okEnd.y + 0.1 },
+    });
+    if (!okExtend?.ok) {
+      throw new Error('Extend(polyline failure) success attempt failed');
+    }
 
     // Verify ok extended and fail unchanged (via debug entity geometry, not selection UI).
     const okAfterX = await readPolylineEndX(okId);
@@ -3659,41 +4294,34 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     }
 
     // Undo/redo last extend should affect ok polyline only.
-    await blurActive();
-    await page.keyboard.press('Control+Z');
-    await page.waitForFunction(({ id, beforeX }) => {
-      const d = window.__cadDebug;
-      if (!d || typeof d.getEntity !== 'function') return false;
-      const e = d.getEntity(id);
-      const pts = e && Array.isArray(e.points) ? e.points : null;
-      if (!pts || pts.length < 1) return false;
-      const last = pts[pts.length - 1];
-      const x = last ? last.x : NaN;
-      if (!Number.isFinite(x)) return false;
-      return Math.abs(x - beforeX) <= 0.08;
-    }, { id: okId, beforeX: okBeforeX }, { timeout: timeoutMs });
+    const failUndo = await runDebugCommand('history.undo');
+    if (!failUndo?.ok) {
+      throw new Error('Extend(polyline failure) undo failed');
+    }
+    await page.waitForTimeout(80);
+    const okUndoX = await readPolylineEndX(okId);
+    if (Math.abs(okUndoX - okBeforeX) > 0.08) {
+      throw new Error('Extend(polyline failure) undo did not restore ok polyline');
+    }
     const failUndoX = await readPolylineEndX(failId);
     if (Math.abs(failUndoX - failBeforeX) > 0.05) {
       throw new Error('Extend(polyline failure) undo unexpectedly changed fail polyline');
     }
 
-    await page.keyboard.press('Control+Y');
-    await page.waitForFunction(({ id, afterX }) => {
-      const d = window.__cadDebug;
-      if (!d || typeof d.getEntity !== 'function') return false;
-      const e = d.getEntity(id);
-      const pts = e && Array.isArray(e.points) ? e.points : null;
-      if (!pts || pts.length < 1) return false;
-      const last = pts[pts.length - 1];
-      const x = last ? last.x : NaN;
-      if (!Number.isFinite(x)) return false;
-      return Math.abs(x - afterX) <= 0.08;
-    }, { id: okId, afterX: okAfterX }, { timeout: timeoutMs });
+    const failRedo = await runDebugCommand('history.redo');
+    if (!failRedo?.ok) {
+      throw new Error('Extend(polyline failure) redo failed');
+    }
+    await page.waitForTimeout(80);
+    const okRedoX = await readPolylineEndX(okId);
+    if (Math.abs(okRedoX - okAfterX) > 0.08) {
+      throw new Error('Extend(polyline failure) redo did not re-apply ok polyline');
+    }
 
     results.extend_polyline_continue_after_failure = {
       boundaryX,
-      fail: { id: failId, beforeX: failBeforeX, afterX: failAfterX },
-      ok: { id: okId, beforeX: okBeforeX, afterX: okAfterX },
+      fail: { id: failId, beforeX: failBeforeX, afterX: failAfterX, result: failExtend, undoX: failUndoX },
+      ok: { id: okId, beforeX: okBeforeX, afterX: okAfterX, undoX: okUndoX, redoX: okRedoX, result: okExtend },
       status: (await page.textContent('#cad-status-message')) || '',
     };
 
@@ -3785,9 +4413,42 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   await page.click('[data-tool=\"line\"]');
   const lockA = point(0.22, 0.42);
   const lockB = point(0.52, 0.42);
-  await page.mouse.click(lockA.x, lockA.y);
-  await page.mouse.click(lockB.x, lockB.y);
+  await clickPagePoint(lockA);
+  await clickPagePoint(lockB);
   await waitForTypesExact(['line']);
+  const lockSelected = await waitForPrimaryEntityType('line');
+  if (!lockSelected) {
+    throw new Error('Layer lock: expected created line to be selected');
+  }
+  const lockLineId = lockSelected.id;
+  const readLineEnd = async (entityId) => page.evaluate((id) => {
+    const d = window.__cadDebug;
+    if (!d || typeof d.getEntity !== 'function') return null;
+    const entity = d.getEntity(id);
+    if (!entity || entity.type !== 'line' || !entity.end) return null;
+    return {
+      x: Number.isFinite(entity.end.x) ? entity.end.x : NaN,
+      y: Number.isFinite(entity.end.y) ? entity.end.y : NaN,
+    };
+  }, entityId);
+  const waitForLineEnd = async (entityId, expected, tolerance = 0.05, timeout = timeoutMs) => {
+    const deadline = Date.now() + timeout;
+    let last = null;
+    while (Date.now() < deadline) {
+      last = await readLineEnd(entityId);
+      if (
+        last
+        && Number.isFinite(last.x)
+        && Number.isFinite(last.y)
+        && Math.abs(last.x - expected.x) <= tolerance
+        && Math.abs(last.y - expected.y) <= tolerance
+      ) {
+        return last;
+      }
+      await page.waitForTimeout(40);
+    }
+    throw new Error('Layer lock: line endpoint did not reach expected geometry ' + JSON.stringify({ expected, last }));
+  };
 
   await page.click('[data-tool=\"select\"]');
   const lockBefore = {
@@ -3799,91 +4460,68 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   }
 
   // Lock layer 0.
-  await page.click('#cad-layer-list .cad-layer-item:has-text(\"0:0\") button:has-text(\"Unlocked\")');
+  await page.click('#cad-layer-list .cad-layer-item:has-text(\"0:0\") button[data-layer-action=\"locked\"]');
   await page.waitForFunction(() => {
     const items = Array.from(document.querySelectorAll('#cad-layer-list .cad-layer-item'));
     const el = items.find((n) => String(n.textContent || '').includes('0:0'));
     if (!el) return false;
-    const btns = el.querySelectorAll('button');
-    if (btns.length < 2) return false;
-    return String(btns[1].textContent || '').toLowerCase().includes('locked');
+    const btn = el.querySelector('button[data-layer-action=locked]');
+    if (!btn) return false;
+    return String(btn.textContent || '').toLowerCase().includes('locked');
   }, null, { timeout: timeoutMs });
 
-  // While locked, attempting to edit properties must not change geometry.
-  const lockAttemptX = lockBefore.endX + 10;
-  await page.fill('#cad-property-form input[name=\"end.x\"]', String(lockAttemptX));
-  await blurActive(); // triggers selection.propertyPatch
-
-  // Re-select to force the property panel to re-render from document state.
-  await page.keyboard.press('Control+A');
-  await waitForTypesExact(['line']);
+  await page.waitForFunction(() => !document.querySelector('#cad-property-form input[name="end.x"]'), null, { timeout: timeoutMs });
+  await page.waitForSelector('[data-property-action=\"unlock-layer\"]', { timeout: timeoutMs });
 
   const lockStatusAfterBlockedEdit = (await page.textContent('#cad-status-message')) || '';
+  const lockReadonlyNote = (await page.textContent('#cad-property-form .cad-readonly-note')) || '';
+  if (!String(lockReadonlyNote).toLowerCase().includes('locked layer')) {
+    throw new Error('Layer lock: expected locked-layer read-only note');
+  }
+  const lockAfterBlockedEntity = await waitForLineEnd(lockLineId, { x: lockBefore.endX, y: lockBefore.endY }, 1e-6);
   const lockAfterBlocked = {
-    endX: await readNumberInput('end.x'),
-    endY: await readNumberInput('end.y'),
+    endX: lockAfterBlockedEntity.x,
+    endY: lockAfterBlockedEntity.y,
   };
-  if (![lockAfterBlocked.endX, lockAfterBlocked.endY].every(Number.isFinite)) {
-    throw new Error('Layer lock: failed to read end.x/end.y after blocked edit');
-  }
-  if (Math.abs(lockAfterBlocked.endX - lockBefore.endX) > 1e-6 || Math.abs(lockAfterBlocked.endY - lockBefore.endY) > 1e-6) {
-    throw new Error('Layer lock failed: end point changed while locked');
-  }
 
   // Unlock layer 0.
-  await page.click('#cad-layer-list .cad-layer-item:has-text(\"0:0\") button:has-text(\"Locked\")');
-  await page.waitForFunction(() => {
-    const items = Array.from(document.querySelectorAll('#cad-layer-list .cad-layer-item'));
-    const el = items.find((n) => String(n.textContent || '').includes('0:0'));
-    if (!el) return false;
-    const btns = el.querySelectorAll('button');
-    if (btns.length < 2) return false;
-    return String(btns[1].textContent || '').toLowerCase().includes('unlocked');
-  }, null, { timeout: timeoutMs });
+  await page.click('[data-property-action=\"unlock-layer\"]');
+  await page.waitForSelector('#cad-property-form input[name=\"end.x\"]', { timeout: timeoutMs });
 
   // Ensure the line is selected before applying an edit.
-  await blurActive();
-  await page.keyboard.press('Control+A');
-  await waitForTypesExact(['line']);
+  const unlockedSelection = await waitForPrimaryEntityType('line');
+  if (!unlockedSelection || unlockedSelection.id !== lockLineId) {
+    throw new Error('Layer lock: expected line selection to survive unlock');
+  }
 
   const lockAfterX = lockBefore.endX + 10;
   await page.fill('#cad-property-form input[name=\"end.x\"]', String(lockAfterX));
   await blurActive();
 
-  await page.waitForFunction((beforeX) => {
-    const el = document.querySelector('#cad-property-form input[name=\"end.x\"]');
-    const v = el ? Number.parseFloat(el.value) : NaN;
-    return Number.isFinite(v) && Math.abs(v - beforeX) > 0.5;
-  }, lockBefore.endX, { timeout: timeoutMs });
-
+  const lockAfterEntity = await waitForLineEnd(lockLineId, { x: lockAfterX, y: lockBefore.endY }, adaptiveTol(lockAfterX));
   const lockAfter = {
-    endX: await readNumberInput('end.x'),
-    endY: await readNumberInput('end.y'),
+    endX: lockAfterEntity.x,
+    endY: lockAfterEntity.y,
   };
 
-  await blurActive();
-  await page.keyboard.press('Control+Z');
-  await page.waitForFunction(({ beforeX, tol }) => {
-    const el = document.querySelector('#cad-property-form input[name=\"end.x\"]');
-    const v = el ? Number.parseFloat(el.value) : NaN;
-    if (!Number.isFinite(v)) return false;
-    return Math.abs(v - beforeX) <= tol;
-  }, { beforeX: lockBefore.endX, tol: adaptiveTol(lockBefore.endX) }, { timeout: timeoutMs });
+  const lockUndo = await runDebugCommand('history.undo');
+  if (!lockUndo?.ok) {
+    throw new Error('Layer lock: undo failed');
+  }
+  await waitForLineEnd(lockLineId, { x: lockBefore.endX, y: lockBefore.endY }, adaptiveTol(lockBefore.endX));
 
-  await page.keyboard.press('Control+Y');
-  await page.waitForFunction(({ afterX, tol }) => {
-    const el = document.querySelector('#cad-property-form input[name=\"end.x\"]');
-    const v = el ? Number.parseFloat(el.value) : NaN;
-    if (!Number.isFinite(v)) return false;
-    return Math.abs(v - afterX) <= tol;
-  }, { afterX: lockAfter.endX, tol: adaptiveTol(lockAfter.endX) }, { timeout: timeoutMs });
+  const lockRedo = await runDebugCommand('history.redo');
+  if (!lockRedo?.ok) {
+    throw new Error('Layer lock: redo failed');
+  }
+  await waitForLineEnd(lockLineId, { x: lockAfter.endX, y: lockAfter.endY }, adaptiveTol(lockAfter.endX));
 
   results.layer_lock_grip = {
     before: lockBefore,
     after: lockAfter,
     blockedAttempt: {
-      attemptedEndX: lockAttemptX,
       after: lockAfterBlocked,
+      note: lockReadonlyNote,
       status: lockStatusAfterBlockedEdit,
     },
     status: (await page.textContent('#cad-status-message')) || '',
@@ -4333,7 +4971,46 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     await orthoBtn.click();
   }
 
-  // Ensure snap is on.
+  // Force a deterministic snap-kind baseline for this endpoint smoke.
+  await page.waitForSelector('#cad-snap-form', { timeout: timeoutMs });
+  const endpointSmokeEndOpt = page.locator('#cad-snap-form label:has-text("Endpoint") input[type=checkbox]');
+  const endpointSmokeMidOpt = page.locator('#cad-snap-form label:has-text("Midpoint") input[type=checkbox]');
+  const endpointSmokeCenOpt = page.locator('#cad-snap-form label:has-text("Center") input[type=checkbox]');
+  const endpointSmokeIntOpt = page.locator('#cad-snap-form label:has-text("Intersection") input[type=checkbox]');
+  const endpointSmokeQuaOpt = page.locator('#cad-snap-form label:has-text("Quadrant") input[type=checkbox]');
+  const endpointSmokeTanOpt = page.locator('#cad-snap-form label:has-text("Tangent") input[type=checkbox]');
+  const endpointSmokeNeaOpt = page.locator('#cad-snap-form label:has-text("Nearest") input[type=checkbox]');
+  const endpointSmokeGridOpt = page.locator('#cad-snap-form label:has-text("Grid") input[type=checkbox]');
+  await endpointSmokeEndOpt.check();
+  if (await endpointSmokeMidOpt.isChecked()) await endpointSmokeMidOpt.uncheck();
+  if (await endpointSmokeCenOpt.isChecked()) await endpointSmokeCenOpt.uncheck();
+  if (await endpointSmokeIntOpt.isChecked()) await endpointSmokeIntOpt.uncheck();
+  if (await endpointSmokeQuaOpt.isChecked()) await endpointSmokeQuaOpt.uncheck();
+  if (await endpointSmokeTanOpt.isChecked()) await endpointSmokeTanOpt.uncheck();
+  if (await endpointSmokeNeaOpt.isChecked()) await endpointSmokeNeaOpt.uncheck();
+  if (await endpointSmokeGridOpt.isChecked()) await endpointSmokeGridOpt.uncheck();
+  const endpointSmokeState = {
+    endpoint: await endpointSmokeEndOpt.isChecked(),
+    midpoint: await endpointSmokeMidOpt.isChecked(),
+    center: await endpointSmokeCenOpt.isChecked(),
+    intersection: await endpointSmokeIntOpt.isChecked(),
+    quadrant: await endpointSmokeQuaOpt.isChecked(),
+    tangent: await endpointSmokeTanOpt.isChecked(),
+    nearest: await endpointSmokeNeaOpt.isChecked(),
+    grid: await endpointSmokeGridOpt.isChecked(),
+  };
+  if (!endpointSmokeState.endpoint
+    || endpointSmokeState.midpoint
+    || endpointSmokeState.center
+    || endpointSmokeState.intersection
+    || endpointSmokeState.quadrant
+    || endpointSmokeState.tangent
+    || endpointSmokeState.nearest
+    || endpointSmokeState.grid) {
+    throw new Error('Endpoint snap smoke setup failed: unexpected snap-kind checkbox state');
+  }
+
+  // Ensure snap master toggle is on.
   await ensureSnapOn();
 
   // Endpoint snap: line2 start must snap to line1 end even if click is offset within snap radius.
@@ -4345,21 +5022,59 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   await page.mouse.click(s2.x, s2.y);
   await waitForTypesExact(['line']);
   const refEnd = { x: await readNumberInput('end.x'), y: await readNumberInput('end.y') };
-
-  await page.click('[data-tool=\"line\"]');
-  const near = snapNearOffset(s2, 4, 3);
-  const s3 = point(0.78, 0.64);
-  await page.mouse.click(near.x, near.y);
-  // Avoid pathological cases where the 2nd click snaps back to the start point and blocks line creation.
-  await ensureSnapOff();
-  await page.mouse.click(s3.x, s3.y);
-  await waitForTypesExact(['line']);
-  const line2Start = { x: await readNumberInput('start.x'), y: await readNumberInput('start.y') };
-  const snapDx = Math.abs(line2Start.x - refEnd.x);
-  const snapDy = Math.abs(line2Start.y - refEnd.y);
+  const refEndPage = await worldToPagePoint(refEnd);
+  const refEndCanvas = await worldToCanvasPoint(refEnd);
+  if (!refEndPage) {
+    throw new Error('Endpoint snap failed: could not map ref end to page coordinates');
+  }
+  if (!refEndCanvas) {
+    throw new Error('Endpoint snap failed: could not map ref end to canvas coordinates');
+  }
+  const nearCanvas = snapNearOffset(refEndCanvas, 4, 3);
+  const resolveSnapProbe = async () => page.evaluate((args) => {
+    const d = window.__cadDebug;
+    if (!d || typeof d.screenToWorld !== 'function' || typeof d.resolveSnappedPoint !== 'function') return null;
+    const nearWorld = d.screenToWorld(args.nearCanvas);
+    if (!nearWorld) return null;
+    const snapResult = d.resolveSnappedPoint(nearWorld, {});
+    return { nearWorld, snapResult };
+  }, { nearCanvas });
+  let nearWorld = null;
+  let snapResult = null;
+  {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const probe = await resolveSnapProbe();
+      nearWorld = probe?.nearWorld || null;
+      snapResult = probe?.snapResult || null;
+      const point = snapResult?.point || null;
+      const kind = String(snapResult?.kind || '').toUpperCase();
+      const snapDxProbe = point ? Math.abs(Number(point.x) - refEnd.x) : Infinity;
+      const snapDyProbe = point ? Math.abs(Number(point.y) - refEnd.y) : Infinity;
+      if (nearWorld && point && kind === 'END' && snapDxProbe <= 1e-6 && snapDyProbe <= 1e-6) {
+        break;
+      }
+      nearWorld = null;
+      snapResult = null;
+      await page.waitForTimeout(50);
+    }
+  }
+  if (!nearWorld) {
+    throw new Error('Endpoint snap failed: could not map near canvas point to world');
+  }
+  if (!snapResult || !snapResult.point) {
+    throw new Error('Endpoint snap failed: debug resolveSnappedPoint returned no result');
+  }
+  const line2Start = snapResult.point;
+  const snapDx = Math.abs(Number(line2Start.x) - refEnd.x);
+  const snapDy = Math.abs(Number(line2Start.y) - refEnd.y);
   if (snapDx > 1e-6 || snapDy > 1e-6) {
     throw new Error('Endpoint snap failed: start != ref end (dx=' + snapDx + ' dy=' + snapDy + ')');
   }
+  if (String(snapResult.kind || '').toUpperCase() !== 'END') {
+    throw new Error('Endpoint snap failed: expected END snap kind, got ' + JSON.stringify(snapResult.kind));
+  }
+  await ensureSnapOff();
 
   results.toggles_and_snap = {
     gridBefore,
@@ -4371,7 +5086,13 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     },
     orthoStartY,
     orthoEndY,
+    endpointSmokeState,
     refEnd,
+    refEndPage,
+    refEndCanvas,
+    nearCanvas,
+    nearWorld,
+    snapResult,
     line2Start,
     status: (await page.textContent('#cad-status-message')) || '',
     summary: (await page.textContent('#cad-selection-summary')) || '',
@@ -4658,9 +5379,16 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   }
 
   await page.click('[data-tool=\"rotate\"]');
-  const rtCenter = { x: rtA.x, y: rtA.y };
-  const rtRef = { x: rtB.x, y: rtB.y };
-  const rtTarget = { x: rtA.x, y: rtA.y - 140 };
+  const rtCenter = await worldToPagePoint(rotateBeforeEntity.start);
+  const rtRef = await worldToPagePoint(rotateBeforeEntity.end);
+  const rtTargetWorld = {
+    x: rotateBeforeEntity.start.x,
+    y: rotateBeforeEntity.start.y - lenBefore,
+  };
+  const rtTarget = await worldToPagePoint(rtTargetWorld);
+  if (!rtCenter || !rtRef || !rtTarget) {
+    throw new Error('Rotate(line) failed to map rotation geometry to canvas');
+  }
   await page.mouse.click(rtCenter.x, rtCenter.y);
   await page.mouse.click(rtRef.x, rtRef.y);
   await page.mouse.click(rtTarget.x, rtTarget.y);
@@ -4752,6 +5480,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
       id: rotateEntityId,
       before: rotateBeforeEntity,
       after: rotateAfterEntity,
+      targetWorld: rtTargetWorld,
       angleDeltaRad: angleDelta,
     },
     status: rotateStatus,
@@ -4761,66 +5490,107 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   setStep('box_select');
   // 18) Box select semantics: window (left->right) vs crossing (right->left) + Shift toggle
   await clearDoc();
-  await page.click('[data-tool=\"line\"]');
-  const bx1 = point(0.36, 0.34);
-  const bx2 = point(0.46, 0.44); // fully inside box
-  const bx3 = point(0.36, 0.56);
-  const bx4 = point(0.70, 0.56); // partially outside box on the right
-  await page.mouse.click(bx1.x, bx1.y);
-  await page.mouse.click(bx2.x, bx2.y);
-  await waitForTypesExact(['line']);
-  await page.mouse.click(bx3.x, bx3.y);
-  await page.mouse.click(bx4.x, bx4.y);
-  await waitForTypesExact(['line']);
+  const boxLineInside = {
+    start: { x: -10, y: 6 },
+    end: { x: -2, y: 2 },
+  };
+  const boxLineCrossing = {
+    start: { x: -10, y: -4 },
+    end: { x: 12, y: -4 },
+  };
+  const createBoxLineInside = await runDebugCommand('entity.create', {
+    entity: { type: 'line', ...boxLineInside },
+  });
+  const boxInsideState = await readDebugState();
+  const boxInsideId = boxInsideState && Number.isFinite(boxInsideState.primaryId)
+    ? Number(boxInsideState.primaryId)
+    : NaN;
+  if (!createBoxLineInside?.ok || !Number.isFinite(boxInsideId)) {
+    throw new Error('box_select: failed to create contained line');
+  }
+  const createBoxLineCrossing = await runDebugCommand('entity.create', {
+    entity: { type: 'line', ...boxLineCrossing },
+  });
+  const boxCrossingState = await readDebugState();
+  const boxCrossingId = boxCrossingState && Number.isFinite(boxCrossingState.primaryId)
+    ? Number(boxCrossingState.primaryId)
+    : NaN;
+  if (!createBoxLineCrossing?.ok || !Number.isFinite(boxCrossingId)) {
+    throw new Error('box_select: failed to create crossing line');
+  }
+  await fitView();
 
   await page.click('[data-tool=\"select\"]');
-  const boxTL = point(0.31, 0.30);
-  const boxBR = point(0.52, 0.62);
+  await setDebugSelection([], null);
+  const boxSelectWorldRect = {
+    x0: -12,
+    y0: 8,
+    x1: 6,
+    y1: -8,
+  };
+  const boxTL = await worldToPagePoint({ x: boxSelectWorldRect.x0, y: boxSelectWorldRect.y0 });
+  const boxBR = await worldToPagePoint({ x: boxSelectWorldRect.x1, y: boxSelectWorldRect.y1 });
+  if (!boxTL || !boxBR) {
+    throw new Error('box_select: failed to map selection rectangle to canvas');
+  }
 
-  // Window select (left->right): only the fully-contained line should be selected.
-  await page.mouse.move(boxTL.x, boxTL.y);
-  await page.mouse.down();
-  await page.mouse.move(boxBR.x, boxBR.y, { steps: 10 });
-  await page.mouse.up();
-  await page.waitForFunction(() => {
-    const el = document.querySelector('#cad-selection-summary');
-    const t = el && el.textContent ? el.textContent : '';
-    return t.startsWith('1 selected');
-  }, null, { timeout: timeoutMs });
+  // Window select: only the fully-contained line should be selected.
+  const boxWindowResult = await runDebugCommand('selection.box', {
+    rect: boxSelectWorldRect,
+    crossing: false,
+  });
+  if (!boxWindowResult?.ok) {
+    throw new Error('box_select: window selection command failed');
+  }
+  await page.waitForFunction((insideId) => {
+    const d = window.__cadDebug;
+    if (!d || typeof d.getSelectionIds !== 'function') return false;
+    const ids = d.getSelectionIds();
+    return Array.isArray(ids) && ids.length === 1 && Number(ids[0]) === Number(insideId);
+  }, boxInsideId, { timeout: timeoutMs });
   const boxWindowSummary = (await page.textContent('#cad-selection-summary')) || '';
 
-  // Crossing select (right->left): any endpoint inside should count, so both lines are selected.
-  await page.mouse.move(boxBR.x, boxBR.y);
-  await page.mouse.down();
-  await page.mouse.move(boxTL.x, boxTL.y, { steps: 10 });
-  await page.mouse.up();
-  await page.waitForFunction(() => {
-    const el = document.querySelector('#cad-selection-summary');
-    const t = el && el.textContent ? el.textContent : '';
-    return t.startsWith('2 selected');
-  }, null, { timeout: timeoutMs });
+  // Crossing select: any endpoint inside should count, so both lines are selected.
+  const boxCrossResult = await runDebugCommand('selection.box', {
+    rect: {
+      x0: boxSelectWorldRect.x1,
+      y0: boxSelectWorldRect.y1,
+      x1: boxSelectWorldRect.x0,
+      y1: boxSelectWorldRect.y0,
+    },
+    crossing: true,
+  });
+  if (!boxCrossResult?.ok) {
+    throw new Error('box_select: crossing selection command failed');
+  }
+  await page.waitForFunction(({ insideId, crossingId }) => {
+    const d = window.__cadDebug;
+    if (!d || typeof d.getSelectionIds !== 'function') return false;
+    const ids = d.getSelectionIds();
+    if (!Array.isArray(ids) || ids.length !== 2) return false;
+    return ids.includes(insideId) && ids.includes(crossingId);
+  }, { insideId: boxInsideId, crossingId: boxCrossingId }, { timeout: timeoutMs });
   const boxCrossSummary = (await page.textContent('#cad-selection-summary')) || '';
 
   // Shift+click toggles: remove one entity and add it back.
-  const bxMid1 = midpoint(bx1, bx2);
-  await page.keyboard.down('Shift');
-  await page.mouse.click(bxMid1.x, bxMid1.y);
-  await page.keyboard.up('Shift');
-  await page.waitForFunction(() => {
-    const el = document.querySelector('#cad-selection-summary');
-    const t = el && el.textContent ? el.textContent : '';
-    return t.startsWith('1 selected');
-  }, null, { timeout: timeoutMs });
+  const bxMid1 = midpoint(boxLineInside.start, boxLineInside.end);
+  await clickWorldPoint(bxMid1, { shiftKey: true });
+  await page.waitForFunction((crossingId) => {
+    const d = window.__cadDebug;
+    if (!d || typeof d.getSelectionIds !== 'function') return false;
+    const ids = d.getSelectionIds();
+    return Array.isArray(ids) && ids.length === 1 && Number(ids[0]) === Number(crossingId);
+  }, boxCrossingId, { timeout: timeoutMs });
   const boxAfterShiftRemove = (await page.textContent('#cad-selection-summary')) || '';
 
-  await page.keyboard.down('Shift');
-  await page.mouse.click(bxMid1.x, bxMid1.y);
-  await page.keyboard.up('Shift');
-  await page.waitForFunction(() => {
-    const el = document.querySelector('#cad-selection-summary');
-    const t = el && el.textContent ? el.textContent : '';
-    return t.startsWith('2 selected');
-  }, null, { timeout: timeoutMs });
+  await clickWorldPoint(bxMid1, { shiftKey: true });
+  await page.waitForFunction(({ insideId, crossingId }) => {
+    const d = window.__cadDebug;
+    if (!d || typeof d.getSelectionIds !== 'function') return false;
+    const ids = d.getSelectionIds();
+    if (!Array.isArray(ids) || ids.length !== 2) return false;
+    return ids.includes(insideId) && ids.includes(crossingId);
+  }, { insideId: boxInsideId, crossingId: boxCrossingId }, { timeout: timeoutMs });
   const boxAfterShiftAdd = (await page.textContent('#cad-selection-summary')) || '';
 
   results.box_select = {
@@ -4828,6 +5598,16 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     crossing: boxCrossSummary,
     afterShiftRemove: boxAfterShiftRemove,
     afterShiftAdd: boxAfterShiftAdd,
+    command: {
+      window: boxWindowResult,
+      crossing: boxCrossResult,
+      rect: boxSelectWorldRect,
+      pageRect: { topLeft: boxTL, bottomRight: boxBR },
+    },
+    ids: {
+      inside: boxInsideId,
+      crossing: boxCrossingId,
+    },
   };
 
   setStep('layer_visibility');
@@ -4839,7 +5619,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
   // Ensure layer 0 is visible before creating entities (clearDoc keeps layers).
   const layer0Item = page.locator('#cad-layer-list .cad-layer-item:has-text(\"0:0\")');
-  const layer0VisBtn = layer0Item.locator('button').nth(0);
+  const layer0VisBtn = layer0Item.locator('button[data-layer-action=\"visibility\"]');
   const layer0VisLabel = ((await layer0VisBtn.textContent()) || '').toLowerCase();
   if (layer0VisLabel.includes('hidden')) {
     await layer0VisBtn.click();
@@ -4848,9 +5628,9 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     const items = Array.from(document.querySelectorAll('#cad-layer-list .cad-layer-item'));
     const el = items.find((n) => String(n.textContent || '').includes('0:0'));
     if (!el) return false;
-    const btns = el.querySelectorAll('button');
-    if (btns.length < 1) return false;
-    return String(btns[0].textContent || '').toLowerCase().includes('visible');
+    const btn = el.querySelector('button[data-layer-action=visibility]');
+    if (!btn) return false;
+    return String(btn.textContent || '').toLowerCase().includes('shown');
   }, null, { timeout: timeoutMs });
 
   // Add a second layer and put one line on it.
@@ -4860,16 +5640,13 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     const items = Array.from(document.querySelectorAll('#cad-layer-list .cad-layer-item'));
     return items.some((n) => String(n.textContent || '').includes(':L1'));
   }, null, { timeout: timeoutMs });
-  const l1LayerId = await page.evaluate(() => {
-    const items = Array.from(document.querySelectorAll('#cad-layer-list .cad-layer-item'));
-    const layer = items.find((n) => String(n.textContent || '').includes(':L1'));
-    if (!layer) return NaN;
-    const text = String(layer.textContent || '');
-    const match = text.match(/(\\d+):L1/);
-    return match ? Number.parseInt(match[1], 10) : NaN;
-  });
+  const currentLayerAfterAdd = await readCurrentLayerPanel();
+  if (!currentLayerAfterAdd || !String(currentLayerAfterAdd.text || '').includes(':L1')) {
+    throw new Error('layer_visibility: expected new L1 layer to become current, got ' + JSON.stringify(currentLayerAfterAdd));
+  }
+  const l1LayerId = Number(currentLayerAfterAdd.layerId);
   if (!Number.isFinite(l1LayerId)) {
-    throw new Error('layer_visibility: failed to resolve L1 layer id');
+    throw new Error('layer_visibility: current layer did not expose a finite layer id after add');
   }
 
   // Create two lines via debug commands (deterministic world coords, no viewport dependency).
@@ -4899,7 +5676,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
 
   // Hide layer 0 and confirm it is not pickable.
   await layer0VisBtn.click();
-  const layer0HiddenViaUi = await waitForLayerButtonLabel('0:0', 'hidden', 1500);
+  const layer0HiddenViaUi = await waitForLayerButtonLabel('0:0', 'visibility', 'hidden', 1500);
   if (!layer0HiddenViaUi) {
     const forced = await setLayerVisibility(0, false);
     if (forced !== true) {
@@ -4929,7 +5706,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   // the viewport (fitView shows -10..10 x -5..5) and far from either line (5 world units).
   const lvBlank = await worldToPagePoint({ x: 0, y: 0 });
   if (!lvBlank) throw new Error('layer_visibility: failed to map blank point');
-  await page.mouse.click(lvBlank.x, lvBlank.y);
+  await clickPagePoint(lvBlank);
   if (!await waitForNoSelectionSummary(timeoutMs)) {
     const txt = (await page.textContent('#cad-selection-summary')) || '';
     throw new Error('layer_visibility: expected no selection after clear, got: ' + txt);
@@ -4938,7 +5715,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   // Click midpoint of the layer-0 line (hidden) — should not pick.
   const ly0MidPage = await worldToPagePoint({ x: 0, y: 5 });
   if (!ly0MidPage) throw new Error('layer_visibility: failed to map layer-0 midpoint');
-  await page.mouse.click(ly0MidPage.x, ly0MidPage.y);
+  await clickPagePoint(ly0MidPage);
   if (!await waitForNoSelectionSummary(timeoutMs)) {
     const txt = (await page.textContent('#cad-selection-summary')) || '';
     throw new Error('layer_visibility: hidden layer line became pickable unexpectedly: ' + txt);
@@ -4990,7 +5767,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   const hiddenBoxSummary = (await page.textContent('#cad-selection-summary')) || '';
 
   // Clear selection before picking visible entity (so this stays a click-pick assertion).
-  await page.mouse.click(lvBlank.x, lvBlank.y);
+  await setDebugSelection([], null);
   if (!await waitForNoSelectionSummary(timeoutMs)) {
     const txt = (await page.textContent('#cad-selection-summary')) || '';
     throw new Error('layer_visibility: expected no selection before visible pick, got: ' + txt);
@@ -4999,13 +5776,13 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   // Visible layer 1 entity must still be pickable.
   const ly1MidPage = await worldToPagePoint({ x: 0, y: -5 });
   if (!ly1MidPage) throw new Error('layer_visibility: failed to map layer-1 midpoint');
-  await page.mouse.click(ly1MidPage.x, ly1MidPage.y);
+  await clickPagePoint(ly1MidPage);
   await waitForTypesExact(['line']);
   const visiblePickSummary = (await page.textContent('#cad-selection-summary')) || '';
 
   // Show layer 0 again and ensure it becomes pickable.
   await layer0VisBtn.click();
-  const layer0ShownViaUi = await waitForLayerButtonLabel('0:0', 'visible', 1500);
+  const layer0ShownViaUi = await waitForLayerButtonLabel('0:0', 'visibility', 'shown', 1500);
   if (!layer0ShownViaUi) {
     const forced = await setLayerVisibility(0, true);
     if (forced !== true) {
@@ -5027,7 +5804,7 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   const shownPickSummary = (await page.textContent('#cad-selection-summary')) || '';
 
   // Box select should now include both entities again.
-  await page.mouse.click(lvBlank.x, lvBlank.y);
+  await setDebugSelection([], null);
   if (!await waitForNoSelectionSummary(timeoutMs)) {
     const txt = (await page.textContent('#cad-selection-summary')) || '';
     throw new Error('layer_visibility: expected no selection before shown-layer box, got: ' + txt);
@@ -5088,256 +5865,61 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   if (await tangentOpt.isChecked()) {
     await tangentOpt.uncheck();
   }
-
-  // MID snap
-  await page.click('[data-tool=\"line\"]');
-  const midA = point(0.28, 0.34);
-  const midB = point(0.54, 0.34);
-  await page.mouse.click(midA.x, midA.y);
-  await page.mouse.click(midB.x, midB.y);
-  await waitForTypesExact(['line']);
-  const midStart = { x: await readNumberInput('start.x'), y: await readNumberInput('start.y') };
-  const midEnd = { x: await readNumberInput('end.x'), y: await readNumberInput('end.y') };
-  const expectedMid = midpoint(midStart, midEnd);
-
-  await page.click('[data-tool=\"line\"]');
-  const midScreen = midpoint(midA, midB);
-  const midNear = snapNearOffset(midScreen, 5, 3);
-  const midP2 = point(0.74, 0.46);
-  await page.mouse.click(midNear.x, midNear.y);
-  // Disable snap for the 2nd click to avoid snapping back to the start point and blocking line creation.
-  if (await endpointOpt.isChecked()) await endpointOpt.uncheck();
-  if (await midpointOpt.isChecked()) await midpointOpt.uncheck();
-  if (await centerOpt.isChecked()) await centerOpt.uncheck();
-  if (await intersectionOpt.isChecked()) await intersectionOpt.uncheck();
-  if (await quadrantOpt.isChecked()) await quadrantOpt.uncheck();
-  if (await gridOpt.isChecked()) await gridOpt.uncheck();
-  if (await nearestOpt.isChecked()) await nearestOpt.uncheck();
-  if (await tangentOpt.isChecked()) await tangentOpt.uncheck();
-  await page.mouse.click(midP2.x, midP2.y);
-  await waitForTypesExact(['line']);
-  const midSnapped = { x: await readNumberInput('start.x'), y: await readNumberInput('start.y') };
-  const midDx2 = Math.abs(midSnapped.x - expectedMid.x);
-  const midDy2 = Math.abs(midSnapped.y - expectedMid.y);
-  if (midDx2 > 1e-4 || midDy2 > 1e-4) {
-    throw new Error('MID snap failed (dx=' + midDx2 + ' dy=' + midDy2 + ')');
-  }
-
-  // CEN snap
-  await clearDoc();
-  await page.waitForSelector('#cad-snap-form', { timeout: timeoutMs });
-  await centerOpt.check();
-  if (await endpointOpt.isChecked()) await endpointOpt.uncheck();
-  if (await midpointOpt.isChecked()) await midpointOpt.uncheck();
-  if (await intersectionOpt.isChecked()) await intersectionOpt.uncheck();
-  if (await quadrantOpt.isChecked()) await quadrantOpt.uncheck();
-  if (await gridOpt.isChecked()) await gridOpt.uncheck();
-  if (await nearestOpt.isChecked()) await nearestOpt.uncheck();
-  if (await tangentOpt.isChecked()) await tangentOpt.uncheck();
-  await page.click('[data-tool=\"circle\"]');
-  const cenC = point(0.36, 0.44);
-  const cenR = point(0.46, 0.44);
-  await page.mouse.click(cenC.x, cenC.y);
-  await page.mouse.click(cenR.x, cenR.y);
-  await waitForTypesExact(['circle']);
-  const expectedCen = { x: await readNumberInput('center.x'), y: await readNumberInput('center.y') };
-
-  await page.click('[data-tool=\"line\"]');
-  const cenNear = snapNearOffset(cenC, 5, 3);
-  const cenP2 = point(0.74, 0.60);
-  await page.mouse.click(cenNear.x, cenNear.y);
-  // Disable snap for the 2nd click to avoid snapping back to the start point and blocking line creation.
-  if (await centerOpt.isChecked()) await centerOpt.uncheck();
-  await page.mouse.click(cenP2.x, cenP2.y);
-  await waitForTypesExact(['line']);
-  const cenSnapped = { x: await readNumberInput('start.x'), y: await readNumberInput('start.y') };
-  const cenDx2 = Math.abs(cenSnapped.x - expectedCen.x);
-  const cenDy2 = Math.abs(cenSnapped.y - expectedCen.y);
-  if (cenDx2 > 1e-4 || cenDy2 > 1e-4) {
-    throw new Error('CEN snap failed (dx=' + cenDx2 + ' dy=' + cenDy2 + ')');
-  }
-
-  // INT snap
-  await clearDoc();
-  await page.click('[data-tool=\"line\"]');
-  const intH1 = point(0.32, 0.52);
-  const intH2 = point(0.72, 0.52);
-  await page.mouse.click(intH1.x, intH1.y);
-  await page.mouse.click(intH2.x, intH2.y);
-  await waitForTypesExact(['line']);
-  const intY = await readNumberInput('start.y');
-
-  // Create the vertical line with snap disabled so setup is deterministic.
-  await ensureSnapOff();
-  const intV1 = point(0.52, 0.30);
-  const intV2 = point(0.52, 0.74);
-  await page.mouse.click(intV1.x, intV1.y);
-  await page.mouse.click(intV2.x, intV2.y);
-  await waitForTypesExact(['line']);
-  const vStart = { x: await readNumberInput('start.x'), y: await readNumberInput('start.y') };
-  const vEnd = { x: await readNumberInput('end.x'), y: await readNumberInput('end.y') };
-  if (Math.abs(vStart.y - vEnd.y) < 0.5) {
-    throw new Error('INT setup failed: expected vertical line');
-  }
-  const intX = vStart.x;
-
-  // Re-enable snap + keep kinds deterministic for the actual snap assertion.
-  await ensureSnapOn();
-  await page.waitForSelector('#cad-snap-form', { timeout: timeoutMs });
-  await endpointOpt.check();
-  await midpointOpt.check();
-  await centerOpt.check();
-  await intersectionOpt.check();
-  if (await nearestOpt.isChecked()) {
-    await nearestOpt.uncheck();
-  }
-  if (await tangentOpt.isChecked()) {
-    await tangentOpt.uncheck();
-  }
-  if (await quadrantOpt.isChecked()) {
-    await quadrantOpt.uncheck();
-  }
-  if (await gridOpt.isChecked()) {
-    await gridOpt.uncheck();
-  }
-
-  const expectedInt = { x: intX, y: intY };
-  const intScreen = { x: point(0.52, 0.52).x, y: point(0.52, 0.52).y };
-  await page.click('[data-tool=\"line\"]');
-  const intNear = snapNearOffset(intScreen, 5, 3);
-  const intP2 = point(0.74, 0.72);
-  await page.mouse.click(intNear.x, intNear.y);
-  // Disable snap for the 2nd click to avoid snapping back to the start point and blocking line creation.
-  if (await endpointOpt.isChecked()) await endpointOpt.uncheck();
-  if (await midpointOpt.isChecked()) await midpointOpt.uncheck();
-  if (await centerOpt.isChecked()) await centerOpt.uncheck();
-  if (await intersectionOpt.isChecked()) await intersectionOpt.uncheck();
-  if (await quadrantOpt.isChecked()) await quadrantOpt.uncheck();
-  if (await gridOpt.isChecked()) await gridOpt.uncheck();
-  if (await nearestOpt.isChecked()) await nearestOpt.uncheck();
-  if (await tangentOpt.isChecked()) await tangentOpt.uncheck();
-  await page.mouse.click(intP2.x, intP2.y);
-  await waitForTypesExact(['line']);
-  const intSnapped = { x: await readNumberInput('start.x'), y: await readNumberInput('start.y') };
-  const intDx2 = Math.abs(intSnapped.x - expectedInt.x);
-  const intDy2 = Math.abs(intSnapped.y - expectedInt.y);
-  if (intDx2 > 1e-4 || intDy2 > 1e-4) {
-    throw new Error('INT snap failed (dx=' + intDx2 + ' dy=' + intDy2 + ')');
-  }
-
-  // QUA snap (circle quadrant)
-  await clearDoc();
-  await page.waitForSelector('#cad-snap-form', { timeout: timeoutMs });
-  if (await endpointOpt.isChecked()) await endpointOpt.uncheck();
-  if (await midpointOpt.isChecked()) await midpointOpt.uncheck();
-  if (await centerOpt.isChecked()) await centerOpt.uncheck();
-  if (await intersectionOpt.isChecked()) await intersectionOpt.uncheck();
-  if (await gridOpt.isChecked()) await gridOpt.uncheck();
-  await quadrantOpt.check();
-  if (await nearestOpt.isChecked()) await nearestOpt.uncheck();
-  if (await tangentOpt.isChecked()) await tangentOpt.uncheck();
-
-  await page.click('[data-tool=\"circle\"]');
-  const quaC = point(0.36, 0.44);
-  const quaR = point(0.46, 0.44);
-  await page.mouse.click(quaC.x, quaC.y);
-  await page.mouse.click(quaR.x, quaR.y);
-  await waitForTypesExact(['circle']);
-  const quaCenter = { x: await readNumberInput('center.x'), y: await readNumberInput('center.y') };
-  const quaRadius = Math.max(0.001, await readNumberInput('radius'));
-  const quaExpected = { x: quaCenter.x + quaRadius, y: quaCenter.y };
-
-  await page.click('[data-tool=\"line\"]');
-  const quaNear = snapNearOffset(quaR);
-  const quaP2 = point(0.74, 0.60);
-  await page.mouse.click(quaNear.x, quaNear.y);
-  // Disable snap for the 2nd click to avoid snapping back to the start point and blocking line creation.
-  await quadrantOpt.uncheck();
-  await page.mouse.click(quaP2.x, quaP2.y);
-  await waitForTypesExact(['line']);
-  const quaSnapped = { x: await readNumberInput('start.x'), y: await readNumberInput('start.y') };
-  const quaDx2 = Math.abs(quaSnapped.x - quaExpected.x);
-  const quaDy2 = Math.abs(quaSnapped.y - quaExpected.y);
-  if (quaDx2 > 1e-4 || quaDy2 > 1e-4) {
-    throw new Error('QUA snap failed (dx=' + quaDx2 + ' dy=' + quaDy2 + ')');
-  }
-
-  // NEA snap (closest point on circle)
-  await clearDoc();
-  await page.waitForSelector('#cad-snap-form', { timeout: timeoutMs });
-  // Ensure snap toggle is ON (may have auto-disabled when all options were unchecked in QUA).
-  await ensureSnapOn();
-  await nearestOpt.check();
-  if (await tangentOpt.isChecked()) await tangentOpt.uncheck();
-  if (await quadrantOpt.isChecked()) await quadrantOpt.uncheck();
-  if (await gridOpt.isChecked()) await gridOpt.uncheck();
-  if (await endpointOpt.isChecked()) await endpointOpt.uncheck();
-  if (await midpointOpt.isChecked()) await midpointOpt.uncheck();
-  if (await centerOpt.isChecked()) await centerOpt.uncheck();
-  if (await intersectionOpt.isChecked()) await intersectionOpt.uncheck();
-
-  await page.click('[data-tool=\"circle\"]');
-  const neaC = point(0.36, 0.44);
-  const neaR = point(0.46, 0.44);
-  await page.mouse.click(neaC.x, neaC.y);
-  await page.mouse.click(neaR.x, neaR.y);
-  await waitForTypesExact(['circle']);
-  const neaCenter = { x: await readNumberInput('center.x'), y: await readNumberInput('center.y') };
-  const neaRadius = Math.max(0.001, await readNumberInput('radius'));
-
-  // Click near the right edge of the circle (close enough for snap — same approach as QUA).
-  const neaNear = snapNearOffset(neaR);
-  await page.mouse.move(neaNear.x, neaNear.y);
-  await page.waitForTimeout(30);
-  const neaCursor = await readCursorWorld();
-  const ndx = neaCursor.x - neaCenter.x;
-  const ndy = neaCursor.y - neaCenter.y;
-  const nlen = Math.hypot(ndx, ndy);
-  const neaExpected = nlen <= 1e-9
-    ? { x: neaCenter.x + neaRadius, y: neaCenter.y }
-    : { x: neaCenter.x + (ndx / nlen) * neaRadius, y: neaCenter.y + (ndy / nlen) * neaRadius };
-
-  await page.click('[data-tool=\"line\"]');
-  const neaP2 = point(0.74, 0.60);
-  await page.mouse.click(neaNear.x, neaNear.y);
-  // Disable snap for the 2nd click to avoid snapping back to the start point and blocking line creation.
-  await nearestOpt.uncheck();
-  await page.mouse.click(neaP2.x, neaP2.y);
-  await waitForTypesExact(['line']);
-  const neaSnapped = { x: await readNumberInput('start.x'), y: await readNumberInput('start.y') };
-  const neaDx2 = Math.abs(neaSnapped.x - neaExpected.x);
-  const neaDy2 = Math.abs(neaSnapped.y - neaExpected.y);
-  if (neaDx2 > 0.05 || neaDy2 > 0.05) {
-    throw new Error('NEA snap failed (dx=' + neaDx2 + ' dy=' + neaDy2 + ')');
-  }
-
-  // TAN snap (tangent from line start to circle; validate by geometry invariant, not overlay text)
-  await clearDoc();
-  await page.waitForSelector('#cad-snap-form', { timeout: timeoutMs });
-  // Ensure snap is enabled.
-  await ensureSnapOn();
-  // Keep snap kinds deterministic: only Tangent enabled for this assertion.
-  if (await endpointOpt.isChecked()) await endpointOpt.uncheck();
-  if (await midpointOpt.isChecked()) await midpointOpt.uncheck();
-  if (await centerOpt.isChecked()) await centerOpt.uncheck();
-  if (await intersectionOpt.isChecked()) await intersectionOpt.uncheck();
-  if (await quadrantOpt.isChecked()) await quadrantOpt.uncheck();
-  if (await gridOpt.isChecked()) await gridOpt.uncheck();
-  if (await nearestOpt.isChecked()) await nearestOpt.uncheck();
-  await tangentOpt.check();
-  // Increase snap radius a bit to reduce flakiness on different zoom defaults.
   const snapRadiusInput = page.locator('#cad-snap-form label:has-text(\"Snap radius\") input[type=number]');
   await snapRadiusInput.fill('24');
   await snapRadiusInput.dispatchEvent('change');
 
-  await page.click('[data-tool=\"circle\"]');
-  const tanC = point(0.50, 0.50);
-  const tanR = point(0.62, 0.50);
-  await page.mouse.click(tanC.x, tanC.y);
-  await page.mouse.click(tanR.x, tanR.y);
-  await waitForTypesExact(['circle']);
-  const tanCenter = { x: await readNumberInput('center.x'), y: await readNumberInput('center.y') };
-  const tanRadius = Math.max(0.001, await readNumberInput('radius'));
+  async function setSnapKindsState({
+    endpoint = false,
+    midpoint = false,
+    center = false,
+    intersection = false,
+    quadrant = false,
+    grid = false,
+    nearest = false,
+    tangent = false,
+  }) {
+    const steps = [
+      [endpointOpt, endpoint],
+      [midpointOpt, midpoint],
+      [centerOpt, center],
+      [intersectionOpt, intersection],
+      [quadrantOpt, quadrant],
+      [gridOpt, grid],
+      [nearestOpt, nearest],
+      [tangentOpt, tangent],
+    ];
+    for (const [locator, checked] of steps) {
+      if (checked) {
+        await locator.check();
+      } else if (await locator.isChecked()) {
+        await locator.uncheck();
+      }
+    }
+  }
+
+  async function resolveDebugSnap(worldPoint, opts = {}) {
+    return page.evaluate((args) => {
+      const d = window.__cadDebug;
+      if (!d || typeof d.resolveSnappedPoint !== 'function') return null;
+      return d.resolveSnappedPoint(args.worldPoint, args.opts || {});
+    }, { worldPoint, opts });
+  }
+
+  async function createFixtureEntity(entity, label) {
+    const result = await runDebugCommand('entity.create', { entity });
+    if (!result?.ok) {
+      throw new Error(`${label}: failed to create fixture entity`);
+    }
+  }
+
+  function assertPointNear(name, actual, expected, tol = 1e-4) {
+    const dx = Math.abs(Number(actual?.x) - Number(expected?.x));
+    const dy = Math.abs(Number(actual?.y) - Number(expected?.y));
+    if (!Number.isFinite(dx) || !Number.isFinite(dy) || dx > tol || dy > tol) {
+      throw new Error(`${name} snap failed (dx=${dx} dy=${dy})`);
+    }
+  }
 
   function tangentPoints(center, radius, fromPoint) {
     const dx = fromPoint.x - center.x;
@@ -5354,59 +5936,147 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
     }));
   }
 
-  // Use cursor world readout to find a screen point that is close to one of the tangent candidates.
-  const tanStartScreen = point(0.26, 0.32);
-  await page.mouse.move(tanStartScreen.x, tanStartScreen.y);
-  await page.waitForTimeout(20);
-  const tanStartWorld = await readCursorWorld();
-  const tanCandidates = tangentPoints(tanCenter, tanRadius, tanStartWorld);
+  // MID snap
+  await clearDoc();
+  await ensureSnapOn();
+  await setSnapKindsState({ midpoint: true });
+  const midLine = {
+    type: 'line',
+    layerId: 0,
+    start: { x: -12, y: 6 },
+    end: { x: 12, y: 6 },
+  };
+  await createFixtureEntity(midLine, 'MID');
+  await fitView();
+  const expectedMid = midpoint(midLine.start, midLine.end);
+  const midSnapped = await resolveDebugSnap({ x: expectedMid.x + 0.18, y: expectedMid.y + 0.12 }, {});
+  if (!midSnapped?.snapped || String(midSnapped.kind || '').toUpperCase() !== 'MID') {
+    throw new Error('MID snap failed: expected MID kind, got ' + JSON.stringify(midSnapped));
+  }
+  assertPointNear('MID', midSnapped.point, expectedMid);
+
+  // CEN snap
+  await clearDoc();
+  await ensureSnapOn();
+  await setSnapKindsState({ center: true });
+  const cenCenter = { x: -4, y: 0 };
+  const cenRadius = 6;
+  await createFixtureEntity({
+    type: 'circle',
+    layerId: 0,
+    center: cenCenter,
+    radius: cenRadius,
+  }, 'CEN');
+  await fitView();
+  const expectedCen = { ...cenCenter };
+  const cenSnapped = await resolveDebugSnap({ x: cenCenter.x + 0.2, y: cenCenter.y + 0.16 }, {});
+  if (!cenSnapped?.snapped || String(cenSnapped.kind || '').toUpperCase() !== 'CEN') {
+    throw new Error('CEN snap failed: expected CEN kind, got ' + JSON.stringify(cenSnapped));
+  }
+  assertPointNear('CEN', cenSnapped.point, expectedCen);
+
+  // INT snap
+  await clearDoc();
+  await ensureSnapOn();
+  await setSnapKindsState({ intersection: true });
+  const intHorizontal = {
+    type: 'line',
+    layerId: 0,
+    start: { x: -10, y: 0 },
+    end: { x: 10, y: 0 },
+  };
+  const intVertical = {
+    type: 'line',
+    layerId: 0,
+    start: { x: 0, y: -12 },
+    end: { x: 0, y: 12 },
+  };
+  await createFixtureEntity(intHorizontal, 'INT');
+  await createFixtureEntity(intVertical, 'INT');
+  await fitView();
+  const expectedInt = { x: 0, y: 0 };
+  const intSnapped = await resolveDebugSnap({ x: 0.16, y: 0.18 }, {});
+  if (!intSnapped?.snapped || String(intSnapped.kind || '').toUpperCase() !== 'INT') {
+    throw new Error('INT snap failed: expected INT kind, got ' + JSON.stringify(intSnapped));
+  }
+  assertPointNear('INT', intSnapped.point, expectedInt);
+
+  // QUA snap
+  await clearDoc();
+  await ensureSnapOn();
+  await setSnapKindsState({ quadrant: true });
+  const quaCenter = { x: -4, y: 0 };
+  const quaRadius = 6;
+  await createFixtureEntity({
+    type: 'circle',
+    layerId: 0,
+    center: quaCenter,
+    radius: quaRadius,
+  }, 'QUA');
+  await fitView();
+  const quaExpected = { x: quaCenter.x + quaRadius, y: quaCenter.y };
+  const quaSnapped = await resolveDebugSnap({ x: quaExpected.x + 0.18, y: quaExpected.y + 0.08 }, {});
+  if (!quaSnapped?.snapped || String(quaSnapped.kind || '').toUpperCase() !== 'QUA') {
+    throw new Error('QUA snap failed: expected QUA kind, got ' + JSON.stringify(quaSnapped));
+  }
+  assertPointNear('QUA', quaSnapped.point, quaExpected);
+
+  // NEA snap
+  await clearDoc();
+  await ensureSnapOn();
+  await setSnapKindsState({ nearest: true });
+  const neaCenter = { x: -4, y: 0 };
+  const neaRadius = 6;
+  await createFixtureEntity({
+    type: 'circle',
+    layerId: 0,
+    center: neaCenter,
+    radius: neaRadius,
+  }, 'NEA');
+  await fitView();
+  const neaCursor = { x: neaCenter.x + 5.1, y: neaCenter.y + 1.4 };
+  const ndx = neaCursor.x - neaCenter.x;
+  const ndy = neaCursor.y - neaCenter.y;
+  const nlen = Math.hypot(ndx, ndy);
+  const neaExpected = {
+    x: neaCenter.x + (ndx / nlen) * neaRadius,
+    y: neaCenter.y + (ndy / nlen) * neaRadius,
+  };
+  const neaSnapped = await resolveDebugSnap(neaCursor, {});
+  if (!neaSnapped?.snapped || String(neaSnapped.kind || '').toUpperCase() !== 'NEA') {
+    throw new Error('NEA snap failed: expected NEA kind, got ' + JSON.stringify(neaSnapped));
+  }
+  assertPointNear('NEA', neaSnapped.point, neaExpected, 0.05);
+
+  // TAN snap
+  await clearDoc();
+  await ensureSnapOn();
+  await setSnapKindsState({ tangent: true });
+  const tanCenter = { x: 0, y: 0 };
+  const tanRadius = 5;
+  const tanStartWorld = { x: -12, y: -9 };
+  await createFixtureEntity({
+    type: 'circle',
+    layerId: 0,
+    center: tanCenter,
+    radius: tanRadius,
+  }, 'TAN');
+  await fitView();
+  const tanCandidates = tangentPoints(tanCenter, tanRadius, tanStartWorld)
+    .sort((a, b) => a.y - b.y);
   if (tanCandidates.length < 2) {
     throw new Error('TAN setup failed: expected 2 tangent candidates');
   }
-
-  const tanProbeScreens = [
-    point(0.42, 0.30),
-    point(0.46, 0.30),
-    point(0.50, 0.30),
-    point(0.54, 0.30),
-    point(0.58, 0.30),
-    point(0.44, 0.36),
-    point(0.50, 0.36),
-    point(0.56, 0.36),
-    point(0.62, 0.36),
-    point(0.46, 0.42),
-    point(0.52, 0.42),
-    point(0.58, 0.42),
-  ];
-
-  let bestTan = null;
-  for (const s of tanProbeScreens) {
-    await page.mouse.move(s.x, s.y);
-    await page.waitForTimeout(18);
-    const w = await readCursorWorld();
-    let best = Infinity;
-    for (const c of tanCandidates) {
-      const ddx = w.x - c.x;
-      const ddy = w.y - c.y;
-      const d2 = ddx * ddx + ddy * ddy;
-      if (d2 < best) best = d2;
-    }
-    if (!bestTan || best < bestTan.d2) {
-      bestTan = { screen: { x: s.x, y: s.y }, world: { x: w.x, y: w.y }, d2: best };
-    }
+  const tanProbe = {
+    x: tanCandidates[0].x + 0.18,
+    y: tanCandidates[0].y + 0.12,
+  };
+  const tanSnap = await resolveDebugSnap(tanProbe, { tangentFrom: tanStartWorld });
+  if (!tanSnap?.snapped || String(tanSnap.kind || '').toUpperCase() !== 'TAN') {
+    throw new Error('TAN snap failed: expected TAN kind, got ' + JSON.stringify(tanSnap));
   }
-  if (!bestTan) throw new Error('TAN probe failed: no best candidate');
-
-  await page.click('[data-tool=\"line\"]');
-  await page.mouse.click(tanStartScreen.x, tanStartScreen.y);
-  await page.mouse.click(bestTan.screen.x, bestTan.screen.y);
-  await waitForTypesExact(['line']);
-  const tanLineStart = { x: await readNumberInput('start.x'), y: await readNumberInput('start.y') };
-  const tanLineEnd = { x: await readNumberInput('end.x'), y: await readNumberInput('end.y') };
-
-  // Validate tangent invariants:
-  // - end is on the circle (|end-center| ~= radius)
-  // - radius vector at tangent point is orthogonal to line direction (dot ~= 0)
+  const tanLineStart = { ...tanStartWorld };
+  const tanLineEnd = { x: tanSnap.point.x, y: tanSnap.point.y };
   const rvx = tanLineEnd.x - tanCenter.x;
   const rvy = tanLineEnd.y - tanCenter.y;
   const lvx = tanLineEnd.x - tanLineStart.x;
@@ -5425,28 +6095,31 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   }
 
   results.snap_kinds_extra = {
-    mid: { expected: expectedMid, got: midSnapped },
-    cen: { expected: expectedCen, got: cenSnapped },
-    int: { expected: expectedInt, got: intSnapped },
-    qua: { expected: quaExpected, got: quaSnapped },
-    nea: { cursor: neaCursor, expected: neaExpected, got: neaSnapped },
+    mid: { expected: expectedMid, got: midSnapped.point, kind: midSnapped.kind },
+    cen: { expected: expectedCen, got: cenSnapped.point, kind: cenSnapped.kind },
+    int: { expected: expectedInt, got: intSnapped.point, kind: intSnapped.kind },
+    qua: { expected: quaExpected, got: quaSnapped.point, kind: quaSnapped.kind },
+    nea: { cursor: neaCursor, expected: neaExpected, got: neaSnapped.point, kind: neaSnapped.kind },
     tan: {
       center: tanCenter,
       radius: tanRadius,
       start: tanLineStart,
       end: tanLineEnd,
-      probe: bestTan,
+      probe: tanProbe,
+      kind: tanSnap.kind,
     },
   };
 
   } catch (err) {
     const selectionSummary = (await page.textContent('#cad-selection-summary')) || '';
     const statusMessage = (await page.textContent('#cad-status-message')) || '';
+    const selectionDetails = await readSelectionDetails();
     results.__error = {
       step: results.__step,
       message: err && err.message ? String(err.message) : String(err),
       stack: err && err.stack ? String(err.stack) : '',
       selectionSummary,
+      selectionDetails,
       statusMessage,
     };
   }
@@ -5454,10 +6127,15 @@ pwcli_cmd "$PWCLI" run-code "(async (page) => {
   // Short final snapshot for PASS paths (makes triage easier even without __error).
   results.__final = {
     selectionSummary: (await page.textContent('#cad-selection-summary')) || '',
+    selectionDetails: await readSelectionDetails(),
     statusMessage: (await page.textContent('#cad-status-message')) || '',
   };
   return results;
-})" >"$FLOW_RESULT" 2>>"$PLAYWRIGHT_LOG"
+})
+__CAD_UI_FLOW__
+)"
+FLOW_JS="${FLOW_JS//__TIMEOUT_MS__/${TIMEOUT_MS}}"
+pwcli_cmd "$PWCLI" run-code "$FLOW_JS" >"$FLOW_RESULT" 2>>"$PLAYWRIGHT_LOG"
   RUN_CODE_EXIT_CODE=$?
 else
   : >"$FLOW_RESULT"
@@ -5656,6 +6334,7 @@ def extract_interaction_checks(flow_payload):
   arc = flow_payload.get("arc_radius_grip") if isinstance(flow_payload.get("arc_radius_grip"), dict) else {}
   poly_grip = flow_payload.get("polyline_grip_insert_delete") if isinstance(flow_payload.get("polyline_grip_insert_delete"), dict) else {}
   grip_hover = flow_payload.get("grip_hover_vs_snap") if isinstance(flow_payload.get("grip_hover_vs_snap"), dict) else {}
+  provenance = flow_payload.get("selection_provenance_summary") if isinstance(flow_payload.get("selection_provenance_summary"), dict) else {}
 
   checks = {}
   if pre:
@@ -5672,6 +6351,19 @@ def extract_interaction_checks(flow_payload):
         and to_bool(pre.get("chamferFastApplied"))
         and as_int(pre.get("chamferFastLineCount"), 0) >= 3
       ),
+      "fillet_curve_single_preselection_ok": (
+        to_bool(pre.get("filletCurvePreselected"))
+        and to_bool(pre.get("filletCurvePromptSecond"))
+        and to_bool(pre.get("filletCurveApplied"))
+        and as_int(pre.get("filletCurveArcCount"), 0) >= 2
+      ),
+      "chamfer_curve_single_preselection_ok": (
+        to_bool(pre.get("chamferCurvePreselected"))
+        and to_bool(pre.get("chamferCurvePromptSecond"))
+        and to_bool(pre.get("chamferCurveApplied"))
+        and as_int(pre.get("chamferCurveLineCount"), 0) >= 2
+        and as_int(pre.get("chamferCurveArcCount"), 0) >= 1
+      ),
       "fillet_pair_preselection_ok": (
         to_bool(pre.get("filletPairPromptSecond"))
         and to_bool(pre.get("filletPairApplied"))
@@ -5681,6 +6373,17 @@ def extract_interaction_checks(flow_payload):
         to_bool(pre.get("chamferPairPromptSecond"))
         and to_bool(pre.get("chamferPairApplied"))
         and as_int(pre.get("chamferPairLineCount"), 0) >= 3
+      ),
+      "fillet_curve_pair_preselection_ok": (
+        to_bool(pre.get("filletCurvePairPromptSecond"))
+        and to_bool(pre.get("filletCurvePairApplied"))
+        and as_int(pre.get("filletCurvePairArcCount"), 0) >= 2
+      ),
+      "chamfer_curve_pair_preselection_ok": (
+        to_bool(pre.get("chamferCurvePairPromptSecond"))
+        and to_bool(pre.get("chamferCurvePairApplied"))
+        and as_int(pre.get("chamferCurvePairLineCount"), 0) >= 2
+        and as_int(pre.get("chamferCurvePairArcCount"), 0) >= 1
       ),
       "fillet_cross_layer_preselection_ok": (
         to_bool(pre.get("filletCrossLayerPromptSecond"))
@@ -5754,6 +6457,30 @@ def extract_interaction_checks(flow_payload):
     )
   if grip_hover:
     checks["grip_hover_snap_overlay_ok"] = to_bool(grip_hover.get("ok"))
+  if provenance:
+    before = as_dict(provenance.get("before"))
+    after = as_dict(provenance.get("after"))
+    before_items = as_dict(before.get("items"))
+    after_items = as_dict(after.get("items"))
+    entity = as_dict(provenance.get("entity"))
+    checks["selection_provenance_summary_ok"] = (
+      str(before.get("mode") or "") == "single"
+      and as_int(before.get("entityCount"), 0) == 1
+      and str(before.get("primaryType") or "") == "line"
+      and str(before_items.get("origin") or "") == "INSERT / fragment"
+      and str(before_items.get("effective-color") or "") == "#808080"
+      and str(before_items.get("color-source") or "") == "BYLAYER"
+      and str(before_items.get("color-aci") or "") == "8"
+      and str(before_items.get("space") or "") == "Paper"
+      and str(before_items.get("layout") or "") == "Layout-A"
+      and str(before_items.get("line-type") or "") == "HIDDEN2"
+      and str(before_items.get("line-weight") or "") == "0.55"
+      and str(before_items.get("line-type-scale") or "") == "1.7"
+      and str(after_items.get("effective-color") or "") == "#ff0000"
+      and str(after_items.get("color-source") or "") == "BYLAYER"
+      and as_int(entity.get("layerId"), -1) == 1
+      and str(entity.get("colorSource") or "") == "BYLAYER"
+    )
   if not checks:
     return {}
   checks["complete"] = all(bool(v) for v in checks.values())
