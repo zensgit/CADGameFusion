@@ -2183,6 +2183,7 @@ static bool parse_dxf_entities(const std::string& path,
     DxfViewport current_viewport;
     DxfLayout current_layout;
     DxfBlock current_block;
+    bool in_old_style_polyline = false; // true when parsing POLYLINE+VERTEX sequence
     DxfLayer current_layer;
     DxfTextStyle current_text_style;
     DxfView current_vport;
@@ -2584,7 +2585,15 @@ static bool parse_dxf_entities(const std::string& path,
                 reset_layout();
                 in_layout_object = false;
             }
-            flush_current();
+            // Skip flush for VERTEX within old-style POLYLINE sequence
+            if (in_old_style_polyline && value_line == "VERTEX") {
+                // Don't flush — VERTEX coords will be added to current_polyline
+            } else {
+                if (in_old_style_polyline && value_line != "VERTEX") {
+                    in_old_style_polyline = false; // sequence ended
+                }
+                flush_current();
+            }
             if (value_line == "SECTION") {
                 expect_section_name = true;
                 continue;
@@ -2803,9 +2812,21 @@ static bool parse_dxf_entities(const std::string& path,
             } else if (value_line == "VIEWPORT") {
                 current_kind = DxfEntityKind::Viewport;
                 reset_viewport();
+            } else if (value_line == "POLYLINE" && (in_entities || in_block_entities)) {
+                // Old-style 3D POLYLINE (followed by VERTEX entities then SEQEND)
+                current_kind = DxfEntityKind::Polyline;
+                reset_polyline();
+                in_old_style_polyline = true;
+            } else if (value_line == "VERTEX" && in_old_style_polyline) {
+                // VERTEX within old-style POLYLINE — don't change current_kind, coords parsed in Polyline switch
+            } else if (value_line == "TOLERANCE" && (in_entities || in_block_entities)) {
+                // GD&T tolerance frame — import as text entity with kind="tolerance"
+                current_kind = DxfEntityKind::Text;
+                reset_text();
+                current_text.kind = "tolerance";
             } else {
                 current_kind = DxfEntityKind::None;
-                if (value_line != "SEQEND" && value_line != "ENDBLK") {
+                if (value_line != "SEQEND" && value_line != "ENDBLK" && value_line != "VERTEX") {
                     import_stats->unsupported_types[value_line]++;
                     import_stats->entities_skipped++;
                 }

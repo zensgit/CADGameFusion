@@ -914,6 +914,131 @@ export class DocumentState extends EventTarget {
     return hints;
   }
 
+  // --- Dependency graph + live recompute (P3.2 wiring) ---
+
+  // Add a dependency: when `sourceId` changes, `dependentId` should recompute.
+  addDependency(sourceId, dependentId) {
+    if (!Number.isFinite(sourceId) || !Number.isFinite(dependentId) || sourceId === dependentId) return;
+    if (!this._depForward) this._depForward = new Map();
+    if (!this._depReverse) this._depReverse = new Map();
+    if (!this._depForward.has(sourceId)) this._depForward.set(sourceId, new Set());
+    this._depForward.get(sourceId).add(dependentId);
+    if (!this._depReverse.has(dependentId)) this._depReverse.set(dependentId, new Set());
+    this._depReverse.get(dependentId).add(sourceId);
+  }
+
+  removeDependency(sourceId, dependentId) {
+    this._depForward?.get(sourceId)?.delete(dependentId);
+    this._depReverse?.get(dependentId)?.delete(sourceId);
+  }
+
+  clearDependencies() {
+    this._depForward = new Map();
+    this._depReverse = new Map();
+  }
+
+  // Get entities that depend on `sourceId` (direct).
+  dependentsOf(sourceId) {
+    const set = this._depForward?.get(sourceId);
+    return set ? [...set] : [];
+  }
+
+  // Topological order of all entities downstream of `changedIds`.
+  _topoOrder(changedIds) {
+    const forward = this._depForward;
+    if (!forward || forward.size === 0) return [];
+    const reachable = new Set();
+    const queue = [...changedIds];
+    while (queue.length > 0) {
+      const id = queue.pop();
+      if (reachable.has(id)) continue;
+      reachable.add(id);
+      const deps = forward.get(id);
+      if (deps) for (const d of deps) queue.push(d);
+    }
+    // Kahn's algorithm
+    const inDeg = new Map();
+    for (const id of reachable) inDeg.set(id, 0);
+    for (const id of reachable) {
+      const deps = forward.get(id);
+      if (!deps) continue;
+      for (const d of deps) {
+        if (reachable.has(d)) inDeg.set(d, (inDeg.get(d) || 0) + 1);
+      }
+    }
+    const ready = [];
+    for (const [id, deg] of inDeg) { if (deg === 0) ready.push(id); }
+    const order = [];
+    while (ready.length > 0) {
+      const id = ready.pop();
+      order.push(id);
+      const deps = forward.get(id);
+      if (!deps) continue;
+      for (const d of deps) {
+        if (!reachable.has(d)) continue;
+        const nd = inDeg.get(d) - 1;
+        inDeg.set(d, nd);
+        if (nd === 0) ready.push(d);
+      }
+    }
+    return order;
+  }
+
+  // Set a callback that recomputes a dependent entity when its sources change.
+  // Callback signature: (document, entityId) => void
+  setRecomputeCallback(cb) {
+    this._recomputeCb = typeof cb === 'function' ? cb : null;
+  }
+
+  // Trigger recompute for all entities downstream of `changedIds`.
+  // Skips the root entities (they already changed). Returns count of recomputed entities.
+  recompute(changedIds) {
+    if (!this._recomputeCb || !this._depForward || this._depForward.size === 0) return 0;
+    const order = this._topoOrder(changedIds);
+    const roots = new Set(changedIds);
+    let count = 0;
+    for (const id of order) {
+      if (roots.has(id)) continue;
+      this._recomputeCb(this, id);
+      count++;
+    }
+    return count;
+  }
+
+  // Auto-wire: call this to make entity-update events automatically trigger recompute.
+  enableAutoRecompute() {
+    if (this._autoRecomputeEnabled) return;
+    this._autoRecomputeEnabled = true;
+    this.addEventListener('change', (event) => {
+      const { reason, payload } = event.detail || {};
+      if (reason === 'entity-update' && Number.isFinite(payload?.entityId)) {
+        this.recompute([payload.entityId]);
+      }
+    });
+  }
+
+  // Build dependency edges from current constraints.
+  // Each constraint's variable refs link entities: first entity → remaining entities.
+  rebuildDependenciesFromConstraints() {
+    this.clearDependencies();
+    for (const c of this.listConstraints()) {
+      if (!Array.isArray(c.refs) || c.refs.length < 4) continue;
+      const entityIds = new Set();
+      for (const ref of c.refs) {
+        if (typeof ref !== 'string') continue;
+        const match = ref.match(/^(\d+)\./);
+        if (match) entityIds.add(Number(match[1]));
+      }
+      const ids = [...entityIds];
+      // First entity is the "driver"; remaining are dependents
+      if (ids.length >= 2) {
+        for (let i = 1; i < ids.length; i++) {
+          this.addDependency(ids[0], ids[i]);
+        }
+      }
+    }
+  }
+
   snapshot() {
     return {
       nextEntityId: this.nextEntityId,
