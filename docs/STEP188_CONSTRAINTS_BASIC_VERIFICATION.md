@@ -698,3 +698,53 @@ Current conclusion:
 - Step188 now guards seventy-two success-path checks while remaining green in fresh direct ctest.
 - All nine ConstraintKind values (horizontal, vertical, equal, distance, parallel, perpendicular,
   coincident, concentric, angle) are exercised end-to-end.
+
+## 2026-03-28 Seventy-Seven Success-Path Expansion (14 Constraint Types)
+
+This pass represents a major expansion from the FreeCAD-referenced development plan (P1.1 + P1.3).
+
+### Solver Architecture Changes
+- **DogLeg solver**: Added trust-region dogleg interpolation with automatic LM fallback (`createSolver(SolverAlgorithm::DogLeg)`)
+- **Partitioned solving**: BFS connected-component extraction; each component solved independently
+- **QR DOF**: Replaced `FullPivLU` with `ColPivHouseholderQR` for rank computation
+- **Parallel residual fix**: Removed `std::abs()` wrapping (was non-differentiable at zero)
+- **XY expansion**: Symmetric, Midpoint, Coincident, Concentric auto-expand into x/y sub-constraints
+
+### Five New Constraint Types
+| Type | Residual | Arity |
+|---|---|---|
+| Tangent (line-circle) | `dist(line, center) - r` | 6 + value |
+| PointOnLine | `(p-a) × (b-a) / |b-a|` | 6 |
+| Symmetric | x/y split: `mid(p1,p2) - center` | 6 |
+| Midpoint | x/y split: `p - mid(a,b)` | 6 |
+| FixedPoint | `var - target` | 2 + value |
+
+### Metrics
+- **Constraint types**: 9 → 14
+- **Success-path tests**: 72 → 77
+- **All 77 tests PASS** in direct ctest
+
+### Verification Commands
+```bash
+cmake --build build --target core core_tests_constraints_basic
+DYLD_LIBRARY_PATH=build/core build/tests/core/core_tests_constraints_basic
+```
+
+### Test Output (last 5 lines)
+```
+basic constraint case passed: point_on_line
+basic constraint case passed: symmetric
+basic constraint case passed: midpoint
+basic constraint case passed: fixed_point
+solver basic constraints regression passed (14 types, all green)
+```
+
+### Fresh ci_editor_light Gate
+- `constraints_basic_ctest.status = PASS`
+- `editor_commands.test.js: 290/290 pass`
+- `interaction_checks: 17/17 passed`
+
+### Current Conclusion
+- Step188 now guards seventy-seven success-path checks across fourteen constraint types
+- DogLeg + partitioned solving provides robust convergence for underdetermined systems
+- All tests remain green in direct ctest, JS test suite, and ci_editor_light gate

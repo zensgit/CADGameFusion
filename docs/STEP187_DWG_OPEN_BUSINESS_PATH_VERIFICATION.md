@@ -1243,3 +1243,53 @@ Current conclusion:
   `BTJ01239901522-00拖轮组件` pairs) have not yet been promoted into the fresh verified baseline.
 - Import architecture: plugin-first with dwg2dxf fallback on desktop; router path uses external
   dwg2dxf + DXF importer plugin.
+
+## 2026-03-28 Full 44-Sample Matrix Rerun (Post-glTF Fix)
+
+### Context
+After FreeCAD-referenced development plan P0-P2 completion:
+- P0.1: TinyGLTF build fixed (CMake reconfigured with vcpkg toolchain)
+- P0.4: Structured import statistics (`import_stats` in manifest.json)
+- P2.5: DWG converter cascade (LibreDWG → ODA → QCAD)
+
+Previously all 44 cases produced `status=partial` (no `mesh.gltf`). This rerun tests the full pipeline: `dwg2dxf` → `convert_cli --json --gltf`.
+
+### Results
+```
+total=44  ok=40  partial=0  fail=4  skip=0
+ok_rate=40/44 (91%)
+```
+
+### Aggregate Statistics
+- **Entities parsed**: 145,481
+- **Entities imported**: 52,544
+- **Entities skipped**: 26
+- **Import ratio**: 36% (many entities are in blocks, expanded during import)
+
+### Top Unsupported Entity Types
+| Type | Count |
+|---|---|
+| VERTEX | 12 |
+| TOLERANCE | 8 |
+| POLYLINE (3D) | 4 |
+| ACAD_PROXY_ENTITY | 2 |
+
+### Failed Cases (4)
+| Case | Stage | Likely Cause |
+|---|---|---|
+| tank_section_alt_v1 | convert_cli | DXF parse failure (empty entity set) |
+| tank_section_alt_v2 | convert_cli | Same |
+| carrier_wheel_v1 | convert_cli | Same |
+| carrier_wheel_v2 | convert_cli | Same |
+
+### Key Improvement
+- **Before**: 0/44 ok, 44/44 partial (no glTF)
+- **After**: 40/44 ok (91%), all with `mesh.gltf` + `mesh.bin` + `import_stats`
+
+### Output
+- `build/dwg_matrix_rerun/20260328_092059/batch_summary.json`
+
+### Current Conclusion
+- Step187 DWG open matrix improved from 0% to 91% coverage after TinyGLTF build fix
+- Import statistics are now present in all 40 successful manifests
+- 4 remaining failures are DXF parse-level issues (likely 3D entities or unusual AutoCAD features), not glTF pipeline issues
