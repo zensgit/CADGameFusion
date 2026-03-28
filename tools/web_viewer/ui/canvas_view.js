@@ -124,14 +124,48 @@ function drawEntity(ctx, viewState, entity, selected = false, layer = null, opti
     ctx.arc(center.x, center.y, radius, start, end, anticlockwise);
     ctx.stroke();
   } else if (entity.type === 'text') {
+    // Skip invisible attribute texts
+    if (entity.attributeInvisible === true) { ctx.restore(); return; }
     const pos = viewState.worldToScreen(entity.position);
-    const size = Math.max(8, (entity.height || 2.5) * viewState.zoom);
-    ctx.font = `${size}px "IBM Plex Mono", monospace`;
-    ctx.textBaseline = 'alphabetic';
+    // Clamp height for MTEXT (h can be full text-box height, not font size)
+    const rawH = entity.height || 2.5;
+    const isMtext = entity.textKind === 'mtext' || entity.textKind === 'mleader' || entity.textKind === 'table';
+    const effectiveH = isMtext ? Math.min(rawH, 10) : rawH;
+    const size = Math.max(6, effectiveH * viewState.zoom);
+    const widthFactor = Number.isFinite(entity.textWidthFactor) && entity.textWidthFactor > 0 ? entity.textWidthFactor : 1;
+    const fontFamily = '"Source Han Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif';
+    ctx.font = `${size}px ${fontFamily}`;
+    ctx.textBaseline = 'top';
+    // Horizontal alignment
+    const halign = entity.textHalign;
+    if (halign === 1 || halign === 4) ctx.textAlign = 'center';
+    else if (halign === 2) ctx.textAlign = 'right';
+    else ctx.textAlign = 'left';
     ctx.save();
     ctx.translate(pos.x, pos.y);
-    ctx.rotate(entity.rotation || 0);
-    ctx.fillText(entity.value || 'TEXT', 0, 0);
+    const rot = entity.rotation || 0;
+    // Canvas Y is down, DXF Y is up — flip text vertically
+    ctx.scale(1, -1);
+    ctx.rotate(-rot);
+    if (widthFactor !== 1) ctx.scale(widthFactor, 1);
+    // Clean AutoCAD format codes from text value
+    let text = entity.value || '';
+    text = text.replace(/\\P/g, '\n')           // \P → newline
+               .replace(/\\[Cc]\d+;/g, '')      // \C2; color codes
+               .replace(/\\[Ff][^;]*;/g, '')    // \Ffontname; font switch
+               .replace(/\\[Hh][^;]*;/g, '')    // \H1.5x; height
+               .replace(/\\[Ww][^;]*;/g, '')    // \W0.8; width
+               .replace(/\\[Tt][^;]*;/g, '')    // \T tracking
+               .replace(/\\[Aa]\d+;/g, '')      // \A1; alignment
+               .replace(/\\[Oo]/g, '')           // \O overline toggle
+               .replace(/\\[Ll]/g, '')           // \L underline toggle
+               .replace(/\{|\}/g, '');           // braces
+    const lines = text.split('\n');
+    const lineHeight = size * 1.3;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line) ctx.fillText(line, 0, i * lineHeight);
+    }
     ctx.restore();
   }
 
