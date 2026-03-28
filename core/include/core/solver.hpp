@@ -28,7 +28,8 @@ enum class ConstraintKind {
 
 enum class SolverAlgorithm {
     LM,
-    DogLeg
+    DogLeg,
+    BFGS
 };
 
 enum class ConstraintDiagnosticCode {

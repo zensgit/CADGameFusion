@@ -332,4 +332,35 @@ private:
     Document* doc_{nullptr};
 };
 
+// Coordinates undo/redo transactions across multiple Document instances (P3.4).
+// Inspired by FreeCAD cross-document transaction support.
+class TransactionGroup {
+public:
+    TransactionGroup() = default;
+    ~TransactionGroup() = default;
+
+    TransactionGroup(const TransactionGroup&) = delete;
+    TransactionGroup& operator=(const TransactionGroup&) = delete;
+
+    // Register/unregister documents to coordinate.
+    void addDocument(Document* doc);
+    void removeDocument(Document* doc);
+
+    // Call begin_transaction(label) on all registered documents.
+    void beginGroup(const std::string& label);
+    // Call commit_transaction() on all registered documents.
+    void commitGroup();
+    // Call rollback_transaction() on all registered documents.
+    void rollbackGroup();
+    // Call undo() on all registered documents that can_undo().
+    // Returns true if at least one document was successfully undone.
+    bool undoGroup();
+    // Call redo() on all registered documents that can_redo().
+    // Returns true if at least one document was successfully redone.
+    bool redoGroup();
+
+private:
+    std::vector<Document*> documents_;
+};
+
 } // namespace core

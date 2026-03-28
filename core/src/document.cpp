@@ -1050,4 +1050,55 @@ std::string Document::undo_label() const { return undo_stack_.empty() ? "" : und
 std::string Document::redo_label() const { return redo_stack_.empty() ? "" : redo_stack_.back().label; }
 size_t Document::undo_stack_size() const { return undo_stack_.size(); }
 
+// --- TransactionGroup (P3.4): cross-document transaction coordination ---
+
+void TransactionGroup::addDocument(Document* doc) {
+    if (!doc) return;
+    if (std::find(documents_.begin(), documents_.end(), doc) != documents_.end()) return;
+    documents_.push_back(doc);
+}
+
+void TransactionGroup::removeDocument(Document* doc) {
+    if (!doc) return;
+    documents_.erase(std::remove(documents_.begin(), documents_.end(), doc), documents_.end());
+}
+
+void TransactionGroup::beginGroup(const std::string& label) {
+    for (auto* doc : documents_) {
+        if (doc) doc->begin_transaction(label);
+    }
+}
+
+void TransactionGroup::commitGroup() {
+    for (auto* doc : documents_) {
+        if (doc) doc->commit_transaction();
+    }
+}
+
+void TransactionGroup::rollbackGroup() {
+    for (auto* doc : documents_) {
+        if (doc) doc->rollback_transaction();
+    }
+}
+
+bool TransactionGroup::undoGroup() {
+    bool any = false;
+    for (auto* doc : documents_) {
+        if (doc && doc->can_undo()) {
+            any = doc->undo() || any;
+        }
+    }
+    return any;
+}
+
+bool TransactionGroup::redoGroup() {
+    bool any = false;
+    for (auto* doc : documents_) {
+        if (doc && doc->can_redo()) {
+            any = doc->redo() || any;
+        }
+    }
+    return any;
+}
+
 } // namespace core

@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <string>
+#include <optional>
 
 namespace core {
 
@@ -67,5 +68,43 @@ double length(const Vec2& a, const Vec2& b);
 
 // Triangulate a simple convex polygon (fan) – placeholder
 TriMesh2D triangulate_convex(const Polyline& poly);
+
+// 3D geometry foundation types (P3.5)
+struct Vec3 {
+    double x{0.0};
+    double y{0.0};
+    double z{0.0};
+};
+
+struct Line3D {
+    Vec3 a{};
+    Vec3 b{};
+};
+
+struct Plane {
+    Vec3 origin{};
+    Vec3 normal{0.0, 0.0, 1.0};
+};
+
+// 3D constraint kinds (future P3.5 solver extension)
+enum class Constraint3DKind {
+    Unknown = 0,
+    FixedPoint3D,
+    PointOnPlane,
+    PointOnLine3D,
+    Parallel3D,
+    Perpendicular3D,
+    Distance3D,
+    Angle3D,
+    Coincident3D,
+    Coplanar,
+    Coaxial
+};
+
+struct Constraint3DSpec {
+    std::string type;
+    std::vector<std::string> params; // named parameter references
+    std::optional<double> value;
+};
 
 } // namespace core

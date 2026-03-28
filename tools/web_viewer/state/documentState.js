@@ -1,11 +1,22 @@
 import { SpatialIndex } from './spatialIndex.js';
+import {
+  listPaperLayoutsFromEntities,
+  matchesSpaceLayout,
+  normalizeSpaceLayoutContext,
+  resolveCurrentSpaceLayoutContext,
+} from '../space_layout.js';
 
 const DEFAULT_LAYER = {
   id: 0,
   name: '0',
   visible: true,
   locked: false,
+  printable: true,
+  frozen: false,
+  construction: false,
   color: '#d0d7de',
+  lineType: 'CONTINUOUS',
+  lineWeight: 0,
 };
 
 function cloneJson(value) {
@@ -23,10 +34,18 @@ function sanitizeColor(color, fallback = '#d0d7de') {
 }
 
 function normalizePoint(point) {
-  if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+  const x = Array.isArray(point) ? Number(point[0]) : Number(point?.x);
+  const y = Array.isArray(point) ? Number(point[1]) : Number(point?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
     return { x: 0, y: 0 };
   }
-  return { x: Number(point.x), y: Number(point.y) };
+  return { x, y };
+}
+
+function hasFinitePoint(point) {
+  const x = Array.isArray(point) ? Number(point[0]) : Number(point?.x);
+  const y = Array.isArray(point) ? Number(point[1]) : Number(point?.y);
+  return Number.isFinite(x) && Number.isFinite(y);
 }
 
 function normalizePoints(points) {
@@ -85,34 +104,261 @@ function normalizeDisplayProxy(raw) {
   return null;
 }
 
+function normalizeColorSource(value) {
+  if (typeof value !== 'string') return '';
+  const normalized = value.trim().toUpperCase();
+  return normalized === 'BYLAYER'
+    || normalized === 'BYBLOCK'
+    || normalized === 'INDEX'
+    || normalized === 'TRUECOLOR'
+    ? normalized
+    : '';
+}
+
+function normalizeColorAci(value) {
+  if (!Number.isFinite(value)) return null;
+  return Math.min(255, Math.max(0, Math.trunc(value)));
+}
+
+function normalizeOptionalBool(value) {
+  if (typeof value === 'boolean') return value;
+  if (value === 1 || value === '1' || value === 'true') return true;
+  if (value === 0 || value === '0' || value === 'false') return false;
+  return null;
+}
+
+function normalizeTextKind(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function deriveLegacyAttdefDefault(raw, meta) {
+  const textKind = normalizeTextKind(meta?.textKind ?? raw?.textKind ?? raw?.text_kind);
+  if (textKind !== 'attdef') return null;
+  if (typeof meta?.attributeDefault === 'string') return meta.attributeDefault;
+  if (typeof raw?.attributeDefault === 'string') return raw.attributeDefault;
+  if (typeof raw?.attribute_default === 'string') return raw.attribute_default;
+  const prompt = typeof meta?.attributePrompt === 'string'
+    ? meta.attributePrompt
+    : (typeof raw?.attributePrompt === 'string'
+        ? raw.attributePrompt
+        : (typeof raw?.attribute_prompt === 'string' ? raw.attribute_prompt : ''));
+  const rawValue = typeof raw?.value === 'string'
+    ? raw.value
+    : (typeof raw?.text?.value === 'string' ? raw.text.value : null);
+  if (typeof rawValue !== 'string') return null;
+  if (prompt) {
+    const crlfSuffix = `\r\n${prompt}`;
+    if (rawValue.endsWith(crlfSuffix)) {
+      return rawValue.slice(0, -crlfSuffix.length);
+    }
+    const lfSuffix = `\n${prompt}`;
+    if (rawValue.endsWith(lfSuffix)) {
+      return rawValue.slice(0, -lfSuffix.length);
+    }
+  }
+  return rawValue;
+}
+
+function resolveNormalizedTextValue(raw, meta) {
+  const attdefDefault = deriveLegacyAttdefDefault(raw, meta);
+  if (typeof attdefDefault === 'string') return attdefDefault;
+  if (typeof raw?.value === 'string') return raw.value;
+  if (typeof raw?.text?.value === 'string') return raw.text.value;
+  return 'TEXT';
+}
+
+function isInsertTextProxyMetadata(meta) {
+  return String(meta?.sourceType || '').trim().toUpperCase() === 'INSERT'
+    && String(meta?.editMode || '').trim().toLowerCase() === 'proxy'
+    && String(meta?.proxyKind || '').trim().toLowerCase() === 'text'
+    && normalizeTextKind(meta?.textKind) !== '';
+}
+
+function resolveNormalizedEntityVisible(raw, meta, fallback = true) {
+  if (Object.prototype.hasOwnProperty.call(raw || {}, 'visible')) {
+    return raw?.visible !== false;
+  }
+  if (isInsertTextProxyMetadata(meta) && meta?.attributeInvisible === true) {
+    return false;
+  }
+  return fallback;
+}
+
 function normalizeEntityMetadata(raw) {
   const meta = {};
+  if (raw?.releasedInsertArchive && typeof raw.releasedInsertArchive === 'object') {
+    meta.releasedInsertArchive = cloneJson(raw.releasedInsertArchive);
+  } else if (raw?.released_insert_archive && typeof raw.released_insert_archive === 'object') {
+    meta.releasedInsertArchive = cloneJson(raw.released_insert_archive);
+  }
   if (Number.isFinite(raw?.groupId)) meta.groupId = Math.trunc(raw.groupId);
   if (Number.isFinite(raw?.space)) meta.space = Math.trunc(raw.space);
   if (typeof raw?.layout === 'string' && raw.layout.trim()) meta.layout = raw.layout.trim();
+  const colorSource = normalizeColorSource(raw?.colorSource ?? raw?.color_source);
+  if (colorSource) meta.colorSource = colorSource;
+  const colorAci = normalizeColorAci(raw?.colorAci ?? raw?.color_aci);
+  if (colorAci !== null) meta.colorAci = colorAci;
   if (typeof raw?.sourceType === 'string' && raw.sourceType.trim()) meta.sourceType = raw.sourceType.trim();
   if (typeof raw?.editMode === 'string' && raw.editMode.trim()) meta.editMode = raw.editMode.trim();
   if (typeof raw?.proxyKind === 'string' && raw.proxyKind.trim()) meta.proxyKind = raw.proxyKind.trim();
   if (typeof raw?.blockName === 'string' && raw.blockName.trim()) meta.blockName = raw.blockName.trim();
   if (typeof raw?.hatchPattern === 'string' && raw.hatchPattern.trim()) meta.hatchPattern = raw.hatchPattern.trim();
   if (Number.isFinite(raw?.hatchId)) meta.hatchId = Math.trunc(raw.hatchId);
+  if (Number.isFinite(raw?.sourceBundleId)) meta.sourceBundleId = Math.trunc(raw.sourceBundleId);
+  else if (Number.isFinite(raw?.source_bundle_id)) meta.sourceBundleId = Math.trunc(raw.source_bundle_id);
   if (typeof raw?.textKind === 'string' && raw.textKind.trim()) meta.textKind = raw.textKind.trim();
+  else if (typeof raw?.text_kind === 'string' && raw.text_kind.trim()) meta.textKind = raw.text_kind.trim();
+  if (typeof raw?.attributeTag === 'string' && raw.attributeTag.trim()) meta.attributeTag = raw.attributeTag.trim();
+  else if (typeof raw?.attribute_tag === 'string' && raw.attribute_tag.trim()) meta.attributeTag = raw.attribute_tag.trim();
+  if (typeof raw?.attributeDefault === 'string') meta.attributeDefault = raw.attributeDefault;
+  else if (typeof raw?.attribute_default === 'string') meta.attributeDefault = raw.attribute_default;
+  if (typeof raw?.attributePrompt === 'string') meta.attributePrompt = raw.attributePrompt;
+  else if (typeof raw?.attribute_prompt === 'string') meta.attributePrompt = raw.attribute_prompt;
+  const legacyAttdefDefault = deriveLegacyAttdefDefault(raw, meta);
+  if (typeof meta.attributeDefault !== 'string' && typeof legacyAttdefDefault === 'string') {
+    meta.attributeDefault = legacyAttdefDefault;
+  }
+  if (Number.isFinite(raw?.attributeFlags)) meta.attributeFlags = Math.trunc(raw.attributeFlags);
+  else if (Number.isFinite(raw?.attribute_flags)) meta.attributeFlags = Math.trunc(raw.attribute_flags);
+  const attributeInvisible = normalizeOptionalBool(raw?.attributeInvisible ?? raw?.attribute_invisible);
+  const attributeConstant = normalizeOptionalBool(raw?.attributeConstant ?? raw?.attribute_constant);
+  const attributeVerify = normalizeOptionalBool(raw?.attributeVerify ?? raw?.attribute_verify);
+  const attributePreset = normalizeOptionalBool(raw?.attributePreset ?? raw?.attribute_preset);
+  const attributeLockPosition = normalizeOptionalBool(raw?.attributeLockPosition ?? raw?.attribute_lock_position);
+  if (attributeInvisible !== null) meta.attributeInvisible = attributeInvisible;
+  if (attributeConstant !== null) meta.attributeConstant = attributeConstant;
+  if (attributeVerify !== null) meta.attributeVerify = attributeVerify;
+  if (attributePreset !== null) meta.attributePreset = attributePreset;
+  if (attributeLockPosition !== null) meta.attributeLockPosition = attributeLockPosition;
   if (typeof raw?.dimStyle === 'string' && raw.dimStyle.trim()) meta.dimStyle = raw.dimStyle.trim();
   if (Number.isFinite(raw?.dimType)) meta.dimType = Math.trunc(raw.dimType);
+  if (Number.isFinite(meta.attributeFlags)) {
+    if (typeof meta.attributeInvisible !== 'boolean') meta.attributeInvisible = (meta.attributeFlags & 1) !== 0;
+    if (typeof meta.attributeConstant !== 'boolean') meta.attributeConstant = (meta.attributeFlags & 2) !== 0;
+    if (typeof meta.attributeVerify !== 'boolean') meta.attributeVerify = (meta.attributeFlags & 4) !== 0;
+    if (typeof meta.attributePreset !== 'boolean') meta.attributePreset = (meta.attributeFlags & 8) !== 0;
+    if (typeof meta.attributeLockPosition !== 'boolean') meta.attributeLockPosition = (meta.attributeFlags & 16) !== 0;
+  }
+  if (raw?.sourceTextPos && Number.isFinite(raw.sourceTextPos.x) && Number.isFinite(raw.sourceTextPos.y)) {
+    meta.sourceTextPos = normalizePoint(raw.sourceTextPos);
+  } else if (raw?.source_text_pos && Number.isFinite(raw.source_text_pos.x) && Number.isFinite(raw.source_text_pos.y)) {
+    meta.sourceTextPos = normalizePoint(raw.source_text_pos);
+  }
+  if (Number.isFinite(raw?.sourceTextRotation)) meta.sourceTextRotation = Number(raw.sourceTextRotation);
+  else if (Number.isFinite(raw?.source_text_rotation)) meta.sourceTextRotation = Number(raw.source_text_rotation);
   if (raw?.dimTextPos && Number.isFinite(raw.dimTextPos.x) && Number.isFinite(raw.dimTextPos.y)) {
     meta.dimTextPos = normalizePoint(raw.dimTextPos);
   }
   if (Number.isFinite(raw?.dimTextRotation)) meta.dimTextRotation = Number(raw.dimTextRotation);
+  if (hasFinitePoint(raw?.sourceAnchor)) {
+    meta.sourceAnchor = normalizePoint(raw.sourceAnchor);
+  } else if (hasFinitePoint(raw?.source_anchor)) {
+    meta.sourceAnchor = normalizePoint(raw.source_anchor);
+  }
+  if (hasFinitePoint(raw?.leaderLanding)) {
+    meta.leaderLanding = normalizePoint(raw.leaderLanding);
+  } else if (hasFinitePoint(raw?.leader_landing)) {
+    meta.leaderLanding = normalizePoint(raw.leader_landing);
+  }
+  if (hasFinitePoint(raw?.leaderElbow)) {
+    meta.leaderElbow = normalizePoint(raw.leaderElbow);
+  } else if (hasFinitePoint(raw?.leader_elbow)) {
+    meta.leaderElbow = normalizePoint(raw.leader_elbow);
+  }
+  if (Number.isFinite(raw?.sourceAnchorDriverId)) {
+    meta.sourceAnchorDriverId = Math.trunc(raw.sourceAnchorDriverId);
+  } else if (Number.isFinite(raw?.source_anchor_driver_id)) {
+    meta.sourceAnchorDriverId = Math.trunc(raw.source_anchor_driver_id);
+  }
+  if (typeof raw?.sourceAnchorDriverType === 'string' && raw.sourceAnchorDriverType.trim()) {
+    meta.sourceAnchorDriverType = raw.sourceAnchorDriverType.trim();
+  } else if (typeof raw?.source_anchor_driver_type === 'string' && raw.source_anchor_driver_type.trim()) {
+    meta.sourceAnchorDriverType = raw.source_anchor_driver_type.trim();
+  }
+  if (typeof raw?.sourceAnchorDriverKind === 'string' && raw.sourceAnchorDriverKind.trim()) {
+    meta.sourceAnchorDriverKind = raw.sourceAnchorDriverKind.trim();
+  } else if (typeof raw?.source_anchor_driver_kind === 'string' && raw.source_anchor_driver_kind.trim()) {
+    meta.sourceAnchorDriverKind = raw.source_anchor_driver_kind.trim();
+  }
+  const sourceType = typeof meta.sourceType === 'string' ? meta.sourceType.trim().toUpperCase() : '';
+  const editMode = typeof meta.editMode === 'string' ? meta.editMode.trim().toLowerCase() : '';
+  if (sourceType && editMode === 'proxy' && raw?.type === 'text') {
+    if (!meta.sourceTextPos && raw?.position && Number.isFinite(raw.position.x) && Number.isFinite(raw.position.y)) {
+      meta.sourceTextPos = normalizePoint(raw.position);
+    }
+    if (!Number.isFinite(meta.sourceTextRotation) && Number.isFinite(raw?.rotation)) {
+      meta.sourceTextRotation = Number(raw.rotation);
+    }
+    if (sourceType === 'DIMENSION') {
+      if (!meta.sourceTextPos && raw?.dimTextPos && Number.isFinite(raw.dimTextPos.x) && Number.isFinite(raw.dimTextPos.y)) {
+        meta.sourceTextPos = normalizePoint(raw.dimTextPos);
+      }
+      if (!Number.isFinite(meta.sourceTextRotation) && Number.isFinite(raw?.dimTextRotation)) {
+        meta.sourceTextRotation = Number(raw.dimTextRotation);
+      }
+    }
+  }
   return meta;
+}
+
+function normalizeEntityStyle(raw) {
+  const style = {
+    lineType: 'CONTINUOUS',
+    lineWeight: 0,
+    lineWeightSource: 'BYLAYER',
+    lineTypeScale: 1,
+    lineTypeScaleSource: 'DEFAULT',
+  };
+  if (typeof raw?.lineType === 'string' && raw.lineType.trim()) {
+    style.lineType = raw.lineType.trim().toUpperCase();
+  } else if (typeof raw?.line_type === 'string' && raw.line_type.trim()) {
+    style.lineType = raw.line_type.trim().toUpperCase();
+  }
+  if (Number.isFinite(raw?.lineWeight)) {
+    style.lineWeight = Math.max(0, Number(raw.lineWeight));
+  } else if (Number.isFinite(raw?.line_weight)) {
+    style.lineWeight = Math.max(0, Number(raw.line_weight));
+  }
+  const rawLineWeightSource = typeof raw?.lineWeightSource === 'string'
+    ? raw.lineWeightSource
+    : raw?.line_weight_source;
+  if (typeof rawLineWeightSource === 'string' && rawLineWeightSource.trim()) {
+    const normalizedSource = rawLineWeightSource.trim().toUpperCase();
+    style.lineWeightSource = normalizedSource === 'EXPLICIT' ? 'EXPLICIT' : 'BYLAYER';
+  } else if (
+    Object.prototype.hasOwnProperty.call(raw || {}, 'lineWeight')
+    || Object.prototype.hasOwnProperty.call(raw || {}, 'line_weight')
+  ) {
+    style.lineWeightSource = 'EXPLICIT';
+  }
+  if (Number.isFinite(raw?.lineTypeScale)) {
+    style.lineTypeScale = Math.max(0, Number(raw.lineTypeScale));
+  } else if (Number.isFinite(raw?.line_type_scale)) {
+    style.lineTypeScale = Math.max(0, Number(raw.line_type_scale));
+  }
+  const rawSource = typeof raw?.lineTypeScaleSource === 'string'
+    ? raw.lineTypeScaleSource
+    : raw?.line_type_scale_source;
+  if (typeof rawSource === 'string' && rawSource.trim()) {
+    const normalizedSource = rawSource.trim().toUpperCase();
+    style.lineTypeScaleSource = normalizedSource === 'EXPLICIT' ? 'EXPLICIT' : 'DEFAULT';
+  } else if (
+    Object.prototype.hasOwnProperty.call(raw || {}, 'lineTypeScale')
+    || Object.prototype.hasOwnProperty.call(raw || {}, 'line_type_scale')
+  ) {
+    style.lineTypeScaleSource = 'EXPLICIT';
+  }
+  return style;
 }
 
 function normalizeEntity(raw, id) {
   const type = typeof raw?.type === 'string' ? raw.type : 'line';
   const layerId = Number.isFinite(raw?.layerId) ? Number(raw.layerId) : 0;
-  const visible = raw?.visible !== false;
   const color = sanitizeColor(raw?.color || '', '#2c3e50');
   const name = typeof raw?.name === 'string' ? raw.name : '';
   const metadata = normalizeEntityMetadata(raw);
+  const visible = resolveNormalizedEntityVisible(raw, metadata, true);
+  const style = normalizeEntityStyle(raw);
 
   if (type === 'unsupported') {
     const displayProxy = normalizeDisplayProxy(raw?.display_proxy);
@@ -128,6 +374,7 @@ function normalizeEntity(raw, id) {
       readOnly: raw?.readOnly === true,
       display_proxy: displayProxy,
       cadgf: raw?.cadgf ? cloneJson(raw.cadgf) : null,
+      ...style,
       ...metadata,
     };
   }
@@ -142,6 +389,7 @@ function normalizeEntity(raw, id) {
       name,
       start: normalizePoint(raw?.start),
       end: normalizePoint(raw?.end),
+      ...style,
       ...metadata,
     };
   }
@@ -156,6 +404,7 @@ function normalizeEntity(raw, id) {
       name,
       closed: raw?.closed === true,
       points: normalizePoints(raw?.points),
+      ...style,
       ...metadata,
     };
   }
@@ -171,6 +420,7 @@ function normalizeEntity(raw, id) {
       name,
       center: normalizePoint(raw?.center),
       radius,
+      ...style,
       ...metadata,
     };
   }
@@ -191,6 +441,7 @@ function normalizeEntity(raw, id) {
       startAngle,
       endAngle,
       cw: raw?.cw === true,
+      ...style,
       ...metadata,
     };
   }
@@ -206,9 +457,10 @@ function normalizeEntity(raw, id) {
       color,
       name,
       position: normalizePoint(raw?.position),
-      value: typeof raw?.value === 'string' ? raw.value : 'TEXT',
+      value: resolveNormalizedTextValue(raw, metadata),
       height,
       rotation,
+      ...style,
       ...metadata,
     };
   }
@@ -222,6 +474,7 @@ function normalizeEntity(raw, id) {
     name,
     start: { x: 0, y: 0 },
     end: { x: 10, y: 0 },
+    ...style,
     ...metadata,
   };
 }
@@ -252,6 +505,8 @@ export class DocumentState extends EventTarget {
       comment: '',
       unit: 'mm',
       schema: 'vemcad-web-2d-v1',
+      currentSpace: 0,
+      currentLayout: 'Model',
     };
 
     if (initial) {
@@ -277,8 +532,50 @@ export class DocumentState extends EventTarget {
     return [...this.layers.values()].sort((a, b) => a.id - b.id);
   }
 
+  isLayerRenderable(layerOrId) {
+    const layer = typeof layerOrId === 'object' && layerOrId
+      ? layerOrId
+      : this.layers.get(Number(layerOrId));
+    if (!layer) return true;
+    return layer.visible !== false && layer.frozen !== true;
+  }
+
+  isEntityRenderable(entityOrId) {
+    const entity = typeof entityOrId === 'object' && entityOrId
+      ? entityOrId
+      : this.entities.get(Number(entityOrId));
+    if (!entity || entity.visible === false) return false;
+    if (!this.isLayerRenderable(entity.layerId)) return false;
+    return matchesSpaceLayout(entity, this.getCurrentSpaceContext());
+  }
+
   getLayer(layerId) {
     return this.layers.get(layerId) || null;
+  }
+
+  getCurrentSpaceContext() {
+    return normalizeSpaceLayoutContext({
+      space: this.meta?.currentSpace,
+      layout: this.meta?.currentLayout,
+    }, resolveCurrentSpaceLayoutContext(this.listEntities()));
+  }
+
+  setCurrentSpaceContext(context, { silent = false } = {}) {
+    const next = resolveCurrentSpaceLayoutContext(this.listEntities(), context);
+    const current = this.getCurrentSpaceContext();
+    if (current.space === next.space && current.layout === next.layout) {
+      return false;
+    }
+    this.meta.currentSpace = next.space;
+    this.meta.currentLayout = next.layout;
+    if (!silent) {
+      this.emitChange('space-layout-context', { context: next });
+    }
+    return true;
+  }
+
+  listPaperLayouts() {
+    return listPaperLayoutsFromEntities(this.listEntities());
   }
 
   ensureLayer(layerId) {
@@ -290,7 +587,12 @@ export class DocumentState extends EventTarget {
       name: `L${layerId}`,
       visible: true,
       locked: false,
+      printable: true,
+      frozen: false,
+      construction: false,
       color: '#9ca3af',
+      lineType: 'CONTINUOUS',
+      lineWeight: 0,
     };
     this.layers.set(layerId, fallback);
     if (layerId >= this.nextLayerId) {
@@ -308,7 +610,12 @@ export class DocumentState extends EventTarget {
       name: (name || `Layer-${id}`).trim() || `Layer-${id}`,
       visible: true,
       locked: false,
+      printable: true,
+      frozen: false,
+      construction: false,
       color: sanitizeColor(color, '#9ca3af'),
+      lineType: 'CONTINUOUS',
+      lineWeight: 0,
     };
     this.layers.set(id, layer);
     this.emitChange('layer-add', { layerId: id });
@@ -329,8 +636,24 @@ export class DocumentState extends EventTarget {
     if (Object.prototype.hasOwnProperty.call(patch, 'locked')) {
       layer.locked = patch.locked === true;
     }
+    if (Object.prototype.hasOwnProperty.call(patch, 'printable')) {
+      layer.printable = patch.printable !== false;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'frozen')) {
+      layer.frozen = patch.frozen === true;
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'construction')) {
+      layer.construction = patch.construction === true;
+    }
     if (Object.prototype.hasOwnProperty.call(patch, 'color')) {
       layer.color = sanitizeColor(patch.color, layer.color);
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'lineType')) {
+      const value = typeof patch.lineType === 'string' ? patch.lineType.trim().toUpperCase() : '';
+      layer.lineType = value || 'CONTINUOUS';
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'lineWeight')) {
+      layer.lineWeight = Number.isFinite(patch.lineWeight) ? Math.max(0, Number(patch.lineWeight)) : layer.lineWeight;
     }
     this.emitChange('layer-update', { layerId });
     return true;
@@ -348,8 +671,7 @@ export class DocumentState extends EventTarget {
     const out = [];
     for (const entity of this.entities.values()) {
       if (!entity || entity.type !== 'unsupported' || !entity.display_proxy) continue;
-      const layer = this.layers.get(entity.layerId);
-      if (layer && layer.visible === false) continue;
+      if (!this.isEntityRenderable(entity)) continue;
       out.push(entity);
     }
     out.sort((a, b) => a.id - b.id);
@@ -357,17 +679,12 @@ export class DocumentState extends EventTarget {
   }
 
   listVisibleEntities() {
-    return this.listEntities().filter((entity) => {
-      if (entity.visible === false) return false;
-      const layer = this.layers.get(entity.layerId);
-      if (!layer) return true;
-      return layer.visible !== false;
-    });
+    return this.listEntities().filter((entity) => this.isEntityRenderable(entity));
   }
 
   hasHiddenLayers() {
     for (const layer of this.layers.values()) {
-      if (layer?.visible === false) return true;
+      if (layer?.visible === false || layer?.frozen === true) return true;
     }
     return false;
   }
@@ -378,21 +695,11 @@ export class DocumentState extends EventTarget {
     const y = Number(point?.y);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return [];
     const sortById = options?.sortById !== false;
-    const hasHiddenLayers = this.hasHiddenLayers();
-
     const candidates = this.spatialIndex.queryAabb({ minX: x - r, minY: y - r, maxX: x + r, maxY: y + r });
-    if (!hasHiddenLayers) {
-      if (sortById && candidates.length > 1) {
-        candidates.sort((a, b) => a - b);
-      }
-      return candidates;
-    }
     const out = [];
     for (const id of candidates) {
       const entity = this.entities.get(id);
-      if (!entity || entity.visible === false) continue;
-      const layer = this.layers.get(entity.layerId);
-      if (layer && layer.visible === false) continue;
+      if (!this.isEntityRenderable(entity)) continue;
       out.push(id);
     }
     if (sortById && out.length > 1) {
@@ -409,21 +716,11 @@ export class DocumentState extends EventTarget {
     const maxY = Math.max(Number(rect.y0), Number(rect.y1));
     if (![minX, maxX, minY, maxY].every(Number.isFinite)) return [];
     const sortById = options?.sortById !== false;
-    const hasHiddenLayers = this.hasHiddenLayers();
-
     const candidates = this.spatialIndex.queryAabb({ minX, minY, maxX, maxY });
-    if (!hasHiddenLayers) {
-      if (sortById && candidates.length > 1) {
-        candidates.sort((a, b) => a - b);
-      }
-      return candidates;
-    }
     const out = [];
     for (const id of candidates) {
       const entity = this.entities.get(id);
-      if (!entity || entity.visible === false) continue;
-      const layer = this.layers.get(entity.layerId);
-      if (layer && layer.visible === false) continue;
+      if (!this.isEntityRenderable(entity)) continue;
       out.push(id);
     }
     if (sortById && out.length > 1) {
@@ -465,13 +762,27 @@ export class DocumentState extends EventTarget {
     if (!existing) {
       return false;
     }
+    const currentLayer = this.layers.get(existing.layerId);
     const layerId = Number.isFinite(patch?.layerId) ? Number(patch.layerId) : existing.layerId;
     this.ensureLayer(layerId);
     const layer = this.layers.get(layerId);
-    if (layer?.locked) {
+    if (currentLayer?.locked || layer?.locked) {
       return false;
     }
-    const merged = { ...existing, ...cloneJson(patch || {}), id, layerId };
+    const normalizedPatch = cloneJson(patch || {});
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedPatch, 'lineWeight')
+      && !Object.prototype.hasOwnProperty.call(normalizedPatch, 'lineWeightSource')
+    ) {
+      normalizedPatch.lineWeightSource = 'EXPLICIT';
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedPatch, 'lineTypeScale')
+      && !Object.prototype.hasOwnProperty.call(normalizedPatch, 'lineTypeScaleSource')
+    ) {
+      normalizedPatch.lineTypeScaleSource = 'EXPLICIT';
+    }
+    const merged = { ...existing, ...normalizedPatch, id, layerId };
     const normalized = normalizeEntity(merged, id);
     this.entities.set(id, normalized);
     this.spatialIndex.upsert(normalized);
@@ -564,6 +875,45 @@ export class DocumentState extends EventTarget {
     this.emitChange('constraint-clear');
   }
 
+  // P3.3: Constraint visualization hints
+  getConstraintVisualHints() {
+    const hints = [];
+    for (const c of this.listConstraints()) {
+      if (!c || !Array.isArray(c.refs) || c.refs.length < 2) continue;
+      const hint = { id: c.id, type: c.type, refs: c.refs, points: [] };
+      // Resolve ref pairs to screen-space points for rendering
+      for (let i = 0; i + 1 < c.refs.length; i += 2) {
+        const refX = c.refs[i];
+        const refY = c.refs[i + 1];
+        if (typeof refX !== 'string' || typeof refY !== 'string') continue;
+        const matchX = refX.match(/^(\d+)\.(.*)/);
+        const matchY = refY.match(/^(\d+)\.(.*)/);
+        if (!matchX || !matchY) continue;
+        const entityId = Number(matchX[1]);
+        const entity = this.getEntity(entityId);
+        if (!entity) continue;
+        // Extract coordinate value from entity based on param name
+        const paramX = matchX[2];
+        const paramY = matchY[2];
+        let x = null, y = null;
+        if (entity.type === 'line') {
+          if (paramX === 'start_x' || paramX === 'x') x = entity.start?.x;
+          if (paramX === 'end_x') x = entity.end?.x;
+          if (paramY === 'start_y' || paramY === 'y') y = entity.start?.y;
+          if (paramY === 'end_y') y = entity.end?.y;
+        } else if (entity.type === 'arc' || entity.type === 'circle') {
+          if (paramX === 'cx') x = entity.center?.x;
+          if (paramY === 'cy') y = entity.center?.y;
+        }
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          hint.points.push({ x, y, entityId });
+        }
+      }
+      if (hint.points.length > 0) hints.push(hint);
+    }
+    return hints;
+  }
+
   snapshot() {
     return {
       nextEntityId: this.nextEntityId,
@@ -597,7 +947,16 @@ export class DocumentState extends EventTarget {
           name: String(raw?.name || `L${id}`),
           visible: raw?.visible !== false,
           locked: raw?.locked === true,
+          printable: raw?.printable !== false,
+          frozen: raw?.frozen === true,
+          construction: raw?.construction === true,
           color: sanitizeColor(raw?.color, '#9ca3af'),
+          lineType: typeof raw?.lineType === 'string' && raw.lineType.trim()
+            ? raw.lineType.trim().toUpperCase()
+            : (typeof raw?.line_type === 'string' && raw.line_type.trim() ? raw.line_type.trim().toUpperCase() : 'CONTINUOUS'),
+          lineWeight: Number.isFinite(raw?.lineWeight)
+            ? Math.max(0, Number(raw.lineWeight))
+            : (Number.isFinite(raw?.line_weight) ? Math.max(0, Number(raw.line_weight)) : 0),
         };
         this.layers.set(id, layer);
         if (id >= this.nextLayerId) {
