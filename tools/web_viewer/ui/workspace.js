@@ -1307,7 +1307,12 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
       // Auto-enable dark mode for DXF/DWG imports (white entities on white bg are invisible)
       if (canvasView) canvasView.darkMode = true;
       if (fitView) {
-        fitViewToDocument({ documentState, viewState, canvas });
+        // Defer fit to next frame to ensure canvas layout is complete
+        requestAnimationFrame(() => {
+          canvasView?.resize?.();
+          fitViewToDocument({ documentState, viewState, canvas });
+          canvasView?.render?.();
+        });
       }
       statusApi?.setMessage(imported.warnings.length > 0
         ? `CADGF imported with ${imported.warnings.length} warnings`
