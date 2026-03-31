@@ -61,7 +61,7 @@ New locked behaviors:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_source_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260323_180408/summary.json)
+- artifact: [summary.json](../build/editor_source_group_smoke/20260323_180408/summary.json)
 
 Key verified behaviors:
 
@@ -94,7 +94,7 @@ Key verified behaviors:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_insert_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_group_smoke/20260323_180408/summary.json)
+- artifact: [summary.json](../build/editor_insert_group_smoke/20260323_180408/summary.json)
 
 This confirms the new generic helper layer did not regress the richer insert path:
 
@@ -109,7 +109,7 @@ This confirms the new generic helper layer did not regress the richer insert pat
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260323_180408/summary.json)
+- artifact: [summary.json](../build/editor_selection_summary_smoke/20260323_180408/summary.json)
 
 This confirms the broader selection/property panel contract still holds after adding grouped-source metadata and actions.
 

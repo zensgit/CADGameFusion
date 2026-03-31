@@ -17,9 +17,9 @@ That gap mattered more than another isolated geometry tool because it sat direct
 
 ## Benchmark Reading
 
-Against `AutoCAD LT/Web`, `BricsCAD Lite`, `DraftSight`, and `nanoCAD`, the missing piece was not basic layer support. The repo already had that in `DocumentState`.
+Against `AutoCAD LT/Web`, `BricsCAD Lite`, `DraftSight`, `nanoCAD`, and lighter editors such as `LibreCAD`, the missing piece was not basic layer support. The repo already had that in `DocumentState`.
 
-The missing piece was **operator-facing explainability**:
+The missing piece was operator-facing explainability:
 
 - benchmark tools show current layer identity and flags, but imported provenance is usually still implicit
 - VemCAD already knows more than those UIs expose:
@@ -29,11 +29,11 @@ The missing piece was **operator-facing explainability**:
   - `lineType / lineWeight / lineTypeScale`
   - per-layer `visible / locked / frozen / printable / construction`
 
-The opportunity is therefore to surpass the benchmark in one very specific way:
+The opportunity is therefore narrow but valuable:
 
 - keep the familiar 2D drafting layer model
 - expose it beside provenance and effective style
-- make the UI and command contract agree on what "locked" actually means
+- make quicklook, property UI, and patch semantics agree on what "locked" actually means
 
 ## Product Goal
 
@@ -63,13 +63,14 @@ The answer must stay stable across:
 
 ## Design
 
-### 1. Layer-aware quicklook
+### 1. Shared layer-aware presentation
 
 `tools/web_viewer/ui/selection_presenter.js` becomes the single formatter for:
 
 - `layer`
 - `layer-color`
 - `layer-state`
+- `layer` badge
 - layer-state badges for:
   - `Locked`
   - `Frozen`
@@ -80,13 +81,25 @@ Single-select quicklook now pairs:
 
 - effective entity color
 - layer color
-- full layer state string
+- full normalized layer state string
 
 This makes `BYLAYER -> TRUECOLOR` promotion legible: after moving an imported entity to `REDLINE`, the quicklook can show that the entity still draws `#808080` while the new layer is `#ff0000`.
 
 ### 2. Stable DOM/state surface
 
-`#cad-selection-details` keeps the Step191 hook model and extends it with layer state on the root dataset:
+`#cad-selection-details` keeps the Step191 hook model and extends it with stable layer facts on both fact rows and the root dataset.
+
+Stable row hooks:
+
+- `data-selection-field="layer"`
+- `data-selection-field="layer-color"`
+- `data-selection-field="layer-state"`
+- `data-selection-badge="layer"`
+- `data-selection-badge="layer-locked"`
+- `data-selection-badge="layer-noprint"`
+- `data-selection-badge="layer-construction"`
+
+Stable root dataset:
 
 - `data-layer-id`
 - `data-layer-name`
@@ -105,7 +118,10 @@ This gives browser smoke a stable contract without scraping visual order.
 - `Layer Color`
 - `Layer State`
 
-When every selected entity is on locked layers, the property form stops offering editable inputs and shows a clear note instead of letting the user perform a doomed edit attempt.
+Behavior:
+
+- if every selected entity is on a locked layer, do not render editable inputs and show an explicit blocking note
+- if selection is mixed, keep the panel informative and explain that locked-layer entities are skipped
 
 This is intentionally closer to commercial drafting UX than "let the user type and fail later".
 
@@ -113,7 +129,7 @@ This is intentionally closer to commercial drafting UX than "let the user type a
 
 The deeper issue was not only UI messaging.
 
-Before this step, `selection.propertyPatch` and `DocumentState.updateEntity()` only treated the **target** layer lock as authoritative. That created a semantic hole where an entity on a locked layer could still be moved off that layer by changing `Layer ID`.
+Before this step, `selection.propertyPatch` and `DocumentState.updateEntity()` only treated the target layer lock as authoritative. That created a semantic hole where an entity on a locked layer could still be moved off that layer by changing `Layer ID`.
 
 Step192 closes that hole:
 
@@ -128,7 +144,9 @@ That makes the command contract, property panel, and quicklook agree on the same
 - `tools/web_viewer/ui/property_panel.js`
 - `tools/web_viewer/state/documentState.js`
 - `tools/web_viewer/commands/command_registry.js`
+- `tools/web_viewer/style.css`
 - `tools/web_viewer/scripts/editor_selection_summary_smoke.js`
+- `tools/web_viewer/scripts/editor_ui_flow_smoke.sh`
 - `tools/web_viewer/tests/fixtures/editor_selection_summary_fixture.json`
 - `tools/web_viewer/tests/editor_commands.test.js`
 - `tools/web_viewer/README.md`
@@ -142,4 +160,4 @@ That makes the command contract, property panel, and quicklook agree on the same
 - changing `Layer ID` updates quicklook and property metadata immediately
 - imported `BYLAYER` color promotion remains explicit after layer change
 - `selection.propertyPatch` cannot move entities off locked current layers
-- dedicated browser smoke validates before/after/locked/unlocked states on the real editor path
+- browser smoke validates before/after/locked/unlocked states on the real editor path

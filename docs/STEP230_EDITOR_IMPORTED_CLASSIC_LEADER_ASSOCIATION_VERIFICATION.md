@@ -24,7 +24,7 @@ git -C . diff --check
 
 ### Positive
 
-On [step186_paperspace_combo_sample.dxf](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tests/plugin_data/step186_paperspace_combo_sample.dxf):
+On [step186_paperspace_combo_sample.dxf](../tests/plugin_data/step186_paperspace_combo_sample.dxf):
 
 - exactly one text entity becomes `source_type=LEADER`
 - that text is `THIRD NOTE`
@@ -33,11 +33,11 @@ On [step186_paperspace_combo_sample.dxf](/Users/huazhou/Downloads/Github/VemCAD/
 
 ### Negative
 
-On [step186_paperspace_insert_leader_sample.dxf](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tests/plugin_data/step186_paperspace_insert_leader_sample.dxf):
+On [step186_paperspace_insert_leader_sample.dxf](../tests/plugin_data/step186_paperspace_insert_leader_sample.dxf):
 
 - zero text entities become `source_type=LEADER`
 
-On [step186_paperspace_annotation_bundle_sample.dxf](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tests/plugin_data/step186_paperspace_annotation_bundle_sample.dxf):
+On [step186_paperspace_annotation_bundle_sample.dxf](../tests/plugin_data/step186_paperspace_annotation_bundle_sample.dxf):
 
 - zero text entities become `source_type=LEADER`
 
@@ -45,11 +45,11 @@ On [step186_paperspace_annotation_bundle_sample.dxf](/Users/huazhou/Downloads/Gi
 
 Fixture:
 
-- [editor_classic_leader_fixture.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/fixtures/editor_classic_leader_fixture.json)
+- [editor_classic_leader_fixture.json](../tools/web_viewer/tests/fixtures/editor_classic_leader_fixture.json)
 
 Script:
 
-- [editor_classic_leader_smoke.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/scripts/editor_classic_leader_smoke.js)
+- [editor_classic_leader_smoke.js](../tools/web_viewer/scripts/editor_classic_leader_smoke.js)
 
 The smoke must prove:
 
@@ -74,13 +74,13 @@ Importer tests:
 
 Browser smoke:
 
-- [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_classic_leader_smoke/20260324_085713/summary.json)
+- [summary.json](../build/editor_classic_leader_smoke/20260324_085713/summary.json)
 
 Supporting importer preview artifacts:
 
-- [combo document.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step230_combo_preview_a/document.json)
-- [insert leader document.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step230_insert_leader_preview_a/document.json)
-- [annotation bundle document.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step230_annotation_bundle_preview_a/document.json)
+- [combo document.json](../build/step230_combo_preview_a/document.json)
+- [insert leader document.json](../build/step230_insert_leader_preview_a/document.json)
+- [annotation bundle document.json](../build/step230_annotation_bundle_preview_a/document.json)
 
 Worktree hygiene:
 

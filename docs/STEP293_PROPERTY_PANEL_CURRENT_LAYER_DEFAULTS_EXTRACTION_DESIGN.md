@@ -2,7 +2,7 @@
 
 ## Goal
 
-Extract the no-selection `current layer / current space-layout` default content and editable current-layer field descriptors out of [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js), while keeping property panel as the render shell.
+Extract the no-selection `current layer / current space-layout` default content and editable current-layer field descriptors out of [property_panel.js](../tools/web_viewer/ui/property_panel.js), while keeping property panel as the render shell.
 
 This continues the same local-module pattern used in Step291 and Step292:
 
@@ -12,7 +12,7 @@ This continues the same local-module pattern used in Step291 and Step292:
 
 ## Problem
 
-After Step292, [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still embedded one large no-selection block:
+After Step292, [property_panel.js](../tools/web_viewer/ui/property_panel.js) still embedded one large no-selection block:
 
 - current-layer note text
 - current-space/current-layout/current-layer info rows
@@ -32,7 +32,7 @@ in the main property-panel file.
 
 ### 1. Add a dedicated current-layer-defaults module
 
-Create [property_panel_current_layer_defaults.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_current_layer_defaults.js) with two builders:
+Create [property_panel_current_layer_defaults.js](../tools/web_viewer/ui/property_panel_current_layer_defaults.js) with two builders:
 
 - `buildCurrentLayerDefaultContent(...)`
 - `buildCurrentLayerFieldDescriptors(...)`
@@ -50,13 +50,13 @@ Create [property_panel_current_layer_defaults.js](/Users/huazhou/Downloads/Githu
 
 ### 2. Keep property_panel as the render shell
 
-[property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still owns:
+[property_panel.js](../tools/web_viewer/ui/property_panel.js) still owns:
 
 - `addNote(...)`
 - `addInfo(...)`
 - `addField(...)`
 - no-selection render timing
-- current-space action rendering via [property_panel_layer_actions.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_layer_actions.js)
+- current-space action rendering via [property_panel_layer_actions.js](../tools/web_viewer/ui/property_panel_layer_actions.js)
 
 The only change is that `renderCurrentLayerDefaults()` now consumes descriptors from the new module instead of building them inline.
 
@@ -76,9 +76,9 @@ Those keys are part of current smoke coverage and remain unchanged.
 
 ## Files
 
-- [property_panel_current_layer_defaults.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_current_layer_defaults.js)
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js)
-- [property_panel_current_layer_defaults.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/property_panel_current_layer_defaults.test.js)
+- [property_panel_current_layer_defaults.js](../tools/web_viewer/ui/property_panel_current_layer_defaults.js)
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js)
+- [property_panel_current_layer_defaults.test.js](../tools/web_viewer/tests/property_panel_current_layer_defaults.test.js)
 
 ## Why This Is The Right Cut
 
@@ -88,4 +88,4 @@ This is the natural follow-up to the action extractions:
 2. Step292 extracted layer/current-space action builders
 3. Step293 extracts no-selection default content and field descriptors
 
-After this, [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) is much closer to a pure orchestration and render file, which makes the next split around entity edit fields much cleaner.
+After this, [property_panel.js](../tools/web_viewer/ui/property_panel.js) is much closer to a pure orchestration and render file, which makes the next split around entity edit fields much cleaner.

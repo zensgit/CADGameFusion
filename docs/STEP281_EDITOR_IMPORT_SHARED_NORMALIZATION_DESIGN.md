@@ -26,7 +26,7 @@ The first issue risks semantic drift. The second issue produces a false regressi
 
 ### 1. Extract shared import-normalization helpers
 
-Add [import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/import_normalization.js) as the first shared import-normalization module.
+Add [import_normalization.js](../tools/web_viewer/import_normalization.js) as the first shared import-normalization module.
 
 It owns the helpers that were duplicated and semantically identical across the editor snapshot normalizer and the CADGF adapter:
 
@@ -42,16 +42,16 @@ This is intentionally a narrow cut. It reduces duplicated semantics without tryi
 
 Both of these modules now import shared helper semantics from the same file:
 
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
 
 This means the two import paths cannot silently diverge on the basic provenance/style fields listed above.
 
 ### 3. Make the perf smoke honor runtime space/layout visibility
 
-[workspace.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/workspace.js) already syncs current `space/layout` after import, so imported paper-space fixtures render as visible content.
+[workspace.js](../tools/web_viewer/ui/workspace.js) already syncs current `space/layout` after import, so imported paper-space fixtures render as visible content.
 
-[editor_real_scene_perf_smoke.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/scripts/editor_real_scene_perf_smoke.js) now mirrors that runtime contract by calling:
+[editor_real_scene_perf_smoke.js](../tools/web_viewer/scripts/editor_real_scene_perf_smoke.js) now mirrors that runtime contract by calling:
 
 - `document.setCurrentSpaceContext(document.getCurrentSpaceContext(), { silent: true })`
 
@@ -61,11 +61,11 @@ This is not a perf-only workaround. It is the script-side equivalent of the edit
 
 ## Files
 
-- [import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/import_normalization.js)
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
-- [editor_real_scene_perf_smoke.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/scripts/editor_real_scene_perf_smoke.js)
-- [import_normalization.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/import_normalization.test.js)
+- [import_normalization.js](../tools/web_viewer/import_normalization.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [editor_real_scene_perf_smoke.js](../tools/web_viewer/scripts/editor_real_scene_perf_smoke.js)
+- [import_normalization.test.js](../tools/web_viewer/tests/import_normalization.test.js)
 
 ## Why This Is The Right Cut
 

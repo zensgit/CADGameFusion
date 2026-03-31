@@ -2,7 +2,7 @@
 
 ## Goal
 
-Extract the property-panel group action assembly into a dedicated module so [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) stops owning the full source-group, insert-group, and released-insert action-label matrix inline.
+Extract the property-panel group action assembly into a dedicated module so [property_panel.js](../tools/web_viewer/ui/property_panel.js) stops owning the full source-group, insert-group, and released-insert action-label matrix inline.
 
 This cut keeps the current architecture boundary:
 
@@ -12,7 +12,7 @@ This cut keeps the current architecture boundary:
 
 ## Problem
 
-Before this step, [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still embedded three long action builders:
+Before this step, [property_panel.js](../tools/web_viewer/ui/property_panel.js) still embedded three long action builders:
 
 - `appendSourceGroupActions(...)`
 - `appendInsertGroupActions(...)`
@@ -31,7 +31,7 @@ That made the file large and made action-label regressions harder to isolate.
 
 ### 1. Add a dedicated group-actions module
 
-Create [property_panel_group_actions.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_group_actions.js) with pure builders:
+Create [property_panel_group_actions.js](../tools/web_viewer/ui/property_panel_group_actions.js) with pure builders:
 
 - `buildSourceGroupActions(...)`
 - `buildInsertGroupActions(...)`
@@ -46,7 +46,7 @@ Each builder:
 
 ### 2. Keep DOM rendering in property_panel
 
-[property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still owns:
+[property_panel.js](../tools/web_viewer/ui/property_panel.js) still owns:
 
 - `addActionRow(...)`
 - when each action section is shown
@@ -64,9 +64,9 @@ This step intentionally preserves the exact labels and failure messages already 
 
 ## Files
 
-- [property_panel_group_actions.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_group_actions.js)
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js)
-- [property_panel_group_actions.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/property_panel_group_actions.test.js)
+- [property_panel_group_actions.js](../tools/web_viewer/ui/property_panel_group_actions.js)
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js)
+- [property_panel_group_actions.test.js](../tools/web_viewer/tests/property_panel_group_actions.test.js)
 
 ## Why This Is The Right Cut
 

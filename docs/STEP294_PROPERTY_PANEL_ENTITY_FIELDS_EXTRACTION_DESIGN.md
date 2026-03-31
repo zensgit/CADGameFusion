@@ -2,7 +2,7 @@
 
 ## Goal
 
-Extract the property-panel entity edit field assembly for text and geometry entities out of [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js), while keeping the render shell and patch execution behavior unchanged.
+Extract the property-panel entity edit field assembly for text and geometry entities out of [property_panel.js](../tools/web_viewer/ui/property_panel.js), while keeping the render shell and patch execution behavior unchanged.
 
 This follows the same local-descriptor pattern used in Steps 291 to 293:
 
@@ -12,7 +12,7 @@ This follows the same local-descriptor pattern used in Steps 291 to 293:
 
 ## Problem
 
-Before this step, [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still inlined:
+Before this step, [property_panel.js](../tools/web_viewer/ui/property_panel.js) still inlined:
 
 - full text edit fields
 - INSERT proxy text field variants
@@ -33,7 +33,7 @@ in the main render function.
 
 ### 1. Add a dedicated entity-fields module
 
-Create [property_panel_entity_fields.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_entity_fields.js) with descriptor builders:
+Create [property_panel_entity_fields.js](../tools/web_viewer/ui/property_panel_entity_fields.js) with descriptor builders:
 
 - `buildFullTextEditFieldDescriptors(...)`
 - `buildInsertProxyTextFieldDescriptors(...)`
@@ -49,7 +49,7 @@ and return plain field/toggle descriptors.
 
 ### 2. Keep property_panel as the render shell
 
-[property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still owns:
+[property_panel.js](../tools/web_viewer/ui/property_panel.js) still owns:
 
 - `addField(...)`
 - `addToggle(...)`
@@ -75,9 +75,9 @@ This step intentionally preserves the existing field names and labels that smoke
 
 ## Files
 
-- [property_panel_entity_fields.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_entity_fields.js)
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js)
-- [property_panel_entity_fields.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/property_panel_entity_fields.test.js)
+- [property_panel_entity_fields.js](../tools/web_viewer/ui/property_panel_entity_fields.js)
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js)
+- [property_panel_entity_fields.test.js](../tools/web_viewer/tests/property_panel_entity_fields.test.js)
 
 ## Why This Is The Right Cut
 
@@ -87,7 +87,7 @@ This is the next natural split after actions and no-selection defaults:
 2. Step293 extracted no-selection defaults
 3. Step294 extracts entity edit fields
 
-After this, [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) is mostly left with:
+After this, [property_panel.js](../tools/web_viewer/ui/property_panel.js) is mostly left with:
 
 - branch orchestration
 - metadata rendering

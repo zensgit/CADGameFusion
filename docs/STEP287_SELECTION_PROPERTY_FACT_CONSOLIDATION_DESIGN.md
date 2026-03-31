@@ -5,15 +5,15 @@
 Consolidate provenance/style metadata fact generation so:
 
 - selection details and property metadata stop drifting apart
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) consumes shared facts instead of recomputing them
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js) consumes shared facts instead of recomputing them
 - the property panel still keeps its panel-only metadata rows without bloating the selection summary UI
 
 ## Problem
 
 After Step280-Step286, the import boundary was cleaner, but the presentation layer still had a duplication seam:
 
-- [selection_presenter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/selection_presenter.js) already produced stable `detailFacts` for provenance and effective style
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still rebuilt a second metadata set by recomputing:
+- [selection_presenter.js](../tools/web_viewer/ui/selection_presenter.js) already produced stable `detailFacts` for provenance and effective style
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js) still rebuilt a second metadata set by recomputing:
   - layer summary
   - effective color
   - effective line style
@@ -31,7 +31,7 @@ That duplication was risky because presenter and property panel could diverge on
 
 ### 1. Add a property-metadata fact builder next to selection detail facts
 
-Extend [selection_presenter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/selection_presenter.js) with:
+Extend [selection_presenter.js](../tools/web_viewer/ui/selection_presenter.js) with:
 
 - `buildPropertyMetadataFacts(entity, options)`
 
@@ -68,7 +68,7 @@ This keeps the panel visually familiar while still using one fact-generation pat
 
 ### 3. Make property_panel a consumer, not a second fact author
 
-[property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) now calls:
+[property_panel.js](../tools/web_viewer/ui/property_panel.js) now calls:
 
 - `buildPropertyMetadataFacts(entity, { getLayer, listEntities })`
 
@@ -82,9 +82,9 @@ Editing behavior is intentionally unchanged:
 
 ## Files
 
-- [selection_presenter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/selection_presenter.js)
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js)
-- [editor_commands.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/editor_commands.test.js)
+- [selection_presenter.js](../tools/web_viewer/ui/selection_presenter.js)
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js)
+- [editor_commands.test.js](../tools/web_viewer/tests/editor_commands.test.js)
 
 ## Why This Is The Right Cut
 

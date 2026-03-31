@@ -51,10 +51,10 @@ node /Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/
 
 Artifacts:
 
-- [editor_selection_summary summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260329_003817/summary.json)
-- [editor_source_group summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260329_003817/summary.json)
-- [editor_classic_leader summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_classic_leader_smoke/20260329_003817/summary.json)
-- [editor_table summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_table_smoke/20260329_003852/summary.json)
+- [editor_selection_summary summary.json](../build/editor_selection_summary_smoke/20260329_003817/summary.json)
+- [editor_source_group summary.json](../build/editor_source_group_smoke/20260329_003817/summary.json)
+- [editor_classic_leader summary.json](../build/editor_classic_leader_smoke/20260329_003817/summary.json)
+- [editor_table summary.json](../build/editor_table_smoke/20260329_003852/summary.json)
 
 Confirmed:
 

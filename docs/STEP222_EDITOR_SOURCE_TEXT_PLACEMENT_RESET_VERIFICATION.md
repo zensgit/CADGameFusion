@@ -53,7 +53,7 @@ New locked behaviors:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_source_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260323_223111/summary.json)
+- artifact: [summary.json](../build/editor_source_group_smoke/20260323_223111/summary.json)
 
 Key verified behaviors:
 
@@ -88,7 +88,7 @@ Key verified behaviors:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_insert_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_group_smoke/20260323_223036/summary.json)
+- artifact: [summary.json](../build/editor_insert_group_smoke/20260323_223036/summary.json)
 
 This confirms the source text placement reset slice did not regress the imported insert workflow.
 
@@ -97,7 +97,7 @@ This confirms the source text placement reset slice did not regress the imported
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260323_223036/summary.json)
+- artifact: [summary.json](../build/editor_selection_summary_smoke/20260323_223036/summary.json)
 
 This confirms the broader imported editor quicklook/property contract remains stable after adding source text placement reset.
 

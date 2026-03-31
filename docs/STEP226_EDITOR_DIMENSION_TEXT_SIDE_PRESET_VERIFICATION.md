@@ -42,7 +42,7 @@ Locked behaviors:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_source_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260323_233137/summary.json)
+- artifact: [summary.json](../build/editor_source_group_smoke/20260323_233137/summary.json)
 
 Key verified behaviors:
 
@@ -64,7 +64,7 @@ Key verified behaviors:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_insert_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_group_smoke/20260323_233154/summary.json)
+- artifact: [summary.json](../build/editor_insert_group_smoke/20260323_233154/summary.json)
 
 This confirms the DIMENSION preset slice did not regress the imported `INSERT` workflow.
 
@@ -73,7 +73,7 @@ This confirms the DIMENSION preset slice did not regress the imported `INSERT` w
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260323_233154/summary.json)
+- artifact: [summary.json](../build/editor_selection_summary_smoke/20260323_233154/summary.json)
 
 This confirms the broader selection/property contract remains stable after adding the opposite-side preset.
 

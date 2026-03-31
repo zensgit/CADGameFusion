@@ -33,7 +33,7 @@ git diff --check
 - `node tools/web_viewer/scripts/editor_insert_attribute_smoke.js`
   - PASS
   - artifact:
-    - [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_attribute_smoke/20260325_153836/summary.json)
+    - [summary.json](../build/editor_insert_attribute_smoke/20260325_153836/summary.json)
 - `git diff --check`
   - PASS
 

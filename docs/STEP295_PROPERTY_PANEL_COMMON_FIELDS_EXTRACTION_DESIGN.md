@@ -2,7 +2,7 @@
 
 ## Goal
 
-Extract the remaining common property fields and style reset actions out of [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js), so the property panel moves closer to a pure branch/render shell.
+Extract the remaining common property fields and style reset actions out of [property_panel.js](../tools/web_viewer/ui/property_panel.js), so the property panel moves closer to a pure branch/render shell.
 
 This step follows the same pattern as Steps 291 to 294:
 
@@ -12,7 +12,7 @@ This step follows the same pattern as Steps 291 to 294:
 
 ## Problem
 
-Before this step, [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still inlined the last large cross-entity field cluster:
+Before this step, [property_panel.js](../tools/web_viewer/ui/property_panel.js) still inlined the last large cross-entity field cluster:
 
 - `Layer ID`
 - `Color Override (#RRGGBB)`
@@ -39,7 +39,7 @@ That meant the main render path still mixed:
 
 ### 1. Add a dedicated common-fields module
 
-Create [property_panel_common_fields.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_common_fields.js) with:
+Create [property_panel_common_fields.js](../tools/web_viewer/ui/property_panel_common_fields.js) with:
 
 - `buildCommonPropertyFieldDescriptors(...)`
 - `buildStyleActionDescriptors(...)`
@@ -57,7 +57,7 @@ Create [property_panel_common_fields.js](/Users/huazhou/Downloads/Github/VemCAD/
 
 ### 2. Keep property_panel as the render shell
 
-[property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still owns:
+[property_panel.js](../tools/web_viewer/ui/property_panel.js) still owns:
 
 - `patchSelection(...)`
 - `appendFieldDescriptors(...)`
@@ -83,9 +83,9 @@ This step intentionally preserves the existing field names, labels, and style-ac
 
 ## Files
 
-- [property_panel_common_fields.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_common_fields.js)
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js)
-- [property_panel_common_fields.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/property_panel_common_fields.test.js)
+- [property_panel_common_fields.js](../tools/web_viewer/ui/property_panel_common_fields.js)
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js)
+- [property_panel_common_fields.test.js](../tools/web_viewer/tests/property_panel_common_fields.test.js)
 
 ## Why This Is The Right Cut
 
@@ -95,4 +95,4 @@ This finishes the last big cross-entity field cluster:
 2. Step294 extracted entity-specific edit fields
 3. Step295 extracts common property/style fields
 
-After this, [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) is mostly branch orchestration plus a thin render shell, which is the right stopping point before any deeper UI-level redesign.
+After this, [property_panel.js](../tools/web_viewer/ui/property_panel.js) is mostly branch orchestration plus a thin render shell, which is the right stopping point before any deeper UI-level redesign.

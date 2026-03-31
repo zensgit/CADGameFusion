@@ -12,8 +12,8 @@ Continue the object-level import normalization cleanup after Step282:
 
 The next largest object-level duplication after style lived in the attribute/text metadata block of:
 
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
 
 Both modules were parallel-normalizing the same imported fields:
 
@@ -42,7 +42,7 @@ This was duplicated almost line-for-line, with alias support as the main differe
 
 ### 1. Extend the object-level normalization module
 
-Extend [entity_import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/entity_import_normalization.js) with:
+Extend [entity_import_normalization.js](../tools/web_viewer/entity_import_normalization.js) with:
 
 - `normalizeImportedAttributeMetadata(raw, options)`
 - `applyAttributeFlagFallbacks(meta)`
@@ -69,8 +69,8 @@ Those remain at the caller level because they are not shared attribute/text norm
 
 Both import paths now assign the helper output directly into their metadata object:
 
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
 
 `documentState` uses the default alias set, which accepts camelCase and snake_case.
 
@@ -78,10 +78,10 @@ CADGF import passes a narrowed snake_case alias set so the shared helper still r
 
 ## Files
 
-- [entity_import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/entity_import_normalization.js)
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
-- [entity_import_normalization.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/entity_import_normalization.test.js)
+- [entity_import_normalization.js](../tools/web_viewer/entity_import_normalization.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [entity_import_normalization.test.js](../tools/web_viewer/tests/entity_import_normalization.test.js)
 
 ## Why This Is The Right Cut
 

@@ -12,8 +12,8 @@ Finish the last small-but-repeated import-normalization slice:
 
 After Step285, most object-level normalization duplication was already removed from:
 
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
 
 The remaining repeated logic was policy-shaped rather than field-shaped:
 
@@ -31,7 +31,7 @@ That means full behavior unification would be wrong. The right cut is to share t
 
 ### 1. Add shared policy helpers to the import-normalization module
 
-Extend [entity_import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/entity_import_normalization.js) with:
+Extend [entity_import_normalization.js](../tools/web_viewer/entity_import_normalization.js) with:
 
 - `resolveImportedTextValuePolicy(input, options)`
 - `resolveImportedEntityVisibilityPolicy(input, options)`
@@ -76,17 +76,17 @@ Both callers still keep the shared insert-text-proxy rule:
 
 After the shared helpers exist:
 
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js) no longer carries its own text-value or visibility policy functions
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js) no longer carries its own text-value or visibility policy functions
+- [documentState.js](../tools/web_viewer/state/documentState.js) no longer carries its own text-value or visibility policy functions
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js) no longer carries its own text-value or visibility policy functions
 
 Both callers now only prepare canonical input and select the correct policy mode.
 
 ## Files
 
-- [entity_import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/entity_import_normalization.js)
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
-- [entity_import_normalization.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/entity_import_normalization.test.js)
+- [entity_import_normalization.js](../tools/web_viewer/entity_import_normalization.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [entity_import_normalization.test.js](../tools/web_viewer/tests/entity_import_normalization.test.js)
 
 ## Why This Is The Right Cut
 

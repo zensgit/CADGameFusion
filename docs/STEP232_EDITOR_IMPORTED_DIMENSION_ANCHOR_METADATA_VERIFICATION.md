@@ -61,7 +61,7 @@ Result:
 
 Artifact:
 
-- [step232 combo document.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step232_combo_preview_a/document.json)
+- [step232 combo document.json](../build/step232_combo_preview_a/document.json)
 
 Verified real imported `DIMENSION` text proxies:
 
@@ -80,7 +80,7 @@ Verified real imported `DIMENSION` text proxies:
 
 Artifact:
 
-- [editor_classic_leader_smoke summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_classic_leader_smoke/20260324_111949/summary.json)
+- [editor_classic_leader_smoke summary.json](../build/editor_classic_leader_smoke/20260324_111949/summary.json)
 
 Verified in the real browser path:
 

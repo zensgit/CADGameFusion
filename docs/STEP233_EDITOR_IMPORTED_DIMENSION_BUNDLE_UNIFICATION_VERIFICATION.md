@@ -40,19 +40,19 @@ git diff --check
 
 ### Preview artifacts
 
-In [step233_combo_preview_b/document.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step233_combo_preview_b/document.json):
+In [step233_combo_preview_b/document.json](../build/step233_combo_preview_b/document.json):
 
 - text `25` keeps `group_id=5` and carries `source_bundle_id=5`
 - arrowheads `26` and `27` keep `group_id=6/7` and also carry `source_bundle_id=5`
 - second dimension text `37` and arrowheads `38/39` behave the same for bundle `9`
 
-In [step233_insert_dimension_preview_b/document.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step233_insert_dimension_preview_b/document.json):
+In [step233_insert_dimension_preview_b/document.json](../build/step233_insert_dimension_preview_b/document.json):
 
 - text/body members and split arrowhead members share one `source_bundle_id`
 
 ### Browser smoke
 
-In [editor_classic_leader_smoke summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_classic_leader_smoke):
+In [editor_classic_leader_smoke summary.json](../build/editor_classic_leader_smoke):
 
 - imported dimension text shows `source-group-members = 9`
 - imported arrowhead shows `source-bundle-id = 5`

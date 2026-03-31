@@ -56,9 +56,9 @@ node /Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/
 
 Artifacts:
 
-- [editor_source_group summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260329_002433/summary.json)
-- [editor_classic_leader summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_classic_leader_smoke/20260329_002433/summary.json)
-- [editor_table summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_table_smoke/20260329_002433/summary.json)
+- [editor_source_group summary.json](../build/editor_source_group_smoke/20260329_002433/summary.json)
+- [editor_classic_leader summary.json](../build/editor_classic_leader_smoke/20260329_002433/summary.json)
+- [editor_table summary.json](../build/editor_table_smoke/20260329_002433/summary.json)
 
 Confirmed:
 
@@ -76,7 +76,7 @@ node /Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/
 
 Artifact:
 
-- [editor_real_scene_perf summary.json](/tmp/editor-real-scene-perf-step285/20260328_162432/summary.json)
+- editor_real_scene_perf summary.json: `/tmp/editor-real-scene-perf-step285/20260328_162432/summary.json`
 
 Confirmed:
 

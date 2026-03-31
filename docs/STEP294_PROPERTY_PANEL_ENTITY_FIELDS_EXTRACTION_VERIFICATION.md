@@ -4,7 +4,7 @@
 
 Verify that:
 
-- text and geometry field assembly now comes from [property_panel_entity_fields.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_entity_fields.js)
+- text and geometry field assembly now comes from [property_panel_entity_fields.js](../tools/web_viewer/ui/property_panel_entity_fields.js)
 - read-only text escape hatches still expose the same field sets
 - geometry/text property-panel flows remain green
 
@@ -56,11 +56,11 @@ bash /Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/
 
 Artifacts:
 
-- [editor_insert_group summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_group_smoke/20260329_013316/summary.json)
-- [editor_insert_attribute summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_attribute_smoke/20260329_013316/summary.json)
-- [editor_table summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_table_smoke/20260329_013316/summary.json)
-- [editor_mleader summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_mleader_smoke/20260329_013316/summary.json)
-- [editor_ui_flow summary.json](/tmp/editor-ui-flow-step294/summary.json)
+- [editor_insert_group summary.json](../build/editor_insert_group_smoke/20260329_013316/summary.json)
+- [editor_insert_attribute summary.json](../build/editor_insert_attribute_smoke/20260329_013316/summary.json)
+- [editor_table summary.json](../build/editor_table_smoke/20260329_013316/summary.json)
+- [editor_mleader summary.json](../build/editor_mleader_smoke/20260329_013316/summary.json)
+- editor_ui_flow summary.json: `/tmp/editor-ui-flow-step294/summary.json`
 
 Confirmed:
 

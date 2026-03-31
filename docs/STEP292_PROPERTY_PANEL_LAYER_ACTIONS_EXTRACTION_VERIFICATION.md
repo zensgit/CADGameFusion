@@ -4,8 +4,8 @@
 
 Verify that:
 
-- `layer` and `current space/layout` property-panel actions now come from [property_panel_layer_actions.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_layer_actions.js)
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still renders the same action rows
+- `layer` and `current space/layout` property-panel actions now come from [property_panel_layer_actions.js](../tools/web_viewer/ui/property_panel_layer_actions.js)
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js) still renders the same action rows
 - released ATTDEF property-panel selection now has a real click-path smoke, not just an action-presence assertion
 
 ## Static Checks
@@ -55,12 +55,12 @@ bash /Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/
 
 Artifacts:
 
-- [editor_space_layout summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_space_layout_smoke/20260329_012011/summary.json)
-- [editor_current_layer summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_current_layer_smoke/20260329_012011/summary.json)
-- [editor_layer_session summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_layer_session_smoke/20260329_012011/summary.json)
-- [editor_selection_summary summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260329_012011/summary.json)
-- [editor_insert_attribute summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_attribute_smoke/20260329_012011/summary.json)
-- [editor_ui_flow summary.json](/tmp/editor-ui-flow-step292/summary.json)
+- [editor_space_layout summary.json](../build/editor_space_layout_smoke/20260329_012011/summary.json)
+- [editor_current_layer summary.json](../build/editor_current_layer_smoke/20260329_012011/summary.json)
+- [editor_layer_session summary.json](../build/editor_layer_session_smoke/20260329_012011/summary.json)
+- [editor_selection_summary summary.json](../build/editor_selection_summary_smoke/20260329_012011/summary.json)
+- [editor_insert_attribute summary.json](../build/editor_insert_attribute_smoke/20260329_012011/summary.json)
+- editor_ui_flow summary.json: `/tmp/editor-ui-flow-step292/summary.json`
 
 Confirmed:
 

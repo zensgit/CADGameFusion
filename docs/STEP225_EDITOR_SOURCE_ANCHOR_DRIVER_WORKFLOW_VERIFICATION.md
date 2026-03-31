@@ -12,20 +12,20 @@ Verify that imported `DIMENSION` / `LEADER` source text can now reveal and selec
 
 ## Commands
 
-From `/Users/huazhou/Downloads/Github/VemCAD`:
+Executed from `deps/cadgamefusion`:
 
 ```bash
-node --check deps/cadgamefusion/tools/web_viewer/insert_group.js
-node --check deps/cadgamefusion/tools/web_viewer/commands/command_registry.js
-node --check deps/cadgamefusion/tools/web_viewer/ui/selection_presenter.js
-node --check deps/cadgamefusion/tools/web_viewer/ui/property_panel.js
-node --check deps/cadgamefusion/tools/web_viewer/ui/workspace.js
-node --check deps/cadgamefusion/tools/web_viewer/scripts/editor_source_group_smoke.js
-node --test deps/cadgamefusion/tools/web_viewer/tests/editor_commands.test.js
-node deps/cadgamefusion/tools/web_viewer/scripts/editor_source_group_smoke.js
-node deps/cadgamefusion/tools/web_viewer/scripts/editor_insert_group_smoke.js
-node deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js
-git -C deps/cadgamefusion diff --check
+node --check tools/web_viewer/insert_group.js
+node --check tools/web_viewer/commands/command_registry.js
+node --check tools/web_viewer/ui/selection_presenter.js
+node --check tools/web_viewer/ui/property_panel.js
+node --check tools/web_viewer/ui/workspace.js
+node --check tools/web_viewer/scripts/editor_source_group_smoke.js
+node --test tools/web_viewer/tests/editor_commands.test.js
+node tools/web_viewer/scripts/editor_source_group_smoke.js
+node tools/web_viewer/scripts/editor_insert_group_smoke.js
+node tools/web_viewer/scripts/editor_selection_summary_smoke.js
+git diff --check
 ```
 
 ## Results
@@ -36,12 +36,12 @@ All `node --check` commands above passed.
 
 ### 2. Node contract tests
 
-`node --test deps/cadgamefusion/tools/web_viewer/tests/editor_commands.test.js`
+`node --test tools/web_viewer/tests/editor_commands.test.js`
 
 - PASS
 - `248/248`
 
-New locked behaviors:
+New protected behaviors:
 
 - `resolveSourceTextGuide()` returns `anchorDriverId` for both `DIMENSION` and `LEADER`
 - `DIMENSION` source text resolves `anchorDriverLabel = line midpoint`
@@ -51,10 +51,10 @@ New locked behaviors:
 
 ### 3. Real browser source-anchor-driver workflow
 
-`node deps/cadgamefusion/tools/web_viewer/scripts/editor_source_group_smoke.js`
+`node tools/web_viewer/scripts/editor_source_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260323_230722/summary.json)
+- artifact: [summary.json](../build/editor_source_group_smoke/20260323_230722/summary.json)
 
 Key verified behaviors:
 
@@ -76,28 +76,29 @@ Key verified behaviors:
 - command line `srcdriver` narrows selection to:
   - `[41]`
   - status `Selected source anchor driver (line endpoint)`
+- the same smoke still keeps Step224 source-anchor fit behavior and Step223 transformed-source reset behavior green
 
 ### 4. Insert workflow regression
 
-`node deps/cadgamefusion/tools/web_viewer/scripts/editor_insert_group_smoke.js`
+`node tools/web_viewer/scripts/editor_insert_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_group_smoke/20260323_230722/summary.json)
+- artifact: [summary.json](../build/editor_insert_group_smoke/20260323_230722/summary.json)
 
 This confirms the new source-driver workflow did not regress the imported insert path.
 
 ### 5. Selection/property regression
 
-`node deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js`
+`node tools/web_viewer/scripts/editor_selection_summary_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260323_230722/summary.json)
+- artifact: [summary.json](../build/editor_selection_summary_smoke/20260323_230722/summary.json)
 
 This confirms the broader quicklook/property contract remains stable after adding anchor-driver facts and actions.
 
 ### 6. Patch hygiene
 
-`git -C deps/cadgamefusion diff --check`
+`git diff --check`
 
 - PASS
 

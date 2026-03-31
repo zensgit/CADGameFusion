@@ -25,7 +25,7 @@ That created two architectural problems:
 
 ### 1. Introduce a unified editor import adapter
 
-Add [editor_import_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/editor_import_adapter.js) as the shared normalization layer for editor imports.
+Add [editor_import_adapter.js](../tools/web_viewer/adapters/editor_import_adapter.js) as the shared normalization layer for editor imports.
 
 It now owns three cases:
 
@@ -42,7 +42,7 @@ The adapter exposes:
 
 ### 2. Tighten `DocumentState.restore()`
 
-`DocumentState.restore()` in [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js) no longer performs convert-cli adaptation.
+`DocumentState.restore()` in [documentState.js](../tools/web_viewer/state/documentState.js) no longer performs convert-cli adaptation.
 
 Instead it now enforces the boundary:
 
@@ -54,7 +54,7 @@ The error is deliberate and explicit so future callers do not reintroduce format
 
 ### 3. Keep `hydrateDocument(...)` as the editor-side import applicator
 
-[document_json_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/document_json_adapter.js) now delegates normalization to the new adapter before restoring document, selection, snap, and view state.
+[document_json_adapter.js](../tools/web_viewer/adapters/document_json_adapter.js) now delegates normalization to the new adapter before restoring document, selection, snap, and view state.
 
 This keeps the old API surface available for editor JSON style imports, while moving external format handling out of `DocumentState`.
 
@@ -64,19 +64,19 @@ This keeps the old API surface available for editor JSON style imports, while mo
 
 Two practical entrypoints were updated:
 
-- [workspace.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/workspace.js)
-- [editor_real_scene_perf_smoke.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/scripts/editor_real_scene_perf_smoke.js)
+- [workspace.js](../tools/web_viewer/ui/workspace.js)
+- [editor_real_scene_perf_smoke.js](../tools/web_viewer/scripts/editor_real_scene_perf_smoke.js)
 
 This removes duplicated `CADGF` vs non-`CADGF` branching and makes both runtime and script imports consume the same normalized snapshot contract.
 
 ## Files
 
-- [editor_import_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/editor_import_adapter.js)
-- [document_json_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/document_json_adapter.js)
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [workspace.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/workspace.js)
-- [editor_real_scene_perf_smoke.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/scripts/editor_real_scene_perf_smoke.js)
-- [editor_import_adapter.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/editor_import_adapter.test.js)
+- [editor_import_adapter.js](../tools/web_viewer/adapters/editor_import_adapter.js)
+- [document_json_adapter.js](../tools/web_viewer/adapters/document_json_adapter.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [workspace.js](../tools/web_viewer/ui/workspace.js)
+- [editor_real_scene_perf_smoke.js](../tools/web_viewer/scripts/editor_real_scene_perf_smoke.js)
+- [editor_import_adapter.test.js](../tools/web_viewer/tests/editor_import_adapter.test.js)
 
 ## Why This Is The Right Cut
 

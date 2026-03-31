@@ -57,9 +57,9 @@ node /Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/
 
 Artifacts:
 
-- [editor_selection_summary summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260329_001411/summary.json)
-- [editor_source_group summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260329_001411/summary.json)
-- [editor_insert_attribute summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_attribute_smoke/20260329_001411/summary.json)
+- [editor_selection_summary summary.json](../build/editor_selection_summary_smoke/20260329_001411/summary.json)
+- [editor_source_group summary.json](../build/editor_source_group_smoke/20260329_001411/summary.json)
+- [editor_insert_attribute summary.json](../build/editor_insert_attribute_smoke/20260329_001411/summary.json)
 
 Confirmed:
 
@@ -77,7 +77,7 @@ node /Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/
 
 Artifact:
 
-- [editor_real_scene_perf summary.json](/tmp/editor-real-scene-perf-step284/20260328_161410/summary.json)
+- editor_real_scene_perf summary.json: `/tmp/editor-real-scene-perf-step284/20260328_161410/summary.json`
 
 Confirmed:
 

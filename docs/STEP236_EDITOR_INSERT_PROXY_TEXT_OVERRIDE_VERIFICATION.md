@@ -50,7 +50,7 @@ The new unit coverage confirms:
 
 The real browser artifact is written to:
 
-- [editor_insert_group_smoke summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_group_smoke/20260324_223214/summary.json)
+- [editor_insert_group_smoke summary.json](../build/editor_insert_group_smoke/20260324_223214/summary.json)
 
 Key browser assertions to confirm in that artifact:
 

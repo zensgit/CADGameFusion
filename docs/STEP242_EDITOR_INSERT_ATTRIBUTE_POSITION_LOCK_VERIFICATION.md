@@ -46,7 +46,7 @@ git diff --check
 
 Artifact:
 
-- [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_attribute_smoke/20260325_151418/summary.json)
+- [summary.json](../build/editor_insert_attribute_smoke/20260325_151418/summary.json)
 
 The real browser smoke confirms:
 

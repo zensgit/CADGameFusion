@@ -12,8 +12,8 @@ Continue the object-level import normalization cleanup after Step283:
 
 After style and attribute/text metadata were extracted, the largest remaining shared duplication was still in the base metadata block of:
 
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
 
 The repeated fields were:
 
@@ -41,7 +41,7 @@ The normalization was nearly identical, but each caller had small policy differe
 
 ### 1. Extend the shared object-level normalization module
 
-Extend [entity_import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/entity_import_normalization.js) with:
+Extend [entity_import_normalization.js](../tools/web_viewer/entity_import_normalization.js) with:
 
 - `normalizeImportedEntityMetadataBase(raw, options)`
 
@@ -75,10 +75,10 @@ Those either were already extracted in earlier steps or remain caller-specific a
 
 ## Files
 
-- [entity_import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/entity_import_normalization.js)
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
-- [entity_import_normalization.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/entity_import_normalization.test.js)
+- [entity_import_normalization.js](../tools/web_viewer/entity_import_normalization.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [entity_import_normalization.test.js](../tools/web_viewer/tests/entity_import_normalization.test.js)
 
 ## Why This Is The Right Cut
 

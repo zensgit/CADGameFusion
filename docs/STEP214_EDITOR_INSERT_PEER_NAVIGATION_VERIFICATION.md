@@ -37,7 +37,7 @@ This covers the updated single-select presentation contract, including the new i
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_insert_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_group_smoke/20260323_173531/summary.json)
+- artifact: [summary.json](../build/editor_insert_group_smoke/20260323_173531/summary.json)
 
 Key assertions from the artifact:
 
@@ -78,7 +78,7 @@ Note:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260323_173355/summary.json)
+- artifact: [summary.json](../build/editor_selection_summary_smoke/20260323_173355/summary.json)
 
 This confirms the broader selection/property provenance contract remains stable after the Step214 presenter/property changes.
 

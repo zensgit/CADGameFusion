@@ -51,7 +51,7 @@ git diff --check
 
 The real preview artifact is written to:
 
-- [step238_insert_attributes_preview_a document.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step238_insert_attributes_preview_a/document.json)
+- [step238_insert_attributes_preview_a document.json](../build/step238_insert_attributes_preview_a/document.json)
 
 Key facts confirmed in that artifact:
 
@@ -98,7 +98,7 @@ The updated unit coverage confirms:
 
 The real browser artifact is written to:
 
-- [editor_insert_attribute_smoke summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_attribute_smoke/20260325_080852/summary.json)
+- [editor_insert_attribute_smoke summary.json](../build/editor_insert_attribute_smoke/20260325_080852/summary.json)
 
 Key browser assertions confirmed in that artifact:
 

@@ -4,6 +4,7 @@
 
 This verification closes the layer-aware selection/property contract introduced in Step192:
 
+- shared selection presentation becomes layer-aware
 - single-select quicklook shows `layer / layer color / layer state`
 - property metadata mirrors the same layer facts
 - imported `BYLAYER -> TRUECOLOR` promotion stays visible after `Layer ID` edit
@@ -12,14 +13,14 @@ This verification closes the layer-aware selection/property contract introduced 
 
 ## Static checks
 
-Executed from repo root:
+Executed from `deps/cadgamefusion`:
 
 ```bash
-node --check deps/cadgamefusion/tools/web_viewer/ui/selection_presenter.js
-node --check deps/cadgamefusion/tools/web_viewer/ui/property_panel.js
-node --check deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js
-bash -n deps/cadgamefusion/tools/web_viewer/scripts/editor_ui_flow_smoke.sh
-git -C deps/cadgamefusion diff --check
+node --check tools/web_viewer/ui/selection_presenter.js
+node --check tools/web_viewer/ui/property_panel.js
+node --check tools/web_viewer/scripts/editor_selection_summary_smoke.js
+bash -n tools/web_viewer/scripts/editor_ui_flow_smoke.sh
+git diff --check
 ```
 
 Result: PASS.
@@ -29,7 +30,7 @@ Result: PASS.
 Executed:
 
 ```bash
-node --test deps/cadgamefusion/tools/web_viewer/tests/editor_commands.test.js
+node --test tools/web_viewer/tests/editor_commands.test.js
 ```
 
 Result: `173 / 173 PASS`.
@@ -45,7 +46,7 @@ Newly protected areas include:
 Executed:
 
 ```bash
-node deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js
+node tools/web_viewer/scripts/editor_selection_summary_smoke.js
 ```
 
 Artifact:
@@ -70,6 +71,7 @@ Observed states:
   - `color-source = TRUECOLOR`
 - after locking layer `2` via debug API:
   - quicklook badge `layer-locked = Locked`
+  - quicklook `layer-state = Shown / Locked / Live / NoPrint / Construction`
   - property note: `Selected entity is on locked layer 2:REDLINE; editing disabled until the layer is unlocked.`
   - property inputs disappear
 - after unlocking layer `2`:
@@ -96,6 +98,5 @@ Browser diagnostics:
 
 ## Notes
 
+- `editor_ui_flow_smoke.sh` syntax remained valid and its synthetic provenance step was extended to assert the new `layer` quicklook field.
 - This step uses the dedicated imported-fixture smoke as the primary browser verification path because it directly exercises the changed selection/property surface and lock/unlock transitions.
-- `editor_ui_flow_smoke.sh` shell syntax was rechecked and remains valid.
-- Full `editor_ui_flow_smoke.sh` was not used as the primary acceptance gate for Step192 because the long flow still has unrelated historical instability later in the run.

@@ -43,7 +43,7 @@ git diff --check
 - `node tools/web_viewer/scripts/editor_insert_attribute_smoke.js`
   - PASS
   - artifact:
-    - [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_attribute_smoke/20260325_193906/summary.json)
+    - [summary.json](../build/editor_insert_attribute_smoke/20260325_193906/summary.json)
 - `git diff --check`
   - PASS
 
@@ -69,7 +69,7 @@ The browser artifact confirms these facts:
 
 ## Confirmed Artifact Facts
 
-From [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_attribute_smoke/20260325_193906/summary.json):
+From [summary.json](../build/editor_insert_attribute_smoke/20260325_193906/summary.json):
 
 - `after_attdef_release_edit`
   - `entity.sourceType == null`

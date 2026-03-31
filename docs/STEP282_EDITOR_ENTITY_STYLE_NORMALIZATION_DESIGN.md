@@ -12,8 +12,8 @@ Take the first object-level normalization step after Step281:
 
 Even after primitive helper extraction, these two modules still carried parallel style-object logic:
 
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
 
 Both were normalizing the same imported editor style contract:
 
@@ -34,7 +34,7 @@ That is exactly the kind of duplication that drifts quietly over time.
 
 ### 1. Add a shared object-level style normalizer
 
-Add [entity_import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/entity_import_normalization.js) with:
+Add [entity_import_normalization.js](../tools/web_viewer/entity_import_normalization.js) with:
 
 - `normalizeImportedEntityStyle(raw, options)`
 
@@ -71,10 +71,10 @@ Those are the next targets, but style is the safest first object-level slice bec
 
 ## Files
 
-- [entity_import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/entity_import_normalization.js)
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
-- [entity_import_normalization.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/entity_import_normalization.test.js)
+- [entity_import_normalization.js](../tools/web_viewer/entity_import_normalization.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [entity_import_normalization.test.js](../tools/web_viewer/tests/entity_import_normalization.test.js)
 
 ## Why This Is The Right Cut
 

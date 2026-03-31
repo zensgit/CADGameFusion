@@ -4,7 +4,7 @@
 
 Verify that:
 
-- no-selection current-layer default content now comes from [property_panel_current_layer_defaults.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_current_layer_defaults.js)
+- no-selection current-layer default content now comes from [property_panel_current_layer_defaults.js](../tools/web_viewer/ui/property_panel_current_layer_defaults.js)
 - editable current-layer field descriptors now come from the same module
 - current-layer and current-space smoke flows remain unchanged
 
@@ -53,9 +53,9 @@ bash /Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/
 
 Artifacts:
 
-- [editor_current_layer summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_current_layer_smoke/20260329_012857/summary.json)
-- [editor_space_layout summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_space_layout_smoke/20260329_012857/summary.json)
-- [editor_ui_flow summary.json](/tmp/editor-ui-flow-step293/summary.json)
+- [editor_current_layer summary.json](../build/editor_current_layer_smoke/20260329_012857/summary.json)
+- [editor_space_layout summary.json](../build/editor_space_layout_smoke/20260329_012857/summary.json)
+- editor_ui_flow summary.json: `/tmp/editor-ui-flow-step293/summary.json`
 
 Confirmed:
 

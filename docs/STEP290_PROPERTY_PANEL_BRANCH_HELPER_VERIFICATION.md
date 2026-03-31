@@ -4,7 +4,7 @@
 
 Verify that:
 
-- the new local `appendBranchContext(...)` helper in [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) preserves existing read-only, released, locked, and default branch behavior
+- the new local `appendBranchContext(...)` helper in [property_panel.js](../tools/web_viewer/ui/property_panel.js) preserves existing read-only, released, locked, and default branch behavior
 - Step289 presenter-side note policy stays intact
 - brittle property-panel smoke contracts remain green
 
@@ -41,10 +41,10 @@ bash /Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/
 
 Artifacts:
 
-- [editor_selection_summary summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260329_010225/summary.json)
-- [editor_source_group summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260329_010225/summary.json)
-- [editor_insert_attribute summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_attribute_smoke/20260329_010225/summary.json)
-- [editor_ui_flow summary.json](/tmp/editor-ui-flow-step290/summary.json)
+- [editor_selection_summary summary.json](../build/editor_selection_summary_smoke/20260329_010225/summary.json)
+- [editor_source_group summary.json](../build/editor_source_group_smoke/20260329_010225/summary.json)
+- [editor_insert_attribute summary.json](../build/editor_insert_attribute_smoke/20260329_010225/summary.json)
+- editor_ui_flow summary.json: `/tmp/editor-ui-flow-step290/summary.json`
 
 Confirmed:
 

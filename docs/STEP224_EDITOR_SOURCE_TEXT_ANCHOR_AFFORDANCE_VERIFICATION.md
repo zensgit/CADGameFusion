@@ -52,7 +52,7 @@ New locked behaviors:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_source_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260323_225827/summary.json)
+- artifact: [summary.json](../build/editor_source_group_smoke/20260323_225827/summary.json)
 
 Key verified behaviors:
 
@@ -85,7 +85,7 @@ Key verified behaviors:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_insert_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_group_smoke/20260323_225842/summary.json)
+- artifact: [summary.json](../build/editor_insert_group_smoke/20260323_225842/summary.json)
 
 This confirms the source-anchor slice did not regress the imported `INSERT` workflow.
 
@@ -94,7 +94,7 @@ This confirms the source-anchor slice did not regress the imported `INSERT` work
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260323_225842/summary.json)
+- artifact: [summary.json](../build/editor_selection_summary_smoke/20260323_225842/summary.json)
 
 This confirms the broader single-selection provenance/effective-style contract remains stable after adding source-anchor facts.
 

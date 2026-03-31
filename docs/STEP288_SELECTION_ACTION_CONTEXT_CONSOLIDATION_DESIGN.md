@@ -4,13 +4,13 @@
 
 Consolidate the remaining group/release action context so:
 
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) stops recomputing source/insert/released selection summaries on its own
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js) stops recomputing source/insert/released selection summaries on its own
 - source-group, insert-group, and released-insert actions all consume one presenter-side context contract
 - action labels and click handlers stay local to property panel
 
 ## Problem
 
-After Step287, metadata facts were already unified, but action enablement and counts still lived in a second local knowledge graph inside [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js):
+After Step287, metadata facts were already unified, but action enablement and counts still lived in a second local knowledge graph inside [property_panel.js](../tools/web_viewer/ui/property_panel.js):
 
 - `resolveSourceGroupSummary(...)`
 - `resolveInsertGroupSummary(...)`
@@ -30,7 +30,7 @@ That duplication was risky for the same reason Step287 was risky:
 
 ### 1. Add a shared action-context builder in selection_presenter
 
-Extend [selection_presenter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/selection_presenter.js) with:
+Extend [selection_presenter.js](../tools/web_viewer/ui/selection_presenter.js) with:
 
 - `buildSelectionActionContext(entity, selectionIds, options)`
 
@@ -54,7 +54,7 @@ Each group owns the already-derived state that property-panel action rows need:
 
 The builder does not return buttons.
 
-[property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still owns:
+[property_panel.js](../tools/web_viewer/ui/property_panel.js) still owns:
 
 - button ids
 - labels
@@ -76,9 +76,9 @@ That removes the need for property panel to call summary/peer/guide helpers repe
 
 ## Files
 
-- [selection_presenter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/selection_presenter.js)
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js)
-- [editor_commands.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/editor_commands.test.js)
+- [selection_presenter.js](../tools/web_viewer/ui/selection_presenter.js)
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js)
+- [editor_commands.test.js](../tools/web_viewer/tests/editor_commands.test.js)
 
 ## Why This Is The Right Cut
 

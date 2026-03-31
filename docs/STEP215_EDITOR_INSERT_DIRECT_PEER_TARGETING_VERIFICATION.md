@@ -31,7 +31,7 @@ This locks the updated selection-presentation contract, including the new `peer-
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_insert_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_group_smoke/20260323_174444/summary.json)
+- artifact: [summary.json](../build/editor_insert_group_smoke/20260323_174444/summary.json)
 
 Key verified behaviors:
 
@@ -75,7 +75,7 @@ Key verified behaviors:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260323_174415/summary.json)
+- artifact: [summary.json](../build/editor_selection_summary_smoke/20260323_174415/summary.json)
 
 This confirms the broader selection/property contract still holds after the presenter/property metadata expansion.
 

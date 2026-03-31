@@ -49,10 +49,10 @@ bash /Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/
 
 Artifacts:
 
-- [editor_selection_summary summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260329_005600/summary.json)
-- [editor_source_group summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260329_005600/summary.json)
-- [editor_insert_attribute summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_attribute_smoke/20260329_005600/summary.json)
-- [editor_ui_flow summary.json](/tmp/editor-ui-flow-step289/summary.json)
+- [editor_selection_summary summary.json](../build/editor_selection_summary_smoke/20260329_005600/summary.json)
+- [editor_source_group summary.json](../build/editor_source_group_smoke/20260329_005600/summary.json)
+- [editor_insert_attribute summary.json](../build/editor_insert_attribute_smoke/20260329_005600/summary.json)
+- editor_ui_flow summary.json: `/tmp/editor-ui-flow-step289/summary.json`
 
 Confirmed:
 

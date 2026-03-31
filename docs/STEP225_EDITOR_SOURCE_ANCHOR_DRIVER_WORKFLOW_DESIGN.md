@@ -45,6 +45,8 @@ but also:
 - `anchorDriverKind`
 - `anchorDriverLabel`
 
+Step225 formalizes these fields as a navigable contract rather than leaving them as internal guide metadata.
+
 ### 2. Imported source text exposes `Source Anchor Driver`
 
 Single imported `DIMENSION` / `LEADER` text proxies now surface:
@@ -62,6 +64,7 @@ The editor now supports:
 
 - property action `Select Anchor Driver`
 - command line `srcdriver`
+- command alias `sourceanchordriver`
 
 Both narrow the selection to the geometry member that currently drives the anchor.
 
@@ -82,15 +85,16 @@ The driver is the geometry member whose endpoint is nearest the preserved source
 
 That keeps the contract grounded in actual imported leader geometry, rather than inventing a text-attachment schema that current artifacts do not reliably carry.
 
-### 5. No release boundary is crossed
+### 5. Navigation stays non-destructive and transform-aware
 
 Selecting the anchor driver does **not**:
 
 - release the source bundle
 - change proxy editability
-- strip provenance
+- strip `sourceType / editMode / proxyKind`
+- step outside the current `space / layout`
 
-It is still an imported-source workflow, not a detach workflow.
+The selected driver remains the transformed current-instance guide driver after grouped-source `move / rotate / scale`; it does not fall back to stale import-space geometry.
 
 ## Implementation
 
@@ -139,6 +143,17 @@ Adds:
 
 and wires the property action to the same command contract.
 
+### Browser coverage
+
+`tools/web_viewer/scripts/editor_source_group_smoke.js`
+
+Verifies:
+
+- imported `DIMENSION` text reports driver `21:line midpoint`
+- property action jumps to that driver geometry
+- imported `LEADER` text reports driver `41:line endpoint`
+- command `srcdriver` jumps to that driver geometry
+
 ## Out Of Scope
 
 Step225 does not yet add:
@@ -148,5 +163,6 @@ Step225 does not yet add:
 - dimension placement presets
 - leader elbow landing handles
 - direct anchor reassignment
+- multiple simultaneous candidate drivers
 
 This slice is about moving from “anchor is visible” to “anchor-driving geometry is directly reachable”.

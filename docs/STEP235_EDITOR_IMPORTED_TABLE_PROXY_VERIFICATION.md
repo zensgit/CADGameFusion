@@ -26,7 +26,7 @@ git diff --check
 
 ## Real Import Artifact
 
-In [step235_table_preview_a/document.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step235_table_preview_a/document.json):
+In [step235_table_preview_a/document.json](../build/step235_table_preview_a/document.json):
 
 - entity `1` is real imported `type=7` text
 - `text_kind = table`
@@ -54,8 +54,8 @@ Command-layer regression confirmed:
 
 Browser artifacts:
 
-- [editor_table_smoke summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_table_smoke/20260324_200758/summary.json)
-- [editor_mleader_smoke summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_mleader_smoke/20260324_200758/summary.json)
+- [editor_table_smoke summary.json](../build/editor_table_smoke/20260324_200758/summary.json)
+- [editor_mleader_smoke summary.json](../build/editor_mleader_smoke/20260324_200758/summary.json)
 
 Key browser assertions from `editor_table_smoke`:
 

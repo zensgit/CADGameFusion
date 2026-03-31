@@ -27,7 +27,7 @@ git diff --check
 
 ### Legacy fixture
 
-In [step234_legacy_dimension_bundle_fixture.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step234_legacy_dimension_bundle_fixture.json):
+In [step234_legacy_dimension_bundle_fixture.json](../build/step234_legacy_dimension_bundle_fixture.json):
 
 - all imported `DIMENSION` entities have `source_bundle_id = null`
 - split arrowheads still keep distinct `group_id` values (`6/7`, `10/11`)
@@ -35,7 +35,7 @@ In [step234_legacy_dimension_bundle_fixture.json](/Users/huazhou/Downloads/Githu
 
 ### Browser smoke
 
-In [editor_classic_leader_smoke summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_classic_leader_smoke/20260324_194917/summary.json):
+In [editor_classic_leader_smoke summary.json](../build/editor_classic_leader_smoke/20260324_194917/summary.json):
 
 - `ok = true`
 - imported dimension text still shows `source-group-members = 9`

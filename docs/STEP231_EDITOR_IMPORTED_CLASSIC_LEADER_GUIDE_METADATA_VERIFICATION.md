@@ -26,7 +26,7 @@ git -C . diff --check
 
 ### Importer / Preview Artifacts
 
-On [step186_paperspace_combo_sample.dxf](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tests/plugin_data/step186_paperspace_combo_sample.dxf):
+On [step186_paperspace_combo_sample.dxf](../tests/plugin_data/step186_paperspace_combo_sample.dxf):
 
 - exactly one note text remains the positive classic leader association target
 - the target is still `THIRD NOTE`
@@ -37,7 +37,7 @@ On [step186_paperspace_combo_sample.dxf](/Users/huazhou/Downloads/Github/VemCAD/
   - `source_anchor_driver_type = polyline`
   - `source_anchor_driver_kind = endpoint`
 
-On [step186_paperspace_insert_leader_sample.dxf](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tests/plugin_data/step186_paperspace_insert_leader_sample.dxf) and [step186_paperspace_annotation_bundle_sample.dxf](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tests/plugin_data/step186_paperspace_annotation_bundle_sample.dxf):
+On [step186_paperspace_insert_leader_sample.dxf](../tests/plugin_data/step186_paperspace_insert_leader_sample.dxf) and [step186_paperspace_annotation_bundle_sample.dxf](../tests/plugin_data/step186_paperspace_annotation_bundle_sample.dxf):
 
 - zero text entities become `source_type=LEADER`
 
@@ -51,7 +51,7 @@ On [step186_paperspace_insert_leader_sample.dxf](/Users/huazhou/Downloads/Github
 
 ### Browser Smoke
 
-[editor_classic_leader_smoke.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/scripts/editor_classic_leader_smoke.js) must prove:
+[editor_classic_leader_smoke.js](../tools/web_viewer/scripts/editor_classic_leader_smoke.js) must prove:
 
 - the imported note entity already contains `sourceAnchor / leaderLanding / leaderElbow / sourceAnchorDriverType / sourceAnchorDriverKind`
 - quicklook and property rows show `Source Anchor / Leader Landing / Leader Elbow / Source Anchor Driver`
@@ -59,7 +59,7 @@ On [step186_paperspace_insert_leader_sample.dxf](/Users/huazhou/Downloads/Github
 - `srcdriver` selects the real leader polyline member
 - proxy text edit, `srcplace`, `srcgrp`, `srctext`, and `srcedit` still work on the same real imported note
 
-[editor_source_group_smoke.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/scripts/editor_source_group_smoke.js) and [editor_selection_summary_smoke.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js) must remain green, proving the shared grouped-source resolver still works for existing `DIMENSION` and synthetic source-group flows.
+[editor_source_group_smoke.js](../tools/web_viewer/scripts/editor_source_group_smoke.js) and [editor_selection_summary_smoke.js](../tools/web_viewer/scripts/editor_selection_summary_smoke.js) must remain green, proving the shared grouped-source resolver still works for existing `DIMENSION` and synthetic source-group flows.
 
 ## Recorded Result
 
@@ -76,15 +76,15 @@ Importer tests:
 
 Preview artifacts:
 
-- [combo document.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step231_combo_preview_b/document.json)
-- [insert leader document.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step231_insert_leader_preview_b/document.json)
-- [annotation bundle document.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/step231_annotation_bundle_preview_b/document.json)
+- [combo document.json](../build/step231_combo_preview_b/document.json)
+- [insert leader document.json](../build/step231_insert_leader_preview_b/document.json)
+- [annotation bundle document.json](../build/step231_annotation_bundle_preview_b/document.json)
 
 Browser smoke artifacts:
 
-- [editor_classic_leader_smoke summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_classic_leader_smoke/20260324_092244/summary.json)
-- [editor_source_group_smoke summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260324_092244/summary.json)
-- [editor_selection_summary_smoke summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260324_092244/summary.json)
+- [editor_classic_leader_smoke summary.json](../build/editor_classic_leader_smoke/20260324_092244/summary.json)
+- [editor_source_group_smoke summary.json](../build/editor_source_group_smoke/20260324_092244/summary.json)
+- [editor_selection_summary_smoke summary.json](../build/editor_selection_summary_smoke/20260324_092244/summary.json)
 
 Worktree hygiene:
 

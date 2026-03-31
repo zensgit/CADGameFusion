@@ -2,16 +2,16 @@
 
 ## Goal
 
-Reduce the remaining duplicated branch rendering inside [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) without expanding the presenter contract.
+Reduce the remaining duplicated branch rendering inside [property_panel.js](../tools/web_viewer/ui/property_panel.js) without expanding the presenter contract.
 
 This cut intentionally keeps the Step289 boundary:
 
-- [selection_presenter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/selection_presenter.js) still owns note policy through `buildPropertyPanelNotePlan(...)`
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still owns branch sequencing, DOM creation, and action wiring
+- [selection_presenter.js](../tools/web_viewer/ui/selection_presenter.js) still owns note policy through `buildPropertyPanelNotePlan(...)`
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js) still owns branch sequencing, DOM creation, and action wiring
 
 ## Problem
 
-After Step289, note wording already came from presenter-side builders, but [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) still repeated the same branch-local rendering sequence in three places:
+After Step289, note wording already came from presenter-side builders, but [property_panel.js](../tools/web_viewer/ui/property_panel.js) still repeated the same branch-local rendering sequence in three places:
 
 - render metadata
 - render layer or group context
@@ -26,7 +26,7 @@ The logic was not conceptually separate enough to justify another presenter-side
 
 Do not introduce a new shared `branch plan` contract.
 
-[property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js) continues to derive:
+[property_panel.js](../tools/web_viewer/ui/property_panel.js) continues to derive:
 
 - `readOnlyCount`
 - `lockedCount`
@@ -41,7 +41,7 @@ and continues to consume:
 
 ### 2. Extract one local branch helper
 
-Add a local `appendBranchContext(...)` helper inside `render()` in [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js).
+Add a local `appendBranchContext(...)` helper inside `render()` in [property_panel.js](../tools/web_viewer/ui/property_panel.js).
 
 That helper centralizes the repeated DOM-side work:
 
@@ -70,7 +70,7 @@ Step290 does not change early returns or editing escape hatches. It only removes
 
 ## Files
 
-- [property_panel.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel.js)
+- [property_panel.js](../tools/web_viewer/ui/property_panel.js)
 
 ## Why This Is The Right Cut
 

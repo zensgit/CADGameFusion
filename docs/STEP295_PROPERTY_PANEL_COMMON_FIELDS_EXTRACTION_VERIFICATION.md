@@ -4,7 +4,7 @@
 
 Verify that:
 
-- common property fields now come from [property_panel_common_fields.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/ui/property_panel_common_fields.js)
+- common property fields now come from [property_panel_common_fields.js](../tools/web_viewer/ui/property_panel_common_fields.js)
 - style reset actions now come from the same module
 - `use-layer-*` actions and proxy/released field flows remain stable
 
@@ -54,10 +54,10 @@ bash /Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/
 
 Artifacts:
 
-- [editor_selection_summary summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260329_014405/summary.json)
-- [editor_insert_group summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_group_smoke/20260329_014405/summary.json)
-- [editor_insert_attribute summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_attribute_smoke/20260329_014405/summary.json)
-- [editor_ui_flow summary.json](/tmp/editor-ui-flow-step295/summary.json)
+- [editor_selection_summary summary.json](../build/editor_selection_summary_smoke/20260329_014405/summary.json)
+- [editor_insert_group summary.json](../build/editor_insert_group_smoke/20260329_014405/summary.json)
+- [editor_insert_attribute summary.json](../build/editor_insert_attribute_smoke/20260329_014405/summary.json)
+- editor_ui_flow summary.json: `/tmp/editor-ui-flow-step295/summary.json`
 
 Confirmed:
 

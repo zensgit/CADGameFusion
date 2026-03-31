@@ -16,7 +16,7 @@ Before this step, classic DXF `LEADER` entities arrived as `LEADER / proxy` poly
 
 ### 1. Importer-side association, not editor-side guessing
 
-The association is resolved inside [dxf_importer_plugin.cpp](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/plugins/dxf_importer_plugin.cpp), after `space/layout` attribution is known and before CADGF entities are emitted.
+The association is resolved inside [dxf_importer_plugin.cpp](../plugins/dxf_importer_plugin.cpp), after `space/layout` attribution is known and before CADGF entities are emitted.
 
 This keeps the source contract authoritative at import time and avoids pushing ambiguous pairing into the editor.
 
@@ -92,7 +92,7 @@ No JS runtime logic changes were required for the source-group workflow itself.
 
 Positive sample:
 
-- [step186_paperspace_combo_sample.dxf](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tests/plugin_data/step186_paperspace_combo_sample.dxf)
+- [step186_paperspace_combo_sample.dxf](../tests/plugin_data/step186_paperspace_combo_sample.dxf)
 
 Expected positive pair:
 
@@ -101,8 +101,8 @@ Expected positive pair:
 
 Required negatives:
 
-- [step186_paperspace_insert_leader_sample.dxf](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tests/plugin_data/step186_paperspace_insert_leader_sample.dxf)
-- [step186_paperspace_annotation_bundle_sample.dxf](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tests/plugin_data/step186_paperspace_annotation_bundle_sample.dxf)
+- [step186_paperspace_insert_leader_sample.dxf](../tests/plugin_data/step186_paperspace_insert_leader_sample.dxf)
+- [step186_paperspace_annotation_bundle_sample.dxf](../tests/plugin_data/step186_paperspace_annotation_bundle_sample.dxf)
 
 These must keep zero classic leader-note text associations.
 

@@ -54,7 +54,7 @@ New locked behaviors:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_source_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_source_group_smoke/20260323_200701/summary.json)
+- artifact: [summary.json](../build/editor_source_group_smoke/20260323_200701/summary.json)
 
 Key verified behaviors:
 
@@ -74,7 +74,7 @@ Key verified behaviors:
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_insert_group_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_insert_group_smoke/20260323_200701/summary.json)
+- artifact: [summary.json](../build/editor_insert_group_smoke/20260323_200701/summary.json)
 
 This confirms the grouped-source transform generalization did not regress the richer imported insert workflow.
 
@@ -83,7 +83,7 @@ This confirms the grouped-source transform generalization did not regress the ri
 `node deps/cadgamefusion/tools/web_viewer/scripts/editor_selection_summary_smoke.js`
 
 - PASS
-- artifact: [summary.json](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/build/editor_selection_summary_smoke/20260323_200912/summary.json)
+- artifact: [summary.json](../build/editor_selection_summary_smoke/20260323_200912/summary.json)
 
 This confirms the broader quicklook/property contract still holds after the grouped-source transform note change.
 

@@ -12,8 +12,8 @@ Finish the last major object-level import-normalization slice:
 
 After Step284, the biggest remaining duplication between:
 
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
 
 was the annotation/proxy geometry metadata block:
 
@@ -39,7 +39,7 @@ That meant a raw-shape helper would be risky. The safe cut is a shared finalizer
 
 ### 1. Add a canonical annotation metadata finalizer
 
-Extend [entity_import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/entity_import_normalization.js) with:
+Extend [entity_import_normalization.js](../tools/web_viewer/entity_import_normalization.js) with:
 
 - `normalizeImportedAnnotationMetadata(candidates, options)`
 
@@ -70,8 +70,8 @@ The helper deliberately does not read raw DXF/CADGF/editor payload shapes itself
 
 That stays in the callers:
 
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js) still converts `{x,y}` snapshots to canonical candidates
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js) still converts CADGF `vec2` payloads to canonical candidates
+- [documentState.js](../tools/web_viewer/state/documentState.js) still converts `{x,y}` snapshots to canonical candidates
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js) still converts CADGF `vec2` payloads to canonical candidates
 
 This keeps the helper focused on shared semantics instead of raw-format parsing.
 
@@ -88,10 +88,10 @@ The same pattern applies to source-text rotation.
 
 ## Files
 
-- [entity_import_normalization.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/entity_import_normalization.js)
-- [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js)
-- [cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js)
-- [entity_import_normalization.test.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tests/entity_import_normalization.test.js)
+- [entity_import_normalization.js](../tools/web_viewer/entity_import_normalization.js)
+- [documentState.js](../tools/web_viewer/state/documentState.js)
+- [cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js)
+- [entity_import_normalization.test.js](../tools/web_viewer/tests/entity_import_normalization.test.js)
 
 ## Why This Is The Right Cut
 

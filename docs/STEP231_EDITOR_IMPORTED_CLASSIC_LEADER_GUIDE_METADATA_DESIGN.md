@@ -6,7 +6,7 @@ Make real imported classic `LEADER + TEXT/MTEXT` notes carry an explicit anchor/
 
 ## Problem
 
-Step230 solved the first half of the problem: real classic leader notes were promoted into the grouped `LEADER / proxy` workflow. But their guide geometry was still reconstructed inside [insert_group.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/insert_group.js) from group members.
+Step230 solved the first half of the problem: real classic leader notes were promoted into the grouped `LEADER / proxy` workflow. But their guide geometry was still reconstructed inside [insert_group.js](../tools/web_viewer/insert_group.js) from group members.
 
 That left three gaps:
 
@@ -18,7 +18,7 @@ That left three gaps:
 
 ### 1. Importer emits explicit guide metadata for matched classic leader notes
 
-When [dxf_importer_plugin.cpp](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/plugins/dxf_importer_plugin.cpp) accepts a classic leader-note pair, it now writes these fields onto the matched text proxy metadata:
+When [dxf_importer_plugin.cpp](../plugins/dxf_importer_plugin.cpp) accepts a classic leader-note pair, it now writes these fields onto the matched text proxy metadata:
 
 - `source_anchor`
 - `leader_landing`
@@ -37,7 +37,7 @@ The classic leader association heuristic itself is intentionally unchanged; Step
 
 ### 2. JSON export surfaces guide fields as first-class entity fields
 
-[convert_cli.cpp](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/convert_cli.cpp) now promotes those importer metadata values into top-level entity JSON:
+[convert_cli.cpp](../tools/convert_cli.cpp) now promotes those importer metadata values into top-level entity JSON:
 
 - `"source_anchor": [x, y]`
 - `"leader_landing": [x, y]`
@@ -49,7 +49,7 @@ This keeps the editor contract visible in real preview artifacts and smoke fixtu
 
 ### 3. Adapter and state normalize the explicit guide contract
 
-[cadgf_document_adapter.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/adapters/cadgf_document_adapter.js) and [documentState.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/state/documentState.js) now normalize:
+[cadgf_document_adapter.js](../tools/web_viewer/adapters/cadgf_document_adapter.js) and [documentState.js](../tools/web_viewer/state/documentState.js) now normalize:
 
 - `source_anchor -> sourceAnchor`
 - `leader_landing -> leaderLanding`
@@ -61,7 +61,7 @@ The adapter also exports these fields back out, so roundtrip fixtures and editor
 
 ### 4. Source-text guide resolution becomes explicit-first, heuristic-fallback
 
-[insert_group.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/insert_group.js) now resolves grouped annotation guides in this order:
+[insert_group.js](../tools/web_viewer/insert_group.js) now resolves grouped annotation guides in this order:
 
 1. If a text proxy has explicit guide metadata, use it.
 2. Try to match the explicit anchor back to a real member entity to recover `anchorDriverId`.
@@ -71,7 +71,7 @@ This keeps current `DIMENSION` and synthetic grouped-source behavior intact whil
 
 ### 5. Whole-group transforms carry the explicit guide; release/copy strip it
 
-[geometry.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/tools/geometry.js) now moves/rotates/scales:
+[geometry.js](../tools/web_viewer/tools/geometry.js) now moves/rotates/scales:
 
 - `sourceAnchor`
 - `leaderLanding`
@@ -79,7 +79,7 @@ This keeps current `DIMENSION` and synthetic grouped-source behavior intact whil
 
 alongside existing `sourceTextPos / sourceTextRotation`.
 
-[command_registry.js](/Users/huazhou/Downloads/Github/VemCAD/deps/cadgamefusion/tools/web_viewer/commands/command_registry.js) now strips the explicit guide fields when imported provenance is intentionally detached:
+[command_registry.js](../tools/web_viewer/commands/command_registry.js) now strips the explicit guide fields when imported provenance is intentionally detached:
 
 - created detached copies
 - released insert/source entities
