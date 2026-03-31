@@ -6,6 +6,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 
 DEFAULT_SAMPLE_CANDIDATES = [
@@ -24,10 +25,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--input-dwg", default="", help="Path to real DWG input")
     parser.add_argument("--electron-bin", default="", help="Path to Electron binary")
+    parser.add_argument("--use-packaged-app", action="store_true", help="Run the packaged desktop app instead of electron .")
+    parser.add_argument("--pack-if-needed", action="store_true", help="Run `npm run pack` if the packaged app is missing")
     parser.add_argument("--plugin", default="", help="DXF importer plugin")
     parser.add_argument("--convert-cli", default="", help="convert_cli path")
     parser.add_argument("--project-id", default="dwg-desktop-smoke", help="Project id")
+    parser.add_argument("--dwg-route-mode", default="auto", help="DWG route mode: auto, direct-plugin, or local-convert")
+    parser.add_argument("--router-auto-start-mode", default="on", help="Router auto-start override: on, off, or default")
     parser.add_argument("--router-url", default="http://127.0.0.1:9060", help="Router URL")
+    parser.add_argument("--use-runtime-autodetect", action="store_true", help="Do not pass plugin/convert_cli/DWG convert overrides; rely on desktop runtime auto-detect")
     parser.add_argument("--emit", default="json,gltf,meta", help="Emit set")
     parser.add_argument("--outdir", default="", help="Output directory root")
     parser.add_argument("--python", default=sys.executable, help="Python executable")
@@ -109,6 +115,34 @@ def find_electron(desktop_dir: Path, override: str) -> Path:
     )
 
 
+def find_packaged_app_binary(desktop_dir: Path) -> Optional[Path]:
+    dist_dir = desktop_dir / "dist"
+    candidates = []
+    candidates.extend(sorted(dist_dir.glob("mac*/VemCAD.app/Contents/MacOS/VemCAD")))
+    candidates.extend(sorted(dist_dir.glob("VemCAD.app/Contents/MacOS/VemCAD")))
+    candidates.extend(sorted(dist_dir.glob("win-*/VemCAD.exe")))
+    candidates.extend(sorted(dist_dir.glob("win-unpacked/VemCAD.exe")))
+    candidates.extend(sorted(dist_dir.glob("linux-*/VemCAD")))
+    candidates.extend(sorted(dist_dir.glob("linux-unpacked/VemCAD")))
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+    return None
+
+
+def ensure_packaged_app(desktop_dir: Path) -> Path:
+    packaged = find_packaged_app_binary(desktop_dir)
+    if packaged and packaged.exists():
+        return packaged
+    result = subprocess.run(["npm", "run", "pack"], cwd=desktop_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, check=False)
+    if result.returncode != 0:
+        raise SystemExit(f"npm run pack failed:\n{result.stdout}")
+    packaged = find_packaged_app_binary(desktop_dir)
+    if not packaged or not packaged.exists():
+        raise SystemExit("packaged desktop app not found after `npm run pack`")
+    return packaged
+
+
 def find_dwg2dxf() -> Path:
     return first_existing(
         [
@@ -178,7 +212,13 @@ def run_attempt(args: argparse.Namespace, root: Path, desktop_dir: Path, run_dir
     input_dwg = find_input_dwg(args.input_dwg)
     plugin = find_plugin(root, args.plugin)
     convert_cli = find_convert_cli(root, args.convert_cli)
-    electron_bin = find_electron(desktop_dir, args.electron_bin)
+    desktop_bin = (
+        ensure_packaged_app(desktop_dir) if args.use_packaged_app and args.pack_if_needed
+        else (ensure_path(Path(args.electron_bin).expanduser(), "packaged desktop app") if args.use_packaged_app and args.electron_bin
+              else (find_packaged_app_binary(desktop_dir) if args.use_packaged_app else find_electron(desktop_dir, args.electron_bin)))
+    )
+    if not desktop_bin or not Path(desktop_bin).exists():
+        raise SystemExit("packaged desktop app not found; pass --pack-if-needed or --electron-bin")
     dwg_service = find_dwg_service(root)
     dwg2dxf = find_dwg2dxf()
     dwg_convert_cmd = build_dwg_convert_cmd(args.python, dwg_service, dwg2dxf)
@@ -186,26 +226,30 @@ def run_attempt(args: argparse.Namespace, root: Path, desktop_dir: Path, run_dir
     desktop_log = run_dir / "desktop_smoke.log"
 
     cmd = [
-        str(electron_bin),
-        ".",
+        str(desktop_bin),
         "--smoke-dwg",
         str(input_dwg),
         "--smoke-summary",
         str(desktop_summary_path),
         "--router-url",
         args.router_url,
-        "--router-plugin",
-        str(plugin),
-        "--router-convert-cli",
-        str(convert_cli),
         "--router-emit",
         args.emit,
         "--project-id",
         args.project_id,
-        "--router-auto-start",
-        "on",
+        "--dwg-route",
+        args.dwg_route_mode,
     ]
-    if dwg_convert_cmd:
+    if args.router_auto_start_mode != "default":
+        cmd.extend(["--router-auto-start", args.router_auto_start_mode])
+    if not args.use_runtime_autodetect:
+        cmd.extend([
+            "--router-plugin",
+            str(plugin),
+            "--router-convert-cli",
+            str(convert_cli),
+        ])
+    if dwg_convert_cmd and not args.use_runtime_autodetect:
         cmd.extend(["--dwg-convert-cmd", dwg_convert_cmd])
 
     desktop_run = run_subprocess(cmd, desktop_dir, desktop_log)
@@ -228,6 +272,64 @@ def run_attempt(args: argparse.Namespace, root: Path, desktop_dir: Path, run_dir
         output_dir = manifest_path.parent
 
     validators = {}
+    prepared = desktop_summary.get("prepared", {}) or {}
+    convert = desktop_summary.get("convert", {}) or {}
+    route_lines = []
+    route_ok = True
+    prepared_route = prepared.get("route", "") or ""
+    convert_route = convert.get("route", "") or ""
+    prepared_route_mode = prepared.get("route_mode", "") or ""
+    convert_route_mode = convert.get("route_mode", "") or ""
+    if prepared_route:
+        route_lines.append(f"prepared.route={prepared_route}")
+        route_lines.append(f"convert.route={convert_route or '<missing>'}")
+        if convert_route != prepared_route:
+            route_ok = False
+            route_lines.append("route mismatch between prepared plan and convert result")
+    if prepared_route_mode:
+        route_lines.append(f"prepared.route_mode={prepared_route_mode}")
+        route_lines.append(f"convert.route_mode={convert_route_mode or '<missing>'}")
+        if convert_route_mode != prepared_route_mode:
+            route_ok = False
+            route_lines.append("route_mode mismatch between prepared plan and convert result")
+    if args.dwg_route_mode and args.dwg_route_mode != "auto":
+        route_lines.append(f"requested.route_mode={args.dwg_route_mode}")
+        if prepared_route_mode != args.dwg_route_mode or convert_route_mode != args.dwg_route_mode:
+            route_ok = False
+            route_lines.append("forced route_mode not preserved in prepared/convert results")
+        expected_route = args.dwg_route_mode
+        if prepared_route != expected_route or convert_route != expected_route:
+            route_ok = False
+            route_lines.append("forced route_mode did not produce the expected route")
+    prepared_dwg_plugin = prepared.get("dwg_plugin_path", "") or ""
+    convert_dwg_plugin = convert.get("dwg_plugin_path", "") or ""
+    if prepared_route == "direct-plugin":
+        route_lines.append(f"prepared.dwg_plugin_path={prepared_dwg_plugin or '<missing>'}")
+        route_lines.append(f"convert.dwg_plugin_path={convert_dwg_plugin or '<missing>'}")
+        if convert_dwg_plugin != prepared_dwg_plugin:
+            route_ok = False
+            route_lines.append("direct-plugin DWG plugin path missing from convert result")
+    validators["route_contract"] = {
+        "command": ["desktop-smoke", "route-contract"],
+        "returncode": 0 if route_ok else 1,
+        "output": "\n".join(route_lines) if route_lines else "no route facts available",
+        "ok": route_ok,
+    }
+
+    if args.use_packaged_app and args.use_runtime_autodetect:
+        packaged_dwg2dxf = str(desktop_summary.get("dwg2dxf_bin", "") or "")
+        packaged_lines = [f"desktop_summary.dwg2dxf_bin={packaged_dwg2dxf or '<missing>'}"]
+        normalized_dwg2dxf = packaged_dwg2dxf.replace("\\", "/")
+        packaged_ok = "/cad_resources/dwg_service/bin/" in normalized_dwg2dxf
+        if not packaged_ok:
+            packaged_lines.append("packaged runtime did not resolve dwg2dxf from cad_resources/dwg_service/bin")
+        validators["packaged_dwg2dxf_runtime"] = {
+            "command": ["desktop-smoke", "packaged-dwg2dxf-runtime"],
+            "returncode": 0 if packaged_ok else 1,
+            "output": "\n".join(packaged_lines),
+            "ok": packaged_ok,
+        }
+
     if output_dir and output_dir.exists():
         validators["preview_artifacts"] = run_python_check(
             [args.python, "tools/validate_plm_preview_artifacts.py", str(output_dir)],
@@ -257,9 +359,12 @@ def run_attempt(args: argparse.Namespace, root: Path, desktop_dir: Path, run_dir
         "repo_root": str(root),
         "run_dir": str(run_dir),
         "input_dwg": str(input_dwg),
-        "electron_bin": str(electron_bin),
+        "desktop_bin": str(desktop_bin),
+        "use_packaged_app": bool(args.use_packaged_app),
         "plugin": str(plugin),
         "convert_cli": str(convert_cli),
+        "use_runtime_autodetect": bool(args.use_runtime_autodetect),
+        "dwg_route_mode": args.dwg_route_mode,
         "dwg_service": str(dwg_service) if dwg_service else "",
         "dwg2dxf": str(dwg2dxf) if dwg2dxf else "",
         "dwg_convert_cmd": dwg_convert_cmd,

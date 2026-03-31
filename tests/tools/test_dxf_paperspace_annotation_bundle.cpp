@@ -97,6 +97,7 @@ int main(int argc, char** argv) {
     int mtext_count = 0;
     int dimension_text_count = 0;
     int dimension_geometry_count = 0;
+    int leader_text_proxy_count = 0;
 
     for (int i = 0; i < entity_count; ++i) {
         cadgf_entity_id id = 0;
@@ -136,6 +137,9 @@ int main(int argc, char** argv) {
             assert(edit_mode == "proxy");
             assert(proxy_kind == "leader");
             leader_count += 1;
+            if (info.type == CADGF_ENTITY_TYPE_TEXT) {
+                leader_text_proxy_count += 1;
+            }
             continue;
         }
 
@@ -189,6 +193,7 @@ int main(int argc, char** argv) {
     assert(mtext_count >= 2);
     assert(dimension_text_count >= 1);
     assert(dimension_geometry_count >= 1);
+    assert(leader_text_proxy_count == 0);
 
     cadgf_document_destroy(doc);
     return 0;

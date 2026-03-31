@@ -1,0 +1,23 @@
+{
+  "cadgf_version": "1.0.0",
+  "schema_version": 1,
+  "feature_flags": {"earcut": false, "clipper2": false},
+  "metadata": {
+    "label": "",
+    "author": "",
+    "company": "",
+    "comment": "",
+    "created_at": "",
+    "modified_at": "",
+    "unit_name": "",
+    "meta": {"dxf.default_space": "0", "dxf.default_text_height": "3.000000", "dxf.entity.1.color_source": "BYLAYER", "dxf.entity.1.space": "0", "dxf.entity.1.text_attachment": "5", "dxf.entity.1.text_kind": "table", "dxf.entity.1.text_width": "80.000000", "dxf.hatch_pattern_boundary_points_clamped_hatches": "0", "dxf.hatch_pattern_boundary_points_limit": "20000", "dxf.hatch_pattern_boundary_points_max": "0", "dxf.hatch_pattern_clamped": "0", "dxf.hatch_pattern_clamped_hatches": "0", "dxf.hatch_pattern_edge_budget_exhausted_hatches": "0", "dxf.hatch_pattern_edge_checks": "0", "dxf.hatch_pattern_edge_checks_limit_per_doc": "40000000", "dxf.hatch_pattern_edge_checks_limit_per_hatch": "10000000", "dxf.hatch_pattern_emitted_lines": "0", "dxf.hatch_pattern_ksteps_limit": "5000", "dxf.hatch_pattern_stride_max": "1", "dxf.text.align_complete": "0", "dxf.text.align_partial": "0", "dxf.text.align_partial_x_only": "0", "dxf.text.align_partial_y_only": "0", "dxf.text.align_policy": "strict", "dxf.text.align_used": "0", "dxf.text.entities_emitted": "1", "dxf.text.entities_seen": "1", "dxf.text.nonfinite_values": "0", "dxf.text.skipped_missing_xy": "0"}
+  },
+  "settings": {"unit_scale": 1.000000},
+  "layers": [
+    {"id": 0, "name": "0", "color": 16777215, "visible": 1, "locked": 0, "printable": 1, "frozen": 0, "construction": 0},
+    {"id": 1, "name": "AnnoLayer", "color": 16777215, "visible": 1, "locked": 0, "printable": 1, "frozen": 0, "construction": 0}
+  ],
+  "entities": [
+    {"id": 1, "type": 7, "layer_id": 1, "name": "", "line_type_scale": 1.000000, "color_source": "BYLAYER", "space": 0, "text": {"pos": [24.000000, 12.000000], "h": 3.000000, "rot": 0.000000, "value": "TABLE_STEP186\nROW_2"}, "text_kind": "table", "text_width": 80.000000, "text_attachment": 5}
+  ]
+}

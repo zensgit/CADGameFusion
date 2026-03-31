@@ -1,0 +1,301 @@
+{
+  "cadgf_version": "1.0.0",
+  "schema_version": 1,
+  "feature_flags": {
+    "earcut": true,
+    "clipper2": true
+  },
+  "metadata": {
+    "label": "",
+    "author": "",
+    "company": "",
+    "comment": "",
+    "created_at": "",
+    "modified_at": "",
+    "unit_name": "",
+    "meta": {
+      "dxf.default_space": "0",
+      "dxf.entity.1.color_aci": "4",
+      "dxf.entity.1.color_source": "BYLAYER",
+      "dxf.entity.1.space": "0",
+      "dxf.entity.2.color_source": "TRUECOLOR",
+      "dxf.entity.2.space": "0",
+      "dxf.entity.3.color_aci": "2",
+      "dxf.entity.3.color_source": "BYLAYER",
+      "dxf.entity.3.space": "0",
+      "dxf.entity.4.color_aci": "3",
+      "dxf.entity.4.color_source": "BYLAYER",
+      "dxf.entity.4.space": "0",
+      "dxf.entity.5.color_aci": "3",
+      "dxf.entity.5.color_source": "BYLAYER",
+      "dxf.entity.5.space": "0",
+      "dxf.entity.6.color_source": "BYLAYER",
+      "dxf.entity.6.space": "0",
+      "dxf.entity.7.color_source": "BYLAYER",
+      "dxf.entity.7.space": "0",
+      "dxf.entity.7.text_kind": "text",
+      "dxf.hatch_pattern_boundary_points_clamped_hatches": "0",
+      "dxf.hatch_pattern_boundary_points_limit": "20000",
+      "dxf.hatch_pattern_boundary_points_max": "0",
+      "dxf.hatch_pattern_clamped": "0",
+      "dxf.hatch_pattern_clamped_hatches": "0",
+      "dxf.hatch_pattern_edge_budget_exhausted_hatches": "0",
+      "dxf.hatch_pattern_edge_checks": "0",
+      "dxf.hatch_pattern_edge_checks_limit_per_doc": "40000000",
+      "dxf.hatch_pattern_edge_checks_limit_per_hatch": "10000000",
+      "dxf.hatch_pattern_emitted_lines": "0",
+      "dxf.hatch_pattern_ksteps_limit": "5000",
+      "dxf.hatch_pattern_stride_max": "1",
+      "dxf.text.align_complete": "0",
+      "dxf.text.align_partial": "0",
+      "dxf.text.align_partial_x_only": "0",
+      "dxf.text.align_partial_y_only": "0",
+      "dxf.text.align_policy": "strict",
+      "dxf.text.align_used": "0",
+      "dxf.text.entities_emitted": "1",
+      "dxf.text.entities_seen": "1",
+      "dxf.text.nonfinite_values": "0",
+      "dxf.text.skipped_missing_xy": "0"
+    }
+  },
+  "settings": {
+    "unit_scale": 1.0
+  },
+  "layers": [
+    {
+      "id": 0,
+      "name": "0",
+      "color": 16777215,
+      "visible": 1,
+      "locked": 0,
+      "printable": 1,
+      "frozen": 0,
+      "construction": 0
+    },
+    {
+      "id": 1,
+      "name": "LayerD",
+      "color": 16777215,
+      "visible": 1,
+      "locked": 0,
+      "printable": 1,
+      "frozen": 0,
+      "construction": 0
+    },
+    {
+      "id": 2,
+      "name": "LayerC",
+      "color": 65280,
+      "visible": 0,
+      "locked": 0,
+      "printable": 1,
+      "frozen": 1,
+      "construction": 0
+    },
+    {
+      "id": 3,
+      "name": "LayerB",
+      "color": 16776960,
+      "visible": 1,
+      "locked": 1,
+      "printable": 1,
+      "frozen": 0,
+      "construction": 0
+    },
+    {
+      "id": 4,
+      "name": "LayerA",
+      "color": 65535,
+      "visible": 1,
+      "locked": 0,
+      "printable": 0,
+      "frozen": 0,
+      "construction": 0
+    },
+    {
+      "id": 5,
+      "name": "LayerText",
+      "color": 16777215,
+      "visible": 1,
+      "locked": 0,
+      "printable": 1,
+      "frozen": 0,
+      "construction": 0
+    }
+  ],
+  "entities": [
+    {
+      "id": 1,
+      "type": 0,
+      "layer_id": 4,
+      "name": "",
+      "line_type": "DASHED",
+      "line_weight": 0.5,
+      "line_type_scale": 2.0,
+      "color": 65535,
+      "color_source": "BYLAYER",
+      "color_aci": 4,
+      "space": 0,
+      "polyline": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0
+        ],
+        [
+          1.0,
+          1.0
+        ],
+        [
+          0.0,
+          1.0
+        ],
+        [
+          0.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": 2,
+      "type": 2,
+      "layer_id": 3,
+      "name": "",
+      "line_type": "CENTER",
+      "line_weight": 0.35,
+      "line_type_scale": 0.5,
+      "color": 16711680,
+      "color_source": "TRUECOLOR",
+      "space": 0,
+      "line": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          2.0,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": 3,
+      "type": 4,
+      "layer_id": 3,
+      "name": "",
+      "line_type_scale": 1.0,
+      "color": 16776960,
+      "color_source": "BYLAYER",
+      "color_aci": 2,
+      "space": 0,
+      "circle": {
+        "c": [
+          3.0,
+          3.0
+        ],
+        "r": 1.0
+      }
+    },
+    {
+      "id": 4,
+      "type": 3,
+      "layer_id": 2,
+      "name": "",
+      "line_type_scale": 1.0,
+      "color": 65280,
+      "color_source": "BYLAYER",
+      "color_aci": 3,
+      "space": 0,
+      "arc": {
+        "c": [
+          5.0,
+          5.0
+        ],
+        "r": 2.0,
+        "a0": 0.0,
+        "a1": 1.570796,
+        "cw": 0
+      }
+    },
+    {
+      "id": 5,
+      "type": 5,
+      "layer_id": 2,
+      "name": "",
+      "line_type_scale": 1.0,
+      "color": 65280,
+      "color_source": "BYLAYER",
+      "color_aci": 3,
+      "space": 0,
+      "ellipse": {
+        "c": [
+          8.0,
+          8.0
+        ],
+        "rx": 2.0,
+        "ry": 1.0,
+        "rot": 0.0,
+        "a0": 0.0,
+        "a1": 6.283185
+      }
+    },
+    {
+      "id": 6,
+      "type": 6,
+      "layer_id": 1,
+      "name": "",
+      "line_type": "DASHED",
+      "line_weight": 0.25,
+      "line_type_scale": 1.25,
+      "color_source": "BYLAYER",
+      "space": 0,
+      "spline": {
+        "degree": 3,
+        "control": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            1.0,
+            2.0
+          ],
+          [
+            2.0,
+            0.0
+          ]
+        ],
+        "knots": [
+          0.0,
+          0.0,
+          0.0,
+          1.0,
+          1.0,
+          1.0
+        ]
+      }
+    },
+    {
+      "id": 7,
+      "type": 7,
+      "layer_id": 5,
+      "name": "",
+      "line_type_scale": 1.0,
+      "color_source": "BYLAYER",
+      "space": 0,
+      "text": {
+        "pos": [
+          1.0,
+          4.0
+        ],
+        "h": 0.5,
+        "rot": 0.785398,
+        "value": "Hello DXF"
+      },
+      "text_kind": "text"
+    }
+  ]
+}

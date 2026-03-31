@@ -1,0 +1,65 @@
+{
+  "cadgf_version": "1.0.0",
+  "schema_version": 1,
+  "feature_flags": {
+    "earcut": true,
+    "clipper2": true
+  },
+  "metadata": {
+    "label": "editor_layer_session_fixture",
+    "author": "cadgamefusion",
+    "company": "",
+    "comment": "Synthetic fixture for reversible layer-off and layer-freeze editor workflow smoke.",
+    "created_at": "2026-03-23T00:00:00Z",
+    "modified_at": "2026-03-23T00:00:00Z",
+    "unit_name": "mm",
+    "meta": {}
+  },
+  "settings": {
+    "unit_scale": 1.0
+  },
+  "layers": [
+    {
+      "id": 1,
+      "name": "PLOT",
+      "color": 8421504,
+      "visible": 1,
+      "locked": 0,
+      "printable": 1,
+      "frozen": 0,
+      "construction": 0
+    },
+    {
+      "id": 2,
+      "name": "REDLINE",
+      "color": 16711680,
+      "visible": 1,
+      "locked": 0,
+      "printable": 0,
+      "frozen": 0,
+      "construction": 1
+    }
+  ],
+  "entities": [
+    {
+      "id": 7,
+      "type": 2,
+      "layer_id": 1,
+      "name": "plot-line",
+      "color": 8421504,
+      "color_source": "BYLAYER",
+      "color_aci": 8,
+      "line": [[-24, 6], [24, 6]]
+    },
+    {
+      "id": 8,
+      "type": 2,
+      "layer_id": 2,
+      "name": "redline-line",
+      "color": 16711680,
+      "color_source": "BYLAYER",
+      "color_aci": 1,
+      "line": [[-24, -6], [24, -6]]
+    }
+  ]
+}

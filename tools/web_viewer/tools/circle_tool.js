@@ -38,16 +38,21 @@ export function createCircleTool(ctx) {
         return;
       }
 
-      const result = ctx.commandBus.execute('entity.create', {
-        entity: {
+      const entity = typeof ctx.buildDraftEntity === 'function'
+        ? ctx.buildDraftEntity({
           type: 'circle',
           center: { ...center },
           radius,
-          layerId: 0,
+        })
+        : {
+          type: 'circle',
+          center: { ...center },
+          radius,
+          layerId: typeof ctx.getCurrentLayerId === 'function' ? ctx.getCurrentLayerId() : 0,
           visible: true,
           color: '#0f766e',
-        },
-      });
+        };
+      const result = ctx.commandBus.execute('entity.create', { entity });
 
       ctx.setStatus(result.ok ? 'Circle created' : (result.message || 'Circle failed'));
       center = null;

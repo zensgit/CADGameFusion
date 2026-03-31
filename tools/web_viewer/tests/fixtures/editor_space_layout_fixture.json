@@ -1,0 +1,78 @@
+{
+  "cadgf_version": "1.0.0",
+  "schema_version": 1,
+  "feature_flags": {
+    "earcut": true,
+    "clipper2": true
+  },
+  "metadata": {
+    "label": "editor_space_layout_fixture",
+    "author": "cadgamefusion",
+    "company": "",
+    "comment": "Synthetic fixture for editor current space/layout workflow smoke.",
+    "created_at": "2026-03-23T00:00:00Z",
+    "modified_at": "2026-03-23T00:00:00Z",
+    "unit_name": "mm",
+    "meta": {}
+  },
+  "settings": {
+    "unit_scale": 1.0
+  },
+  "layers": [
+    {
+      "id": 1,
+      "name": "MODEL",
+      "color": 8421504,
+      "visible": 1,
+      "locked": 0,
+      "printable": 1,
+      "frozen": 0,
+      "construction": 0
+    },
+    {
+      "id": 2,
+      "name": "PAPER",
+      "color": 16711680,
+      "visible": 1,
+      "locked": 0,
+      "printable": 1,
+      "frozen": 0,
+      "construction": 0
+    }
+  ],
+  "entities": [
+    {
+      "id": 1,
+      "type": 2,
+      "layer_id": 1,
+      "name": "model-line",
+      "color": 8421504,
+      "color_source": "BYLAYER",
+      "space": 0,
+      "layout": "Model",
+      "line": [[-30, 0], [30, 0]]
+    },
+    {
+      "id": 2,
+      "type": 2,
+      "layer_id": 2,
+      "name": "paper-layout-a-line",
+      "color": 16711680,
+      "color_source": "BYLAYER",
+      "space": 1,
+      "layout": "Layout-A",
+      "line": [[-20, 18], [20, 18]]
+    },
+    {
+      "id": 3,
+      "type": 2,
+      "layer_id": 2,
+      "name": "paper-layout-b-line",
+      "color": 16711680,
+      "color_source": "BYLAYER",
+      "space": 1,
+      "layout": "Layout-B",
+      "line": [[-20, 34], [20, 34]]
+    }
+  ]
+}

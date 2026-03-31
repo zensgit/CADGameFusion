@@ -1,3 +1,5 @@
+import { applyResolvedEditorImport, resolveEditorImportPayload } from './editor_import_adapter.js';
+
 export function serializeDocument(documentState, selectionState = null, snapState = null, viewState = null) {
   return {
     schema: 'vemcad-web-2d-v1',
@@ -13,23 +15,9 @@ export function hydrateDocument(documentState, payload, selectionState = null, s
   if (!payload || typeof payload !== 'object') {
     throw new Error('Invalid JSON payload.');
   }
-  const documentPayload = payload.document && typeof payload.document === 'object'
-    ? payload.document
-    : payload;
-
-  documentState.importJSON(documentPayload);
-
-  if (selectionState && payload.selection) {
-    selectionState.restore(payload.selection);
-  } else if (selectionState) {
-    selectionState.clear();
+  const resolved = resolveEditorImportPayload(payload);
+  if (resolved.kind === 'cadgf') {
+    throw new Error('hydrateDocument expects editor JSON or convert_cli payloads. Use the CADGF import adapter for CADGF documents.');
   }
-
-  if (snapState && payload.snap) {
-    snapState.restore(payload.snap);
-  }
-
-  if (viewState && payload.view) {
-    viewState.restore(payload.view);
-  }
+  applyResolvedEditorImport(documentState, resolved, selectionState, snapState, viewState);
 }

@@ -8,6 +8,7 @@ import { createMoveTool } from './move_tool.js';
 import { createCopyTool } from './copy_tool.js';
 import { createOffsetTool } from './offset_tool.js';
 import { createRotateTool } from './rotate_tool.js';
+import { createScaleTool } from './scale_tool.js';
 import { createBreakTool } from './break_tool.js';
 import { createTrimTool } from './trim_tool.js';
 import { createExtendTool } from './extend_tool.js';
@@ -28,6 +29,7 @@ export function createToolRegistry(ctx) {
     createCopyTool(ctx),
     createOffsetTool(ctx),
     createRotateTool(ctx),
+    createScaleTool(ctx),
     createBreakTool(ctx),
     createTrimTool(ctx),
     createExtendTool(ctx),

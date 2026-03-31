@@ -9,9 +9,15 @@ import {
   normalizeAngle,
   subtract,
 } from './geometry.js';
+import { normalizeSpaceLayoutContext } from '../space_layout.js';
 
 function hasFinitePoint(point) {
   return !!point && Number.isFinite(point.x) && Number.isFinite(point.y);
+}
+
+function resolveDraftLayerColor(layer, fallback = '#1f2937') {
+  const value = typeof layer?.color === 'string' ? layer.color.trim() : '';
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? value.toLowerCase() : fallback;
 }
 
 function closestPointOnSegment(point, start, end) {
@@ -145,6 +151,9 @@ export function createToolContext({
   canvasView,
   setStatus,
   readCommandInput,
+  getCurrentLayerId = null,
+  getCurrentLayer = null,
+  getCurrentSpaceContext = null,
 }) {
   return {
     document,
@@ -156,6 +165,73 @@ export function createToolContext({
     canvasView,
     setStatus,
     readCommandInput,
+    getCurrentLayerId() {
+      const layerId = typeof getCurrentLayerId === 'function' ? getCurrentLayerId() : null;
+      return Number.isFinite(layerId) ? Math.trunc(Number(layerId)) : 0;
+    },
+    getCurrentLayer() {
+      if (typeof getCurrentLayer === 'function') {
+        return getCurrentLayer() || null;
+      }
+      const layerId = typeof getCurrentLayerId === 'function' ? getCurrentLayerId() : null;
+      return Number.isFinite(layerId) && typeof document?.getLayer === 'function'
+        ? document.getLayer(Math.trunc(Number(layerId)))
+        : null;
+    },
+    getCurrentSpaceContext() {
+      if (typeof getCurrentSpaceContext === 'function') {
+        return normalizeSpaceLayoutContext(getCurrentSpaceContext());
+      }
+      if (document && typeof document.getCurrentSpaceContext === 'function') {
+        return normalizeSpaceLayoutContext(document.getCurrentSpaceContext());
+      }
+      return normalizeSpaceLayoutContext({ space: 0, layout: 'Model' });
+    },
+    buildDraftEntity(entity = {}) {
+      const preferredLayerId = Number.isFinite(entity?.layerId)
+        ? Math.trunc(Number(entity.layerId))
+        : this.getCurrentLayerId();
+      const layer = Number.isFinite(preferredLayerId) && typeof document?.getLayer === 'function'
+        ? document.getLayer(preferredLayerId)
+        : this.getCurrentLayer();
+      const currentSpaceContext = this.getCurrentSpaceContext();
+      const draft = {
+        layerId: Number.isFinite(preferredLayerId) ? preferredLayerId : 0,
+        visible: entity?.visible !== false,
+        color: resolveDraftLayerColor(layer),
+        colorSource: 'BYLAYER',
+        lineType: 'BYLAYER',
+        lineWeight: 0,
+        space: currentSpaceContext.space,
+        layout: currentSpaceContext.layout,
+        ...entity,
+      };
+      if (!Object.prototype.hasOwnProperty.call(entity || {}, 'color')) {
+        draft.color = resolveDraftLayerColor(layer);
+      }
+      if (!Object.prototype.hasOwnProperty.call(entity || {}, 'colorSource')) {
+        draft.colorSource = 'BYLAYER';
+      }
+      if (!Object.prototype.hasOwnProperty.call(entity || {}, 'lineType')) {
+        draft.lineType = 'BYLAYER';
+      }
+      if (!Object.prototype.hasOwnProperty.call(entity || {}, 'lineWeight')) {
+        draft.lineWeight = 0;
+      }
+      if (!Object.prototype.hasOwnProperty.call(entity || {}, 'lineWeightSource')) {
+        draft.lineWeightSource = 'BYLAYER';
+      }
+      if (!Object.prototype.hasOwnProperty.call(entity || {}, 'lineTypeScaleSource')) {
+        draft.lineTypeScaleSource = 'DEFAULT';
+      }
+      if (!Object.prototype.hasOwnProperty.call(entity || {}, 'space')) {
+        draft.space = currentSpaceContext.space;
+      }
+      if (!Object.prototype.hasOwnProperty.call(entity || {}, 'layout')) {
+        draft.layout = currentSpaceContext.layout;
+      }
+      return draft;
+    },
     resolveSnappedPoint(worldPoint, opts = {}) {
       const options = snap.toJSON();
       let point = { x: worldPoint.x, y: worldPoint.y };

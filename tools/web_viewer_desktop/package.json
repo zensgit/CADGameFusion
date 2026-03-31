@@ -6,9 +6,11 @@
   "main": "main.js",
   "private": true,
   "scripts": {
+    "clean-pack-output": "node scripts/clean_pack_output.mjs",
+    "stage-cad-resources": "node scripts/stage_bundled_cad_resources.mjs",
     "start": "electron .",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "pack": "npm run stage-cad-resources && npm run clean-pack-output && electron-builder --dir",
+    "dist": "npm run stage-cad-resources && npm run clean-pack-output && electron-builder"
   },
   "build": {
     "appId": "com.vemcad.viewer",
@@ -21,10 +23,26 @@
     "files": [
       "**/*"
     ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "dwg",
+          "dxf",
+          "cad"
+        ],
+        "name": "VemCAD CAD Drawing",
+        "role": "Viewer",
+        "rank": "Default"
+      }
+    ],
     "extraResources": [
       {
         "from": "../web_viewer",
         "to": "web_viewer"
+      },
+      {
+        "from": "bundled_resources",
+        "to": "cad_resources"
       }
     ]
   },

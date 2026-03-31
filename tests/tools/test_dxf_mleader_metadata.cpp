@@ -97,6 +97,36 @@ int main(int argc, char** argv) {
         assert(height == 2.5);
         assert(pos.x == 12.0);
         assert(pos.y == 18.0);
+
+        cadgf_entity_info_v2 info_v2{};
+        assert(cadgf_document_get_entity_info_v2(doc, id, &info_v2));
+        assert(info_v2.group_id > 0);
+
+        std::string source_type;
+        assert(query_entity_meta_value(doc, id, "source_type", &source_type));
+        assert(source_type == "LEADER");
+
+        std::string edit_mode;
+        assert(query_entity_meta_value(doc, id, "edit_mode", &edit_mode));
+        assert(edit_mode == "proxy");
+
+        std::string proxy_kind;
+        assert(query_entity_meta_value(doc, id, "proxy_kind", &proxy_kind));
+        assert(proxy_kind == "mleader");
+
+        std::string source_anchor_x;
+        std::string source_anchor_y;
+        assert(query_entity_meta_value(doc, id, "source_anchor_x", &source_anchor_x));
+        assert(query_entity_meta_value(doc, id, "source_anchor_y", &source_anchor_y));
+        assert(source_anchor_x == "12.000000");
+        assert(source_anchor_y == "18.000000");
+
+        std::string leader_landing_x;
+        std::string leader_landing_y;
+        assert(query_entity_meta_value(doc, id, "leader_landing_x", &leader_landing_x));
+        assert(query_entity_meta_value(doc, id, "leader_landing_y", &leader_landing_y));
+        assert(leader_landing_x == "12.000000");
+        assert(leader_landing_y == "18.000000");
         found_mleader += 1;
     }
 

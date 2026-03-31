@@ -5,6 +5,19 @@ import {
   normalizeSpaceLayoutContext,
   resolveCurrentSpaceLayoutContext,
 } from '../space_layout.js';
+import {
+  deriveLegacyAttdefDefault,
+  isInsertTextProxyMetadata,
+  normalizeTextKind,
+} from '../import_normalization.js';
+import {
+  normalizeImportedAttributeMetadata,
+  normalizeImportedAnnotationMetadata,
+  resolveImportedEntityVisibilityPolicy,
+  resolveImportedTextValuePolicy,
+  normalizeImportedEntityMetadataBase,
+  normalizeImportedEntityStyle,
+} from '../entity_import_normalization.js';
 
 const DEFAULT_LAYER = {
   id: 0,
@@ -104,86 +117,6 @@ function normalizeDisplayProxy(raw) {
   return null;
 }
 
-function normalizeColorSource(value) {
-  if (typeof value !== 'string') return '';
-  const normalized = value.trim().toUpperCase();
-  return normalized === 'BYLAYER'
-    || normalized === 'BYBLOCK'
-    || normalized === 'INDEX'
-    || normalized === 'TRUECOLOR'
-    ? normalized
-    : '';
-}
-
-function normalizeColorAci(value) {
-  if (!Number.isFinite(value)) return null;
-  return Math.min(255, Math.max(0, Math.trunc(value)));
-}
-
-function normalizeOptionalBool(value) {
-  if (typeof value === 'boolean') return value;
-  if (value === 1 || value === '1' || value === 'true') return true;
-  if (value === 0 || value === '0' || value === 'false') return false;
-  return null;
-}
-
-function normalizeTextKind(value) {
-  return typeof value === 'string' ? value.trim().toLowerCase() : '';
-}
-
-function deriveLegacyAttdefDefault(raw, meta) {
-  const textKind = normalizeTextKind(meta?.textKind ?? raw?.textKind ?? raw?.text_kind);
-  if (textKind !== 'attdef') return null;
-  if (typeof meta?.attributeDefault === 'string') return meta.attributeDefault;
-  if (typeof raw?.attributeDefault === 'string') return raw.attributeDefault;
-  if (typeof raw?.attribute_default === 'string') return raw.attribute_default;
-  const prompt = typeof meta?.attributePrompt === 'string'
-    ? meta.attributePrompt
-    : (typeof raw?.attributePrompt === 'string'
-        ? raw.attributePrompt
-        : (typeof raw?.attribute_prompt === 'string' ? raw.attribute_prompt : ''));
-  const rawValue = typeof raw?.value === 'string'
-    ? raw.value
-    : (typeof raw?.text?.value === 'string' ? raw.text.value : null);
-  if (typeof rawValue !== 'string') return null;
-  if (prompt) {
-    const crlfSuffix = `\r\n${prompt}`;
-    if (rawValue.endsWith(crlfSuffix)) {
-      return rawValue.slice(0, -crlfSuffix.length);
-    }
-    const lfSuffix = `\n${prompt}`;
-    if (rawValue.endsWith(lfSuffix)) {
-      return rawValue.slice(0, -lfSuffix.length);
-    }
-  }
-  return rawValue;
-}
-
-function resolveNormalizedTextValue(raw, meta) {
-  const attdefDefault = deriveLegacyAttdefDefault(raw, meta);
-  if (typeof attdefDefault === 'string') return attdefDefault;
-  if (typeof raw?.value === 'string') return raw.value;
-  if (typeof raw?.text?.value === 'string') return raw.text.value;
-  return 'TEXT';
-}
-
-function isInsertTextProxyMetadata(meta) {
-  return String(meta?.sourceType || '').trim().toUpperCase() === 'INSERT'
-    && String(meta?.editMode || '').trim().toLowerCase() === 'proxy'
-    && String(meta?.proxyKind || '').trim().toLowerCase() === 'text'
-    && normalizeTextKind(meta?.textKind) !== '';
-}
-
-function resolveNormalizedEntityVisible(raw, meta, fallback = true) {
-  if (Object.prototype.hasOwnProperty.call(raw || {}, 'visible')) {
-    return raw?.visible !== false;
-  }
-  if (isInsertTextProxyMetadata(meta) && meta?.attributeInvisible === true) {
-    return false;
-  }
-  return fallback;
-}
-
 function normalizeEntityMetadata(raw) {
   const meta = {};
   if (raw?.releasedInsertArchive && typeof raw.releasedInsertArchive === 'object') {
@@ -191,287 +124,101 @@ function normalizeEntityMetadata(raw) {
   } else if (raw?.released_insert_archive && typeof raw.released_insert_archive === 'object') {
     meta.releasedInsertArchive = cloneJson(raw.released_insert_archive);
   }
-  if (Number.isFinite(raw?.groupId)) meta.groupId = Math.trunc(raw.groupId);
-  if (Number.isFinite(raw?.space)) meta.space = Math.trunc(raw.space);
-  if (typeof raw?.layout === 'string' && raw.layout.trim()) meta.layout = raw.layout.trim();
-  const colorSource = normalizeColorSource(raw?.colorSource ?? raw?.color_source);
-  if (colorSource) meta.colorSource = colorSource;
-  const colorAci = normalizeColorAci(raw?.colorAci ?? raw?.color_aci);
-  if (colorAci !== null) meta.colorAci = colorAci;
-  if (typeof raw?.sourceType === 'string' && raw.sourceType.trim()) meta.sourceType = raw.sourceType.trim();
-  if (typeof raw?.editMode === 'string' && raw.editMode.trim()) meta.editMode = raw.editMode.trim();
-  if (typeof raw?.proxyKind === 'string' && raw.proxyKind.trim()) meta.proxyKind = raw.proxyKind.trim();
-  if (typeof raw?.blockName === 'string' && raw.blockName.trim()) meta.blockName = raw.blockName.trim();
-  if (typeof raw?.hatchPattern === 'string' && raw.hatchPattern.trim()) meta.hatchPattern = raw.hatchPattern.trim();
-  if (Number.isFinite(raw?.hatchId)) meta.hatchId = Math.trunc(raw.hatchId);
-  if (Number.isFinite(raw?.sourceBundleId)) meta.sourceBundleId = Math.trunc(raw.sourceBundleId);
-  else if (Number.isFinite(raw?.source_bundle_id)) meta.sourceBundleId = Math.trunc(raw.source_bundle_id);
-  if (typeof raw?.textKind === 'string' && raw.textKind.trim()) meta.textKind = raw.textKind.trim();
-  else if (typeof raw?.text_kind === 'string' && raw.text_kind.trim()) meta.textKind = raw.text_kind.trim();
-  if (typeof raw?.attributeTag === 'string' && raw.attributeTag.trim()) meta.attributeTag = raw.attributeTag.trim();
-  else if (typeof raw?.attribute_tag === 'string' && raw.attribute_tag.trim()) meta.attributeTag = raw.attribute_tag.trim();
-  if (typeof raw?.attributeDefault === 'string') meta.attributeDefault = raw.attributeDefault;
-  else if (typeof raw?.attribute_default === 'string') meta.attributeDefault = raw.attribute_default;
-  if (typeof raw?.attributePrompt === 'string') meta.attributePrompt = raw.attributePrompt;
-  else if (typeof raw?.attribute_prompt === 'string') meta.attributePrompt = raw.attribute_prompt;
-  const legacyAttdefDefault = deriveLegacyAttdefDefault(raw, meta);
-  if (typeof meta.attributeDefault !== 'string' && typeof legacyAttdefDefault === 'string') {
-    meta.attributeDefault = legacyAttdefDefault;
-  }
-  if (Number.isFinite(raw?.attributeFlags)) meta.attributeFlags = Math.trunc(raw.attributeFlags);
-  else if (Number.isFinite(raw?.attribute_flags)) meta.attributeFlags = Math.trunc(raw.attribute_flags);
-  const attributeInvisible = normalizeOptionalBool(raw?.attributeInvisible ?? raw?.attribute_invisible);
-  const attributeConstant = normalizeOptionalBool(raw?.attributeConstant ?? raw?.attribute_constant);
-  const attributeVerify = normalizeOptionalBool(raw?.attributeVerify ?? raw?.attribute_verify);
-  const attributePreset = normalizeOptionalBool(raw?.attributePreset ?? raw?.attribute_preset);
-  const attributeLockPosition = normalizeOptionalBool(raw?.attributeLockPosition ?? raw?.attribute_lock_position);
-  if (attributeInvisible !== null) meta.attributeInvisible = attributeInvisible;
-  if (attributeConstant !== null) meta.attributeConstant = attributeConstant;
-  if (attributeVerify !== null) meta.attributeVerify = attributeVerify;
-  if (attributePreset !== null) meta.attributePreset = attributePreset;
-  if (attributeLockPosition !== null) meta.attributeLockPosition = attributeLockPosition;
+  Object.assign(meta, normalizeImportedEntityMetadataBase(raw, {
+    groupIdKeys: ['groupId'],
+    spaceKeys: ['space'],
+    layoutKeys: ['layout'],
+    colorSourceKeys: ['colorSource', 'color_source'],
+    colorAciKeys: ['colorAci', 'color_aci'],
+    sourceTypeKeys: ['sourceType'],
+    editModeKeys: ['editMode'],
+    proxyKindKeys: ['proxyKind'],
+    blockNameKeys: ['blockName'],
+    hatchPatternKeys: ['hatchPattern'],
+    hatchIdKeys: ['hatchId'],
+    sourceBundleIdKeys: ['sourceBundleId', 'source_bundle_id'],
+  }));
+  Object.assign(meta, normalizeImportedAttributeMetadata(raw));
   if (typeof raw?.dimStyle === 'string' && raw.dimStyle.trim()) meta.dimStyle = raw.dimStyle.trim();
   if (Number.isFinite(raw?.dimType)) meta.dimType = Math.trunc(raw.dimType);
-  if (Number.isFinite(meta.attributeFlags)) {
-    if (typeof meta.attributeInvisible !== 'boolean') meta.attributeInvisible = (meta.attributeFlags & 1) !== 0;
-    if (typeof meta.attributeConstant !== 'boolean') meta.attributeConstant = (meta.attributeFlags & 2) !== 0;
-    if (typeof meta.attributeVerify !== 'boolean') meta.attributeVerify = (meta.attributeFlags & 4) !== 0;
-    if (typeof meta.attributePreset !== 'boolean') meta.attributePreset = (meta.attributeFlags & 8) !== 0;
-    if (typeof meta.attributeLockPosition !== 'boolean') meta.attributeLockPosition = (meta.attributeFlags & 16) !== 0;
-  }
-  if (raw?.sourceTextPos && Number.isFinite(raw.sourceTextPos.x) && Number.isFinite(raw.sourceTextPos.y)) {
-    meta.sourceTextPos = normalizePoint(raw.sourceTextPos);
-  } else if (raw?.source_text_pos && Number.isFinite(raw.source_text_pos.x) && Number.isFinite(raw.source_text_pos.y)) {
-    meta.sourceTextPos = normalizePoint(raw.source_text_pos);
-  }
-  if (Number.isFinite(raw?.sourceTextRotation)) meta.sourceTextRotation = Number(raw.sourceTextRotation);
-  else if (Number.isFinite(raw?.source_text_rotation)) meta.sourceTextRotation = Number(raw.source_text_rotation);
-  if (raw?.dimTextPos && Number.isFinite(raw.dimTextPos.x) && Number.isFinite(raw.dimTextPos.y)) {
-    meta.dimTextPos = normalizePoint(raw.dimTextPos);
-  }
-  if (Number.isFinite(raw?.dimTextRotation)) meta.dimTextRotation = Number(raw.dimTextRotation);
-  if (hasFinitePoint(raw?.sourceAnchor)) {
-    meta.sourceAnchor = normalizePoint(raw.sourceAnchor);
-  } else if (hasFinitePoint(raw?.source_anchor)) {
-    meta.sourceAnchor = normalizePoint(raw.source_anchor);
-  }
-  if (hasFinitePoint(raw?.leaderLanding)) {
-    meta.leaderLanding = normalizePoint(raw.leaderLanding);
-  } else if (hasFinitePoint(raw?.leader_landing)) {
-    meta.leaderLanding = normalizePoint(raw.leader_landing);
-  }
-  if (hasFinitePoint(raw?.leaderElbow)) {
-    meta.leaderElbow = normalizePoint(raw.leaderElbow);
-  } else if (hasFinitePoint(raw?.leader_elbow)) {
-    meta.leaderElbow = normalizePoint(raw.leader_elbow);
-  }
-  if (Number.isFinite(raw?.sourceAnchorDriverId)) {
-    meta.sourceAnchorDriverId = Math.trunc(raw.sourceAnchorDriverId);
-  } else if (Number.isFinite(raw?.source_anchor_driver_id)) {
-    meta.sourceAnchorDriverId = Math.trunc(raw.source_anchor_driver_id);
-  }
-  if (typeof raw?.sourceAnchorDriverType === 'string' && raw.sourceAnchorDriverType.trim()) {
-    meta.sourceAnchorDriverType = raw.sourceAnchorDriverType.trim();
-  } else if (typeof raw?.source_anchor_driver_type === 'string' && raw.source_anchor_driver_type.trim()) {
-    meta.sourceAnchorDriverType = raw.source_anchor_driver_type.trim();
-  }
-  if (typeof raw?.sourceAnchorDriverKind === 'string' && raw.sourceAnchorDriverKind.trim()) {
-    meta.sourceAnchorDriverKind = raw.sourceAnchorDriverKind.trim();
-  } else if (typeof raw?.source_anchor_driver_kind === 'string' && raw.source_anchor_driver_kind.trim()) {
-    meta.sourceAnchorDriverKind = raw.source_anchor_driver_kind.trim();
-  }
   const sourceType = typeof meta.sourceType === 'string' ? meta.sourceType.trim().toUpperCase() : '';
   const editMode = typeof meta.editMode === 'string' ? meta.editMode.trim().toLowerCase() : '';
-  if (sourceType && editMode === 'proxy' && raw?.type === 'text') {
-    if (!meta.sourceTextPos && raw?.position && Number.isFinite(raw.position.x) && Number.isFinite(raw.position.y)) {
-      meta.sourceTextPos = normalizePoint(raw.position);
-    }
-    if (!Number.isFinite(meta.sourceTextRotation) && Number.isFinite(raw?.rotation)) {
-      meta.sourceTextRotation = Number(raw.rotation);
-    }
-    if (sourceType === 'DIMENSION') {
-      if (!meta.sourceTextPos && raw?.dimTextPos && Number.isFinite(raw.dimTextPos.x) && Number.isFinite(raw.dimTextPos.y)) {
-        meta.sourceTextPos = normalizePoint(raw.dimTextPos);
-      }
-      if (!Number.isFinite(meta.sourceTextRotation) && Number.isFinite(raw?.dimTextRotation)) {
-        meta.sourceTextRotation = Number(raw.dimTextRotation);
-      }
-    }
-  }
+  Object.assign(meta, normalizeImportedAnnotationMetadata({
+    explicitSourceTextPos: raw?.sourceTextPos && Number.isFinite(raw.sourceTextPos.x) && Number.isFinite(raw.sourceTextPos.y)
+      ? normalizePoint(raw.sourceTextPos)
+      : (raw?.source_text_pos && Number.isFinite(raw.source_text_pos.x) && Number.isFinite(raw.source_text_pos.y)
+          ? normalizePoint(raw.source_text_pos)
+          : null),
+    explicitSourceTextRotation: Number.isFinite(raw?.sourceTextRotation)
+      ? Number(raw.sourceTextRotation)
+      : (Number.isFinite(raw?.source_text_rotation) ? Number(raw.source_text_rotation) : null),
+    textPos: raw?.position && Number.isFinite(raw.position.x) && Number.isFinite(raw.position.y)
+      ? normalizePoint(raw.position)
+      : null,
+    textRotation: Number.isFinite(raw?.rotation) ? Number(raw.rotation) : null,
+    dimTextPos: raw?.dimTextPos && Number.isFinite(raw.dimTextPos.x) && Number.isFinite(raw.dimTextPos.y)
+      ? normalizePoint(raw.dimTextPos)
+      : null,
+    dimTextRotation: Number.isFinite(raw?.dimTextRotation) ? Number(raw.dimTextRotation) : null,
+    sourceAnchor: hasFinitePoint(raw?.sourceAnchor)
+      ? normalizePoint(raw.sourceAnchor)
+      : (hasFinitePoint(raw?.source_anchor) ? normalizePoint(raw.source_anchor) : null),
+    leaderLanding: hasFinitePoint(raw?.leaderLanding)
+      ? normalizePoint(raw.leaderLanding)
+      : (hasFinitePoint(raw?.leader_landing) ? normalizePoint(raw.leader_landing) : null),
+    leaderElbow: hasFinitePoint(raw?.leaderElbow)
+      ? normalizePoint(raw.leaderElbow)
+      : (hasFinitePoint(raw?.leader_elbow) ? normalizePoint(raw.leader_elbow) : null),
+    sourceAnchorDriverId: Number.isFinite(raw?.sourceAnchorDriverId)
+      ? Math.trunc(raw.sourceAnchorDriverId)
+      : (Number.isFinite(raw?.source_anchor_driver_id) ? Math.trunc(raw.source_anchor_driver_id) : null),
+    sourceAnchorDriverType: typeof raw?.sourceAnchorDriverType === 'string' && raw.sourceAnchorDriverType.trim()
+      ? raw.sourceAnchorDriverType.trim()
+      : (typeof raw?.source_anchor_driver_type === 'string' && raw.source_anchor_driver_type.trim()
+          ? raw.source_anchor_driver_type.trim()
+          : ''),
+    sourceAnchorDriverKind: typeof raw?.sourceAnchorDriverKind === 'string' && raw.sourceAnchorDriverKind.trim()
+      ? raw.sourceAnchorDriverKind.trim()
+      : (typeof raw?.source_anchor_driver_kind === 'string' && raw.source_anchor_driver_kind.trim()
+          ? raw.source_anchor_driver_kind.trim()
+          : ''),
+  }, {
+    proxyTextFallbackEnabled: !!sourceType && editMode === 'proxy' && raw?.type === 'text',
+    sourceTextFallbackOrder: sourceType === 'DIMENSION'
+      ? ['explicit', 'text', 'dimension']
+      : ['explicit', 'text'],
+    sourceTextRotationFallbackOrder: sourceType === 'DIMENSION'
+      ? ['explicit', 'text', 'dimension']
+      : ['explicit', 'text'],
+  }));
   return meta;
 }
 
-function normalizeEntityStyle(raw) {
-  const style = {
-    lineType: 'CONTINUOUS',
-    lineWeight: 0,
-    lineWeightSource: 'BYLAYER',
-    lineTypeScale: 1,
-    lineTypeScaleSource: 'DEFAULT',
-  };
-  if (typeof raw?.lineType === 'string' && raw.lineType.trim()) {
-    style.lineType = raw.lineType.trim().toUpperCase();
-  } else if (typeof raw?.line_type === 'string' && raw.line_type.trim()) {
-    style.lineType = raw.line_type.trim().toUpperCase();
-  }
-  if (Number.isFinite(raw?.lineWeight)) {
-    style.lineWeight = Math.max(0, Number(raw.lineWeight));
-  } else if (Number.isFinite(raw?.line_weight)) {
-    style.lineWeight = Math.max(0, Number(raw.line_weight));
-  }
-  const rawLineWeightSource = typeof raw?.lineWeightSource === 'string'
-    ? raw.lineWeightSource
-    : raw?.line_weight_source;
-  if (typeof rawLineWeightSource === 'string' && rawLineWeightSource.trim()) {
-    const normalizedSource = rawLineWeightSource.trim().toUpperCase();
-    style.lineWeightSource = normalizedSource === 'EXPLICIT' ? 'EXPLICIT' : 'BYLAYER';
-  } else if (
-    Object.prototype.hasOwnProperty.call(raw || {}, 'lineWeight')
-    || Object.prototype.hasOwnProperty.call(raw || {}, 'line_weight')
-  ) {
-    style.lineWeightSource = 'EXPLICIT';
-  }
-  if (Number.isFinite(raw?.lineTypeScale)) {
-    style.lineTypeScale = Math.max(0, Number(raw.lineTypeScale));
-  } else if (Number.isFinite(raw?.line_type_scale)) {
-    style.lineTypeScale = Math.max(0, Number(raw.line_type_scale));
-  }
-  const rawSource = typeof raw?.lineTypeScaleSource === 'string'
-    ? raw.lineTypeScaleSource
-    : raw?.line_type_scale_source;
-  if (typeof rawSource === 'string' && rawSource.trim()) {
-    const normalizedSource = rawSource.trim().toUpperCase();
-    style.lineTypeScaleSource = normalizedSource === 'EXPLICIT' ? 'EXPLICIT' : 'DEFAULT';
-  } else if (
-    Object.prototype.hasOwnProperty.call(raw || {}, 'lineTypeScale')
-    || Object.prototype.hasOwnProperty.call(raw || {}, 'line_type_scale')
-  ) {
-    style.lineTypeScaleSource = 'EXPLICIT';
-  }
-  return style;
+function looksLikeCadgfPayload(snapshot) {
+  return typeof snapshot?.cadgf_version === 'string'
+    && Number.isFinite(snapshot?.schema_version)
+    && Array.isArray(snapshot?.layers)
+    && Array.isArray(snapshot?.entities)
+    && snapshot?.metadata
+    && snapshot?.settings
+    && snapshot?.feature_flags;
 }
 
-// convert_cli document.json → editor schema adapter
-const CONVERT_CLI_TYPE_MAP = { 0: 'polyline', 1: 'point', 2: 'line', 3: 'arc', 4: 'circle', 5: 'ellipse', 6: 'spline', 7: 'text' };
-
-function intColorToHex(c) {
-  if (typeof c === 'string') return c;
-  if (!Number.isFinite(c) || c <= 0) return '';
-  return '#' + (c & 0xFFFFFF).toString(16).padStart(6, '0');
+function looksLikeConvertCliPayload(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.entities) || snapshot.entities.length === 0) {
+    return false;
+  }
+  return typeof snapshot.entities[0]?.type === 'number';
 }
 
-function normalizeConvertCliEntity(raw) {
-  if (!raw || typeof raw.type !== 'number') return raw; // already editor format
-  const out = { ...raw };
-  out.type = CONVERT_CLI_TYPE_MAP[raw.type] || 'line';
-  if (Number.isFinite(raw.layer_id)) { out.layerId = raw.layer_id; delete out.layer_id; }
-  if (Number.isFinite(raw.color)) out.color = intColorToHex(raw.color);
-  if (typeof raw.line_type === 'string') { out.lineType = raw.line_type; delete out.line_type; }
-  if (Number.isFinite(raw.line_weight)) { out.lineWeight = raw.line_weight; delete out.line_weight; }
-  if (Number.isFinite(raw.line_type_scale)) { out.lineTypeScale = raw.line_type_scale; delete out.line_type_scale; }
-  if (typeof raw.color_source === 'string') { out.colorSource = raw.color_source; delete out.color_source; }
-  if (Number.isFinite(raw.color_aci)) { out.colorAci = raw.color_aci; delete out.color_aci; }
-  if (Number.isFinite(raw.group_id)) { out.groupId = raw.group_id; delete out.group_id; }
-  if (typeof raw.source_type === 'string') { out.sourceType = raw.source_type; delete out.source_type; }
-  if (typeof raw.edit_mode === 'string') { out.editMode = raw.edit_mode; delete out.edit_mode; }
-  if (typeof raw.proxy_kind === 'string') { out.proxyKind = raw.proxy_kind; delete out.proxy_kind; }
-  if (typeof raw.block_name === 'string') { out.blockName = raw.block_name; delete out.block_name; }
-  if (typeof raw.hatch_pattern === 'string') { out.hatchPattern = raw.hatch_pattern; delete out.hatch_pattern; }
-  if (Number.isFinite(raw.hatch_id)) { out.hatchId = raw.hatch_id; delete out.hatch_id; }
-  if (typeof raw.text_kind === 'string') { out.textKind = raw.text_kind; delete out.text_kind; }
-  if (typeof raw.attribute_tag === 'string') { out.attributeTag = raw.attribute_tag; delete out.attribute_tag; }
-  if (raw.attribute_invisible === true) { out.attributeInvisible = true; }
-  if (Number.isFinite(raw.text_width_factor)) { out.textWidthFactor = raw.text_width_factor; }
-  if (Number.isFinite(raw.text_halign)) { out.textHalign = raw.text_halign; }
-  if (Number.isFinite(raw.text_attachment)) { out.textAttachment = raw.text_attachment; }
-
-  // Geometry sub-objects → flat fields
-  if (out.type === 'line' && Array.isArray(raw.line) && raw.line.length >= 2) {
-    const [p0, p1] = raw.line;
-    out.start = { x: p0[0], y: p0[1] };
-    out.end = { x: p1[0], y: p1[1] };
-    delete out.line;
+function normalizeRestorableSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') {
+    return {};
   }
-  if (out.type === 'polyline' && Array.isArray(raw.polyline)) {
-    out.points = raw.polyline.map((p) => ({ x: p[0], y: p[1] }));
-    out.closed = raw.closed === true;
-    delete out.polyline;
+  if (looksLikeCadgfPayload(snapshot) || looksLikeConvertCliPayload(snapshot)) {
+    throw new Error('DocumentState.restore expects an editor snapshot payload. Use the editor import adapter for CADGF/convert_cli inputs.');
   }
-  if (out.type === 'circle' && raw.circle) {
-    out.center = { x: raw.circle.c[0], y: raw.circle.c[1] };
-    out.radius = raw.circle.r;
-    delete out.circle;
-  }
-  if (out.type === 'arc' && raw.arc) {
-    out.center = { x: raw.arc.c[0], y: raw.arc.c[1] };
-    out.radius = raw.arc.r;
-    out.startAngle = raw.arc.a0;
-    out.endAngle = raw.arc.a1;
-    out.cw = raw.arc.cw === true;
-    delete out.arc;
-  }
-  if (out.type === 'ellipse' && raw.ellipse) {
-    out.center = { x: raw.ellipse.c[0], y: raw.ellipse.c[1] };
-    out.radiusX = raw.ellipse.rx;
-    out.radiusY = raw.ellipse.ry;
-    out.rotation = raw.ellipse.rot || 0;
-    out.startAngle = raw.ellipse.a0 || 0;
-    out.endAngle = raw.ellipse.a1 || Math.PI * 2;
-    delete out.ellipse;
-  }
-  if (out.type === 'point' && Array.isArray(raw.point)) {
-    out.position = { x: raw.point[0], y: raw.point[1] };
-    delete out.point;
-  }
-  if (out.type === 'text' && raw.text) {
-    const t = raw.text;
-    out.position = Array.isArray(t.pos) ? { x: t.pos[0], y: t.pos[1] } : { x: 0, y: 0 };
-    out.height = t.h || 2.5;
-    out.rotation = t.rot || 0;
-    out.value = t.value || '';
-    delete out.text;
-  }
-  if (out.type === 'spline' && raw.spline) {
-    out.degree = raw.spline.degree || 3;
-    out.controlPoints = (raw.spline.control || []).map((p) => ({ x: p[0], y: p[1] }));
-    out.knots = raw.spline.knots || [];
-    delete out.spline;
-  }
-  return out;
-}
-
-function normalizeConvertCliLayer(raw) {
-  if (!raw) return raw;
-  const out = { ...raw };
-  if (Number.isFinite(raw.color)) out.color = intColorToHex(raw.color);
-  if (raw.visible === 1) out.visible = true;
-  else if (raw.visible === 0) out.visible = false;
-  if (raw.locked === 1) out.locked = true;
-  else if (raw.locked === 0) out.locked = false;
-  if (raw.printable === 1) out.printable = true;
-  else if (raw.printable === 0) out.printable = false;
-  if (raw.frozen === 1) out.frozen = true;
-  else if (raw.frozen === 0) out.frozen = false;
-  if (raw.construction === 1) out.construction = true;
-  else if (raw.construction === 0) out.construction = false;
-  return out;
-}
-
-// Detect convert_cli document.json format
-function isConvertCliFormat(data) {
-  if (!data || !Array.isArray(data.entities) || data.entities.length === 0) return false;
-  return typeof data.entities[0]?.type === 'number';
-}
-
-// Convert entire document.json to editor format
-function adaptConvertCliDocument(data) {
-  if (!isConvertCliFormat(data)) return data;
-  const out = { ...data };
-  out.entities = data.entities.map((e) => normalizeConvertCliEntity(e));
-  if (Array.isArray(data.layers)) {
-    out.layers = data.layers.map((l) => normalizeConvertCliLayer(l));
-  }
-  return out;
+  return snapshot;
 }
 
 function normalizeEntity(raw, id) {
@@ -480,8 +227,16 @@ function normalizeEntity(raw, id) {
   const color = sanitizeColor(raw?.color || '', '#2c3e50');
   const name = typeof raw?.name === 'string' ? raw.name : '';
   const metadata = normalizeEntityMetadata(raw);
-  const visible = resolveNormalizedEntityVisible(raw, metadata, true);
-  const style = normalizeEntityStyle(raw);
+  const visible = resolveImportedEntityVisibilityPolicy({
+    hasExplicitVisible: Object.prototype.hasOwnProperty.call(raw || {}, 'visible'),
+    explicitVisible: raw?.visible,
+    isInsertTextProxy: isInsertTextProxyMetadata(metadata),
+    attributeInvisible: metadata?.attributeInvisible,
+    fallback: true,
+  }, {
+    explicitVisibleMode: 'strict-boolean',
+  });
+  const style = normalizeImportedEntityStyle(raw);
 
   if (type === 'unsupported') {
     const displayProxy = normalizeDisplayProxy(raw?.display_proxy);
@@ -580,7 +335,14 @@ function normalizeEntity(raw, id) {
       color,
       name,
       position: normalizePoint(raw?.position),
-      value: resolveNormalizedTextValue(raw, metadata),
+      value: resolveImportedTextValuePolicy({
+        legacyAttributeDefault: deriveLegacyAttdefDefault(raw, metadata),
+        explicitValue: typeof raw?.value === 'string' ? raw.value : null,
+        textValue: typeof raw?.text?.value === 'string' ? raw.text.value : null,
+      }, {
+        fallback: 'TEXT',
+        valueOrder: ['explicit', 'text'],
+      }),
       height,
       rotation,
       ...style,
@@ -1175,7 +937,7 @@ export class DocumentState extends EventTarget {
   }
 
   restore(snapshot, { silent = false } = {}) {
-    const input = adaptConvertCliDocument(snapshot || {});
+    const input = normalizeRestorableSnapshot(snapshot);
     this.nextEntityId = Number.isFinite(input.nextEntityId) ? Number(input.nextEntityId) : 1;
     this.nextLayerId = Number.isFinite(input.nextLayerId) ? Number(input.nextLayerId) : 1;
     this.nextConstraintId = Number.isFinite(input.nextConstraintId) ? Number(input.nextConstraintId) : 1;

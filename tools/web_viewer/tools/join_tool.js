@@ -1,6 +1,12 @@
+const DEFAULT_JOIN_TOLERANCE = 0.25;
+
+export function getDefaultJoinTolerance() {
+  return DEFAULT_JOIN_TOLERANCE;
+}
+
 function normalizeTolerance(ctx) {
   const input = ctx.readCommandInput ? ctx.readCommandInput() : null;
-  if (!input || typeof input !== 'object') return undefined;
+  if (!input || typeof input !== 'object') return DEFAULT_JOIN_TOLERANCE;
 
   if (Number.isFinite(input.tolerance) && Number(input.tolerance) > 0) {
     return Number(input.tolerance);
@@ -14,7 +20,18 @@ function normalizeTolerance(ctx) {
       return value;
     }
   }
-  return undefined;
+  return DEFAULT_JOIN_TOLERANCE;
+}
+
+function formatExecuteMessage(result, tolerance) {
+  if (result?.ok) {
+    return result.message || 'Join applied';
+  }
+  if (result?.error_code === 'NO_MATCH') {
+    const fuzz = Number.isFinite(tolerance) ? tolerance.toFixed(2) : '?';
+    return `${result.message || 'Join failed'} [NO_MATCH]. Increase join fuzz from ${fuzz} if the gap is intentional.`;
+  }
+  return result?.message || 'Join failed';
 }
 
 function selectionCount(ctx) {
@@ -40,7 +57,7 @@ export function createJoinTool(ctx) {
     const tolerance = normalizeTolerance(ctx);
     const payload = Number.isFinite(tolerance) ? { tolerance } : undefined;
     const result = ctx.commandBus.execute('selection.join', payload);
-    updateStatus(ctx, result.message || (result.ok ? 'Join applied' : 'Join failed'));
+    updateStatus(ctx, formatExecuteMessage(result, tolerance));
   }
 
   function selectEntity(hit, event) {

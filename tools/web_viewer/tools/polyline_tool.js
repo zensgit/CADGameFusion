@@ -27,16 +27,21 @@ export function createPolylineTool(ctx) {
       reset();
       return;
     }
-    const result = ctx.commandBus.execute('entity.create', {
-      entity: {
+    const entity = typeof ctx.buildDraftEntity === 'function'
+      ? ctx.buildDraftEntity({
         type: 'polyline',
         points: points.map((point) => ({ ...point })),
         closed: false,
-        layerId: 0,
+      })
+      : {
+        type: 'polyline',
+        points: points.map((point) => ({ ...point })),
+        closed: false,
+        layerId: typeof ctx.getCurrentLayerId === 'function' ? ctx.getCurrentLayerId() : 0,
         visible: true,
         color: '#334155',
-      },
-    });
+      };
+    const result = ctx.commandBus.execute('entity.create', { entity });
     if (!result.ok) {
       ctx.setStatus(result.message || 'Polyline create failed');
     } else {

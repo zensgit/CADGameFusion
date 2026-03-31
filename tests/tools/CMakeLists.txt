@@ -197,6 +197,17 @@ add_test(NAME test_dxf_importer_blocks_run
         $<TARGET_FILE:cadgf_dxf_importer_plugin>
         ${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_blocks.dxf)
 
+add_executable(test_dxf_insert_attributes test_dxf_insert_attributes.cpp)
+target_link_libraries(test_dxf_insert_attributes PRIVATE core_c ${CMAKE_DL_LIBS})
+target_include_directories(test_dxf_insert_attributes PRIVATE ${CMAKE_SOURCE_DIR}/core/include ${CMAKE_SOURCE_DIR}/tools)
+set_target_properties(test_dxf_insert_attributes PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_dependencies(test_dxf_insert_attributes cadgf_dxf_importer_plugin)
+
+add_test(NAME test_dxf_insert_attributes_run
+    COMMAND test_dxf_insert_attributes
+        $<TARGET_FILE:cadgf_dxf_importer_plugin>
+        ${CMAKE_SOURCE_DIR}/tests/plugin_data/step237_insert_attributes_sample.dxf)
+
 add_executable(test_dxf_viewport_layout_metadata test_dxf_viewport_layout_metadata.cpp)
 target_link_libraries(test_dxf_viewport_layout_metadata PRIVATE core_c ${CMAKE_DL_LIBS})
 target_include_directories(test_dxf_viewport_layout_metadata PRIVATE ${CMAKE_SOURCE_DIR}/core/include ${CMAKE_SOURCE_DIR}/tools)
@@ -261,7 +272,7 @@ add_dependencies(test_dxf_roundtrip cadgf_dxf_importer_plugin)
 add_test(NAME test_dxf_roundtrip_run
     COMMAND test_dxf_roundtrip
         $<TARGET_FILE:cadgf_dxf_importer_plugin>
-        ${CMAKE_SOURCE_DIR}/build_fix/editor_assembly_roundtrip_dense_smoke/source_preview_importer_entities/document.json)
+        ${CMAKE_SOURCE_DIR}/tests/plugin_data/dxf_roundtrip_source_document.json)
 
 add_executable(test_dxf_roundtrip_styles test_dxf_roundtrip_styles.cpp)
 target_link_libraries(test_dxf_roundtrip_styles PRIVATE core_c ${CMAKE_DL_LIBS})
@@ -272,7 +283,7 @@ add_dependencies(test_dxf_roundtrip_styles cadgf_dxf_importer_plugin)
 add_test(NAME test_dxf_roundtrip_styles_run
     COMMAND test_dxf_roundtrip_styles
         $<TARGET_FILE:cadgf_dxf_importer_plugin>
-        ${CMAKE_SOURCE_DIR}/build_fix/editor_assembly_roundtrip_dense_smoke/source_preview_importer_entities/document.json)
+        ${CMAKE_SOURCE_DIR}/tests/plugin_data/dxf_roundtrip_source_document.json)
 
 add_executable(test_dxf_exporter_plugin_smoke test_dxf_exporter_plugin.cpp)
 target_link_libraries(test_dxf_exporter_plugin_smoke PRIVATE core_c ${CMAKE_DL_LIBS})
