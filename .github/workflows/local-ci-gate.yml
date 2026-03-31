@@ -129,6 +129,7 @@ jobs:
 
       - name: Upload local_ci artifacts
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: local-ci-results-ubuntu
@@ -141,6 +142,7 @@ jobs:
 
       - name: Upload exports bundle
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: local-ci-exports-ubuntu
@@ -155,7 +157,7 @@ jobs:
           echo "## 🎯 Local CI Gate Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ -f "build/local_ci_summary.json" ]; then
+          if [ -f "build/local_ci_summary.json" ] && jq empty build/local_ci_summary.json >/dev/null 2>&1; then
             echo "### Summary" >> $GITHUB_STEP_SUMMARY
             echo '```json' >> $GITHUB_STEP_SUMMARY
             cat build/local_ci_summary.json >> $GITHUB_STEP_SUMMARY
@@ -183,6 +185,11 @@ jobs:
             else
               echo "### ❌ Some checks failed (total: $TOTAL_FAIL)" >> $GITHUB_STEP_SUMMARY
             fi
+          elif [ -f "build/local_ci_summary.json" ]; then
+            echo "### ⚠️ Summary JSON is invalid" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat build/local_ci_summary.json >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
           else
             echo "### ⚠️ Summary JSON not found" >> $GITHUB_STEP_SUMMARY
           fi

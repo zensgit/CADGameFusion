@@ -275,6 +275,7 @@ jobs:
 
       - name: Upload build logs
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: build-logs-${{ runner.os }}
@@ -284,6 +285,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload C API library artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: core_c-${{ runner.os }}

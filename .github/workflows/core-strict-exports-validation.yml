@@ -458,6 +458,7 @@ jobs:
 
       - name: Upload test report
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: test-report-exports-validation
@@ -465,6 +466,7 @@ jobs:
 
       - name: Upload schema validation report
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: schema-report-exports-validation
@@ -474,6 +476,7 @@ jobs:
 
       - name: Upload field comparison report
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: field-compare-report-exports-validation
@@ -517,6 +520,7 @@ jobs:
 
       - name: Upload strict exports reports (for Daily CI)
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: strict-exports-reports-ubuntu-latest
@@ -532,6 +536,7 @@ jobs:
 
       - name: Upload exports bundle
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: strict-exports-bundle-${{ github.run_id }}
@@ -541,6 +546,7 @@ jobs:
 
       - name: Upload build logs
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: build-logs-exports-validation
