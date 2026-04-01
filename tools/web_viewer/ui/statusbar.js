@@ -3,6 +3,8 @@ export function createStatusBar({ snapState, toolOptions = null, onToggleOrtho, 
   const snapBtn = document.getElementById('cad-toggle-snap');
   const gridBtn = document.getElementById('cad-toggle-grid');
   const breakKeepBtn = document.getElementById('cad-toggle-break-keep');
+  const layerEl = document.getElementById('cad-status-layer');
+  const spaceEl = document.getElementById('cad-status-space');
   const selectionEl = document.getElementById('cad-status-selection');
   const solverEl = document.getElementById('cad-status-solver');
   const messageEl = document.getElementById('cad-status-message');
@@ -17,6 +19,18 @@ export function createStatusBar({ snapState, toolOptions = null, onToggleOrtho, 
   function setSelection(text) {
     if (selectionEl) {
       selectionEl.textContent = text;
+    }
+  }
+
+  function setLayer(text) {
+    if (layerEl) {
+      layerEl.textContent = text;
+    }
+  }
+
+  function setSpace(text) {
+    if (spaceEl) {
+      spaceEl.textContent = text;
     }
   }
 
@@ -91,6 +105,8 @@ export function createStatusBar({ snapState, toolOptions = null, onToggleOrtho, 
   return {
     setMessage,
     setSelection,
+    setLayer,
+    setSpace,
     setSolver,
     setCursor,
     refreshToggleLabels,

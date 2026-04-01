@@ -1,0 +1,64 @@
+{
+  "cadgf_version": "1.0.0",
+  "schema_version": 1,
+  "feature_flags": {
+    "earcut": true,
+    "clipper2": true
+  },
+  "metadata": {
+    "label": "editor_selection_summary_fixture",
+    "author": "cadgamefusion",
+    "company": "",
+    "comment": "Synthetic fixture for imported selection provenance/effective-style smoke.",
+    "created_at": "2026-03-22T00:00:00Z",
+    "modified_at": "2026-03-22T00:00:00Z",
+    "unit_name": "mm",
+    "meta": {}
+  },
+  "settings": {
+    "unit_scale": 1.0
+  },
+  "layers": [
+    {
+      "id": 1,
+      "name": "PLOT",
+      "color": 8421504,
+      "visible": 1,
+      "locked": 0,
+      "printable": 1,
+      "frozen": 0,
+      "construction": 0
+    },
+    {
+      "id": 2,
+      "name": "REDLINE",
+      "color": 16711680,
+      "line_type": "CENTER",
+      "line_weight": 0.35,
+      "visible": 1,
+      "locked": 0,
+      "printable": 0,
+      "frozen": 0,
+      "construction": 1
+    }
+  ],
+  "entities": [
+    {
+      "id": 7,
+      "type": 2,
+      "layer_id": 1,
+      "name": "selection-summary-line",
+      "color": 8421504,
+      "color_source": "BYLAYER",
+      "color_aci": 8,
+      "line_type": "HIDDEN2",
+      "line_weight": 0.55,
+      "line_type_scale": 1.7,
+      "source_type": "INSERT",
+      "edit_mode": "fragment",
+      "space": 1,
+      "layout": "Layout-A",
+      "line": [[-24, 6], [24, 6]]
+    }
+  ]
+}

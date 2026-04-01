@@ -36,16 +36,21 @@ export function createLineTool(ctx) {
         return;
       }
 
-      const result = ctx.commandBus.execute('entity.create', {
-        entity: {
+      const entity = typeof ctx.buildDraftEntity === 'function'
+        ? ctx.buildDraftEntity({
           type: 'line',
           start: { ...startPoint },
           end: { ...endPoint },
-          layerId: 0,
+        })
+        : {
+          type: 'line',
+          start: { ...startPoint },
+          end: { ...endPoint },
+          layerId: typeof ctx.getCurrentLayerId === 'function' ? ctx.getCurrentLayerId() : 0,
           visible: true,
           color: '#1f2937',
-        },
-      });
+        };
+      const result = ctx.commandBus.execute('entity.create', { entity });
 
       if (!result.ok) {
         ctx.setStatus(result.message || 'Line create failed');

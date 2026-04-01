@@ -8,6 +8,7 @@
 namespace dxf_writer {
 
 using json = nlohmann::json;
+constexpr double kPi = 3.14159265358979323846;
 
 inline std::string writeDxf(const json& doc) {
     std::ostringstream out;
@@ -155,8 +156,8 @@ inline std::string writeDxf(const json& doc) {
             emitd(20, a["c"][1].get<double>());
             emitd(40, a["r"].get<double>());
             // DXF ARC uses degrees; internal model uses radians
-            double a0 = a.value("a0", 0.0) * 180.0 / M_PI;
-            double a1 = a.value("a1", 0.0) * 180.0 / M_PI;
+            double a0 = a.value("a0", 0.0) * 180.0 / kPi;
+            double a1 = a.value("a1", 0.0) * 180.0 / kPi;
             emitd(50, a0);
             emitd(51, a1);
         }
@@ -169,7 +170,7 @@ inline std::string writeDxf(const json& doc) {
             emitd(10, t["pos"][0].get<double>());
             emitd(20, t["pos"][1].get<double>());
             emitd(40, t.value("h", 2.5));
-            double rot = t.value("rot", 0.0) * 180.0 / M_PI;
+            double rot = t.value("rot", 0.0) * 180.0 / kPi;
             if (std::abs(rot) > 1e-9) {
                 emitd(50, rot);
             }

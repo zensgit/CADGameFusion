@@ -106,6 +106,7 @@ jobs:
 
       - name: Upload simple report
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: simple-validation-report

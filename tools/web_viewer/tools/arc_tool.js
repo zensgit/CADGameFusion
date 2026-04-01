@@ -63,19 +63,27 @@ export function createArcTool(ctx) {
         reset();
         return;
       }
-      const result = ctx.commandBus.execute('entity.create', {
-        entity: {
+      const entity = typeof ctx.buildDraftEntity === 'function'
+        ? ctx.buildDraftEntity({
           type: 'arc',
           center: { ...center },
           radius,
           startAngle: angleFrom(center, startPoint),
           endAngle: angleFrom(center, endPoint),
           cw: true,
-          layerId: 0,
+        })
+        : {
+          type: 'arc',
+          center: { ...center },
+          radius,
+          startAngle: angleFrom(center, startPoint),
+          endAngle: angleFrom(center, endPoint),
+          cw: true,
+          layerId: typeof ctx.getCurrentLayerId === 'function' ? ctx.getCurrentLayerId() : 0,
           visible: true,
           color: '#7c3aed',
-        },
-      });
+        };
+      const result = ctx.commandBus.execute('entity.create', { entity });
       ctx.setStatus(result.ok ? 'Arc created' : (result.message || 'Arc create failed'));
       reset();
     },

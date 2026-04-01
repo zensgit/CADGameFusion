@@ -2,8 +2,9 @@ import { DocumentState } from '../state/documentState.js';
 import { SelectionState } from '../state/selectionState.js';
 import { SnapState } from '../state/snapState.js';
 import { ViewState } from '../state/viewState.js';
-import { serializeDocument, hydrateDocument } from '../adapters/document_json_adapter.js';
-import { isCadgfDocument, importCadgfDocument, exportCadgfDocument } from '../adapters/cadgf_document_adapter.js';
+import { serializeDocument } from '../adapters/document_json_adapter.js';
+import { exportCadgfDocument } from '../adapters/cadgf_document_adapter.js';
+import { applyResolvedEditorImport, resolveEditorImportPayload } from '../adapters/editor_import_adapter.js';
 import { CommandBus } from '../commands/command_bus.js';
 import { registerCadCommands } from '../commands/command_registry.js';
 import { createToolContext } from '../tools/tool_context.js';
@@ -1297,36 +1298,33 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
 
   function importPayload(payload, { fitView = false } = {}) {
     layerIsolationSession = null;
-    if (isCadgfDocument(payload)) {
-      const imported = importCadgfDocument(payload);
-      documentState.restore(imported.docSnapshot);
-      selectionState.clear();
-      syncCurrentLayer({ preferredId: null, preferPopulated: true });
-      syncCurrentSpaceContext({ preferred: documentState.getCurrentSpaceContext() });
-      cadgfBaseDocument = imported.baseCadgfJson;
+    const resolvedImport = resolveEditorImportPayload(payload);
+    applyResolvedEditorImport(documentState, resolvedImport, selectionState, snapState, viewState);
+    cadgfBaseDocument = resolvedImport.baseCadgfJson;
+    syncCurrentLayer({ preferredId: null, preferPopulated: true });
+    syncCurrentSpaceContext({ preferred: documentState.getCurrentSpaceContext() });
+    if (resolvedImport.kind === 'cadgf') {
       // Auto-enable dark mode for DXF/DWG imports (white entities on white bg are invisible)
       if (canvasView) canvasView.darkMode = true;
-      if (fitView) {
+      statusApi?.setMessage(resolvedImport.warnings.length > 0
+        ? `CADGF imported with ${resolvedImport.warnings.length} warnings`
+        : 'CADGF document imported');
+    } else if (resolvedImport.kind === 'convert-cli') {
+      statusApi?.setMessage('Convert CLI document imported');
+    } else {
+      statusApi?.setMessage('Document imported');
+    }
+    if (fitView) {
+      if (resolvedImport.kind === 'cadgf') {
         // Defer fit to next frame to ensure canvas layout is complete
         requestAnimationFrame(() => {
           canvasView?.resize?.();
           fitViewToDocument({ documentState, viewState, canvas });
           canvasView?.render?.();
         });
+      } else {
+        fitViewToDocument({ documentState, viewState, canvas });
       }
-      statusApi?.setMessage(imported.warnings.length > 0
-        ? `CADGF imported with ${imported.warnings.length} warnings`
-        : 'CADGF document imported');
-      return;
-    }
-
-    cadgfBaseDocument = null;
-    hydrateDocument(documentState, payload, selectionState, snapState, viewState);
-    syncCurrentLayer({ preferredId: null, preferPopulated: true });
-    syncCurrentSpaceContext({ preferred: documentState.getCurrentSpaceContext() });
-    statusApi?.setMessage('Document imported');
-    if (fitView) {
-      fitViewToDocument({ documentState, viewState, canvas });
     }
   }
 
@@ -2226,182 +2224,192 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
     documentState,
     selectionState,
     commandBus,
-    focusLayer,
-    getCurrentLayerId: () => currentLayerId,
-    getCurrentLayer,
-    getCurrentSpaceContext,
-    setCurrentSpaceContext: (context) => setCurrentSpaceContext(context),
-    listPaperLayouts: () => documentState.listPaperLayouts(),
-    selectSourceGroup: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.sourceGroup', payload);
-      statusApi.setMessage(result.message || 'Source group selected');
-      return result;
-    },
-    selectSourceText: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.sourceSelectText', payload);
-      statusApi.setMessage(result.message || 'Source text selected');
-      return result;
-    },
-    selectSourceAnchorDriver: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.sourceSelectAnchorDriver', payload);
-      statusApi.setMessage(result.message || 'Source anchor driver selected');
-      return result;
-    },
-    resetSourceTextPlacement: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.sourceResetTextPlacement', payload);
-      statusApi.setMessage(result.message || 'Source text placement reset');
-      return result;
-    },
-    flipDimensionTextSide: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.dimensionFlipTextSide', payload);
-      statusApi.setMessage(result.message || 'Applied opposite DIMENSION text side');
-      return result;
-    },
-    flipLeaderLandingSide: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.leaderFlipLandingSide', payload);
-      statusApi.setMessage(result.message || 'Applied opposite LEADER landing side');
-      return result;
-    },
-    fitSourceAnchor: (entityId) => {
-      const entity = documentState.getEntity(entityId);
-      if (!entity || !isSourceGroupEntity(entity) || isInsertGroupEntity(entity)) return false;
-      const guide = resolveSourceTextGuide(documentState.listEntities(), entity);
-      if (!guide) return false;
-      const extents = computeSourceTextGuideExtents(guide);
-      if (!extents) return false;
-      fitViewToExtents({ viewState, canvas, extents, paddingPx: 88 });
-      statusApi.setMessage(`Fit Source Anchor: ${formatSourceGroupLabel(entity)}`);
-      return true;
-    },
-    fitLeaderLanding: (entityId) => {
-      const entity = documentState.getEntity(entityId);
-      if (!entity || !isSourceGroupEntity(entity) || isInsertGroupEntity(entity)) return false;
-      const guide = resolveSourceTextGuide(documentState.listEntities(), entity);
-      if (!guide || String(guide.sourceType || '').trim().toUpperCase() !== 'LEADER' || !guide.elbowPoint) return false;
-      const extents = computeSourceTextGuideExtents(guide);
-      if (!extents) return false;
-      fitViewToExtents({ viewState, canvas, extents, paddingPx: 88 });
-      statusApi.setMessage(`Fit Leader Landing: ${formatSourceGroupLabel(entity)}`);
-      return true;
-    },
-    selectInsertGroup: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.insertGroup', payload);
-      statusApi.setMessage(result.message || 'Insert group selected');
-      return result;
-    },
-    selectReleasedInsertGroup: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.releasedInsertGroup', payload);
-      statusApi.setMessage(result.message || 'Released insert group selected');
-      return result;
-    },
-    selectInsertText: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.insertSelectText', payload);
-      statusApi.setMessage(result.message || 'Insert text selected');
-      return result;
-    },
-    selectEditableInsertText: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.insertSelectEditableText', payload);
-      statusApi.setMessage(result.message || 'Editable insert text selected');
-      return result;
-    },
-    selectEditableInsertGroup: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.insertEditableGroup', payload);
-      statusApi.setMessage(result.message || 'Editable insert members selected');
-      return result;
-    },
-    editInsertText: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.insertEditText', payload);
-      statusApi.setMessage(result.message || 'Insert text released');
-      return result;
-    },
-    fitInsertGroup: (entityId) => {
-      const entity = documentState.getEntity(entityId);
-      if (!entity || !isInsertGroupEntity(entity)) return false;
-      const bounds = computeInsertGroupBounds(documentState.listEntities(), entity);
-      if (!bounds) return false;
-      fitViewToExtents({ viewState, canvas, extents: bounds, paddingPx: 72 });
-      statusApi.setMessage(`Fit Insert Group: ${entity.blockName || entity.groupId || entity.id}`);
-      return true;
-    },
-    fitReleasedInsertGroup: (entityId) => fitReleasedInsertGroup(entityId),
-    openReleasedInsertPeer: (entityId, options = {}) => openReleasedInsertPeer(entityId, options),
-    fitSourceGroup: (entityId) => {
-      const entity = documentState.getEntity(entityId);
-      if (!entity || !isSourceGroupEntity(entity)) return false;
-      const bounds = computeSourceGroupBounds(documentState.listEntities(), entity);
-      if (!bounds) return false;
-      fitViewToExtents({ viewState, canvas, extents: bounds, paddingPx: 72 });
-      statusApi.setMessage(`Fit Source Group: ${formatSourceGroupLabel(entity)}`);
-      return true;
-    },
-    openInsertPeer: (entityId, options = {}) => openInsertPeer(entityId, options),
-    editSourceGroupText: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.sourceEditGroupText', payload);
-      statusApi.setMessage(result.message || 'Source text selected');
-      return result;
-    },
-    releaseSourceGroup: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.sourceReleaseGroup', payload);
-      statusApi.setMessage(result.message || 'Source group released');
-      return result;
-    },
-    releaseInsertGroup: (entityId) => {
-      const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
-      const result = commandBus.execute('selection.insertReleaseGroup', payload);
-      statusApi.setMessage(result.message || 'Insert group released');
-      return result;
-    },
-    updateCurrentLayer: (layerId, patch) => {
-      if (!Number.isFinite(layerId) || !patch || typeof patch !== 'object') return false;
-      const normalized = Math.trunc(Number(layerId));
-      const layer = documentState.getLayer(normalized);
-      if (!layer) return false;
-      return documentState.updateLayer(normalized, patch) === true;
-    },
     setStatus: (message) => statusApi.setMessage(message),
-    useLayer: (layerId) => setCurrentLayer(layerId),
-    lockLayer,
-    unlockLayer,
-    isolateLayer: (layerId) => applyLayerIsolationByIds([layerId]),
-    hasLayerIsolation,
-    restoreLayerIsolation: () => restoreLayerIsolationSession(),
-    turnOffLayer: (layerId) => applyLayerOffByIds([layerId]),
-    turnOnLayer: (layerId) => {
-      const layer = documentState.getLayer(layerId);
-      if (!layer) return false;
-      if (hasLayerOff()) {
-        return restoreLayerOffSession();
-      }
-      documentState.updateLayer(layer.id, { visible: true });
-      const sync = syncCurrentLayer({ preferredId: currentLayerId });
-      statusApi.setMessage(`Layer ${layer.name} visibility: On${sync.changed ? ` | current -> ${formatLayerRef(sync.layer)}` : ''}`);
-      return true;
+    controllerHandlers: {
+      getCurrentLayer,
+      getCurrentSpaceContext,
+      setCurrentSpaceContext: (context) => setCurrentSpaceContext(context),
+      listPaperLayouts: () => documentState.listPaperLayouts(),
+      updateCurrentLayer: (layerId, patch) => {
+        if (!Number.isFinite(layerId) || !patch || typeof patch !== 'object') return false;
+        const normalized = Math.trunc(Number(layerId));
+        const layer = documentState.getLayer(normalized);
+        if (!layer) return false;
+        return documentState.updateLayer(normalized, patch) === true;
+      },
     },
-    freezeLayer: (layerId) => applyLayerFreezeByIds([layerId]),
-    thawLayer: (layerId) => {
-      const layer = documentState.getLayer(layerId);
-      if (!layer) return false;
-      if (hasLayerFreeze()) {
-        return restoreLayerFreezeSession();
-      }
-      return setLayerFrozenState(layer.id, false);
+    actionHandlers: {
+      layer: {
+        focusLayer,
+        getCurrentLayerId: () => currentLayerId,
+        useLayer: (layerId) => setCurrentLayer(layerId),
+        lockLayer,
+        unlockLayer,
+        isolateLayer: (layerId) => applyLayerIsolationByIds([layerId]),
+        hasLayerIsolation,
+        restoreLayerIsolation: () => restoreLayerIsolationSession(),
+        turnOffLayer: (layerId) => applyLayerOffByIds([layerId]),
+        turnOnLayer: (layerId) => {
+          const layer = documentState.getLayer(layerId);
+          if (!layer) return false;
+          if (hasLayerOff()) {
+            return restoreLayerOffSession();
+          }
+          documentState.updateLayer(layer.id, { visible: true });
+          const sync = syncCurrentLayer({ preferredId: currentLayerId });
+          statusApi.setMessage(`Layer ${layer.name} visibility: On${sync.changed ? ` | current -> ${formatLayerRef(sync.layer)}` : ''}`);
+          return true;
+        },
+        freezeLayer: (layerId) => applyLayerFreezeByIds([layerId]),
+        thawLayer: (layerId) => {
+          const layer = documentState.getLayer(layerId);
+          if (!layer) return false;
+          if (hasLayerFreeze()) {
+            return restoreLayerFreezeSession();
+          }
+          return setLayerFrozenState(layer.id, false);
+        },
+        hasLayerFreeze,
+        restoreLayerFreeze: () => restoreLayerFreezeSession(),
+      },
+      sourceGroup: {
+        selectSourceGroup: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.sourceGroup', payload);
+          statusApi.setMessage(result.message || 'Source group selected');
+          return result;
+        },
+        selectSourceText: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.sourceSelectText', payload);
+          statusApi.setMessage(result.message || 'Source text selected');
+          return result;
+        },
+        selectSourceAnchorDriver: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.sourceSelectAnchorDriver', payload);
+          statusApi.setMessage(result.message || 'Source anchor driver selected');
+          return result;
+        },
+        resetSourceTextPlacement: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.sourceResetTextPlacement', payload);
+          statusApi.setMessage(result.message || 'Source text placement reset');
+          return result;
+        },
+        flipDimensionTextSide: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.dimensionFlipTextSide', payload);
+          statusApi.setMessage(result.message || 'Applied opposite DIMENSION text side');
+          return result;
+        },
+        flipLeaderLandingSide: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.leaderFlipLandingSide', payload);
+          statusApi.setMessage(result.message || 'Applied opposite LEADER landing side');
+          return result;
+        },
+        fitSourceAnchor: (entityId) => {
+          const entity = documentState.getEntity(entityId);
+          if (!entity || !isSourceGroupEntity(entity) || isInsertGroupEntity(entity)) return false;
+          const guide = resolveSourceTextGuide(documentState.listEntities(), entity);
+          if (!guide) return false;
+          const extents = computeSourceTextGuideExtents(guide);
+          if (!extents) return false;
+          fitViewToExtents({ viewState, canvas, extents, paddingPx: 88 });
+          statusApi.setMessage(`Fit Source Anchor: ${formatSourceGroupLabel(entity)}`);
+          return true;
+        },
+        fitLeaderLanding: (entityId) => {
+          const entity = documentState.getEntity(entityId);
+          if (!entity || !isSourceGroupEntity(entity) || isInsertGroupEntity(entity)) return false;
+          const guide = resolveSourceTextGuide(documentState.listEntities(), entity);
+          if (!guide || String(guide.sourceType || '').trim().toUpperCase() !== 'LEADER' || !guide.elbowPoint) return false;
+          const extents = computeSourceTextGuideExtents(guide);
+          if (!extents) return false;
+          fitViewToExtents({ viewState, canvas, extents, paddingPx: 88 });
+          statusApi.setMessage(`Fit Leader Landing: ${formatSourceGroupLabel(entity)}`);
+          return true;
+        },
+        fitSourceGroup: (entityId) => {
+          const entity = documentState.getEntity(entityId);
+          if (!entity || !isSourceGroupEntity(entity)) return false;
+          const bounds = computeSourceGroupBounds(documentState.listEntities(), entity);
+          if (!bounds) return false;
+          fitViewToExtents({ viewState, canvas, extents: bounds, paddingPx: 72 });
+          statusApi.setMessage(`Fit Source Group: ${formatSourceGroupLabel(entity)}`);
+          return true;
+        },
+        editSourceGroupText: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.sourceEditGroupText', payload);
+          statusApi.setMessage(result.message || 'Source text selected');
+          return result;
+        },
+        releaseSourceGroup: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.sourceReleaseGroup', payload);
+          statusApi.setMessage(result.message || 'Source group released');
+          return result;
+        },
+      },
+      insertGroup: {
+        selectInsertGroup: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.insertGroup', payload);
+          statusApi.setMessage(result.message || 'Insert group selected');
+          return result;
+        },
+        selectReleasedInsertGroup: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.releasedInsertGroup', payload);
+          statusApi.setMessage(result.message || 'Released insert group selected');
+          return result;
+        },
+        selectInsertText: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.insertSelectText', payload);
+          statusApi.setMessage(result.message || 'Insert text selected');
+          return result;
+        },
+        selectEditableInsertText: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.insertSelectEditableText', payload);
+          statusApi.setMessage(result.message || 'Editable insert text selected');
+          return result;
+        },
+        selectEditableInsertGroup: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.insertEditableGroup', payload);
+          statusApi.setMessage(result.message || 'Editable insert members selected');
+          return result;
+        },
+        editInsertText: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.insertEditText', payload);
+          statusApi.setMessage(result.message || 'Insert text released');
+          return result;
+        },
+        fitInsertGroup: (entityId) => {
+          const entity = documentState.getEntity(entityId);
+          if (!entity || !isInsertGroupEntity(entity)) return false;
+          const bounds = computeInsertGroupBounds(documentState.listEntities(), entity);
+          if (!bounds) return false;
+          fitViewToExtents({ viewState, canvas, extents: bounds, paddingPx: 72 });
+          statusApi.setMessage(`Fit Insert Group: ${entity.blockName || entity.groupId || entity.id}`);
+          return true;
+        },
+        fitReleasedInsertGroup: (entityId) => fitReleasedInsertGroup(entityId),
+        openReleasedInsertPeer: (entityId, options = {}) => openReleasedInsertPeer(entityId, options),
+        openInsertPeer: (entityId, options = {}) => openInsertPeer(entityId, options),
+        releaseInsertGroup: (entityId) => {
+          const payload = Number.isFinite(entityId) ? { targetId: entityId } : undefined;
+          const result = commandBus.execute('selection.insertReleaseGroup', payload);
+          statusApi.setMessage(result.message || 'Insert group released');
+          return result;
+        },
+      },
     },
-    hasLayerFreeze,
-    restoreLayerFreeze: () => restoreLayerFreezeSession(),
   });
   propertyPanel.render();
   refreshCurrentLayerStatus();

@@ -237,6 +237,7 @@ jobs:
 
       - name: Upload built tools
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: built-tools-${{ runner.os }}
@@ -247,6 +248,7 @@ jobs:
 
       - name: Upload CMake logs
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: cmake-logs-${{ runner.os }}
@@ -276,6 +278,7 @@ jobs:
 
       - name: Upload vcpkg evidence
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: vcpkg-evidence-${{ runner.os }}

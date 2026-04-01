@@ -144,6 +144,8 @@ For error-code regression, run `tools/plm_error_codes_smoke.sh`.
 - PLM conversion verification checklist: `docs/PLM_CONVERSION_VERIFICATION_CHECKLIST.md`
 - PLM conversion local verification (2025-12-25): `docs/PLM_CONVERSION_LOCAL_VERIFICATION_REPORT_2025_12_25.md`
 - Local smoke verification (2025-12-25): `docs/LOCAL_SMOKE_VERIFICATION_REPORT_2025_12_25.md`
+- Desktop DWG route readiness: `docs/STEP250_DESKTOP_DWG_ROUTE_READINESS_VERIFICATION.md`
+- DWG matrix readiness: `docs/STEP251_DWG_OPEN_MATRIX_READINESS_VERIFICATION.md`
 
 ## Contributing
 - Start with `AGENTS.md` and `docs/Contributing.md` for style, PR, and test guidance.

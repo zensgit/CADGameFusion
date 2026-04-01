@@ -562,6 +562,15 @@ function deepSubsetEqual(source, target) {
   return true;
 }
 
+function normalizeUnsupportedPassthroughCadgf(entity) {
+  if (!entity || typeof entity !== 'object' || Array.isArray(entity)) return entity;
+  const normalized = { ...entity };
+  if (typeof normalized.line_type === 'string' && normalized.line_type.trim()) {
+    normalized.line_type = normalized.line_type.trim().toUpperCase();
+  }
+  return normalized;
+}
+
 function extractOriginSubset(entity) {
   const subset = {};
   if (!entity || typeof entity !== 'object') return subset;
@@ -996,7 +1005,9 @@ function validateUnsupportedPassthrough({ unsupportedEntities, exportedCadgf }) 
       missingIds.push(id);
       continue;
     }
-    if (!deepSubsetEqual(one.cadgf, exported)) {
+    const expectedCadgf = normalizeUnsupportedPassthroughCadgf(one.cadgf);
+    const actualCadgf = normalizeUnsupportedPassthroughCadgf(exported);
+    if (!deepSubsetEqual(expectedCadgf, actualCadgf)) {
       driftedIds.push(id);
     }
   }

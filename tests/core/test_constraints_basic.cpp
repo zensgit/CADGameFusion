@@ -9,6 +9,8 @@
 
 using namespace core;
 
+static constexpr double kPi = 3.14159265358979323846;
+
 static double length2(double dx, double dy) {
     return std::sqrt(dx * dx + dy * dy);
 }
@@ -1342,7 +1344,7 @@ int main() {
     // --- Angle: single-constraint success path ---
     // Semantics: angle between two lines.
     // Vars: 8 VarRefs (same layout as parallel/perpendicular), requires a value in radians.
-    // Example: 45 degrees = M_PI / 4.
+    // Example: 45 degrees = pi / 4.
     vars["p0.x"] = 0.0; vars["p0.y"] = 0.0;
     vars["p1.x"] = 3.0; vars["p1.y"] = 0.0;
     vars["q0.x"] = 0.0; vars["q0.y"] = 0.0;
@@ -1352,7 +1354,7 @@ int main() {
         {ConstraintSpec{"angle",
                         {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"},
                          VarRef{"q0", "x"}, VarRef{"q0", "y"}, VarRef{"q1", "x"}, VarRef{"q1", "y"}},
-                        M_PI / 4.0}},
+                        kPi / 4.0}},
         [&]() {
             const double v1x = vars["p1.x"] - vars["p0.x"];
             const double v1y = vars["p1.y"] - vars["p0.y"];
@@ -1362,7 +1364,7 @@ int main() {
             const double n2 = length2(v2x, v2y);
             assert(n1 > 1e-9 && n2 > 1e-9);
             const double cosAngle = (v1x * v2x + v1y * v2y) / (n1 * n2);
-            assert(std::abs(cosAngle - std::cos(M_PI / 4.0)) < 5e-2);
+            assert(std::abs(cosAngle - std::cos(kPi / 4.0)) < 5e-2);
         });
 
     // --- Angle: composed with distance ---
@@ -1376,7 +1378,7 @@ int main() {
             ConstraintSpec{"angle",
                            {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"},
                             VarRef{"q0", "x"}, VarRef{"q0", "y"}, VarRef{"q1", "x"}, VarRef{"q1", "y"}},
-                           M_PI / 4.0},
+                           kPi / 4.0},
             ConstraintSpec{"distance",
                            {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"}},
                            4.0},
@@ -1390,7 +1392,7 @@ int main() {
             const double n2 = length2(v2x, v2y);
             assert(n1 > 1e-9 && n2 > 1e-9);
             const double cosAngle = (v1x * v2x + v1y * v2y) / (n1 * n2);
-            assert(std::abs(cosAngle - std::cos(M_PI / 4.0)) < 5e-2);
+            assert(std::abs(cosAngle - std::cos(kPi / 4.0)) < 5e-2);
             assert(std::abs(n1 - 4.0) < 5e-3);
         });
 
@@ -1464,7 +1466,7 @@ int main() {
         {ConstraintSpec{"angle",
                         {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"},
                          VarRef{"q0", "x"}, VarRef{"q0", "y"}, VarRef{"q1", "x"}, VarRef{"q1", "y"}},
-                        M_PI / 2.0}},
+                        kPi / 2.0}},
         [&]() {
             const double v1x = vars["p1.x"] - vars["p0.x"];
             const double v1y = vars["p1.y"] - vars["p0.y"];
@@ -1487,7 +1489,7 @@ int main() {
         {ConstraintSpec{"angle",
                         {VarRef{"p0", "x"}, VarRef{"p0", "y"}, VarRef{"p1", "x"}, VarRef{"p1", "y"},
                          VarRef{"q0", "x"}, VarRef{"q0", "y"}, VarRef{"q1", "x"}, VarRef{"q1", "y"}},
-                        M_PI / 4.0}},
+                        kPi / 4.0}},
         [&]() {
             const double v1x = vars["p1.x"] - vars["p0.x"];
             const double v1y = vars["p1.y"] - vars["p0.y"];
@@ -1497,7 +1499,7 @@ int main() {
             const double n2 = length2(v2x, v2y);
             assert(n1 > 1e-9 && n2 > 1e-9);
             const double cosAngle = (v1x * v2x + v1y * v2y) / (n1 * n2);
-            assert(std::abs(cosAngle - std::cos(M_PI / 4.0)) < 5e-2);
+            assert(std::abs(cosAngle - std::cos(kPi / 4.0)) < 5e-2);
         });
 
     // --- P1.3: New constraint types ---

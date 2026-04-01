@@ -16,6 +16,24 @@
 
 namespace fs = std::filesystem;
 
+#ifdef _WIN32
+static FILE* cadgf_popen(const char* cmd, const char* mode) {
+    return _popen(cmd, mode);
+}
+
+static int cadgf_pclose(FILE* pipe) {
+    return _pclose(pipe);
+}
+#else
+static FILE* cadgf_popen(const char* cmd, const char* mode) {
+    return popen(cmd, mode);
+}
+
+static int cadgf_pclose(FILE* pipe) {
+    return pclose(pipe);
+}
+#endif
+
 static cadgf_string_view sv(const char* s) {
     cadgf_string_view v;
     v.data = s;
@@ -44,17 +62,17 @@ static std::string find_dwg2dxf() {
 #else
     const char* cmd = "which dwg2dxf 2>/dev/null";
 #endif
-    FILE* pipe = popen(cmd, "r");
+    FILE* pipe = cadgf_popen(cmd, "r");
     if (pipe) {
         char buf[1024] = {};
         if (std::fgets(buf, sizeof(buf), pipe)) {
             // Trim trailing newline
             size_t len = std::strlen(buf);
             while (len > 0 && (buf[len - 1] == '\n' || buf[len - 1] == '\r')) buf[--len] = 0;
-            pclose(pipe);
+            cadgf_pclose(pipe);
             if (len > 0 && fs::exists(buf)) return buf;
         } else {
-            pclose(pipe);
+            cadgf_pclose(pipe);
         }
     }
 

@@ -92,6 +92,56 @@ This smoke:
 - emits `desktop_summary.json`, `desktop_smoke.log`, wrapper `summary.json`
 - runs `validate_plm_preview_artifacts.py` and `validate_plm_manifest.py`
 
+Real-DWG matrix smoke:
+
+```bash
+python3 tools/plm_dwg_open_matrix_smoke.py \
+  --outdir build/step251_dwg_open_matrix_smoke
+```
+
+This smoke:
+- runs the real business-path DWG open lane across the promoted case matrix in `tools/plm_dwg_open_matrix_cases.json`
+- writes a timestamped run under `build/step251_dwg_open_matrix_smoke/`
+- emits aggregate `summary.json` plus per-case `runner.log` and child smoke outputs
+- summarizes `case_count`, `pass_count`, `fail_count`, `validator_ok_count`, `dwg_convert_ok_count`, `router_ok_count`, `convert_ok_count`, `viewer_ok_count`, and `first_failed_case`
+
+Live desktop settings smoke:
+
+```bash
+node tools/web_viewer/scripts/desktop_live_settings_smoke.js
+```
+
+This smoke:
+- loads the real live desktop viewer page `tools/web_viewer/index.html`
+- injects a mocked `window.vemcadDesktop` bridge before page load
+- proves startup readiness status, `Settings` / `Open CAD File` visibility, modal-open combined router + DWG readiness, runtime provenance (`CAD runtime source/root/ready`, `Router service`, `Preview pipeline`, `Viewer root`), `DWG Route Mode`, `Use Recommended`, form population, save/reset persistence, `Test Router`, `Check DWG`, route-aware open status, setup-hint recovery on DWG failure, and `onOpenSettings`
+- proves the viewer runtime resolves to local `vendor/three` assets and records `three_cdn_requests=[]`
+- proves the viewer no longer requests Google Fonts and records `font_cdn_requests=[]`
+- proves `Export Diagnostics` downloads a structured `vemcad.desktop.diagnostics.v1` bundle from the real renderer
+- proves desktop-mode diagnostics export returns a native save result and exposes the saved path
+- writes a timestamped run under `build/desktop_live_settings_smoke/`
+- emits `summary.json` with the saved override values, rendered status text, and the settings actually passed into `openCadFile`
+
+Real packaged desktop settings smoke:
+
+```bash
+node tools/web_viewer/scripts/desktop_packaged_settings_smoke.js
+```
+
+This smoke:
+- launches the real packaged Electron app
+- opens the live Settings modal from the packaged renderer
+- proves startup readiness plus packaged `[Router]` + `[DWG]` runtime diagnostics and packaged defaults
+- proves `Use Recommended` restores packaged defaults and clears local overrides
+- proves the packaged renderer resolves core Three.js modules from local `vendor/three` files and records `three_cdn_requests=[]`
+- proves the packaged renderer no longer requests Google Fonts and records `font_cdn_requests=[]`
+- proves the packaged renderer can export a structured `vemcad.desktop.diagnostics.v1` support bundle
+- proves the packaged renderer writes that support bundle to disk through the native desktop save path
+- writes a timestamped run under `build/desktop_packaged_settings_smoke/`
+
+The real desktop DWG smoke also now validates that those route facts survive into the final
+successful convert result, not just the prepared open plan.
+
 ## plm_convert.py
 Runs the conversion pipeline (plugin import → artifacts).
 
@@ -181,7 +231,18 @@ Desktop "Open CAD File" requires a running router:
 - Desktop Settings (button or Cmd/Ctrl+,) lets you edit router/DWG settings in-app.
   Settings are stored locally and used as overrides for Open CAD File.
   Test Router / Check DWG buttons validate connectivity and DWG setup (including /health version info).
+  Router failures and DWG failures both reopen the same modal with structured `Hint: ...` recovery text.
+  `Use Recommended` clears stale local overrides and reapplies the latest detected runtime defaults.
   When settings are empty, the app auto-fills local CADGameFusion paths and detected `dwg2dxf`.
+  As of Step259, desktop runtime open also consumes staged/bundled CAD resources directly, and
+  `npm run stage-cad-resources` prepares those assets for `pack` / `dist`.
+  As of Step260, packaged builds also use packaged `cad_resources` for local router auto-start,
+  bundled `plm_convert.py`, bundled `tools/web_viewer`, and bundled schemas; the real packaged-app
+  smoke is `python3 tools/plm_dwg_open_desktop_smoke.py --use-packaged-app --use-runtime-autodetect --router-auto-start-mode default`.
+  As of Step261, opening Settings also shows combined router + DWG readiness with explicit runtime
+  provenance (`cad_runtime_source/root/ready`, `router_service_path`, `plm_convert_path`, `viewer_root`).
+  As of Step262, `node tools/web_viewer/scripts/desktop_packaged_settings_smoke.js` verifies that
+  same truth in the real packaged Settings modal.
 - `VEMCAD_ROUTER_URL` (default `http://127.0.0.1:9000`)
 - `VEMCAD_ROUTER_PLUGIN` / `VEMCAD_ROUTER_CONVERT_CLI` as needed (or configure router defaults).
 - `VEMCAD_DWG_CONVERT_CMD` to enable DWG -> DXF before upload.

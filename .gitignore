@@ -75,3 +75,10 @@ verification_*.png
 
 # Local developer-only inputs (do not commit)
 local/editor_roundtrip_smoke_cases.json
+local/*.json
+20260307_112156/
+build_fix/
+tools/web_viewer/document.json
+tools/web_viewer/mesh.bin
+tools/web_viewer/mesh.gltf
+tools/web_viewer/mesh_metadata.json

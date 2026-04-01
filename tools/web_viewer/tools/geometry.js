@@ -135,6 +135,24 @@ export function applyDelta(point, delta) {
   };
 }
 
+function moveTextMetadata(next, delta) {
+  if (isFinitePoint(next.sourceTextPos)) {
+    next.sourceTextPos = applyDelta(next.sourceTextPos, delta);
+  }
+  if (isFinitePoint(next.sourceAnchor)) {
+    next.sourceAnchor = applyDelta(next.sourceAnchor, delta);
+  }
+  if (isFinitePoint(next.leaderLanding)) {
+    next.leaderLanding = applyDelta(next.leaderLanding, delta);
+  }
+  if (isFinitePoint(next.leaderElbow)) {
+    next.leaderElbow = applyDelta(next.leaderElbow, delta);
+  }
+  if (isFinitePoint(next.dimTextPos)) {
+    next.dimTextPos = applyDelta(next.dimTextPos, delta);
+  }
+}
+
 export function rotatePoint(point, center, angleRad) {
   const dx = point.x - center.x;
   const dy = point.y - center.y;
@@ -144,6 +162,55 @@ export function rotatePoint(point, center, angleRad) {
     x: center.x + dx * cos - dy * sin,
     y: center.y + dx * sin + dy * cos,
   };
+}
+
+export function scalePoint(point, center, factor) {
+  return {
+    x: center.x + (point.x - center.x) * factor,
+    y: center.y + (point.y - center.y) * factor,
+  };
+}
+
+function rotateTextMetadata(next, center, angleRad) {
+  if (isFinitePoint(next.sourceTextPos)) {
+    next.sourceTextPos = rotatePoint(next.sourceTextPos, center, angleRad);
+  }
+  if (isFinitePoint(next.sourceAnchor)) {
+    next.sourceAnchor = rotatePoint(next.sourceAnchor, center, angleRad);
+  }
+  if (isFinitePoint(next.leaderLanding)) {
+    next.leaderLanding = rotatePoint(next.leaderLanding, center, angleRad);
+  }
+  if (isFinitePoint(next.leaderElbow)) {
+    next.leaderElbow = rotatePoint(next.leaderElbow, center, angleRad);
+  }
+  if (Number.isFinite(next.sourceTextRotation)) {
+    next.sourceTextRotation = Number(next.sourceTextRotation) + angleRad;
+  }
+  if (isFinitePoint(next.dimTextPos)) {
+    next.dimTextPos = rotatePoint(next.dimTextPos, center, angleRad);
+  }
+  if (Number.isFinite(next.dimTextRotation)) {
+    next.dimTextRotation = Number(next.dimTextRotation) + angleRad;
+  }
+}
+
+function scaleTextMetadata(next, center, factor) {
+  if (isFinitePoint(next.sourceTextPos)) {
+    next.sourceTextPos = scalePoint(next.sourceTextPos, center, factor);
+  }
+  if (isFinitePoint(next.sourceAnchor)) {
+    next.sourceAnchor = scalePoint(next.sourceAnchor, center, factor);
+  }
+  if (isFinitePoint(next.leaderLanding)) {
+    next.leaderLanding = scalePoint(next.leaderLanding, center, factor);
+  }
+  if (isFinitePoint(next.leaderElbow)) {
+    next.leaderElbow = scalePoint(next.leaderElbow, center, factor);
+  }
+  if (isFinitePoint(next.dimTextPos)) {
+    next.dimTextPos = scalePoint(next.dimTextPos, center, factor);
+  }
 }
 
 export function transformEntityByDelta(entity, delta) {
@@ -163,6 +230,7 @@ export function transformEntityByDelta(entity, delta) {
   }
   if (next.type === 'text') {
     next.position = applyDelta(next.position, delta);
+    moveTextMetadata(next, delta);
     return next;
   }
   return next;
@@ -190,6 +258,32 @@ export function rotateEntity(entity, center, angleRad) {
   if (next.type === 'text') {
     next.position = rotatePoint(next.position, center, angleRad);
     next.rotation = Number(next.rotation || 0) + angleRad;
+    rotateTextMetadata(next, center, angleRad);
+    return next;
+  }
+  return next;
+}
+
+export function scaleEntity(entity, center, factor) {
+  const next = cloneValue(entity);
+  if (next.type === 'line') {
+    next.start = scalePoint(next.start, center, factor);
+    next.end = scalePoint(next.end, center, factor);
+    return next;
+  }
+  if (next.type === 'polyline') {
+    next.points = next.points.map((point) => scalePoint(point, center, factor));
+    return next;
+  }
+  if (next.type === 'circle' || next.type === 'arc') {
+    next.center = scalePoint(next.center, center, factor);
+    next.radius = Math.max(0.001, Number(next.radius || 0) * factor);
+    return next;
+  }
+  if (next.type === 'text') {
+    next.position = scalePoint(next.position, center, factor);
+    next.height = Math.max(0.1, Number(next.height || 0) * factor);
+    scaleTextMetadata(next, center, factor);
     return next;
   }
   return next;

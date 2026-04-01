@@ -11,8 +11,7 @@ import { ViewState } from '../state/viewState.js';
 import { CommandBus } from '../commands/command_bus.js';
 import { registerCadCommands } from '../commands/command_registry.js';
 import { createToolContext } from '../tools/tool_context.js';
-import { hydrateDocument } from '../adapters/document_json_adapter.js';
-import { importCadgfDocument, isCadgfDocument } from '../adapters/cadgf_document_adapter.js';
+import { applyResolvedEditorImport, resolveEditorImportPayload } from '../adapters/editor_import_adapter.js';
 
 function usage() {
   return [
@@ -353,12 +352,9 @@ function main() {
 
   const raw = JSON.parse(fs.readFileSync(inputDoc, 'utf8'));
   const document = new DocumentState();
-  if (isCadgfDocument(raw)) {
-    const imported = importCadgfDocument(raw);
-    document.restore(imported.docSnapshot, { silent: true });
-  } else {
-    hydrateDocument(document, raw);
-  }
+  const resolvedImport = resolveEditorImportPayload(raw);
+  applyResolvedEditorImport(document, resolvedImport, null, null, null, { silent: true });
+  document.setCurrentSpaceContext(document.getCurrentSpaceContext(), { silent: true });
 
   const selection = new SelectionState();
   const snap = new SnapState();

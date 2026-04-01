@@ -2920,33 +2920,44 @@ FLOW_JS="$(cat <<'__CAD_UI_FLOW__'
     throw new Error('Selection provenance layer focus mismatch before edit: ' + JSON.stringify(focusedLayerBefore));
   }
 
-  await page.fill('#cad-property-form input[name=\"layerId\"]', '1');
+  const targetLayerId = 1;
+  const targetLayer = await readLayerById(targetLayerId);
+  const targetLayerName = String(targetLayer?.name || '').trim();
+  const targetLayerColor = String(targetLayer?.color || '').trim();
+  if (!targetLayerName || !targetLayerColor) {
+    throw new Error('Selection provenance target layer contract missing: ' + JSON.stringify(targetLayer));
+  }
+  const targetLayerLabel = `${targetLayerId}:${targetLayerName}`;
+
+  await page.fill('#cad-property-form input[name=\"layerId\"]', String(targetLayerId));
   await blurActive();
-  await page.waitForFunction(() => {
+  await page.waitForFunction((expected) => {
+    const layer = document.querySelector('#cad-selection-details [data-selection-field="layer"] strong');
     const source = document.querySelector('#cad-selection-details [data-selection-field=\"color-source\"] strong');
     const color = document.querySelector('#cad-selection-details [data-selection-field=\"effective-color\"] strong');
-    return source && String(source.textContent || '').trim() === 'BYLAYER'
-      && color && String(color.textContent || '').trim() === '#ff0000';
-  }, null, { timeout: timeoutMs });
+    return layer && String(layer.textContent || '').trim() === expected.layerLabel
+      && source && String(source.textContent || '').trim() === 'BYLAYER'
+      && color && String(color.textContent || '').trim() === expected.layerColor;
+  }, { layerLabel: targetLayerLabel, layerColor: targetLayerColor }, { timeout: timeoutMs });
   const selectionSummaryEntityIds = await readSelectionIds();
   const selectionContractAfter = await readSelectionDetails();
   const selectionContractEntity = await readEntityById(selectionSummaryEntityIds[0]);
   if (
     !selectionContractAfter
-    || selectionContractAfter.items.layer !== '1:L1'
+    || selectionContractAfter.items.layer !== targetLayerLabel
     || selectionContractAfter.items['color-source'] !== 'BYLAYER'
-    || selectionContractAfter.items['effective-color'] !== '#ff0000'
+    || selectionContractAfter.items['effective-color'] !== targetLayerColor
   ) {
     throw new Error('Selection provenance reassignment summary mismatch: ' + JSON.stringify(selectionContractAfter));
   }
-  if (selectionContractAfter.badges.layer !== '1:L1' || selectionContractAfter.badges['color-source'] !== 'BYLAYER') {
+  if (selectionContractAfter.badges.layer !== targetLayerLabel || selectionContractAfter.badges['color-source'] !== 'BYLAYER') {
     throw new Error('Selection provenance reassignment badge mismatch: ' + JSON.stringify(selectionContractAfter));
   }
-  if (!selectionContractEntity || selectionContractEntity.layerId !== 1 || selectionContractEntity.colorSource !== 'BYLAYER') {
+  if (!selectionContractEntity || selectionContractEntity.layerId !== targetLayerId || selectionContractEntity.colorSource !== 'BYLAYER') {
     throw new Error('Selection provenance entity reassignment mismatch: ' + JSON.stringify(selectionContractEntity));
   }
   const focusedLayerAfter = await readFocusedLayerPanel();
-  if (!focusedLayerAfter || focusedLayerAfter.layerId !== 1) {
+  if (!focusedLayerAfter || focusedLayerAfter.layerId !== targetLayerId) {
     throw new Error('Selection provenance layer focus mismatch after edit: ' + JSON.stringify(focusedLayerAfter));
   }
 
@@ -2956,6 +2967,15 @@ FLOW_JS="$(cat <<'__CAD_UI_FLOW__'
     after: selectionContractAfter,
     focused_layer_before: focusedLayerBefore,
     focused_layer_after: focusedLayerAfter,
+    target_layer: {
+      id: targetLayerId,
+      name: targetLayerName,
+      color: targetLayerColor,
+      visible: targetLayer?.visible,
+      locked: targetLayer?.locked,
+      frozen: targetLayer?.frozen,
+      plottable: targetLayer?.plottable,
+    },
     entity: selectionContractEntity,
     status: (await page.textContent('#cad-status-message')) || '',
   };
@@ -6159,10 +6179,10 @@ if [[ "$FLOW_EXIT_CODE" -eq 0 ]]; then
       cp -f ".playwright-cli/$CLI_SCREENSHOT_NAME" "$SCREENSHOT"
     fi
     echo "[CONSOLE] warnings+"
-    pwcli_cmd "$PWCLI" console warning
   } >>"$PLAYWRIGHT_LOG" 2>&1
 
   pwcli_cmd "$PWCLI" console warning >"$CONSOLE_LOG" 2>&1 || true
+  cat "$CONSOLE_LOG" >>"$PLAYWRIGHT_LOG" 2>/dev/null || true
 else
   {
     echo "[SKIP] screenshot/console because FLOW_EXIT_CODE=$FLOW_EXIT_CODE"
@@ -6462,13 +6482,18 @@ def extract_interaction_checks(flow_payload):
     after = as_dict(provenance.get("after"))
     before_items = as_dict(before.get("items"))
     after_items = as_dict(after.get("items"))
+    target_layer = as_dict(provenance.get("target_layer"))
+    target_layer_id = as_int(target_layer.get("id"), -1)
+    target_layer_name = str(target_layer.get("name") or "")
+    target_layer_color = str(target_layer.get("color") or "")
+    target_layer_label = f"{target_layer_id}:{target_layer_name}" if target_layer_id >= 0 and target_layer_name else ""
     entity = as_dict(provenance.get("entity"))
     checks["selection_provenance_summary_ok"] = (
       str(before.get("mode") or "") == "single"
       and as_int(before.get("entityCount"), 0) == 1
       and str(before.get("primaryType") or "") == "line"
       and str(before_items.get("origin") or "") == "INSERT / fragment"
-      and str(before_items.get("effective-color") or "") == "#808080"
+      and str(before_items.get("effective-color") or "") == "#d0d7de"
       and str(before_items.get("color-source") or "") == "BYLAYER"
       and str(before_items.get("color-aci") or "") == "8"
       and str(before_items.get("space") or "") == "Paper"
@@ -6476,9 +6501,10 @@ def extract_interaction_checks(flow_payload):
       and str(before_items.get("line-type") or "") == "HIDDEN2"
       and str(before_items.get("line-weight") or "") == "0.55"
       and str(before_items.get("line-type-scale") or "") == "1.7"
-      and str(after_items.get("effective-color") or "") == "#ff0000"
+      and str(after_items.get("layer") or "") == target_layer_label
+      and str(after_items.get("effective-color") or "") == target_layer_color
       and str(after_items.get("color-source") or "") == "BYLAYER"
-      and as_int(entity.get("layerId"), -1) == 1
+      and as_int(entity.get("layerId"), -1) == target_layer_id
       and str(entity.get("colorSource") or "") == "BYLAYER"
     )
   if not checks:
@@ -6534,10 +6560,25 @@ if isinstance(flow, dict):
   if interaction_checks:
     payload["interaction_checks"] = interaction_checks
 
+interaction_checks = payload.get("interaction_checks") if isinstance(payload.get("interaction_checks"), dict) else {}
+failed_interaction_checks = []
+if interaction_checks:
+  failed_interaction_checks = sorted(
+    key for key, value in interaction_checks.items()
+    if key != "complete" and not to_bool(value)
+  )
+  payload["interaction_checks_complete"] = to_bool(interaction_checks.get("complete"))
+  payload["first_failed_interaction_check"] = failed_interaction_checks[0] if failed_interaction_checks else ""
+else:
+  payload["interaction_checks_complete"] = True
+  payload["first_failed_interaction_check"] = ""
+
+payload["gate_ok"] = bool(payload.get("ok")) and bool(payload.get("interaction_checks_complete"))
+
 payload["flow_failure_code"] = ""
 payload["flow_failure_detail"] = ""
 payload["flow_failure_stage"] = ""
-if payload.get("ok") is not True:
+if payload.get("gate_ok") is not True:
   flow_step = str(payload.get("flow_step") or "")
   flow_status = str(payload.get("flow_status") or "")
   flow = payload.get("flow")
@@ -6580,6 +6621,15 @@ if payload.get("ok") is not True:
     payload["flow_failure_code"] = classify_flow_failure(err_step, detail)
     payload["flow_failure_detail"] = detail
     payload["flow_failure_stage"] = "flow"
+  elif interaction_checks and not payload.get("interaction_checks_complete"):
+    detail = first_nonempty([
+      payload.get("first_failed_interaction_check"),
+      flow_status,
+      *error_tail,
+    ])
+    payload["flow_failure_code"] = "UI_FLOW_INTERACTION_CHECK_FAIL"
+    payload["flow_failure_detail"] = detail
+    payload["flow_failure_stage"] = "flow"
   else:
     detail = first_nonempty([flow_status, *error_tail])
     code = classify_flow_failure(flow_step, detail)
@@ -6594,7 +6644,27 @@ with open(path, "w", encoding="utf-8") as f:
 print(path)
 PY
 
-if [[ "$MODE" == "gate" && "$OK" != "true" ]]; then
+GATE_OK="$OK"
+if [[ -s "$SUMMARY" ]]; then
+  set +e
+  GATE_OK="$(python3 - "$SUMMARY" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+  payload = json.load(open(path, "r", encoding="utf-8", errors="replace"))
+except Exception:
+  print("false")
+  raise SystemExit(0)
+
+print("true" if bool(payload.get("gate_ok")) else "false")
+PY
+)"
+  set -e
+fi
+
+if [[ "$MODE" == "gate" && "$GATE_OK" != "true" ]]; then
   exit 2
 fi
 exit 0

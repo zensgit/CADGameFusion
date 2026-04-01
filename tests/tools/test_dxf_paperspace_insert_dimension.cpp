@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 static bool query_doc_meta_value(const cadgf_document* doc, const std::string& key, std::string* out) {
@@ -96,12 +97,15 @@ int main(int argc, char** argv) {
     int mtext_count = 0;
     int dimension_text_count = 0;
     int dimension_geometry_count = 0;
+    int dimension_bundle_id = -1;
+    int dimension_split_member_count = 0;
+    std::unordered_map<int, int> dimension_bundle_members;
 
     for (int i = 0; i < entity_count; ++i) {
         cadgf_entity_id id = 0;
         assert(cadgf_document_get_entity_id_at(doc, i, &id));
-        cadgf_entity_info info{};
-        assert(cadgf_document_get_entity_info(doc, id, &info));
+        cadgf_entity_info_v2 info{};
+        assert(cadgf_document_get_entity_info_v2(doc, id, &info));
 
         std::string space;
         if (!query_entity_meta_value(doc, id, "space", &space) || space != "1") {
@@ -154,12 +158,26 @@ int main(int argc, char** argv) {
         if (source_type == "DIMENSION") {
             std::string edit_mode;
             std::string proxy_kind;
+            std::string source_bundle_meta;
             assert(query_entity_meta_value(doc, id, "edit_mode", &edit_mode));
             assert(query_entity_meta_value(doc, id, "proxy_kind", &proxy_kind));
+            assert(query_entity_meta_value(doc, id, "source_bundle_id", &source_bundle_meta));
             assert(edit_mode == "proxy");
             assert(proxy_kind == "dimension");
             assert(query_entity_meta_value(doc, id, "dim_style", &meta));
             assert(meta == "Standard");
+            int source_bundle = -1;
+            assert(parse_meta_int(source_bundle_meta, &source_bundle));
+            assert(source_bundle >= 1);
+            if (dimension_bundle_id < 0) {
+                dimension_bundle_id = source_bundle;
+            } else {
+                assert(dimension_bundle_id == source_bundle);
+            }
+            dimension_bundle_members[source_bundle] += 1;
+            if (info.group_id != source_bundle) {
+                dimension_split_member_count += 1;
+            }
             if (info.type != CADGF_ENTITY_TYPE_TEXT) {
                 dimension_geometry_count += 1;
             }
@@ -172,6 +190,9 @@ int main(int argc, char** argv) {
     assert(mtext_count >= 1);
     assert(dimension_text_count >= 1);
     assert(dimension_geometry_count >= 1);
+    assert(dimension_bundle_id >= 1);
+    assert(dimension_bundle_members[dimension_bundle_id] == 9);
+    assert(dimension_split_member_count == 2);
 
     cadgf_document_destroy(doc);
     return 0;
