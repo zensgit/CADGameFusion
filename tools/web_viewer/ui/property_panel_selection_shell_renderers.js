@@ -1,4 +1,4 @@
-import { describeSelectionOrigin } from './selection_presenter.js';
+import { describeSelectionOrigin } from './selection_meta_helpers.js';
 
 function renderSelectionBadgeRow(doc, badges) {
   if (!Array.isArray(badges) || badges.length === 0) {
