@@ -1,7 +1,7 @@
 import {
   isReadOnlySelectionEntity,
   describeSelectionOrigin,
-} from './selection_presenter.js';
+} from './selection_meta_helpers.js';
 
 export function formatSelectionSummary(entities) {
   const list = Array.isArray(entities) ? entities.filter(Boolean) : [];

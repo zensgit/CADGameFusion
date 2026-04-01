@@ -3,7 +3,7 @@ import {
   isReadOnlySelectionEntity,
   formatSelectionLayer,
   listSelectionLayerFlags,
-} from './selection_presenter.js';
+} from './selection_meta_helpers.js';
 
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
