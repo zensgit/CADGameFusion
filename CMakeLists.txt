@@ -137,6 +137,9 @@ set(EDITOR_ASSEMBLY_ROUNDTRIP_OUT_DIR "${CMAKE_BINARY_DIR}/editor_assembly_round
 add_test(NAME editor_assembly_roundtrip_smoke
   COMMAND ${CMAKE_COMMAND}
     -Drepo="${CMAKE_SOURCE_DIR}"
+    -Dexe="$<TARGET_FILE:convert_cli>"
+    -Dplugin="$<TARGET_FILE:cadgf_dxf_importer_plugin>"
+    -Dinputdxf="${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_blocks.dxf"
     -Dinputdoc="${CONVERT_CLI_BLOCK_OUT_DIR}/document.json"
     -Doutdir="${EDITOR_ASSEMBLY_ROUNDTRIP_OUT_DIR}"
     -P "${CMAKE_SOURCE_DIR}/cmake/RunEditorAssemblyRoundtrip.cmake")

@@ -970,6 +970,7 @@ main() {
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target cadgf_json_importer_plugin --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target cadgf_dxf_importer_plugin --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target cadgf_dxf_exporter_plugin --parallel || true
+  cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target test_dxf_exporter_plugin_smoke --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target cadgf_dwg_importer_plugin --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target test_dwg_matrix --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target test_convert_roundtrip --parallel || true

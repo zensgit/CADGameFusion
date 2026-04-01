@@ -773,7 +773,7 @@ foreach(_needle
     [=["name": "assembly_dense_table_textonly"]=]
     [=["name": "assembly_dense_text_kinds_textonly"]=]
     [=["name": "assembly_dense_hatch_dense_proxy"]=]
-    [=["derived_proxy_count": 9]=]
+    [=["derived_proxy_count": 11]=]
     [=["exploded_origin_count": 2]=]
     [=["assembly_tracked_count": 14]=]
     [=["assembly_group_count": 5]=]
