@@ -163,41 +163,8 @@ export { buildSelectionContract } from './selection_contract.js';
 import { buildSelectionDetailFacts, buildMultiSelectionDetailFacts } from './selection_detail_facts.js';
 export { buildSelectionDetailFacts } from './selection_detail_facts.js';
 
-export function buildPropertyMetadataFacts(entity, options = {}) {
-  if (!entity) return [];
-  const facts = [...buildSelectionDetailFacts(entity, options)];
-
-  const provenanceFacts = [];
-  pushFact(provenanceFacts, 'source-type', 'Source Type', normalizeText(entity.sourceType));
-  pushFact(provenanceFacts, 'edit-mode', 'Edit Mode', normalizeText(entity.editMode));
-  pushFact(provenanceFacts, 'proxy-kind', 'Proxy Kind', normalizeText(entity.proxyKind));
-  insertFactsAfterFirstKey(facts, 'entity-visibility', provenanceFacts);
-
-  const hatchFacts = [];
-  if (Number.isFinite(entity.hatchId)) {
-    pushFact(hatchFacts, 'hatch-id', 'Hatch ID', String(Math.trunc(entity.hatchId)));
-  }
-  pushFact(hatchFacts, 'hatch-pattern', 'Hatch Pattern', normalizeText(entity.hatchPattern));
-  insertFactsAfterFirstKey(facts, 'line-type-scale-source', hatchFacts);
-
-  const dimFacts = [];
-  if (Number.isFinite(entity.dimType)) {
-    pushFact(dimFacts, 'dim-type', 'Dim Type', String(entity.dimType));
-  }
-  pushFact(dimFacts, 'dim-style', 'Dim Style', normalizeText(entity.dimStyle));
-  insertFactsAfterFirstKey(facts, ['attribute-modes', 'released-attribute-modes'], dimFacts);
-
-  const dimTextFacts = [];
-  if (entity.dimTextPos && Number.isFinite(entity.dimTextPos.x) && Number.isFinite(entity.dimTextPos.y)) {
-    pushFact(dimTextFacts, 'dim-text-pos', 'Dim Text Pos', formatPoint(entity.dimTextPos));
-  }
-  if (Number.isFinite(entity.dimTextRotation)) {
-    pushFact(dimTextFacts, 'dim-text-rotation', 'Dim Text Rotation', formatCompactNumber(entity.dimTextRotation));
-  }
-  insertFactsAfterFirstKey(facts, ['current-offset', 'source-text-rotation', 'source-text-pos'], dimTextFacts);
-
-  return facts;
-}
+import { buildPropertyMetadataFacts } from './property_metadata_facts.js';
+export { buildPropertyMetadataFacts } from './property_metadata_facts.js';
 
 function buildPeerTargets(peerSummary) {
   if (!peerSummary || !Array.isArray(peerSummary.peers)) return [];
