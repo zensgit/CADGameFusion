@@ -110,19 +110,6 @@ function formatSourceGroup(entity) {
   return [sourceType, proxyKind].filter(Boolean).join(' / ');
 }
 
-function idsEqual(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
-  return left.every((value, index) => value === right[index]);
-}
-
-function hasSourceTextPlacement(entity) {
-  return isDirectEditableSourceTextEntity(entity)
-    && entity?.sourceTextPos
-    && Number.isFinite(entity.sourceTextPos.x)
-    && Number.isFinite(entity.sourceTextPos.y)
-    && Number.isFinite(entity.sourceTextRotation);
-}
-
 export function supportsInsertTextPositionEditing(entity) {
   return isDirectEditableInsertTextProxyEntity(entity)
     && typeof entity?.attributeLockPosition === 'boolean'
