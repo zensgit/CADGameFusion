@@ -24,10 +24,13 @@ import {
   formatReleasedInsertArchiveModes,
   summarizeReleasedInsertArchiveSelection,
 } from './selection_released_archive_helpers.js';
-
-function normalizeText(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
+import {
+  normalizeText,
+  formatCompactNumber,
+  formatPoint,
+  formatPeerContext,
+  formatPeerTarget,
+} from './selection_display_helpers.js';
 
 function resolveLayer(getLayer, layerId) {
   if (typeof getLayer !== 'function' || !Number.isFinite(layerId)) return null;
@@ -43,31 +46,6 @@ function pushFact(facts, key, label, value, extra = {}) {
     value: String(value),
     ...extra,
   });
-}
-
-function formatCompactNumber(value) {
-  if (!Number.isFinite(value)) return '';
-  const rounded = Math.abs(value) < 1e-9 ? 0 : value;
-  const text = Number(rounded).toFixed(3).replace(/\.?0+$/, '');
-  return text === '-0' ? '0' : text;
-}
-
-function formatPoint(value) {
-  if (!value || !Number.isFinite(value.x) || !Number.isFinite(value.y)) return '';
-  return `${formatCompactNumber(value.x)}, ${formatCompactNumber(value.y)}`;
-}
-
-function formatPeerContext(peer) {
-  if (!peer) return '';
-  const space = formatSpaceLabel(peer.space);
-  const layout = normalizeText(peer.layout);
-  return layout ? `${space} / ${layout}` : space;
-}
-
-function formatPeerTarget(peer, index) {
-  const context = formatPeerContext(peer);
-  if (!context) return '';
-  return `${index + 1}: ${context}`;
 }
 
 function formatSourceGroup(entity) {
