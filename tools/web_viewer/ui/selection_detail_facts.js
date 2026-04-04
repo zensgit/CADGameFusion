@@ -1,24 +1,11 @@
-import { resolveEffectiveEntityColor, resolveEffectiveEntityStyle, resolveEntityStyleSources } from '../line_style.js';
-import {
-  isInsertGroupEntity,
-  resolveSourceTextGuide,
-  resolveReleasedInsertArchive,
-  summarizeInsertGroupMembers,
-  summarizeInsertPeerInstances,
-  summarizeReleasedInsertPeerInstances,
-  summarizeSourceGroupMembers,
-} from '../insert_group.js';
-import {
-  isReadOnlySelectionEntity,
-} from './selection_meta_helpers.js';
 import {
   summarizeReleasedInsertArchiveSelection,
 } from './selection_released_archive_helpers.js';
-import { resolveLayer } from './selection_layer_helpers.js';
 import { buildReleasedInsertArchiveSelectionRows } from './released_insert_selection_rows.js';
 import { buildPeerSummaryRows } from './peer_summary_rows.js';
 import { appendSelectionLineStyleRows } from './selection_line_style_rows.js';
 import { appendSelectionBaseFacts } from './selection_base_facts.js';
+import { buildSelectionDetailContext } from './selection_detail_context.js';
 import {
   appendReleasedArchiveIdentityRows,
   appendReleasedArchiveAttributeRows,
@@ -36,44 +23,26 @@ export function buildMultiSelectionDetailFacts(entities, options = {}) {
 
 export function buildSelectionDetailFacts(entity, options = {}) {
   if (!entity) return [];
-  const getLayer = typeof options.getLayer === 'function' ? options.getLayer : null;
-  const listEntities = typeof options.listEntities === 'function' ? options.listEntities : null;
-  const layer = resolveLayer(getLayer, entity?.layerId);
-  const effectiveStyle = resolveEffectiveEntityStyle(entity, layer);
-  const effectiveColor = resolveEffectiveEntityColor(entity, layer);
-  const styleSources = resolveEntityStyleSources(entity);
-  const entities = listEntities ? listEntities() : null;
-  const sourceGroupSummary = entities ? summarizeSourceGroupMembers(entities, entity, { isReadOnly: isReadOnlySelectionEntity }) : null;
-  const insertGroupSummary = isInsertGroupEntity(entity)
-    ? summarizeInsertGroupMembers(entities, entity, { isReadOnly: isReadOnlySelectionEntity })
-    : null;
-  const insertPeerSummary = isInsertGroupEntity(entity)
-    ? summarizeInsertPeerInstances(entities, entity, { isReadOnly: isReadOnlySelectionEntity })
-    : null;
-  const releasedInsertPeerSummary = resolveReleasedInsertArchive(entity)
-    ? summarizeReleasedInsertPeerInstances(entities, entity, { isReadOnly: isReadOnlySelectionEntity })
-    : null;
-  const sourceTextGuide = entities ? resolveSourceTextGuide(entities, entity) : null;
+  const context = buildSelectionDetailContext(entity, options);
   const facts = [];
-  appendSelectionBaseFacts(facts, entity, { getLayer, effectiveColor });
-  const releasedInsertArchive = resolveReleasedInsertArchive(entity);
-  appendReleasedArchiveIdentityRows(facts, releasedInsertArchive);
-  appendReleasedArchiveAttributeRows(facts, releasedInsertArchive);
-  const groupRows = insertGroupSummary
-    ? buildSharedInsertGroupInfoRows(entity, insertGroupSummary, {
-      listEntities,
-      peerSummary: insertPeerSummary,
+  appendSelectionBaseFacts(facts, entity, { getLayer: context.getLayer, effectiveColor: context.effectiveColor });
+  appendReleasedArchiveIdentityRows(facts, context.releasedInsertArchive);
+  appendReleasedArchiveAttributeRows(facts, context.releasedInsertArchive);
+  const groupRows = context.insertGroupSummary
+    ? buildSharedInsertGroupInfoRows(entity, context.insertGroupSummary, {
+      listEntities: context.listEntities,
+      peerSummary: context.insertPeerSummary,
       includeIdentityRows: false,
       includeBlockName: false,
       includeBounds: true,
     })
-    : buildSharedSourceGroupInfoRows(entity, sourceGroupSummary, {
-      listEntities,
+    : buildSharedSourceGroupInfoRows(entity, context.sourceGroupSummary, {
+      listEntities: context.listEntities,
       includeIdentityRows: false,
     });
   facts.push(...groupRows);
-  buildPeerSummaryRows(facts, releasedInsertPeerSummary, { released: true });
-  appendSelectionLineStyleRows(facts, effectiveStyle, styleSources);
-  appendSourceTextGuideRows(facts, entity, sourceTextGuide);
+  buildPeerSummaryRows(facts, context.releasedInsertPeerSummary, { released: true });
+  appendSelectionLineStyleRows(facts, context.effectiveStyle, context.styleSources);
+  appendSourceTextGuideRows(facts, entity, context.sourceTextGuide);
   return facts;
 }
