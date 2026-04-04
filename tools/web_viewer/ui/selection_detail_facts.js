@@ -27,12 +27,11 @@ import {
   normalizeText,
   formatCompactNumber,
   formatPoint,
-  formatPeerContext,
-  formatPeerTarget,
 } from './selection_display_helpers.js';
 import { resolveLayer } from './selection_layer_helpers.js';
 import { formatSelectionAttributeModes } from './selection_attribute_mode_helpers.js';
 import { buildReleasedInsertArchiveSelectionRows } from './released_insert_selection_rows.js';
+import { buildPeerSummaryRows } from './peer_summary_rows.js';
 import {
   buildSourceGroupInfoRows as buildSharedSourceGroupInfoRows,
   buildInsertGroupInfoRows as buildSharedInsertGroupInfoRows,
@@ -138,25 +137,7 @@ export function buildSelectionDetailFacts(entity, options = {}) {
       includeIdentityRows: false,
     });
   facts.push(...groupRows);
-  if (releasedInsertPeerSummary?.peerCount > 1) {
-    const peerInstance = releasedInsertPeerSummary.currentIndex >= 0
-      ? `${releasedInsertPeerSummary.currentIndex + 1} / ${releasedInsertPeerSummary.peerCount}`
-      : `Archived / ${releasedInsertPeerSummary.peerCount}`;
-    pushFact(facts, 'released-peer-instance', 'Released Peer Instance', peerInstance);
-    pushFact(facts, 'released-peer-instances', 'Released Peer Instances', String(releasedInsertPeerSummary.peerCount));
-    pushFact(
-      facts,
-      'released-peer-layouts',
-      'Released Peer Layouts',
-      releasedInsertPeerSummary.peers.map((peer) => formatPeerContext(peer)).filter(Boolean).join(' | ')
-    );
-    pushFact(
-      facts,
-      'released-peer-targets',
-      'Released Peer Targets',
-      releasedInsertPeerSummary.peers.map((peer, index) => formatPeerTarget(peer, index)).filter(Boolean).join(' | ')
-    );
-  }
+  buildPeerSummaryRows(facts, releasedInsertPeerSummary, { released: true });
   pushFact(facts, 'line-type', 'Line Type', normalizeText(effectiveStyle.lineType));
   pushFact(facts, 'line-type-source', 'Line Type Source', styleSources.lineTypeSource);
   if (styleSources.lineWeightSource === 'EXPLICIT' || (Number.isFinite(effectiveStyle.lineWeight) && Number(effectiveStyle.lineWeight) > 0)) {
