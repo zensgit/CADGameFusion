@@ -1,7 +1,3 @@
-import {
-  isDirectEditableInsertTextProxyEntity,
-} from '../insert_group.js';
-
 export { formatSpaceLabel } from '../space_layout.js';
 export { resolveReleasedInsertArchive } from '../insert_group.js';
 export {
@@ -16,11 +12,7 @@ export {
 } from './selection_meta_helpers.js';
 export { formatSelectionSummary, formatSelectionStatus } from './selection_overview.js';
 
-export function supportsInsertTextPositionEditing(entity) {
-  return isDirectEditableInsertTextProxyEntity(entity)
-    && typeof entity?.attributeLockPosition === 'boolean'
-    && entity.attributeLockPosition !== true;
-}
+export { supportsInsertTextPositionEditing } from './selection_editability_helpers.js';
 
 export {
   formatReleasedInsertArchiveOrigin,
