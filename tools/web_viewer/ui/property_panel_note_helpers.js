@@ -12,18 +12,10 @@ import {
 import {
   formatReleasedInsertArchiveOrigin,
 } from './selection_released_archive_helpers.js';
-
-function resolveLayer(getLayer, layerId) {
-  if (typeof getLayer !== 'function' || !Number.isFinite(layerId)) return null;
-  const layer = getLayer(Math.trunc(layerId));
-  return layer && typeof layer === 'object' ? layer : null;
-}
-
-function supportsInsertTextPositionEditing(entity) {
-  return isDirectEditableInsertTextProxyEntity(entity)
-    && typeof entity?.attributeLockPosition === 'boolean'
-    && entity.attributeLockPosition !== true;
-}
+import {
+  resolveLayer,
+  supportsInsertTextPositionEditing,
+} from './selection_editability_helpers.js';
 
 export function buildPropertyPanelReadOnlyNote(entities, primary, actionContext = null) {
   const list = Array.isArray(entities) ? entities.filter(Boolean) : [];
