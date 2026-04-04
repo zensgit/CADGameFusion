@@ -25,16 +25,12 @@ import {
   summarizeReleasedInsertArchiveSelection,
 } from './selection_released_archive_helpers.js';
 import {
+  normalizeText,
   formatCompactNumber,
+  formatPoint,
   formatPeerContext,
   formatPeerTarget,
-  formatPoint,
-  formatSourceGroup,
 } from './selection_display_helpers.js';
-
-function normalizeText(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
 
 function resolveLayer(getLayer, layerId) {
   if (typeof getLayer !== 'function' || !Number.isFinite(layerId)) return null;
@@ -50,6 +46,12 @@ function pushFact(facts, key, label, value, extra = {}) {
     value: String(value),
     ...extra,
   });
+}
+
+function formatSourceGroup(entity) {
+  const sourceType = normalizeText(entity?.sourceType);
+  const proxyKind = normalizeText(entity?.proxyKind);
+  return [sourceType, proxyKind].filter(Boolean).join(' / ');
 }
 
 function formatAttributeModes(entity) {

@@ -11,10 +11,9 @@ import {
 } from '../insert_group.js';
 import {
   formatCompactNumber,
+  formatPoint,
   formatPeerContext,
   formatPeerTarget,
-  formatPoint,
-  formatSourceGroup,
 } from './selection_display_helpers.js';
 
 function pushInfo(rows, label, value, key = '') {
@@ -24,6 +23,12 @@ function pushInfo(rows, label, value, key = '') {
     label,
     value: String(value),
   });
+}
+
+function formatSourceGroup(entity) {
+  const sourceType = typeof entity?.sourceType === 'string' ? entity.sourceType.trim().toUpperCase() : '';
+  const proxyKind = typeof entity?.proxyKind === 'string' ? entity.proxyKind.trim().toLowerCase() : '';
+  return [sourceType, proxyKind].filter(Boolean).join(' / ');
 }
 
 function resolveEntities(listEntities) {

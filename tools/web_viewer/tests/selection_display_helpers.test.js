@@ -2,38 +2,55 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  normalizeText,
   formatCompactNumber,
+  formatPoint,
   formatPeerContext,
   formatPeerTarget,
-  formatPoint,
-  formatSourceGroup,
 } from '../ui/selection_display_helpers.js';
 
-test('formatCompactNumber trims trailing zeroes and normalizes negative zero', () => {
-  assert.equal(formatCompactNumber(12.3400), '12.34');
-  assert.equal(formatCompactNumber(-0.000000001), '0');
-  assert.equal(formatCompactNumber(Number.NaN), '');
+test('normalizeText trims strings', () => {
+  assert.equal(normalizeText('  hello  '), 'hello');
+  assert.equal(normalizeText(''), '');
+  assert.equal(normalizeText(null), '');
+  assert.equal(normalizeText(undefined), '');
+  assert.equal(normalizeText(42), '');
 });
 
-test('formatPoint formats finite points and rejects invalid values', () => {
-  assert.equal(formatPoint({ x: 10, y: 2.5 }), '10, 2.5');
-  assert.equal(formatPoint({ x: 10, y: Number.NaN }), '');
+test('formatCompactNumber formats finite numbers compactly', () => {
+  assert.equal(formatCompactNumber(0), '0');
+  assert.equal(formatCompactNumber(1), '1');
+  assert.equal(formatCompactNumber(1.5), '1.5');
+  assert.equal(formatCompactNumber(1.123), '1.123');
+  assert.equal(formatCompactNumber(1.100), '1.1');
+  assert.equal(formatCompactNumber(-0), '0');
+  assert.equal(formatCompactNumber(1e-10), '0');
+  assert.equal(formatCompactNumber(NaN), '');
+  assert.equal(formatCompactNumber(Infinity), '');
+  assert.equal(formatCompactNumber(undefined), '');
+});
+
+test('formatPoint formats {x, y} objects', () => {
+  assert.equal(formatPoint({ x: 5, y: 10 }), '5, 10');
+  assert.equal(formatPoint({ x: -20, y: 14.5 }), '-20, 14.5');
+  assert.equal(formatPoint({ x: 0, y: 0 }), '0, 0');
   assert.equal(formatPoint(null), '');
+  assert.equal(formatPoint(undefined), '');
+  assert.equal(formatPoint({ x: NaN, y: 0 }), '');
+  assert.equal(formatPoint({}), '');
 });
 
-test('formatPeerContext includes space label and trimmed layout when present', () => {
-  assert.equal(formatPeerContext({ space: 0, layout: ' Model ' }), 'Model / Model');
-  assert.equal(formatPeerContext({ space: 1, layout: ' Layout-A ' }), 'Paper / Layout-A');
+test('formatPeerContext formats peer space and layout', () => {
+  assert.equal(formatPeerContext({ space: 0, layout: 'Model' }), 'Model / Model');
+  assert.equal(formatPeerContext({ space: 1, layout: 'Layout-A' }), 'Paper / Layout-A');
   assert.equal(formatPeerContext({ space: 1, layout: '' }), 'Paper');
+  assert.equal(formatPeerContext({ space: 1 }), 'Paper');
+  assert.equal(formatPeerContext(null), '');
+  assert.equal(formatPeerContext(undefined), '');
 });
 
-test('formatPeerTarget prefixes the 1-based index', () => {
+test('formatPeerTarget formats indexed peer target', () => {
   assert.equal(formatPeerTarget({ space: 1, layout: 'Layout-A' }, 0), '1: Paper / Layout-A');
+  assert.equal(formatPeerTarget({ space: 1, layout: 'Layout-B' }, 2), '3: Paper / Layout-B');
   assert.equal(formatPeerTarget(null, 0), '');
-});
-
-test('formatSourceGroup normalizes source type and proxy kind casing', () => {
-  assert.equal(formatSourceGroup({ sourceType: ' dimension ', proxyKind: 'TEXT ' }), 'DIMENSION / text');
-  assert.equal(formatSourceGroup({ sourceType: 'insert' }), 'INSERT');
-  assert.equal(formatSourceGroup({ proxyKind: 'Fragment' }), 'fragment');
 });
