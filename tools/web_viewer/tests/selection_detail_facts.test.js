@@ -71,8 +71,23 @@ test('buildSelectionDetailFacts includes origin, layer, effective-color, style f
 });
 
 test('buildSelectionDetailFacts includes source-group facts for grouped entity', () => {
-  const entity = makeEntity({ sourceType: 'DIMENSION', proxyKind: 'text', groupId: 100, editMode: 'proxy', readOnly: true });
-  const member = makeEntity({ id: 2, type: 'line', groupId: 100 });
+  const entity = makeEntity({
+    sourceType: 'DIMENSION',
+    proxyKind: 'text',
+    groupId: 100,
+    sourceBundleId: 101,
+    editMode: 'proxy',
+    readOnly: true,
+  });
+  const member = makeEntity({
+    id: 2,
+    type: 'line',
+    groupId: 100,
+    sourceBundleId: 101,
+    sourceType: 'DIMENSION',
+    start: { x: -20, y: 0 },
+    end: { x: 20, y: 14 },
+  });
   const layer = makeLayer();
   const facts = buildSelectionDetailFacts(entity, makeOptions([layer], [entity, member]));
 
@@ -80,6 +95,58 @@ test('buildSelectionDetailFacts includes source-group facts for grouped entity',
   assert.ok(keys.includes('origin'), 'missing origin');
   assert.ok(keys.includes('group-id'), 'missing group-id');
   assert.equal(facts.find((f) => f.key === 'group-id').value, '100');
+  assert.equal(facts.find((f) => f.key === 'source-group-members').value, '2');
+  assert.equal(facts.find((f) => f.key === 'group-center').value, '0, 7');
+  assert.equal(facts.find((f) => f.key === 'group-bounds').value, '-20, 0 -> 20, 14');
+});
+
+test('buildSelectionDetailFacts preserves insert-group peer rows without insert-only identity duplicates', () => {
+  const entity = makeEntity({
+    type: 'text',
+    groupId: 500,
+    sourceType: 'INSERT',
+    proxyKind: 'text',
+    blockName: 'DoorTag',
+    space: 1,
+    layout: 'Layout-B',
+    position: { x: 0, y: 20 },
+  });
+  const member = makeEntity({
+    id: 2,
+    type: 'line',
+    groupId: 500,
+    sourceType: 'INSERT',
+    blockName: 'DoorTag',
+    space: 1,
+    layout: 'Layout-B',
+    start: { x: -18, y: 20 },
+    end: { x: 18, y: 34 },
+  });
+  const peer = makeEntity({
+    id: 3,
+    type: 'text',
+    groupId: 500,
+    sourceType: 'INSERT',
+    proxyKind: 'text',
+    blockName: 'DoorTag',
+    position: { x: 50, y: 20 },
+    space: 1,
+    layout: 'Layout-C',
+  });
+  const facts = buildSelectionDetailFacts(entity, makeOptions([makeLayer()], [entity, member, peer]));
+  const byKey = Object.fromEntries(facts.map((fact) => [fact.key, fact.value]));
+
+  assert.equal(byKey['insert-group-members'], '2');
+  assert.equal(byKey['group-source'], 'INSERT / text');
+  assert.equal(byKey['group-center'], '0, 27');
+  assert.equal(byKey['group-bounds'], '-18, 20 -> 18, 34');
+  assert.equal(byKey['peer-instance'], '1 / 2');
+  assert.equal(byKey['peer-instances'], '2');
+  assert.equal(byKey['peer-layouts'], 'Paper / Layout-B | Paper / Layout-C');
+  assert.equal(byKey['peer-targets'], '1: Paper / Layout-B | 2: Paper / Layout-C');
+  assert.equal(byKey['block-name'], 'DoorTag');
+  assert.equal(facts.filter((fact) => fact.key === 'group-id').length, 1);
+  assert.equal(facts.filter((fact) => fact.key === 'block-name').length, 1);
 });
 
 test('buildSelectionDetailFacts includes source text position for editable source text', () => {
