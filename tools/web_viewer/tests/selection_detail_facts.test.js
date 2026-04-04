@@ -170,6 +170,63 @@ test('buildSelectionDetailFacts includes source text position for editable sourc
   assert.equal(facts.find((f) => f.key === 'source-text-pos').value, '5, 10');
 });
 
+test('buildSelectionDetailFacts adopts shared released peer rows for single-selection released inserts', () => {
+  const archive = {
+    sourceType: 'INSERT',
+    proxyKind: 'text',
+    editMode: 'proxy',
+    groupId: 700,
+    blockName: 'AttdefBlock',
+    textKind: 'attdef',
+    attributeTag: 'ATTDEF_TAG',
+  };
+  const entity = makeEntity({
+    id: 1,
+    type: 'text',
+    space: 1,
+    layout: 'Layout-A',
+    releasedInsertArchive: archive,
+  });
+  const peerA = makeEntity({
+    id: 2,
+    type: 'text',
+    groupId: 700,
+    sourceType: 'INSERT',
+    proxyKind: 'text',
+    blockName: 'AttdefBlock',
+    space: 1,
+    layout: 'Layout-A',
+  });
+  const peerB = makeEntity({
+    id: 3,
+    type: 'text',
+    groupId: 700,
+    sourceType: 'INSERT',
+    proxyKind: 'text',
+    blockName: 'AttdefBlock',
+    space: 1,
+    layout: 'Layout-B',
+  });
+  const peerC = makeEntity({
+    id: 4,
+    type: 'text',
+    groupId: 700,
+    sourceType: 'INSERT',
+    proxyKind: 'text',
+    blockName: 'AttdefBlock',
+    space: 1,
+    layout: 'Layout-C',
+  });
+
+  const facts = buildSelectionDetailFacts(entity, makeOptions([makeLayer()], [entity, peerA, peerB, peerC]));
+  const byKey = Object.fromEntries(facts.map((fact) => [fact.key, fact.value]));
+
+  assert.equal(byKey['released-peer-instance'], '1 / 3');
+  assert.equal(byKey['released-peer-instances'], '3');
+  assert.equal(byKey['released-peer-layouts'], 'Paper / Layout-A | Paper / Layout-B | Paper / Layout-C');
+  assert.equal(byKey['released-peer-targets'], '1: Paper / Layout-A | 2: Paper / Layout-B | 3: Paper / Layout-C');
+});
+
 test('buildMultiSelectionDetailFacts returns empty for non-released entities', () => {
   const e1 = makeEntity({ id: 1 });
   const e2 = makeEntity({ id: 2 });
