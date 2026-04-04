@@ -7,10 +7,9 @@ import {
 import {
   formatCompactNumber,
   formatPoint,
-  formatPeerContext,
-  formatPeerTarget,
   normalizeText,
 } from './selection_display_helpers.js';
+import { buildPeerSummaryRows } from './peer_summary_rows.js';
 
 function pushRow(rows, key, label, value) {
   if (value === null || value === undefined || value === '') return;
@@ -91,22 +90,7 @@ function appendBoundsRows(rows, groupBounds) {
 }
 
 function appendPeerRows(rows, peerSummary) {
-  if (!peerSummary || peerSummary.peerCount <= 1) return;
-  const currentIndex = peerSummary.currentIndex >= 0 ? peerSummary.currentIndex : 0;
-  pushRow(rows, 'peer-instance', 'Peer Instance', `${currentIndex + 1} / ${peerSummary.peerCount}`);
-  pushRow(rows, 'peer-instances', 'Peer Instances', String(peerSummary.peerCount));
-  pushRow(
-    rows,
-    'peer-layouts',
-    'Peer Layouts',
-    peerSummary.peers.map((peer) => formatPeerContext(peer)).filter(Boolean).join(' | ')
-  );
-  pushRow(
-    rows,
-    'peer-targets',
-    'Peer Targets',
-    peerSummary.peers.map((peer, index) => formatPeerTarget(peer, index)).filter(Boolean).join(' | ')
-  );
+  buildPeerSummaryRows(rows, peerSummary);
 }
 
 export function buildSourceGroupInfoRows(entity, sourceGroupSummary, {
