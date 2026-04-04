@@ -1,7 +1,5 @@
 import {
   buildPropertyMetadataFacts,
-  formatReleasedInsertArchiveModes,
-  formatReleasedInsertArchiveOrigin,
 } from './selection_presenter.js';
 import {
   computeInsertGroupBounds,
@@ -15,6 +13,7 @@ import {
   formatPeerContext,
   formatPeerTarget,
 } from './selection_display_helpers.js';
+import { buildReleasedInsertArchiveSelectionRows } from './released_insert_selection_rows.js';
 
 function pushInfo(rows, label, value, key = '') {
   if (value === null || value === undefined || value === '') return;
@@ -123,48 +122,7 @@ export function buildEntityMetadataInfoRows(entity, { getLayer = null, listEntit
 }
 
 export function buildReleasedInsertArchiveSelectionInfoRows(selectionSummary) {
-  if (!selectionSummary?.archive) return [];
-  const rows = [];
-  const { archive, entityCount, peerSummary, commonModes } = selectionSummary;
-  pushInfo(rows, 'Released From', formatReleasedInsertArchiveOrigin(archive), 'released-from');
-  if (Number.isFinite(archive?.groupId)) {
-    pushInfo(rows, 'Released Group ID', String(Math.trunc(archive.groupId)), 'released-group-id');
-  }
-  pushInfo(rows, 'Released Block Name', archive?.blockName, 'released-block-name');
-  pushInfo(rows, 'Released Selection Members', String(entityCount), 'released-selection-members');
-  pushInfo(rows, 'Released Text Kind', archive?.textKind, 'released-text-kind');
-  pushInfo(rows, 'Released Attribute Tag', archive?.attributeTag, 'released-attribute-tag');
-  pushInfo(rows, 'Released Attribute Default', archive?.attributeDefault, 'released-attribute-default');
-  pushInfo(rows, 'Released Attribute Prompt', archive?.attributePrompt, 'released-attribute-prompt');
-  if (Number.isFinite(archive?.attributeFlags)) {
-    pushInfo(rows, 'Released Attribute Flags', String(Math.trunc(archive.attributeFlags)), 'released-attribute-flags');
-  }
-  pushInfo(
-    rows,
-    'Released Attribute Modes',
-    commonModes || formatReleasedInsertArchiveModes(archive),
-    'released-attribute-modes',
-  );
-  if (peerSummary?.peerCount > 1) {
-    const peerInstance = peerSummary.currentIndex >= 0
-      ? `${peerSummary.currentIndex + 1} / ${peerSummary.peerCount}`
-      : `Archived / ${peerSummary.peerCount}`;
-    pushInfo(rows, 'Released Peer Instance', peerInstance, 'released-peer-instance');
-    pushInfo(rows, 'Released Peer Instances', String(peerSummary.peerCount), 'released-peer-instances');
-    pushInfo(
-      rows,
-      'Released Peer Layouts',
-      peerSummary.peers.map((peer) => formatPeerContext(peer)).filter(Boolean).join(' | '),
-      'released-peer-layouts',
-    );
-    pushInfo(
-      rows,
-      'Released Peer Targets',
-      peerSummary.peers.map((peer, index) => formatPeerTarget(peer, index)).filter(Boolean).join(' | '),
-      'released-peer-targets',
-    );
-  }
-  return rows;
+  return buildReleasedInsertArchiveSelectionRows(selectionSummary);
 }
 
 export function buildSourceGroupInfoRows(entity, sourceGroupSummary, { listEntities = null } = {}) {
