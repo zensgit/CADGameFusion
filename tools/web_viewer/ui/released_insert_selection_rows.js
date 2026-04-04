@@ -2,10 +2,7 @@ import {
   formatReleasedInsertArchiveModes,
   formatReleasedInsertArchiveOrigin,
 } from './selection_released_archive_helpers.js';
-import {
-  formatPeerContext,
-  formatPeerTarget,
-} from './selection_display_helpers.js';
+import { buildPeerSummaryRows } from './peer_summary_rows.js';
 
 function pushReleasedSelectionRow(rows, key, label, value) {
   if (value === null || value === undefined || value === '') return;
@@ -39,24 +36,6 @@ export function buildReleasedInsertArchiveSelectionRows(selectionSummary) {
     'Released Attribute Modes',
     commonModes || formatReleasedInsertArchiveModes(archive),
   );
-  if (peerSummary?.peerCount > 1) {
-    const peerInstance = peerSummary.currentIndex >= 0
-      ? `${peerSummary.currentIndex + 1} / ${peerSummary.peerCount}`
-      : `Archived / ${peerSummary.peerCount}`;
-    pushReleasedSelectionRow(rows, 'released-peer-instance', 'Released Peer Instance', peerInstance);
-    pushReleasedSelectionRow(rows, 'released-peer-instances', 'Released Peer Instances', String(peerSummary.peerCount));
-    pushReleasedSelectionRow(
-      rows,
-      'released-peer-layouts',
-      'Released Peer Layouts',
-      peerSummary.peers.map((peer) => formatPeerContext(peer)).filter(Boolean).join(' | '),
-    );
-    pushReleasedSelectionRow(
-      rows,
-      'released-peer-targets',
-      'Released Peer Targets',
-      peerSummary.peers.map((peer, index) => formatPeerTarget(peer, index)).filter(Boolean).join(' | '),
-    );
-  }
+  buildPeerSummaryRows(rows, peerSummary, { released: true });
   return rows;
 }
