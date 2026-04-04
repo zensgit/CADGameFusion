@@ -3,6 +3,7 @@ import {
   summarizeReleasedInsertPeerInstances,
 } from '../insert_group.js';
 import { isReadOnlySelectionEntity } from './selection_meta_helpers.js';
+import { formatSelectionAttributeModes } from './selection_attribute_mode_helpers.js';
 
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -34,20 +35,7 @@ export function formatReleasedInsertArchiveOrigin(entityOrArchive) {
 
 export function formatReleasedInsertArchiveModes(entityOrArchive) {
   const archive = resolveReleasedInsertArchive(entityOrArchive) || entityOrArchive;
-  const hasAttributeMetadata = Number.isFinite(archive?.attributeFlags)
-    || typeof archive?.attributeInvisible === 'boolean'
-    || typeof archive?.attributeConstant === 'boolean'
-    || typeof archive?.attributeVerify === 'boolean'
-    || typeof archive?.attributePreset === 'boolean'
-    || typeof archive?.attributeLockPosition === 'boolean';
-  if (!hasAttributeMetadata) return '';
-  const modes = [];
-  if (archive?.attributeInvisible === true) modes.push('Invisible');
-  if (archive?.attributeConstant === true) modes.push('Constant');
-  if (archive?.attributeVerify === true) modes.push('Verify');
-  if (archive?.attributePreset === true) modes.push('Preset');
-  if (archive?.attributeLockPosition === true) modes.push('Lock Position');
-  return modes.length > 0 ? modes.join(' / ') : 'None';
+  return formatSelectionAttributeModes(archive);
 }
 
 export function summarizeReleasedInsertArchiveSelection(entities, options = {}) {
