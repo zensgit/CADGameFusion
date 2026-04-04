@@ -33,6 +33,7 @@ import {
 } from './selection_display_helpers.js';
 import { resolveLayer } from './selection_layer_helpers.js';
 import { formatSelectionAttributeModes } from './selection_attribute_mode_helpers.js';
+import { buildReleasedInsertArchiveSelectionRows } from './released_insert_selection_rows.js';
 
 function pushFact(facts, key, label, value, extra = {}) {
   if (value === null || value === undefined || value === '') return;
@@ -51,44 +52,8 @@ function formatSourceGroup(entity) {
 }
 
 export function buildMultiSelectionDetailFacts(entities, options = {}) {
-  const facts = [];
   const releasedInsertArchiveSelection = summarizeReleasedInsertArchiveSelection(entities, options);
-  if (!releasedInsertArchiveSelection) {
-    return facts;
-  }
-  const { archive, peerSummary, entityCount, commonModes } = releasedInsertArchiveSelection;
-  pushFact(facts, 'released-from', 'Released From', formatReleasedInsertArchiveOrigin(archive));
-  pushFact(facts, 'released-group-id', 'Released Group ID', String(archive.groupId));
-  pushFact(facts, 'released-block-name', 'Released Block Name', archive.blockName);
-  pushFact(facts, 'released-selection-members', 'Released Selection Members', String(entityCount));
-  pushFact(facts, 'released-text-kind', 'Released Text Kind', archive.textKind);
-  pushFact(facts, 'released-attribute-tag', 'Released Attribute Tag', archive.attributeTag);
-  pushFact(facts, 'released-attribute-default', 'Released Attribute Default', archive.attributeDefault);
-  pushFact(facts, 'released-attribute-prompt', 'Released Attribute Prompt', archive.attributePrompt);
-  if (Number.isFinite(archive.attributeFlags)) {
-    pushFact(facts, 'released-attribute-flags', 'Released Attribute Flags', String(archive.attributeFlags));
-  }
-  pushFact(facts, 'released-attribute-modes', 'Released Attribute Modes', commonModes);
-  if (peerSummary?.peerCount > 1) {
-    const peerInstance = peerSummary.currentIndex >= 0
-      ? `${peerSummary.currentIndex + 1} / ${peerSummary.peerCount}`
-      : `Archived / ${peerSummary.peerCount}`;
-    pushFact(facts, 'released-peer-instance', 'Released Peer Instance', peerInstance);
-    pushFact(facts, 'released-peer-instances', 'Released Peer Instances', String(peerSummary.peerCount));
-    pushFact(
-      facts,
-      'released-peer-layouts',
-      'Released Peer Layouts',
-      peerSummary.peers.map((peer) => formatPeerContext(peer)).filter(Boolean).join(' | ')
-    );
-    pushFact(
-      facts,
-      'released-peer-targets',
-      'Released Peer Targets',
-      peerSummary.peers.map((peer, index) => formatPeerTarget(peer, index)).filter(Boolean).join(' | ')
-    );
-  }
-  return facts;
+  return buildReleasedInsertArchiveSelectionRows(releasedInsertArchiveSelection);
 }
 
 export function buildSelectionDetailFacts(entity, options = {}) {
