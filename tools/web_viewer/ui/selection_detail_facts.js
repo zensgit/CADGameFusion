@@ -32,6 +32,7 @@ import {
   formatPeerTarget,
 } from './selection_display_helpers.js';
 import { resolveLayer } from './selection_layer_helpers.js';
+import { formatSelectionAttributeModes } from './selection_attribute_mode_helpers.js';
 
 function pushFact(facts, key, label, value, extra = {}) {
   if (value === null || value === undefined || value === '') return;
@@ -47,23 +48,6 @@ function formatSourceGroup(entity) {
   const sourceType = normalizeText(entity?.sourceType);
   const proxyKind = normalizeText(entity?.proxyKind);
   return [sourceType, proxyKind].filter(Boolean).join(' / ');
-}
-
-function formatAttributeModes(entity) {
-  const hasAttributeMetadata = Number.isFinite(entity?.attributeFlags)
-    || typeof entity?.attributeInvisible === 'boolean'
-    || typeof entity?.attributeConstant === 'boolean'
-    || typeof entity?.attributeVerify === 'boolean'
-    || typeof entity?.attributePreset === 'boolean'
-    || typeof entity?.attributeLockPosition === 'boolean';
-  if (!hasAttributeMetadata) return '';
-  const modes = [];
-  if (entity?.attributeInvisible === true) modes.push('Invisible');
-  if (entity?.attributeConstant === true) modes.push('Constant');
-  if (entity?.attributeVerify === true) modes.push('Verify');
-  if (entity?.attributePreset === true) modes.push('Preset');
-  if (entity?.attributeLockPosition === true) modes.push('Lock Position');
-  return modes.length > 0 ? modes.join(' / ') : 'None';
 }
 
 export function buildMultiSelectionDetailFacts(entities, options = {}) {
@@ -159,7 +143,7 @@ export function buildSelectionDetailFacts(entity, options = {}) {
   if (Number.isFinite(entity.attributeFlags)) {
     pushFact(facts, 'attribute-flags', 'Attribute Flags', String(Math.trunc(entity.attributeFlags)));
   }
-  pushFact(facts, 'attribute-modes', 'Attribute Modes', formatAttributeModes(entity));
+  pushFact(facts, 'attribute-modes', 'Attribute Modes', formatSelectionAttributeModes(entity));
   const releasedInsertArchive = resolveReleasedInsertArchive(entity);
   pushFact(facts, 'released-from', 'Released From', formatReleasedInsertArchiveOrigin(releasedInsertArchive));
   if (Number.isFinite(releasedInsertArchive?.groupId)) {
