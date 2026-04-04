@@ -1,8 +1,5 @@
 import { buildSelectionDetailFacts } from './selection_detail_facts.js';
-
-function normalizeText(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
+import { normalizeText, formatCompactNumber, formatPoint } from './selection_display_helpers.js';
 
 function pushFact(facts, key, label, value, extra = {}) {
   if (value === null || value === undefined || value === '') return;
@@ -27,18 +24,6 @@ function insertFactsAfterFirstKey(facts, keys, extraFacts) {
   }
   facts.splice(index + 1, 0, ...extraFacts);
   return facts;
-}
-
-function formatCompactNumber(value) {
-  if (!Number.isFinite(value)) return '';
-  const rounded = Math.abs(value) < 1e-9 ? 0 : value;
-  const text = Number(rounded).toFixed(3).replace(/\.?0+$/, '');
-  return text === '-0' ? '0' : text;
-}
-
-function formatPoint(value) {
-  if (!value || !Number.isFinite(value.x) || !Number.isFinite(value.y)) return '';
-  return `${formatCompactNumber(value.x)}, ${formatCompactNumber(value.y)}`;
 }
 
 export function buildPropertyMetadataFacts(entity, options = {}) {

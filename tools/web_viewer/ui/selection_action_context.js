@@ -12,25 +12,8 @@ import {
   summarizeReleasedInsertPeerInstances,
   summarizeSourceGroupMembers,
 } from '../insert_group.js';
-import { formatSpaceLabel } from '../space_layout.js';
 import { isReadOnlySelectionEntity } from './selection_meta_helpers.js';
-
-function normalizeText(value) {
-  return typeof value === 'string' ? value.trim() : '';
-}
-
-function formatPeerContext(peer) {
-  if (!peer) return '';
-  const space = formatSpaceLabel(peer.space);
-  const layout = normalizeText(peer.layout);
-  return layout ? `${space} / ${layout}` : space;
-}
-
-function formatPeerTarget(peer, index) {
-  const context = formatPeerContext(peer);
-  if (!context) return '';
-  return `${index + 1}: ${context}`;
-}
+import { formatPeerTarget } from './selection_display_helpers.js';
 
 function idsEqual(left, right) {
   if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
