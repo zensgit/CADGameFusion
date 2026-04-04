@@ -31,12 +31,7 @@ import {
   formatPeerContext,
   formatPeerTarget,
 } from './selection_display_helpers.js';
-
-function resolveLayer(getLayer, layerId) {
-  if (typeof getLayer !== 'function' || !Number.isFinite(layerId)) return null;
-  const layer = getLayer(Math.trunc(layerId));
-  return layer && typeof layer === 'object' ? layer : null;
-}
+import { resolveLayer } from './selection_layer_helpers.js';
 
 function pushFact(facts, key, label, value, extra = {}) {
   if (value === null || value === undefined || value === '') return;

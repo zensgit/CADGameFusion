@@ -1,6 +1,7 @@
 import {
   isDirectEditableInsertTextProxyEntity,
 } from '../insert_group.js';
+import { resolveLayer } from './selection_layer_helpers.js';
 
 export function supportsInsertTextPositionEditing(entity) {
   return isDirectEditableInsertTextProxyEntity(entity)
@@ -8,8 +9,4 @@ export function supportsInsertTextPositionEditing(entity) {
     && entity.attributeLockPosition !== true;
 }
 
-export function resolveLayer(getLayer, layerId) {
-  if (typeof getLayer !== 'function' || !Number.isFinite(layerId)) return null;
-  const layer = getLayer(Math.trunc(layerId));
-  return layer && typeof layer === 'object' ? layer : null;
-}
+export { resolveLayer };
