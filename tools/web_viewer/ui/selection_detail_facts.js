@@ -27,6 +27,7 @@ import { resolveLayer } from './selection_layer_helpers.js';
 import { formatSelectionAttributeModes } from './selection_attribute_mode_helpers.js';
 import { buildReleasedInsertArchiveSelectionRows } from './released_insert_selection_rows.js';
 import { buildPeerSummaryRows } from './peer_summary_rows.js';
+import { appendSelectionLineStyleRows } from './selection_line_style_rows.js';
 import {
   appendReleasedArchiveIdentityRows,
   appendReleasedArchiveAttributeRows,
@@ -127,16 +128,7 @@ export function buildSelectionDetailFacts(entity, options = {}) {
     });
   facts.push(...groupRows);
   buildPeerSummaryRows(facts, releasedInsertPeerSummary, { released: true });
-  pushFact(facts, 'line-type', 'Line Type', normalizeText(effectiveStyle.lineType));
-  pushFact(facts, 'line-type-source', 'Line Type Source', styleSources.lineTypeSource);
-  if (styleSources.lineWeightSource === 'EXPLICIT' || (Number.isFinite(effectiveStyle.lineWeight) && Number(effectiveStyle.lineWeight) > 0)) {
-    pushFact(facts, 'line-weight', 'Line Weight', String(effectiveStyle.lineWeight));
-  }
-  pushFact(facts, 'line-weight-source', 'Line Weight Source', styleSources.lineWeightSource);
-  if (Number.isFinite(effectiveStyle.lineTypeScale)) {
-    pushFact(facts, 'line-type-scale', 'Line Type Scale', String(effectiveStyle.lineTypeScale));
-  }
-  pushFact(facts, 'line-type-scale-source', 'Line Type Scale Source', styleSources.lineTypeScaleSource);
+  appendSelectionLineStyleRows(facts, effectiveStyle, styleSources);
   appendSourceTextGuideRows(facts, entity, sourceTextGuide);
   return facts;
 }
