@@ -19,8 +19,6 @@ import {
   isReadOnlySelectionEntity,
 } from './selection_meta_helpers.js';
 import {
-  formatReleasedInsertArchiveOrigin,
-  formatReleasedInsertArchiveModes,
   summarizeReleasedInsertArchiveSelection,
 } from './selection_released_archive_helpers.js';
 import {
@@ -32,6 +30,10 @@ import { resolveLayer } from './selection_layer_helpers.js';
 import { formatSelectionAttributeModes } from './selection_attribute_mode_helpers.js';
 import { buildReleasedInsertArchiveSelectionRows } from './released_insert_selection_rows.js';
 import { buildPeerSummaryRows } from './peer_summary_rows.js';
+import {
+  appendReleasedArchiveIdentityRows,
+  appendReleasedArchiveAttributeRows,
+} from './released_archive_metadata_rows.js';
 import {
   buildSourceGroupInfoRows as buildSharedSourceGroupInfoRows,
   buildInsertGroupInfoRows as buildSharedInsertGroupInfoRows,
@@ -111,19 +113,8 @@ export function buildSelectionDetailFacts(entity, options = {}) {
   }
   pushFact(facts, 'attribute-modes', 'Attribute Modes', formatSelectionAttributeModes(entity));
   const releasedInsertArchive = resolveReleasedInsertArchive(entity);
-  pushFact(facts, 'released-from', 'Released From', formatReleasedInsertArchiveOrigin(releasedInsertArchive));
-  if (Number.isFinite(releasedInsertArchive?.groupId)) {
-    pushFact(facts, 'released-group-id', 'Released Group ID', String(Math.trunc(releasedInsertArchive.groupId)));
-  }
-  pushFact(facts, 'released-block-name', 'Released Block Name', normalizeText(releasedInsertArchive?.blockName));
-  pushFact(facts, 'released-text-kind', 'Released Text Kind', normalizeText(releasedInsertArchive?.textKind));
-  pushFact(facts, 'released-attribute-tag', 'Released Attribute Tag', normalizeText(releasedInsertArchive?.attributeTag));
-  pushFact(facts, 'released-attribute-default', 'Released Attribute Default', normalizeText(releasedInsertArchive?.attributeDefault));
-  pushFact(facts, 'released-attribute-prompt', 'Released Attribute Prompt', normalizeText(releasedInsertArchive?.attributePrompt));
-  if (Number.isFinite(releasedInsertArchive?.attributeFlags)) {
-    pushFact(facts, 'released-attribute-flags', 'Released Attribute Flags', String(Math.trunc(releasedInsertArchive.attributeFlags)));
-  }
-  pushFact(facts, 'released-attribute-modes', 'Released Attribute Modes', formatReleasedInsertArchiveModes(releasedInsertArchive));
+  appendReleasedArchiveIdentityRows(facts, releasedInsertArchive);
+  appendReleasedArchiveAttributeRows(facts, releasedInsertArchive);
   const groupRows = insertGroupSummary
     ? buildSharedInsertGroupInfoRows(entity, insertGroupSummary, {
       listEntities,
