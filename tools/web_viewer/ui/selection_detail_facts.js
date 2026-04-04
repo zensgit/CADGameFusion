@@ -1,6 +1,5 @@
 import { resolveEffectiveEntityColor, resolveEffectiveEntityStyle, resolveEntityStyleSources } from '../line_style.js';
 import {
-  computeSourceGroupBounds,
   isDirectEditableSourceTextEntity,
   isInsertGroupEntity,
   isSourceGroupEntity,
@@ -34,6 +33,10 @@ import {
 import { resolveLayer } from './selection_layer_helpers.js';
 import { formatSelectionAttributeModes } from './selection_attribute_mode_helpers.js';
 import { buildReleasedInsertArchiveSelectionRows } from './released_insert_selection_rows.js';
+import {
+  buildSourceGroupInfoRows as buildSharedSourceGroupInfoRows,
+  buildInsertGroupInfoRows as buildSharedInsertGroupInfoRows,
+} from './group_info_rows.js';
 
 function pushFact(facts, key, label, value, extra = {}) {
   if (value === null || value === undefined || value === '') return;
@@ -66,7 +69,6 @@ export function buildSelectionDetailFacts(entity, options = {}) {
   const styleSources = resolveEntityStyleSources(entity);
   const entities = listEntities ? listEntities() : null;
   const sourceGroupSummary = entities ? summarizeSourceGroupMembers(entities, entity, { isReadOnly: isReadOnlySelectionEntity }) : null;
-  const sourceGroupBounds = entities ? computeSourceGroupBounds(entities, entity) : null;
   const insertGroupSummary = isInsertGroupEntity(entity)
     ? summarizeInsertGroupMembers(entities, entity, { isReadOnly: isReadOnlySelectionEntity })
     : null;
@@ -123,46 +125,19 @@ export function buildSelectionDetailFacts(entity, options = {}) {
     pushFact(facts, 'released-attribute-flags', 'Released Attribute Flags', String(Math.trunc(releasedInsertArchive.attributeFlags)));
   }
   pushFact(facts, 'released-attribute-modes', 'Released Attribute Modes', formatReleasedInsertArchiveModes(releasedInsertArchive));
-  if (insertGroupSummary?.memberIds?.length > 0) {
-    pushFact(facts, 'insert-group-members', 'Insert Group Members', String(insertGroupSummary.memberIds.length));
-    if (insertGroupSummary.readOnlyIds.length > 0) {
-      pushFact(facts, 'editable-members', 'Editable Members', String(insertGroupSummary.editableIds.length));
-      pushFact(facts, 'read-only-members', 'Read-only Members', String(insertGroupSummary.readOnlyIds.length));
-    }
-  } else if (sourceGroupSummary?.memberIds?.length > 0) {
-    pushFact(facts, 'source-group-members', 'Source Group Members', String(sourceGroupSummary.memberIds.length));
-    if (sourceGroupSummary.readOnlyIds.length > 0) {
-      pushFact(facts, 'editable-members', 'Editable Members', String(sourceGroupSummary.editableIds.length));
-      pushFact(facts, 'read-only-members', 'Read-only Members', String(sourceGroupSummary.readOnlyIds.length));
-    }
-  }
-  if (sourceGroupBounds) {
-    pushFact(facts, 'group-center', 'Group Center', formatPoint(sourceGroupBounds.center));
-    pushFact(facts, 'group-size', 'Group Size', `${formatCompactNumber(sourceGroupBounds.width)} x ${formatCompactNumber(sourceGroupBounds.height)}`);
-    pushFact(
-      facts,
-      'group-bounds',
-      'Group Bounds',
-      `${formatCompactNumber(sourceGroupBounds.minX)}, ${formatCompactNumber(sourceGroupBounds.minY)} -> ${formatCompactNumber(sourceGroupBounds.maxX)}, ${formatCompactNumber(sourceGroupBounds.maxY)}`,
-    );
-  }
-  if (insertPeerSummary?.peerCount > 1) {
-    const currentIndex = insertPeerSummary.currentIndex >= 0 ? insertPeerSummary.currentIndex : 0;
-    pushFact(facts, 'peer-instance', 'Peer Instance', `${currentIndex + 1} / ${insertPeerSummary.peerCount}`);
-    pushFact(facts, 'peer-instances', 'Peer Instances', String(insertPeerSummary.peerCount));
-    pushFact(
-      facts,
-      'peer-layouts',
-      'Peer Layouts',
-      insertPeerSummary.peers.map((peer) => formatPeerContext(peer)).filter(Boolean).join(' | ')
-    );
-    pushFact(
-      facts,
-      'peer-targets',
-      'Peer Targets',
-      insertPeerSummary.peers.map((peer, index) => formatPeerTarget(peer, index)).filter(Boolean).join(' | ')
-    );
-  }
+  const groupRows = insertGroupSummary
+    ? buildSharedInsertGroupInfoRows(entity, insertGroupSummary, {
+      listEntities,
+      peerSummary: insertPeerSummary,
+      includeIdentityRows: false,
+      includeBlockName: false,
+      includeBounds: true,
+    })
+    : buildSharedSourceGroupInfoRows(entity, sourceGroupSummary, {
+      listEntities,
+      includeIdentityRows: false,
+    });
+  facts.push(...groupRows);
   if (releasedInsertPeerSummary?.peerCount > 1) {
     const peerInstance = releasedInsertPeerSummary.currentIndex >= 0
       ? `${releasedInsertPeerSummary.currentIndex + 1} / ${releasedInsertPeerSummary.peerCount}`
