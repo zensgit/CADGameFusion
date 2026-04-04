@@ -1,6 +1,5 @@
 import { resolveEffectiveEntityColor, resolveEffectiveEntityStyle, resolveEntityStyleSources } from '../line_style.js';
 import {
-  isDirectEditableSourceTextEntity,
   isInsertGroupEntity,
   isSourceGroupEntity,
   resolveSourceTextGuide,
@@ -23,8 +22,6 @@ import {
 } from './selection_released_archive_helpers.js';
 import {
   normalizeText,
-  formatCompactNumber,
-  formatPoint,
 } from './selection_display_helpers.js';
 import { resolveLayer } from './selection_layer_helpers.js';
 import { formatSelectionAttributeModes } from './selection_attribute_mode_helpers.js';
@@ -38,6 +35,7 @@ import {
   buildSourceGroupInfoRows as buildSharedSourceGroupInfoRows,
   buildInsertGroupInfoRows as buildSharedInsertGroupInfoRows,
 } from './group_info_rows.js';
+import { appendSourceTextGuideRows } from './source_text_guide_rows.js';
 
 function pushFact(facts, key, label, value, extra = {}) {
   if (value === null || value === undefined || value === '') return;
@@ -139,35 +137,6 @@ export function buildSelectionDetailFacts(entity, options = {}) {
     pushFact(facts, 'line-type-scale', 'Line Type Scale', String(effectiveStyle.lineTypeScale));
   }
   pushFact(facts, 'line-type-scale-source', 'Line Type Scale Source', styleSources.lineTypeScaleSource);
-  if (entity.sourceTextPos && Number.isFinite(entity.sourceTextPos.x) && Number.isFinite(entity.sourceTextPos.y)) {
-    pushFact(facts, 'source-text-pos', 'Source Text Pos', formatPoint(entity.sourceTextPos));
-  }
-  if (Number.isFinite(entity.sourceTextRotation)) {
-    pushFact(facts, 'source-text-rotation', 'Source Text Rotation', formatCompactNumber(entity.sourceTextRotation));
-  }
-  if (isDirectEditableSourceTextEntity(entity) && sourceTextGuide?.anchor) {
-    pushFact(facts, 'source-anchor', 'Source Anchor', formatPoint(sourceTextGuide.anchor));
-  }
-  if (isDirectEditableSourceTextEntity(entity) && sourceTextGuide?.sourceType === 'LEADER' && sourceTextGuide?.landingPoint) {
-    pushFact(facts, 'leader-landing', 'Leader Landing', formatPoint(sourceTextGuide.landingPoint));
-  }
-  if (isDirectEditableSourceTextEntity(entity) && sourceTextGuide?.sourceType === 'LEADER' && sourceTextGuide?.elbowPoint) {
-    pushFact(facts, 'leader-elbow', 'Leader Elbow', formatPoint(sourceTextGuide.elbowPoint));
-  }
-  if (isDirectEditableSourceTextEntity(entity) && sourceTextGuide?.sourceType === 'LEADER' && Number.isFinite(sourceTextGuide?.landingLength)) {
-    pushFact(facts, 'leader-landing-length', 'Leader Landing Length', formatCompactNumber(sourceTextGuide.landingLength));
-  }
-  if (isDirectEditableSourceTextEntity(entity) && sourceTextGuide?.anchorDriverId) {
-    const driverValue = sourceTextGuide?.anchorDriverLabel
-      ? `${sourceTextGuide.anchorDriverId}:${sourceTextGuide.anchorDriverLabel}`
-      : String(sourceTextGuide.anchorDriverId);
-    pushFact(facts, 'source-anchor-driver', 'Source Anchor Driver', driverValue);
-  }
-  if (isDirectEditableSourceTextEntity(entity) && sourceTextGuide?.sourceOffset) {
-    pushFact(facts, 'source-offset', 'Source Offset', formatPoint(sourceTextGuide.sourceOffset));
-  }
-  if (isDirectEditableSourceTextEntity(entity) && sourceTextGuide?.currentOffset) {
-    pushFact(facts, 'current-offset', 'Current Offset', formatPoint(sourceTextGuide.currentOffset));
-  }
+  appendSourceTextGuideRows(facts, entity, sourceTextGuide);
   return facts;
 }

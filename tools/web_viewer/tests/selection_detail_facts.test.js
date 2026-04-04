@@ -170,6 +170,89 @@ test('buildSelectionDetailFacts includes source text position for editable sourc
   assert.equal(facts.find((f) => f.key === 'source-text-pos').value, '5, 10');
 });
 
+test('buildSelectionDetailFacts includes DIMENSION source guide rows for editable source text', () => {
+  const entities = [{
+    id: 31,
+    type: 'line',
+    layerId: 1,
+    color: '#5a6b7c',
+    colorSource: 'TRUECOLOR',
+    space: 1,
+    layout: 'Layout-A',
+    sourceType: 'DIMENSION',
+    editMode: 'proxy',
+    proxyKind: 'dimension',
+    groupId: 700,
+    start: { x: -10, y: 0 },
+    end: { x: 10, y: 0 },
+  }, {
+    id: 34,
+    type: 'text',
+    layerId: 1,
+    color: '#5a6b7c',
+    colorSource: 'TRUECOLOR',
+    space: 1,
+    layout: 'Layout-A',
+    sourceType: 'DIMENSION',
+    editMode: 'proxy',
+    proxyKind: 'dimension',
+    groupId: 700,
+    position: { x: 4, y: 18 },
+    sourceTextPos: { x: 0, y: 14 },
+    sourceTextRotation: 0,
+    rotation: 0.5,
+  }];
+
+  const facts = buildSelectionDetailFacts(entities[1], makeOptions([makeLayer({ id: 1, name: 'REF' })], entities));
+  const byKey = Object.fromEntries(facts.map((fact) => [fact.key, fact.value]));
+
+  assert.equal(byKey['source-anchor'], '0, 0');
+  assert.equal(byKey['source-anchor-driver'], '31:line midpoint');
+  assert.equal(byKey['source-offset'], '0, 14');
+  assert.equal(byKey['current-offset'], '4, 18');
+});
+
+test('buildSelectionDetailFacts includes LEADER landing rows for editable source text', () => {
+  const entities = [{
+    id: 41,
+    type: 'line',
+    layerId: 1,
+    color: '#5a6b7c',
+    colorSource: 'TRUECOLOR',
+    space: 1,
+    layout: 'Layout-A',
+    sourceType: 'LEADER',
+    editMode: 'proxy',
+    proxyKind: 'leader',
+    groupId: 702,
+    start: { x: 50, y: 0 },
+    end: { x: 56, y: 6 },
+  }, {
+    id: 42,
+    type: 'text',
+    layerId: 1,
+    color: '#5a6b7c',
+    colorSource: 'TRUECOLOR',
+    space: 1,
+    layout: 'Layout-A',
+    sourceType: 'LEADER',
+    editMode: 'proxy',
+    proxyKind: 'leader',
+    groupId: 702,
+    position: { x: 63, y: 9 },
+    sourceTextPos: { x: 58, y: 7 },
+    sourceTextRotation: 0,
+    rotation: 0.3926990817,
+  }];
+
+  const facts = buildSelectionDetailFacts(entities[1], makeOptions([makeLayer({ id: 1, name: 'REF' })], entities));
+  const byKey = Object.fromEntries(facts.map((fact) => [fact.key, fact.value]));
+
+  assert.equal(byKey['leader-landing'], '56, 6');
+  assert.equal(byKey['leader-elbow'], '50, 0');
+  assert.equal(byKey['leader-landing-length'], '8.485');
+});
+
 test('buildSelectionDetailFacts adopts shared released peer rows for single-selection released inserts', () => {
   const archive = {
     sourceType: 'INSERT',
