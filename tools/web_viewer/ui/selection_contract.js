@@ -14,14 +14,10 @@ import {
   summarizeReleasedInsertArchiveSelection,
 } from './selection_released_archive_helpers.js';
 
+import { resolveLayer } from './selection_layer_helpers.js';
+
 function normalizeText(value) {
   return typeof value === 'string' ? value.trim() : '';
-}
-
-function resolveLayer(getLayer, layerId) {
-  if (typeof getLayer !== 'function' || !Number.isFinite(layerId)) return null;
-  const layer = getLayer(Math.trunc(layerId));
-  return layer && typeof layer === 'object' ? layer : null;
 }
 
 function formatSelectionColor(entity, getLayer = null) {

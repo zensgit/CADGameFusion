@@ -1,12 +1,7 @@
 import { formatSelectionSummary, formatSelectionStatus } from './selection_overview.js';
 import { buildSelectionBadges } from './selection_badges.js';
 import { buildSelectionDetailFacts, buildMultiSelectionDetailFacts } from './selection_detail_facts.js';
-
-function resolveLayer(getLayer, layerId) {
-  if (typeof getLayer !== 'function' || !Number.isFinite(layerId)) return null;
-  const layer = getLayer(Math.trunc(layerId));
-  return layer && typeof layer === 'object' ? layer : null;
-}
+import { resolveLayer } from './selection_layer_helpers.js';
 
 export function buildSelectionPresentation(entities, primaryId, options = {}) {
   const list = Array.isArray(entities) ? entities.filter(Boolean) : [];
