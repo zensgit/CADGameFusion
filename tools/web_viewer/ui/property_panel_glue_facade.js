@@ -1,9 +1,5 @@
 import { buildLayerActions } from './property_panel_layer_actions.js';
-import {
-  buildInsertGroupActions,
-  buildReleasedInsertArchiveActions,
-  buildSourceGroupActions,
-} from './property_panel_group_actions.js';
+import { createGroupActionAppenders } from './property_panel_glue_group_actions.js';
 import {
   buildFullTextEditFieldDescriptors,
   buildInsertProxyTextFieldDescriptors,
@@ -83,51 +79,37 @@ export function createPropertyPanelGlueFacade({
     }));
   }
 
-  function appendSourceGroupActions(entity, actionContext = null) {
-    addActionRow(buildSourceGroupActions(entity, actionContext, {
-      setStatus,
-      selectSourceGroup,
-      selectSourceText,
-      selectSourceAnchorDriver,
-      flipDimensionTextSide,
-      flipLeaderLandingSide,
-      resetSourceTextPlacement,
-      fitSourceAnchor,
-      fitLeaderLanding,
-      fitSourceGroup,
-      editSourceGroupText,
-      releaseSourceGroup,
-    }));
-  }
-
-  function appendInsertGroupActions(entity, actionContext = null) {
-    addActionRow(buildInsertGroupActions(entity, actionContext, {
-      setStatus,
-      openInsertPeer,
-      selectInsertGroup,
-      selectInsertText,
-      selectEditableInsertText,
-      selectEditableInsertGroup,
-      fitInsertGroup,
-      editInsertText,
-      releaseInsertGroup,
-    }));
-  }
-
-  function appendReleasedInsertArchiveActions(entity, actionContext = null) {
-    addActionRow(buildReleasedInsertArchiveActions(entity, actionContext, {
-      setStatus,
-      openReleasedInsertPeer,
-      selectReleasedInsertGroup,
-      fitReleasedInsertGroup,
-    }));
-  }
-
-  function appendCommonSelectionActions(primary, actionContext) {
-    appendSourceGroupActions(primary, actionContext);
-    appendInsertGroupActions(primary, actionContext);
-    appendReleasedInsertArchiveActions(primary, actionContext);
-  }
+  const {
+    appendSourceGroupActions,
+    appendInsertGroupActions,
+    appendReleasedInsertArchiveActions,
+    appendCommonSelectionActions,
+  } = createGroupActionAppenders({
+    addActionRow,
+    setStatus,
+    selectSourceGroup,
+    selectSourceText,
+    selectSourceAnchorDriver,
+    flipDimensionTextSide,
+    flipLeaderLandingSide,
+    resetSourceTextPlacement,
+    fitSourceAnchor,
+    fitLeaderLanding,
+    fitSourceGroup,
+    editSourceGroupText,
+    releaseSourceGroup,
+    openInsertPeer,
+    selectInsertGroup,
+    selectInsertText,
+    selectEditableInsertText,
+    selectEditableInsertGroup,
+    fitInsertGroup,
+    editInsertText,
+    releaseInsertGroup,
+    openReleasedInsertPeer,
+    selectReleasedInsertGroup,
+    fitReleasedInsertGroup,
+  });
 
   function appendCommonPropertyFields(primary, displayedColor, promoteImportedColorSource) {
     appendFieldDescriptors(buildCommonPropertyFieldDescriptors(
