@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createFieldAppenders } from '../ui/property_panel_glue_field_appenders.js';
+import { createPropertyPanelGlueFieldAppenders } from '../ui/property_panel_glue_field_appenders.js';
 
 function createHarness(overrides = {}) {
   const fieldBatches = [];
@@ -9,7 +9,7 @@ function createHarness(overrides = {}) {
   const buildPatchCalls = [];
   const ensuredLayers = [];
 
-  const appenders = createFieldAppenders({
+  const appenders = createPropertyPanelGlueFieldAppenders({
     appendFieldDescriptors: (descriptors) => fieldBatches.push(descriptors),
     patchSelection: (patch, message) => patchCalls.push([patch, message]),
     buildPatch: (entity, key, value) => {
@@ -30,7 +30,7 @@ function createHarness(overrides = {}) {
   };
 }
 
-test('createFieldAppenders threads common property field deps', () => {
+test('createPropertyPanelGlueFieldAppenders threads common property field deps', () => {
   const primary = {
     id: 8,
     type: 'text',
@@ -58,7 +58,7 @@ test('createFieldAppenders threads common property field deps', () => {
   ]);
 });
 
-test('createFieldAppenders threads source text field deps', () => {
+test('createPropertyPanelGlueFieldAppenders threads source text field deps', () => {
   const primary = {
     id: 8,
     type: 'text',
@@ -84,7 +84,7 @@ test('createFieldAppenders threads source text field deps', () => {
   ]);
 });
 
-test('createFieldAppenders preserves insert proxy allowPositionEditing passthrough', () => {
+test('createPropertyPanelGlueFieldAppenders preserves insert proxy allowPositionEditing passthrough', () => {
   const primary = {
     id: 8,
     type: 'text',
@@ -109,7 +109,7 @@ test('createFieldAppenders preserves insert proxy allowPositionEditing passthrou
   ]);
 });
 
-test('createFieldAppenders threads single entity field deps', () => {
+test('createPropertyPanelGlueFieldAppenders threads single entity field deps', () => {
   const primary = {
     id: 9,
     type: 'line',

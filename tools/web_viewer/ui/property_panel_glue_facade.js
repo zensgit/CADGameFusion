@@ -1,6 +1,6 @@
 import { buildLayerActions } from './property_panel_layer_actions.js';
 import { createGroupActionAppenders } from './property_panel_glue_group_actions.js';
-import { createFieldAppenders } from './property_panel_glue_field_appenders.js';
+import { createPropertyPanelGlueFieldAppenders } from './property_panel_glue_field_appenders.js';
 import { buildStyleActionDescriptors } from './property_panel_common_fields.js';
 
 export function createPropertyPanelGlueFacade({
@@ -109,7 +109,7 @@ export function createPropertyPanelGlueFacade({
     appendSourceTextFields,
     appendInsertProxyTextFields,
     appendSingleEntityFields,
-  } = createFieldAppenders({
+  } = createPropertyPanelGlueFieldAppenders({
     appendFieldDescriptors,
     patchSelection,
     buildPatch,
