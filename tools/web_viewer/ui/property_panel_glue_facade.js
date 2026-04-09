@@ -1,7 +1,6 @@
-import { buildLayerActions } from './property_panel_layer_actions.js';
+import { createStyleLayerActionAppenders } from './property_panel_glue_style_layer_actions.js';
 import { createGroupActionAppenders } from './property_panel_glue_group_actions.js';
 import { createPropertyPanelGlueFieldAppenders } from './property_panel_glue_field_appenders.js';
-import { buildStyleActionDescriptors } from './property_panel_common_fields.js';
 
 export function createPropertyPanelGlueFacade({
   addActionRow,
@@ -48,29 +47,25 @@ export function createPropertyPanelGlueFacade({
   selectReleasedInsertGroup = null,
   fitReleasedInsertGroup = null,
 }) {
-  function appendStyleActions(entity, layer) {
-    addActionRow(buildStyleActionDescriptors(entity, layer, { patchSelection }));
-  }
-
-  function appendLayerActions(layer) {
-    addActionRow(buildLayerActions(layer, {
-      setStatus,
-      focusLayer,
-      getCurrentLayerId,
-      useLayer,
-      lockLayer,
-      unlockLayer,
-      isolateLayer,
-      hasLayerIsolation,
-      restoreLayerIsolation,
-      turnOffLayer,
-      turnOnLayer,
-      freezeLayer,
-      thawLayer,
-      hasLayerFreeze,
-      restoreLayerFreeze,
-    }));
-  }
+  const { appendStyleActions, appendLayerActions } = createStyleLayerActionAppenders({
+    addActionRow,
+    patchSelection,
+    setStatus,
+    focusLayer,
+    getCurrentLayerId,
+    useLayer,
+    lockLayer,
+    unlockLayer,
+    isolateLayer,
+    hasLayerIsolation,
+    restoreLayerIsolation,
+    turnOffLayer,
+    turnOnLayer,
+    freezeLayer,
+    thawLayer,
+    hasLayerFreeze,
+    restoreLayerFreeze,
+  });
 
   const {
     appendSourceGroupActions,
