@@ -3,7 +3,7 @@ import {
   buildInsertProxyTextFieldDescriptors,
   buildSingleEntityEditFieldDescriptors,
 } from './property_panel_entity_fields.js';
-import { buildCommonPropertyFieldDescriptors } from './property_panel_common_fields.js';
+import { appendCommonPropertyFields } from './property_panel_common_field_appender.js';
 
 export function createPropertyPanelGlueFieldAppenders({
   appendFieldDescriptors,
@@ -12,17 +12,19 @@ export function createPropertyPanelGlueFieldAppenders({
   getLayer,
   ensureLayer,
 }) {
-  function appendCommonPropertyFields(primary, displayedColor, promoteImportedColorSource) {
-    appendFieldDescriptors(buildCommonPropertyFieldDescriptors(
+  function appendCommonPropertyFieldsForPrimary(primary, displayedColor, promoteImportedColorSource) {
+    appendCommonPropertyFields(
+      appendFieldDescriptors,
       primary,
-      { displayedColor, promoteImportedColorSource },
+      displayedColor,
+      promoteImportedColorSource,
       {
         patchSelection,
         buildPatch,
         getLayer,
         ensureLayer,
       },
-    ));
+    );
   }
 
   function appendSourceTextFields(primary) {
@@ -42,7 +44,7 @@ export function createPropertyPanelGlueFieldAppenders({
   }
 
   return {
-    appendCommonPropertyFields,
+    appendCommonPropertyFields: appendCommonPropertyFieldsForPrimary,
     appendSourceTextFields,
     appendInsertProxyTextFields,
     appendSingleEntityFields,
