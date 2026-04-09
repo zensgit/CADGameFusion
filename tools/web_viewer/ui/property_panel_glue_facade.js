@@ -1,14 +1,7 @@
 import { buildLayerActions } from './property_panel_layer_actions.js';
 import { createGroupActionAppenders } from './property_panel_glue_group_actions.js';
-import {
-  buildFullTextEditFieldDescriptors,
-  buildInsertProxyTextFieldDescriptors,
-  buildSingleEntityEditFieldDescriptors,
-} from './property_panel_entity_fields.js';
-import {
-  buildCommonPropertyFieldDescriptors,
-  buildStyleActionDescriptors,
-} from './property_panel_common_fields.js';
+import { createFieldAppenders } from './property_panel_glue_field_appenders.js';
+import { buildStyleActionDescriptors } from './property_panel_common_fields.js';
 
 export function createPropertyPanelGlueFacade({
   addActionRow,
@@ -111,34 +104,18 @@ export function createPropertyPanelGlueFacade({
     fitReleasedInsertGroup,
   });
 
-  function appendCommonPropertyFields(primary, displayedColor, promoteImportedColorSource) {
-    appendFieldDescriptors(buildCommonPropertyFieldDescriptors(
-      primary,
-      { displayedColor, promoteImportedColorSource },
-      {
-        patchSelection,
-        buildPatch,
-        getLayer,
-        ensureLayer,
-      },
-    ));
-  }
-
-  function appendSourceTextFields(primary) {
-    appendFieldDescriptors(buildFullTextEditFieldDescriptors(primary, { patchSelection, buildPatch }));
-  }
-
-  function appendInsertProxyTextFields(primary, { allowPositionEditing = false } = {}) {
-    appendFieldDescriptors(buildInsertProxyTextFieldDescriptors(
-      primary,
-      { allowPositionEditing },
-      { patchSelection, buildPatch },
-    ));
-  }
-
-  function appendSingleEntityFields(primary) {
-    appendFieldDescriptors(buildSingleEntityEditFieldDescriptors(primary, { patchSelection, buildPatch }));
-  }
+  const {
+    appendCommonPropertyFields,
+    appendSourceTextFields,
+    appendInsertProxyTextFields,
+    appendSingleEntityFields,
+  } = createFieldAppenders({
+    appendFieldDescriptors,
+    patchSelection,
+    buildPatch,
+    getLayer,
+    ensureLayer,
+  });
 
   return {
     appendStyleActions,
