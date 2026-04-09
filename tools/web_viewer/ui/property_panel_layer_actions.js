@@ -1,9 +1,4 @@
-import { normalizeLayoutName } from '../space_layout.js';
-
-function toActionIdToken(value, fallback = 'layout') {
-  const normalized = String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  return normalized || fallback;
-}
+export { buildCurrentSpaceActions } from './property_panel_current_space_actions.js';
 
 function pushAction(actions, {
   id,
@@ -30,39 +25,6 @@ function pushAction(actions, {
       }
     },
   });
-}
-
-export function buildCurrentSpaceActions(currentSpaceContext = null, paperLayouts = [], deps = {}) {
-  const { setCurrentSpaceContext = null, setStatus = null } = deps;
-  if (typeof setCurrentSpaceContext !== 'function') return [];
-  const actions = [];
-
-  if (currentSpaceContext?.space !== 0) {
-    pushAction(actions, {
-      id: 'use-model-space',
-      label: 'Use Model Space',
-      invoke: () => setCurrentSpaceContext({ space: 0, layout: 'Model' }),
-      onFalse: 'Current space unchanged: Model',
-      setStatus,
-    });
-  }
-
-  for (const layoutName of Array.isArray(paperLayouts) ? paperLayouts : []) {
-    const normalizedLayout = normalizeLayoutName(layoutName);
-    if (!normalizedLayout) continue;
-    if (currentSpaceContext?.space === 1 && normalizeLayoutName(currentSpaceContext.layout) === normalizedLayout) {
-      continue;
-    }
-    pushAction(actions, {
-      id: `use-layout-${toActionIdToken(normalizedLayout)}`,
-      label: `Use Layout ${normalizedLayout}`,
-      invoke: () => setCurrentSpaceContext({ space: 1, layout: normalizedLayout }),
-      onFalse: `Current layout unchanged: ${normalizedLayout}`,
-      setStatus,
-    });
-  }
-
-  return actions;
 }
 
 export function buildLayerActions(layer, deps = {}) {
