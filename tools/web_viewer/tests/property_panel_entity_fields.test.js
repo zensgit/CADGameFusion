@@ -79,3 +79,15 @@ test('buildSingleEntityEditFieldDescriptors forwards update messages', () => {
     [{ closed: true }, 'Polyline closed updated'],
   ]);
 });
+
+test('buildSingleEntityEditFieldDescriptors preserves text delegation', () => {
+  const fields = buildSingleEntityEditFieldDescriptors(
+    { type: 'text', value: 'TEXT', position: { x: 10, y: 20 }, height: 2.5, rotation: 0 },
+    { patchSelection: () => {}, buildPatch: () => ({}) },
+  );
+
+  assert.deepEqual(
+    fields.map((field) => field.config.label),
+    ['Text', 'Position X', 'Position Y', 'Height', 'Rotation (rad)'],
+  );
+});
