@@ -1,5 +1,5 @@
-import { buildStyleActionDescriptors } from './property_panel_common_fields.js';
 import { buildLayerActions } from './property_panel_layer_actions.js';
+import { appendStyleActions as appendStyleActionsHelper } from './property_panel_style_action_appender.js';
 
 export function createStyleLayerActionAppenders({
   addActionRow,
@@ -20,8 +20,8 @@ export function createStyleLayerActionAppenders({
   hasLayerFreeze = null,
   restoreLayerFreeze = null,
 }) {
-  function appendStyleActions(entity, layer) {
-    addActionRow(buildStyleActionDescriptors(entity, layer, { patchSelection }));
+  function appendStyleActionsForEntity(entity, layer) {
+    appendStyleActionsHelper(addActionRow, entity, layer, { patchSelection });
   }
 
   function appendLayerActions(layer) {
@@ -44,5 +44,5 @@ export function createStyleLayerActionAppenders({
     }));
   }
 
-  return { appendStyleActions, appendLayerActions };
+  return { appendStyleActions: appendStyleActionsForEntity, appendLayerActions };
 }
