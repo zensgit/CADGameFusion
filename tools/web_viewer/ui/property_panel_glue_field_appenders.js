@@ -1,9 +1,9 @@
 import {
-  buildFullTextEditFieldDescriptors,
   buildInsertProxyTextFieldDescriptors,
   buildSingleEntityEditFieldDescriptors,
 } from './property_panel_entity_fields.js';
 import { appendCommonPropertyFields } from './property_panel_common_field_appender.js';
+import { appendSourceTextFields } from './property_panel_source_text_field_appender.js';
 
 export function createPropertyPanelGlueFieldAppenders({
   appendFieldDescriptors,
@@ -27,8 +27,8 @@ export function createPropertyPanelGlueFieldAppenders({
     );
   }
 
-  function appendSourceTextFields(primary) {
-    appendFieldDescriptors(buildFullTextEditFieldDescriptors(primary, { patchSelection, buildPatch }));
+  function appendSourceTextFieldsForPrimary(primary) {
+    appendSourceTextFields(appendFieldDescriptors, primary, { patchSelection, buildPatch });
   }
 
   function appendInsertProxyTextFields(primary, { allowPositionEditing = false } = {}) {
@@ -45,7 +45,7 @@ export function createPropertyPanelGlueFieldAppenders({
 
   return {
     appendCommonPropertyFields: appendCommonPropertyFieldsForPrimary,
-    appendSourceTextFields,
+    appendSourceTextFields: appendSourceTextFieldsForPrimary,
     appendInsertProxyTextFields,
     appendSingleEntityFields,
   };
