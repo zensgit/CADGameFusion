@@ -1,4 +1,4 @@
-import { buildLayerActions } from './property_panel_layer_actions.js';
+import { appendLayerActions as appendLayerActionsHelper } from './property_panel_layer_action_appender.js';
 import { appendStyleActions as appendStyleActionsHelper } from './property_panel_style_action_appender.js';
 
 export function createStyleLayerActionAppenders({
@@ -25,7 +25,7 @@ export function createStyleLayerActionAppenders({
   }
 
   function appendLayerActions(layer) {
-    addActionRow(buildLayerActions(layer, {
+    appendLayerActionsHelper(addActionRow, layer, {
       setStatus,
       focusLayer,
       getCurrentLayerId,
@@ -41,7 +41,7 @@ export function createStyleLayerActionAppenders({
       thawLayer,
       hasLayerFreeze,
       restoreLayerFreeze,
-    }));
+    });
   }
 
   return { appendStyleActions: appendStyleActionsForEntity, appendLayerActions };
