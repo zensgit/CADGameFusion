@@ -1586,8 +1586,8 @@ public:
                 const double eps = 1e-6;
                 for (size_t j = 0; j < cn; ++j) {
                     int gj = vi[j];
-                    // Check which constraints need numerical diff for this variable
                     bool need_numerical = false;
+                    std::vector<char> needs_numerical_row(cm, 0);
                     for (size_t r = 0; r < cm; ++r) {
                         const auto& ec = expanded[static_cast<size_t>(ci[r])];
                         if (has_analytical_gradient(ec)) {
@@ -1610,18 +1610,20 @@ public:
                             } else if (vidx < 0) {
                                 J(r, j) = 0.0; // variable not in this constraint
                             } else {
-                                need_numerical = true; // will fill in below
+                                need_numerical = true;
+                                needs_numerical_row[r] = 1;
                             }
                         } else {
                             need_numerical = true;
+                            needs_numerical_row[r] = 1;
                         }
                     }
                     if (need_numerical) {
                         double xj = x[gj];
                         set(vars[static_cast<size_t>(gj)], xj + eps);
                         for (size_t r = 0; r < cm; ++r) {
-                            const auto& ec = expanded[static_cast<size_t>(ci[r])];
-                            if (!has_analytical_gradient(ec)) {
+                            if (needs_numerical_row[r]) {
+                                const auto& ec = expanded[static_cast<size_t>(ci[r])];
                                 bool okc=false;
                                 J(r, j) = (residual(ec, okc) - rvec[r]) / eps;
                             }
@@ -1775,6 +1777,7 @@ public:
             const double eps = 1e-7;
             for (size_t j=0; j<n; ++j) {
                 bool need_numerical = false;
+                std::vector<char> needs_numerical_row(m, 0);
                 for (size_t i=0; i<m; ++i) {
                     const auto& cc = constraints[i];
                     if (has_analytical_gradient(cc)) {
@@ -1796,16 +1799,18 @@ public:
                             J(i, j) = 0.0;
                         } else {
                             need_numerical = true;
+                            needs_numerical_row[i] = 1;
                         }
                     } else {
                         need_numerical = true;
+                        needs_numerical_row[i] = 1;
                     }
                 }
                 if (need_numerical) {
                     double xj = x[j];
                     set(vars[j], xj + eps);
                     for (size_t i=0; i<m; ++i) {
-                        if (!has_analytical_gradient(constraints[i])) {
+                        if (needs_numerical_row[i]) {
                             bool okc=false;
                             J(i, j) = (residual(constraints[i], okc) - rvec[i]) / eps;
                         }
@@ -1900,6 +1905,7 @@ public:
                 const double eps2 = 1e-6;
                 for (size_t j=0; j<n; ++j) {
                     bool need_numerical = false;
+                    std::vector<char> needs_numerical_row(m, 0);
                     for (size_t i=0; i<m; ++i) {
                         const auto& cc = constraints[i];
                         if (has_analytical_gradient(cc)) {
@@ -1917,16 +1923,18 @@ public:
                                 J(i, j) = 0.0;
                             } else {
                                 need_numerical = true;
+                                needs_numerical_row[i] = 1;
                             }
                         } else {
                             need_numerical = true;
+                            needs_numerical_row[i] = 1;
                         }
                     }
                     if (need_numerical) {
                         double xj = x[j];
                         set(vars[j], xj + eps2);
                         for (size_t i=0; i<m; ++i) {
-                            if (!has_analytical_gradient(constraints[i])) {
+                            if (needs_numerical_row[i]) {
                                 bool okc=false;
                                 J(i, j) = (residual(constraints[i], okc) - rvec[i]) / eps2;
                             }
