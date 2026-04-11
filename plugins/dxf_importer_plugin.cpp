@@ -14,6 +14,7 @@
 #include "dxf_view_finalizers.h"
 #include "dxf_table_block_finalizers.h"
 #include "dxf_simple_geometry_entities.h"
+#include "dxf_polyline_entity_parser.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
 #include "dxf_text_handler.h"
@@ -1625,41 +1626,17 @@ static bool parse_dxf_entities(const std::string& path,
 
         switch (current_kind) {
             case DxfEntityKind::Polyline:
-                if (parse_entity_space(code, value_line, &current_polyline.space, &has_paperspace)) break;
-                if (parse_entity_owner(code, value_line, &current_polyline.owner_handle,
-                                       &current_polyline.has_owner_handle)) break;
-                if (parse_style_code(&current_polyline.style, code, value_line, header_codepage)) break;
-                switch (code) {
-                    case 8:
-                        current_polyline.layer = sanitize_utf8(value_line, header_codepage);
-                        break;
-                    case 70: {
-                        int flags = 0;
-                        if (parse_int(value_line, &flags)) {
-                            current_polyline.closed = (flags & 1) != 0;
-                        }
-                        break;
-                    }
-                    case 10: {
-                        double x = 0.0;
-                        if (parse_double(value_line, &x)) {
-                            pending_x = x;
-                            has_x = true;
-                        }
-                        break;
-                    }
-                    case 20: {
-                        if (!has_x) break;
-                        double y = 0.0;
-                        if (parse_double(value_line, &y)) {
-                            current_polyline.points.push_back(cadgf_vec2{pending_x, y});
-                        }
-                        has_x = false;
-                        break;
-                    }
-                    default:
-                        break;
-                }
+                parse_polyline_entity_record({
+                    &current_polyline.layer,
+                    &current_polyline.owner_handle,
+                    &current_polyline.has_owner_handle,
+                    &current_polyline.style,
+                    &current_polyline.space,
+                    &current_polyline.points,
+                    &current_polyline.closed,
+                    &pending_x,
+                    &has_x,
+                }, code, value_line, header_codepage, &has_paperspace);
                 break;
             case DxfEntityKind::Line:
                 parse_line_entity_record({
