@@ -20,6 +20,7 @@ add_library(cadgf_dxf_importer_plugin SHARED
     dxf_layout_objects.cpp
     dxf_table_records.cpp
     dxf_view_finalizers.cpp
+    dxf_table_block_finalizers.cpp
     dxf_math_utils.cpp
     dxf_text_encoding.cpp
     dxf_color.cpp
