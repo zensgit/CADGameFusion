@@ -8,6 +8,7 @@
 #include "dxf_parser_zero_record.h"
 #include "dxf_header_vars.h"
 #include "dxf_parser_name_routing.h"
+#include "dxf_block_header.h"
 #include "dxf_layout_objects.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
@@ -1603,6 +1604,18 @@ static bool parse_dxf_entities(const std::string& path,
     hdr_ctx.header_textsize = &header_textsize;
     hdr_ctx.has_header_textsize = &has_header_textsize;
 
+    DxfBlockHeaderContext blk_hdr_ctx{};
+    blk_hdr_ctx.in_block_header = &in_block_header;
+    blk_hdr_ctx.block_name = &current_block.name;
+    blk_hdr_ctx.has_name = &current_block.has_name;
+    blk_hdr_ctx.owner_handle = &current_block.owner_handle;
+    blk_hdr_ctx.has_owner_handle = &current_block.has_owner_handle;
+    blk_hdr_ctx.block_base = &current_block.base;
+    blk_hdr_ctx.has_base = &current_block.has_base;
+    blk_hdr_ctx.pending_block_x = &pending_block_x;
+    blk_hdr_ctx.has_block_x = &has_block_x;
+    blk_hdr_ctx.header_codepage = &header_codepage;
+
     while (std::getline(in, code_line)) {
         if (!std::getline(in, value_line)) break;
         trim_code_line(&code_line);
@@ -1706,34 +1719,7 @@ static bool parse_dxf_entities(const std::string& path,
             continue;
         }
 
-        if (in_block_header) {
-            switch (code) {
-                case 2:
-                    current_block.name = sanitize_utf8(value_line, header_codepage);
-                    current_block.has_name = true;
-                    break;
-                case 330:
-                    current_block.owner_handle = value_line;
-                    current_block.has_owner_handle = !current_block.owner_handle.empty();
-                    break;
-                case 10:
-                    if (parse_double(value_line, &pending_block_x)) {
-                        has_block_x = true;
-                    }
-                    break;
-                case 20: {
-                    if (!has_block_x) break;
-                    double y = 0.0;
-                    if (parse_double(value_line, &y)) {
-                        current_block.base = cadgf_vec2{pending_block_x, y};
-                        current_block.has_base = true;
-                    }
-                    has_block_x = false;
-                    break;
-                }
-                default:
-                    break;
-            }
+        if (handle_block_header_field(code, value_line, blk_hdr_ctx)) {
             continue;
         }
 

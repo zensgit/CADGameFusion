@@ -12,6 +12,7 @@ set_target_properties(cadgf_sample_plugin PROPERTIES
 # DXF importer plugin (lite)
 add_library(cadgf_dxf_importer_plugin SHARED
     dxf_importer_plugin.cpp
+    dxf_block_header.cpp
     dxf_parser_helpers.cpp
     dxf_parser_zero_record.cpp
     dxf_header_vars.cpp
