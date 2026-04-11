@@ -6,6 +6,7 @@
 #include "dxf_math_utils.h"
 #include "dxf_parser_helpers.h"
 #include "dxf_parser_zero_record.h"
+#include "dxf_header_vars.h"
 #include "dxf_parser_name_routing.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
@@ -1594,6 +1595,18 @@ static bool parse_dxf_entities(const std::string& path,
     name_ctx.in_style_table = &in_style_table;
     name_ctx.in_vport_table = &in_vport_table;
 
+    DxfHeaderVarsContext hdr_ctx{};
+    hdr_ctx.current_section = &current_section;
+    hdr_ctx.current_header_var = &current_header_var;
+    hdr_ctx.header_codepage = &header_codepage;
+    hdr_ctx.has_header_codepage = &has_header_codepage;
+    hdr_ctx.header_ltscale = &header_ltscale;
+    hdr_ctx.has_header_ltscale = &has_header_ltscale;
+    hdr_ctx.header_celtscale = &header_celtscale;
+    hdr_ctx.has_header_celtscale = &has_header_celtscale;
+    hdr_ctx.header_textsize = &header_textsize;
+    hdr_ctx.has_header_textsize = &has_header_textsize;
+
     while (std::getline(in, code_line)) {
         if (!std::getline(in, value_line)) break;
         trim_code_line(&code_line);
@@ -1611,31 +1624,7 @@ static bool parse_dxf_entities(const std::string& path,
             continue;
         }
 
-        if (current_section == DxfSection::Header) {
-            if (code == 9) {
-                current_header_var = value_line;
-                continue;
-            }
-            if ((code == 3 || code == 1) && current_header_var == "$DWGCODEPAGE") {
-                header_codepage = value_line;
-                has_header_codepage = true;
-                continue;
-            }
-            if (code == 40) {
-                double scale = 0.0;
-                if (parse_double(value_line, &scale)) {
-                    if (current_header_var == "$LTSCALE") {
-                        header_ltscale = scale;
-                        has_header_ltscale = true;
-                    } else if (current_header_var == "$CELTSCALE") {
-                        header_celtscale = scale;
-                        has_header_celtscale = true;
-                    } else if (current_header_var == "$TEXTSIZE") {
-                        header_textsize = scale;
-                        has_header_textsize = true;
-                    }
-                }
-            }
+        if (handle_header_var(code, value_line, hdr_ctx)) {
             continue;
         }
 

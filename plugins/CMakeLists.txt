@@ -14,6 +14,7 @@ add_library(cadgf_dxf_importer_plugin SHARED
     dxf_importer_plugin.cpp
     dxf_parser_helpers.cpp
     dxf_parser_zero_record.cpp
+    dxf_header_vars.cpp
     dxf_parser_name_routing.cpp
     dxf_math_utils.cpp
     dxf_text_encoding.cpp
