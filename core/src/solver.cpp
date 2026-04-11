@@ -533,6 +533,146 @@ std::string format_var_ref(const VarRef& ref) {
     return ref.id + "." + ref.key;
 }
 
+VarRef parse_var_ref(const std::string& key) {
+    const size_t split = key.rfind('.');
+    if (split == std::string::npos) {
+        return VarRef{key, ""};
+    }
+    return VarRef{key.substr(0, split), key.substr(split + 1)};
+}
+
+std::vector<VarRef> collect_unique_vars(const std::vector<ConstraintSpec>& constraints) {
+    std::vector<VarRef> vars;
+    auto add_unique = [&](const VarRef& v) {
+        for (const auto& existing : vars) {
+            if (existing.id == v.id && existing.key == v.key) {
+                return;
+            }
+        }
+        vars.push_back(v);
+    };
+    for (const auto& constraint : constraints) {
+        for (const auto& var : constraint.vars) {
+            add_unique(var);
+        }
+    }
+    return vars;
+}
+
+struct SubstitutionResult {
+    std::vector<ConstraintSpec> reduced;
+    std::unordered_map<std::string, std::string> redirect;
+};
+
+class VarUnionFind {
+public:
+    std::string find(const std::string& key) {
+        auto [it, inserted] = parent_.emplace(key, key);
+        if (it->second == key) return key;
+        it->second = find(it->second);
+        return it->second;
+    }
+
+    void unite(const std::string& lhs, const std::string& rhs) {
+        std::string root_lhs = find(lhs);
+        std::string root_rhs = find(rhs);
+        if (root_lhs == root_rhs) return;
+        if (root_rhs < root_lhs) std::swap(root_lhs, root_rhs);
+        parent_[root_rhs] = root_lhs;
+    }
+
+    const std::unordered_map<std::string, std::string>& parent() const {
+        return parent_;
+    }
+
+private:
+    std::unordered_map<std::string, std::string> parent_;
+};
+
+bool try_extract_alias_pair(const ConstraintSpec& spec,
+                            std::string* lhs,
+                            std::string* rhs) {
+    if (!lhs || !rhs) return false;
+    if (spec.type == "equal" && spec.vars.size() == 2) {
+        *lhs = format_var_ref(spec.vars[0]);
+        *rhs = format_var_ref(spec.vars[1]);
+        return true;
+    }
+    if ((spec.type == "coincident" || spec.type == "concentric")
+        && spec.vars.size() == 4
+        && spec.value.has_value()) {
+        const bool is_y_row = *spec.value > 0.5;
+        const size_t lhs_index = is_y_row ? 1u : 0u;
+        const size_t rhs_index = is_y_row ? 3u : 2u;
+        *lhs = format_var_ref(spec.vars[lhs_index]);
+        *rhs = format_var_ref(spec.vars[rhs_index]);
+        return true;
+    }
+    return false;
+}
+
+ConstraintSpec apply_redirects(const ConstraintSpec& spec,
+                               const std::unordered_map<std::string, std::string>& redirect) {
+    ConstraintSpec out = spec;
+    for (auto& var : out.vars) {
+        const auto it = redirect.find(format_var_ref(var));
+        if (it != redirect.end()) {
+            var = parse_var_ref(it->second);
+        }
+    }
+    return out;
+}
+
+SubstitutionResult build_substitutions(const std::vector<ConstraintSpec>& constraints) {
+    SubstitutionResult result;
+    VarUnionFind uf;
+    std::vector<char> consumed(constraints.size(), 0);
+
+    for (size_t i = 0; i < constraints.size(); ++i) {
+        std::string lhs;
+        std::string rhs;
+        if (!try_extract_alias_pair(constraints[i], &lhs, &rhs)) continue;
+        uf.unite(lhs, rhs);
+        consumed[i] = 1;
+    }
+
+    std::vector<std::string> keys;
+    keys.reserve(uf.parent().size());
+    for (const auto& entry : uf.parent()) {
+        keys.push_back(entry.first);
+    }
+    std::sort(keys.begin(), keys.end());
+    for (const auto& key : keys) {
+        const std::string canonical = uf.find(key);
+        if (canonical != key) {
+            result.redirect.emplace(key, canonical);
+        }
+    }
+
+    result.reduced.reserve(constraints.size());
+    for (size_t i = 0; i < constraints.size(); ++i) {
+        if (consumed[i]) continue;
+        result.reduced.push_back(apply_redirects(constraints[i], result.redirect));
+    }
+    return result;
+}
+
+void sync_redirected_aliases(const std::unordered_map<std::string, std::string>& redirect,
+                             const ISolver::GetVar& get,
+                             const ISolver::SetVar& set) {
+    std::vector<std::pair<std::string, std::string>> redirects(redirect.begin(), redirect.end());
+    std::sort(redirects.begin(), redirects.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.first < rhs.first; });
+    for (const auto& [alias_key, canonical_key] : redirects) {
+        const VarRef alias = parse_var_ref(alias_key);
+        const VarRef canonical = parse_var_ref(canonical_key);
+        bool ok = false;
+        const double value = get(canonical, ok);
+        if (!ok) continue;
+        set(alias, value);
+    }
+}
+
 std::string normalize_constraint_key(const ConstraintSpec& spec, ConstraintKind kind) {
     std::vector<std::string> vars;
     vars.reserve(spec.vars.size());
@@ -1446,38 +1586,22 @@ public:
             }
         }
 
-        // Residual via shared function (deduplicated in P3 tech debt cleanup)
-        auto residual = [&](const ConstraintSpec& c, bool& ok)->double {
+        const std::vector<ConstraintSpec> analysis_constraints = expanded;
+        const std::vector<VarRef> analysis_vars = collect_unique_vars(analysis_constraints);
+        auto analysis_residual = [&](const ConstraintSpec& c, bool& ok)->double {
             return residual_for_constraint(c, get, ok);
         };
-
-        // Collect unique variables
-        std::vector<VarRef> vars;
-        auto add_unique = [&](const VarRef& v){ for (auto& u : vars) if (u.id==v.id && u.key==v.key) return; vars.push_back(v); };
-        for (const auto& c : expanded) for (const auto& v : c.vars) add_unique(v);
-
-        const size_t n = vars.size();
-        const size_t m = expanded.size();
-        if (n == 0 || m == 0) {
-             out.ok = true;
-             out.iterations = 0;
-             out.finalError = 0.0;
-             out.analysis.jacobianColumnCount = static_cast<int>(n);
-             return out;
+        Eigen::VectorXd analysis_x(analysis_vars.size());
+        for (size_t j = 0; j < analysis_vars.size(); ++j) {
+            bool okv = false;
+            analysis_x[static_cast<Eigen::Index>(j)] = get(analysis_vars[j], okv);
         }
-
-        // Current values snapshot
-        Eigen::VectorXd x(n);
-        for (size_t j=0;j<n;j++){ bool okv=false; x[j]=get(vars[j], okv); }
-
-        auto write_x = [&](const Eigen::VectorXd& currX){ for (size_t j=0;j<n;j++) set(vars[j], currX[j]); };
-
         populate_jacobian_analysis(
-            expanded,
-            vars,
+            analysis_constraints,
+            analysis_vars,
             set,
-            x,
-            residual,
+            analysis_x,
+            analysis_residual,
             out.analysis,
             &out.structuralGroups,
             &out.redundancySubsets);
@@ -1504,6 +1628,41 @@ public:
                 out.analysis.smallestRedundancyVariableKeys = smallest_it->variableKeys;
             }
         }
+
+        const SubstitutionResult substitutions = build_substitutions(expanded);
+        expanded = substitutions.reduced;
+        auto redirected_get = [&](const VarRef& v, bool& ok) -> double {
+            const auto it = substitutions.redirect.find(format_var_ref(v));
+            if (it == substitutions.redirect.end()) {
+                return get(v, ok);
+            }
+            return get(parse_var_ref(it->second), ok);
+        };
+        auto residual = [&](const ConstraintSpec& c, bool& ok)->double {
+            return residual_for_constraint(c, redirected_get, ok);
+        };
+        std::vector<VarRef> vars = collect_unique_vars(expanded);
+        const size_t n = vars.size();
+        const size_t m = expanded.size();
+        if (n == 0 || m == 0) {
+             sync_redirected_aliases(substitutions.redirect, get, set);
+             out.ok = true;
+             out.iterations = 0;
+             out.finalError = 0.0;
+             return out;
+        }
+
+        Eigen::VectorXd x(n);
+        for (size_t j = 0; j < n; ++j) {
+            bool okv = false;
+            x[static_cast<Eigen::Index>(j)] = redirected_get(vars[j], okv);
+        }
+
+        auto write_x = [&](const Eigen::VectorXd& currX){
+            for (size_t j = 0; j < n; ++j) {
+                set(vars[j], currX[static_cast<Eigen::Index>(j)]);
+            }
+        };
 
         // Error norm function
         auto eval_norm = [&](){ double s=0.0; for (const auto& c: expanded){ bool okc=false; double rr=residual(c, okc); s += rr*rr; } return std::sqrt(s); };
@@ -1655,6 +1814,7 @@ public:
         }
 
         write_x(x);
+        sync_redirected_aliases(substitutions.redirect, get, set);
         double finalErr = eval_norm();
         out.ok = all_ok && (finalErr <= tol_);
         out.iterations = total_iters;
@@ -1699,30 +1859,17 @@ public:
             return out;
         }
 
-        // Residual via shared function (deduplicated in P3 tech debt cleanup)
-        auto residual = [&](const ConstraintSpec& c, bool& ok)->double {
+        const std::vector<ConstraintSpec> analysis_constraints = constraints;
+        const std::vector<VarRef> analysis_vars = collect_unique_vars(analysis_constraints);
+        auto analysis_residual = [&](const ConstraintSpec& c, bool& ok)->double {
             return residual_for_constraint(c, get, ok);
         };
-
-        // Collect unique variables
-        std::vector<VarRef> vars;
-        auto add_unique = [&](const VarRef& v){ for (auto& u : vars) if (u.id==v.id && u.key==v.key) return; vars.push_back(v); };
-        for (const auto& c : constraints) for (const auto& v : c.vars) add_unique(v);
-
-        const size_t n = vars.size();
-        const size_t m = constraints.size();
-        if (n == 0 || m == 0) {
-            out.ok = true; out.iterations = 0; out.finalError = 0.0;
-            out.analysis.jacobianColumnCount = static_cast<int>(n);
-            return out;
+        Eigen::VectorXd analysis_x(analysis_vars.size());
+        for (size_t j = 0; j < analysis_vars.size(); ++j) {
+            bool okv = false;
+            analysis_x[static_cast<Eigen::Index>(j)] = get(analysis_vars[j], okv);
         }
-
-        Eigen::VectorXd x(n);
-        for (size_t j=0;j<n;j++){ bool okv=false; x[j]=get(vars[j], okv); }
-
-        auto write_x = [&](const Eigen::VectorXd& currX){ for (size_t j=0;j<n;j++) set(vars[j], currX[j]); };
-
-        populate_jacobian_analysis(constraints, vars, set, x, residual,
+        populate_jacobian_analysis(analysis_constraints, analysis_vars, set, analysis_x, analysis_residual,
             out.analysis, &out.structuralGroups, &out.redundancySubsets);
         collect_conflict_groups(out.structuralGroups, out);
         collect_problematic_constraint_indices(out.structuralGroups, out);
@@ -1748,12 +1895,46 @@ public:
             }
         }
 
+        const SubstitutionResult substitutions = build_substitutions(constraints);
+        const std::vector<ConstraintSpec>& working_constraints = substitutions.reduced;
+        auto redirected_get = [&](const VarRef& v, bool& ok) -> double {
+            const auto it = substitutions.redirect.find(format_var_ref(v));
+            if (it == substitutions.redirect.end()) {
+                return get(v, ok);
+            }
+            return get(parse_var_ref(it->second), ok);
+        };
+        auto residual = [&](const ConstraintSpec& c, bool& ok)->double {
+            return residual_for_constraint(c, redirected_get, ok);
+        };
+
+        const std::vector<VarRef> vars = collect_unique_vars(working_constraints);
+        const size_t n = vars.size();
+        const size_t m = working_constraints.size();
+        if (n == 0 || m == 0) {
+            sync_redirected_aliases(substitutions.redirect, get, set);
+            out.ok = true; out.iterations = 0; out.finalError = 0.0;
+            return out;
+        }
+
+        Eigen::VectorXd x(n);
+        for (size_t j = 0; j < n; ++j) {
+            bool okv = false;
+            x[static_cast<Eigen::Index>(j)] = redirected_get(vars[j], okv);
+        }
+
+        auto write_x = [&](const Eigen::VectorXd& currX){
+            for (size_t j = 0; j < n; ++j) {
+                set(vars[j], currX[static_cast<Eigen::Index>(j)]);
+            }
+        };
+
         auto eval_residuals = [&](Eigen::VectorXd& rvec) {
-            for (size_t i=0; i<m; ++i) { bool okc=false; rvec[i] = residual(constraints[i], okc); }
+            for (size_t i=0; i<m; ++i) { bool okc=false; rvec[static_cast<Eigen::Index>(i)] = residual(working_constraints[i], okc); }
         };
         auto eval_norm = [&]() {
             double s=0.0;
-            for (const auto& c: constraints){ bool okc=false; double rr=residual(c, okc); s += rr*rr; }
+            for (const auto& c: working_constraints){ bool okc=false; double rr=residual(c, okc); s += rr*rr; }
             return std::sqrt(s);
         };
 
@@ -1779,7 +1960,7 @@ public:
                 bool need_numerical = false;
                 std::vector<char> needs_numerical_row(m, 0);
                 for (size_t i=0; i<m; ++i) {
-                    const auto& cc = constraints[i];
+                    const auto& cc = working_constraints[i];
                     if (has_analytical_gradient(cc)) {
                         int vidx = -1;
                         for (int k = 0; k < static_cast<int>(cc.vars.size()); ++k) {
@@ -1812,7 +1993,7 @@ public:
                     for (size_t i=0; i<m; ++i) {
                         if (needs_numerical_row[i]) {
                             bool okc=false;
-                            J(i, j) = (residual(constraints[i], okc) - rvec[i]) / eps;
+                            J(i, j) = (residual(working_constraints[i], okc) - rvec[i]) / eps;
                         }
                     }
                     set(vars[j], xj);
@@ -1907,7 +2088,7 @@ public:
                     bool need_numerical = false;
                     std::vector<char> needs_numerical_row(m, 0);
                     for (size_t i=0; i<m; ++i) {
-                        const auto& cc = constraints[i];
+                        const auto& cc = working_constraints[i];
                         if (has_analytical_gradient(cc)) {
                             int vidx = -1;
                             for (int k = 0; k < static_cast<int>(cc.vars.size()); ++k) {
@@ -1936,7 +2117,7 @@ public:
                         for (size_t i=0; i<m; ++i) {
                             if (needs_numerical_row[i]) {
                                 bool okc=false;
-                                J(i, j) = (residual(constraints[i], okc) - rvec[i]) / eps2;
+                                J(i, j) = (residual(working_constraints[i], okc) - rvec[i]) / eps2;
                             }
                         }
                         set(vars[j], xj);
@@ -1967,6 +2148,7 @@ public:
         }
 
         out.message = out.ok ? "Converged (DogLeg+LM)" : "Stopped (max iters)";
+        sync_redirected_aliases(substitutions.redirect, get, set);
         return out;
     }
 };
@@ -2002,11 +2184,6 @@ public:
             out.ok = false; out.message = "Constraint validation failed"; return out;
         }
 
-        // Reuse the same residual lambda as MinimalSolver (shared code via residual_for_constraint)
-        auto residual = [&](const ConstraintSpec& c, bool& ok) -> double {
-            return residual_for_constraint(c, get, ok);
-        };
-
         // Expand 2D constraints
         std::vector<ConstraintSpec> expanded;
         for (const auto& c : constraints) {
@@ -2019,17 +2196,77 @@ public:
             }
         }
 
-        std::vector<VarRef> vars;
-        auto add_unique = [&](const VarRef& v){ for (auto& u : vars) if (u.id==v.id && u.key==v.key) return; vars.push_back(v); };
-        for (const auto& c : expanded) for (const auto& v : c.vars) add_unique(v);
+        const std::vector<ConstraintSpec> analysis_constraints = expanded;
+        const std::vector<VarRef> analysis_vars = collect_unique_vars(analysis_constraints);
+        auto analysis_residual = [&](const ConstraintSpec& c, bool& ok) -> double {
+            return residual_for_constraint(c, get, ok);
+        };
+        Eigen::VectorXd analysis_x(analysis_vars.size());
+        for (size_t j = 0; j < analysis_vars.size(); ++j) {
+            bool okv = false;
+            analysis_x[static_cast<Eigen::Index>(j)] = get(analysis_vars[j], okv);
+        }
+        populate_jacobian_analysis(analysis_constraints, analysis_vars, set, analysis_x, analysis_residual,
+            out.analysis, &out.structuralGroups, &out.redundancySubsets);
+        collect_conflict_groups(out.structuralGroups, out);
+        collect_problematic_constraint_indices(out.structuralGroups, out);
+        out.primaryRedundancyBasisConstraintIndices.clear();
+        out.primaryRedundantConstraintIndices.clear();
+        out.smallestRedundancyBasisConstraintIndices.clear();
+        out.smallestRedundantConstraintIndices.clear();
+        out.analysis.primaryRedundancyVariableKeys.clear();
+        out.analysis.smallestRedundancyVariableKeys.clear();
+        if (!out.redundancySubsets.empty()) {
+            out.primaryRedundancyBasisConstraintIndices = out.redundancySubsets.front().basisConstraintIndices;
+            out.primaryRedundantConstraintIndices = out.redundancySubsets.front().redundantConstraintIndices;
+            out.analysis.primaryRedundancyVariableKeys = out.redundancySubsets.front().variableKeys;
+            const auto smallest_it = std::find_if(
+                out.redundancySubsets.begin(), out.redundancySubsets.end(),
+                [&](const ConstraintRedundancySubset& subset) {
+                    return subset.anchorConstraintIndex == out.analysis.smallestRedundancySubsetAnchorConstraintIndex;
+                });
+            if (smallest_it != out.redundancySubsets.end()) {
+                out.smallestRedundancyBasisConstraintIndices = smallest_it->basisConstraintIndices;
+                out.smallestRedundantConstraintIndices = smallest_it->redundantConstraintIndices;
+                out.analysis.smallestRedundancyVariableKeys = smallest_it->variableKeys;
+            }
+        }
 
+        const SubstitutionResult substitutions = build_substitutions(expanded);
+        expanded = substitutions.reduced;
+        auto redirected_get = [&](const VarRef& v, bool& ok) -> double {
+            const auto it = substitutions.redirect.find(format_var_ref(v));
+            if (it == substitutions.redirect.end()) {
+                return get(v, ok);
+            }
+            return get(parse_var_ref(it->second), ok);
+        };
+        auto residual = [&](const ConstraintSpec& c, bool& ok) -> double {
+            return residual_for_constraint(c, redirected_get, ok);
+        };
+
+        std::vector<VarRef> vars = collect_unique_vars(expanded);
         const int n = static_cast<int>(vars.size());
         const int m = static_cast<int>(expanded.size());
-        if (n == 0 || m == 0) { out.ok = true; return out; }
+        if (n == 0 || m == 0) {
+            sync_redirected_aliases(substitutions.redirect, get, set);
+            out.ok = true;
+            out.iterations = 0;
+            out.finalError = 0.0;
+            out.message = "Converged (BFGS)";
+            return out;
+        }
 
         Eigen::VectorXd x(n);
-        for (int j = 0; j < n; ++j) { bool okv = false; x[j] = get(vars[j], okv); }
-        auto write_x = [&](const Eigen::VectorXd& v) { for (int j = 0; j < n; ++j) set(vars[j], v[j]); };
+        for (int j = 0; j < n; ++j) {
+            bool okv = false;
+            x[j] = redirected_get(vars[static_cast<size_t>(j)], okv);
+        }
+        auto write_x = [&](const Eigen::VectorXd& v) {
+            for (int j = 0; j < n; ++j) {
+                set(vars[static_cast<size_t>(j)], v[j]);
+            }
+        };
 
         // Objective: F(x) = 0.5 * sum(r_i^2)
         auto eval_F = [&](const Eigen::VectorXd& xv) -> double {
@@ -2042,7 +2279,7 @@ public:
         // Gradient: analytical J^T*r where supported, numerical fallback otherwise
         auto eval_grad = [&](const Eigen::VectorXd& xv, double fx) -> Eigen::VectorXd {
             write_x(xv);
-            return compute_objective_gradient(expanded, vars, xv, fx, get, set, residual);
+            return compute_objective_gradient(expanded, vars, xv, fx, redirected_get, set, residual);
         };
 
         // Initialize inverse Hessian approximation as identity
@@ -2090,6 +2327,7 @@ public:
         }
 
         write_x(x);
+        sync_redirected_aliases(substitutions.redirect, get, set);
         double finalErr = std::sqrt(2.0 * fx);
         out.ok = (finalErr <= tol_);
         out.iterations = it;
