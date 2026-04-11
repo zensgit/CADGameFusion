@@ -1764,8 +1764,8 @@ Eigen::VectorXd compute_objective_gradient(
 } // namespace
 
 class MinimalSolver : public ISolver {
-    int maxIters_ = 50;
-    double tol_ = 1e-6;
+    int maxIters_ = 80;
+    double tol_ = 1e-8;
 public:
     void setMaxIterations(int iters) override { maxIters_ = iters; }
     void setTolerance(double tol) override { tol_ = tol; }
@@ -2051,8 +2051,8 @@ public:
 };
 
 class DogLegSolver : public ISolver {
-    int maxIters_ = 80;
-    double tol_ = 1e-6;
+    int maxIters_ = 120;
+    double tol_ = 1e-8;
 public:
     void setMaxIterations(int iters) override { maxIters_ = iters; }
     void setTolerance(double tol) override { tol_ = tol; }
@@ -2383,8 +2383,8 @@ public:
 // Minimizes F(x) = 0.5 * ||r(x)||^2 using L-BFGS-style updates.
 // Does not require explicit Jacobian — uses gradient (J^T r) via finite differences.
 class BFGSSolver : public ISolver {
-    int maxIters_ = 100;
-    double tol_ = 1e-6;
+    int maxIters_ = 150;
+    double tol_ = 1e-8;
 public:
     void setMaxIterations(int iters) override { maxIters_ = iters; }
     void setTolerance(double tol) override { tol_ = tol; }
