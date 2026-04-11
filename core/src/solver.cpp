@@ -1,6 +1,7 @@
 #include "core/solver.hpp"
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <unordered_map>
 #include <algorithm>
@@ -1075,6 +1076,325 @@ double residual_for_constraint(const ConstraintSpec& c, const ISolver::GetVar& g
     ok = true; return 0.0;
 }
 
+// ---------------------------------------------------------------------------
+// Analytical Jacobian helpers – Batch A (8 linear/simple constraint types)
+// ---------------------------------------------------------------------------
+
+// Returns true for the 8 constraint types that have analytical gradient support.
+bool has_analytical_gradient(const ConstraintSpec& c) {
+    const auto kind = classifyConstraintKind(c.type);
+    switch (kind) {
+        case ConstraintKind::Horizontal:
+        case ConstraintKind::Vertical:
+        case ConstraintKind::Equal:
+        case ConstraintKind::Coincident:
+        case ConstraintKind::Concentric:
+        case ConstraintKind::FixedPoint:
+        case ConstraintKind::Midpoint:
+        case ConstraintKind::Symmetric:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Compute the analytical partial derivative d(residual)/d(vars[var_index])
+// for supported constraint types.  Sets ok=false and returns NaN for
+// unsupported types or when var_index is not active.
+double analytical_gradient(const ConstraintSpec& c, int var_index,
+                           const ISolver::GetVar& /*get*/, bool& ok) {
+    ok = true;
+    const auto kind = classifyConstraintKind(c.type);
+
+    switch (kind) {
+        // horizontal: residual = y1 - y0
+        // d/dy0 = -1, d/dy1 = 1
+        case ConstraintKind::Horizontal:
+            if (var_index == 0) return -1.0;
+            if (var_index == 1) return  1.0;
+            ok = false; return std::numeric_limits<double>::quiet_NaN();
+
+        // vertical: residual = x1 - x0
+        // d/dx0 = -1, d/dx1 = 1
+        case ConstraintKind::Vertical:
+            if (var_index == 0) return -1.0;
+            if (var_index == 1) return  1.0;
+            ok = false; return std::numeric_limits<double>::quiet_NaN();
+
+        // equal: residual = a - b
+        // d/da = 1, d/db = -1
+        case ConstraintKind::Equal:
+            if (var_index == 0) return  1.0;
+            if (var_index == 1) return -1.0;
+            ok = false; return std::numeric_limits<double>::quiet_NaN();
+
+        // coincident (expanded): residual = (x1-x0) or (y1-y0) depending on value
+        // For x-component (value <= 0.5): vars[0]=x0, vars[2]=x1 => d/dx0=-1, d/dx1=1
+        // For y-component (value > 0.5):  vars[1]=y0, vars[3]=y1 => d/dy0=-1, d/dy1=1
+        case ConstraintKind::Coincident: {
+            bool yComp = c.value.has_value() && *c.value > 0.5;
+            if (yComp) {
+                if (var_index == 1) return -1.0; // y0
+                if (var_index == 3) return  1.0; // y1
+            } else {
+                if (var_index == 0) return -1.0; // x0
+                if (var_index == 2) return  1.0; // x1
+            }
+            // Variable not active for this component => gradient is 0
+            return 0.0;
+        }
+
+        // concentric (expanded): same structure as coincident
+        case ConstraintKind::Concentric: {
+            bool yComp = c.value.has_value() && *c.value > 0.5;
+            if (yComp) {
+                if (var_index == 1) return -1.0; // cy0
+                if (var_index == 3) return  1.0; // cy1
+            } else {
+                if (var_index == 0) return -1.0; // cx0
+                if (var_index == 2) return  1.0; // cx1
+            }
+            return 0.0;
+        }
+
+        // fixed_point: residual = vars[0] - value
+        // d/d(vars[0]) = 1, d/d(vars[1]) = 0
+        case ConstraintKind::FixedPoint:
+            if (var_index == 0) return 1.0;
+            if (var_index == 1) return 0.0;
+            ok = false; return std::numeric_limits<double>::quiet_NaN();
+
+        // midpoint (expanded): residual = p - (a+b)*0.5 per component
+        // x-component: dx = px - (ax+bx)*0.5
+        //   d/dpx = 1, d/dax = -0.5, d/dbx = -0.5
+        //   vars: [0]=px, [1]=py, [2]=ax, [3]=ay, [4]=bx, [5]=by
+        // y-component: dy = py - (ay+by)*0.5
+        //   d/dpy = 1, d/day = -0.5, d/dby = -0.5
+        case ConstraintKind::Midpoint: {
+            bool yComp = c.value.has_value() && *c.value > 0.5;
+            if (yComp) {
+                if (var_index == 1) return  1.0;  // py
+                if (var_index == 3) return -0.5;  // ay
+                if (var_index == 5) return -0.5;  // by
+                return 0.0;
+            } else {
+                if (var_index == 0) return  1.0;  // px
+                if (var_index == 2) return -0.5;  // ax
+                if (var_index == 4) return -0.5;  // bx
+                return 0.0;
+            }
+        }
+
+        // symmetric (expanded): residual = (p1+p2)*0.5 - c per component
+        // x-component: mx = (p1x+p2x)*0.5 - cx
+        //   d/dp1x = 0.5, d/dp2x = 0.5, d/dcx = -1.0
+        //   vars: [0]=p1x, [1]=p1y, [2]=p2x, [3]=p2y, [4]=cx, [5]=cy
+        // y-component: my = (p1y+p2y)*0.5 - cy
+        //   d/dp1y = 0.5, d/dp2y = 0.5, d/dcy = -1.0
+        case ConstraintKind::Symmetric: {
+            bool yComp = c.value.has_value() && *c.value > 0.5;
+            if (yComp) {
+                if (var_index == 1) return  0.5;  // p1y
+                if (var_index == 3) return  0.5;  // p2y
+                if (var_index == 5) return -1.0;  // cy
+                return 0.0;
+            } else {
+                if (var_index == 0) return  0.5;  // p1x
+                if (var_index == 2) return  0.5;  // p2x
+                if (var_index == 4) return -1.0;  // cx
+                return 0.0;
+            }
+        }
+
+        default:
+            break;
+    }
+    ok = false;
+    return std::numeric_limits<double>::quiet_NaN();
+}
+
+#ifndef NDEBUG
+// Debug verification: compare analytical gradient with numerical finite
+// difference for each constraint-variable pair that has an analytical formula.
+// Logs a warning to stderr if relative error exceeds the given tolerance.
+void verify_analytical_gradient(const ConstraintSpec& c, int var_index,
+                                double analytical_val,
+                                const ISolver::GetVar& get,
+                                const ISolver::SetVar& set,
+                                const std::vector<VarRef>& vars,
+                                int global_var_idx,
+                                const std::function<double(const ConstraintSpec&, bool&)>& residual) {
+    // Compute numerical gradient for this constraint-variable pair
+    bool okr = false;
+    double r0 = residual(c, okr);
+    if (!okr) return;
+
+    const double eps = 1e-7;
+    bool okv = false;
+    double xj = get(vars[global_var_idx], okv);
+    if (!okv) return;
+
+    set(vars[global_var_idx], xj + eps);
+    bool okr2 = false;
+    double r1 = residual(c, okr2);
+    set(vars[global_var_idx], xj); // restore
+
+    if (!okr2) return;
+    double numerical_val = (r1 - r0) / eps;
+
+    // Relative error check
+    double denom = std::max(std::abs(analytical_val), std::abs(numerical_val));
+    if (denom < 1e-15) return; // both ~zero, skip
+    double rel_err = std::abs(analytical_val - numerical_val) / denom;
+    if (rel_err > 1e-4) {
+        std::cerr << "[WARN] analytical/numerical gradient mismatch: type="
+                  << c.type << " var_index=" << var_index
+                  << " analytical=" << analytical_val
+                  << " numerical=" << numerical_val
+                  << " rel_err=" << rel_err << "\n";
+    }
+}
+#endif // NDEBUG
+
+// Helper: compute gradient of objective F(x) = 0.5 * sum(r_i^2)
+// using analytical Jacobian entries where available, falling back to
+// numerical finite differences for unsupported constraint types.
+// Returns grad_j = sum_i( r_i * dri/dxj ) for each variable j.
+Eigen::VectorXd compute_objective_gradient(
+    const std::vector<ConstraintSpec>& constraints,
+    const std::vector<VarRef>& vars,
+    const Eigen::VectorXd& x,
+    double /*fx*/,
+    const ISolver::GetVar& get,
+    const ISolver::SetVar& set,
+    const std::function<double(const ConstraintSpec&, bool&)>& residual) {
+
+    const int n = static_cast<int>(vars.size());
+    const int m = static_cast<int>(constraints.size());
+    Eigen::VectorXd grad = Eigen::VectorXd::Zero(n);
+
+    // Build var key -> global index map
+    std::unordered_map<std::string, int> var_key_to_global;
+    for (int j = 0; j < n; ++j) {
+        var_key_to_global[vars[j].id + "." + vars[j].key] = j;
+    }
+
+    // Check if any constraint has analytical gradient
+    bool any_analytical = false;
+    for (const auto& c : constraints) {
+        if (has_analytical_gradient(c)) { any_analytical = true; break; }
+    }
+
+    if (any_analytical) {
+        // Mixed approach: compute per-constraint contributions analytically where
+        // possible, and use numerical finite difference for the rest.
+        // For analytical: grad_j += r_i * d(r_i)/d(x_j)
+        // For numerical: use full-objective finite difference for those variables
+        // that appear only in numerical constraints (or use per-entry fallback).
+
+        // Pre-compute all residuals
+        Eigen::VectorXd rvec(m);
+        for (int i = 0; i < m; ++i) {
+            bool okc = false;
+            rvec[i] = residual(constraints[i], okc);
+        }
+
+        // For each variable, accumulate gradient contributions
+        for (int j = 0; j < n; ++j) {
+            double gj = 0.0;
+            bool all_analytical_for_this_var = true;
+
+            for (int i = 0; i < m; ++i) {
+                // Find var_index for this constraint
+                int vi = -1;
+                for (int k = 0; k < static_cast<int>(constraints[i].vars.size()); ++k) {
+                    const auto& vr = constraints[i].vars[k];
+                    if (vr.id == vars[j].id && vr.key == vars[j].key) {
+                        vi = k;
+                        break;
+                    }
+                }
+                if (vi < 0) continue; // variable not in this constraint
+
+                if (has_analytical_gradient(constraints[i])) {
+                    bool ok = false;
+                    double dri = analytical_gradient(constraints[i], vi, get, ok);
+                    if (ok && std::isfinite(dri)) {
+#ifndef NDEBUG
+                        verify_analytical_gradient(constraints[i], vi, dri, get, set,
+                                                   vars, j, residual);
+#endif
+                        gj += rvec[i] * dri;
+                        continue;
+                    }
+                }
+                // This constraint needs numerical diff for this variable
+                all_analytical_for_this_var = false;
+            }
+
+            if (!all_analytical_for_this_var) {
+                // Fall back to full numerical finite difference for this variable's
+                // contribution from non-analytical constraints
+                const double eps = 1e-7;
+                bool okv = false;
+                double xj = get(vars[j], okv);
+                set(vars[j], xj + eps);
+                double fp = 0.0;
+                for (int i = 0; i < m; ++i) {
+                    if (has_analytical_gradient(constraints[i])) {
+                        // Already handled analytically above - need to subtract
+                        // analytical contribution to avoid double-counting, then
+                        // add back the numerical version. But it's simpler to just
+                        // use numerical for everything on this variable.
+                    }
+                    bool okc = false;
+                    double ri = residual(constraints[i], okc);
+                    fp += ri * ri;
+                }
+                fp *= 0.5;
+                set(vars[j], xj); // restore
+                double f0 = 0.0;
+                for (int i = 0; i < m; ++i) {
+                    bool okc = false;
+                    double ri = residual(constraints[i], okc);
+                    f0 += ri * ri;
+                }
+                f0 *= 0.5;
+                grad[j] = (fp - f0) / eps;
+            } else {
+                grad[j] = gj;
+            }
+        }
+    } else {
+        // All numerical: use forward difference on the full objective
+        const double eps = 1e-7;
+        double f0 = 0.0;
+        for (int i = 0; i < m; ++i) {
+            bool okc = false;
+            double ri = residual(constraints[i], okc);
+            f0 += ri * ri;
+        }
+        f0 *= 0.5;
+
+        for (int j = 0; j < n; ++j) {
+            bool okv = false;
+            double xj = get(vars[j], okv);
+            set(vars[j], xj + eps);
+            double fp = 0.0;
+            for (int i = 0; i < m; ++i) {
+                bool okc = false;
+                double ri = residual(constraints[i], okc);
+                fp += ri * ri;
+            }
+            fp *= 0.5;
+            set(vars[j], xj); // restore
+            grad[j] = (fp - f0) / eps;
+        }
+    }
+
+    return grad;
+}
+
 } // namespace
 
 class MinimalSolver : public ISolver {
@@ -1261,18 +1581,53 @@ public:
                 Eigen::VectorXd rvec(cm);
                 for (size_t r = 0; r < cm; ++r) { bool okc=false; rvec[r] = residual(expanded[static_cast<size_t>(ci[r])], okc); }
 
-                // Jacobian (cm x cn)
+                // Jacobian (cm x cn) — analytical where supported, numerical fallback
                 Eigen::MatrixXd J(cm, cn);
                 const double eps = 1e-6;
                 for (size_t j = 0; j < cn; ++j) {
                     int gj = vi[j];
-                    double xj = x[gj];
-                    set(vars[static_cast<size_t>(gj)], xj + eps);
+                    // Check which constraints need numerical diff for this variable
+                    bool need_numerical = false;
                     for (size_t r = 0; r < cm; ++r) {
-                        bool okc=false;
-                        J(r, j) = (residual(expanded[static_cast<size_t>(ci[r])], okc) - rvec[r]) / eps;
+                        const auto& ec = expanded[static_cast<size_t>(ci[r])];
+                        if (has_analytical_gradient(ec)) {
+                            // Find var_index for this variable in the constraint
+                            int vidx = -1;
+                            for (int k = 0; k < static_cast<int>(ec.vars.size()); ++k) {
+                                if (ec.vars[k].id == vars[static_cast<size_t>(gj)].id &&
+                                    ec.vars[k].key == vars[static_cast<size_t>(gj)].key) {
+                                    vidx = k; break;
+                                }
+                            }
+                            bool ok = false;
+                            double grad = (vidx >= 0) ? analytical_gradient(ec, vidx, get, ok) : 0.0;
+                            if (vidx >= 0 && ok && std::isfinite(grad)) {
+#ifndef NDEBUG
+                                verify_analytical_gradient(ec, vidx, grad, get, set,
+                                    vars, gj, residual);
+#endif
+                                J(r, j) = grad;
+                            } else if (vidx < 0) {
+                                J(r, j) = 0.0; // variable not in this constraint
+                            } else {
+                                need_numerical = true; // will fill in below
+                            }
+                        } else {
+                            need_numerical = true;
+                        }
                     }
-                    set(vars[static_cast<size_t>(gj)], xj);
+                    if (need_numerical) {
+                        double xj = x[gj];
+                        set(vars[static_cast<size_t>(gj)], xj + eps);
+                        for (size_t r = 0; r < cm; ++r) {
+                            const auto& ec = expanded[static_cast<size_t>(ci[r])];
+                            if (!has_analytical_gradient(ec)) {
+                                bool okc=false;
+                                J(r, j) = (residual(ec, okc) - rvec[r]) / eps;
+                            }
+                        }
+                        set(vars[static_cast<size_t>(gj)], xj);
+                    }
                 }
 
                 Eigen::MatrixXd A = J.transpose() * J;
@@ -1415,17 +1770,48 @@ public:
             Eigen::VectorXd rvec(m);
             eval_residuals(rvec);
 
-            // Jacobian (numerical)
+            // Jacobian — analytical where supported, numerical fallback
             Eigen::MatrixXd J(m, n);
             const double eps = 1e-7;
             for (size_t j=0; j<n; ++j) {
-                double xj = x[j];
-                set(vars[j], xj + eps);
+                bool need_numerical = false;
                 for (size_t i=0; i<m; ++i) {
-                    bool okc=false;
-                    J(i, j) = (residual(constraints[i], okc) - rvec[i]) / eps;
+                    const auto& cc = constraints[i];
+                    if (has_analytical_gradient(cc)) {
+                        int vidx = -1;
+                        for (int k = 0; k < static_cast<int>(cc.vars.size()); ++k) {
+                            if (cc.vars[k].id == vars[j].id && cc.vars[k].key == vars[j].key) {
+                                vidx = k; break;
+                            }
+                        }
+                        bool ok = false;
+                        double grad = (vidx >= 0) ? analytical_gradient(cc, vidx, get, ok) : 0.0;
+                        if (vidx >= 0 && ok && std::isfinite(grad)) {
+#ifndef NDEBUG
+                            verify_analytical_gradient(cc, vidx, grad, get, set,
+                                vars, static_cast<int>(j), residual);
+#endif
+                            J(i, j) = grad;
+                        } else if (vidx < 0) {
+                            J(i, j) = 0.0;
+                        } else {
+                            need_numerical = true;
+                        }
+                    } else {
+                        need_numerical = true;
+                    }
                 }
-                set(vars[j], xj);
+                if (need_numerical) {
+                    double xj = x[j];
+                    set(vars[j], xj + eps);
+                    for (size_t i=0; i<m; ++i) {
+                        if (!has_analytical_gradient(constraints[i])) {
+                            bool okc=false;
+                            J(i, j) = (residual(constraints[i], okc) - rvec[i]) / eps;
+                        }
+                    }
+                    set(vars[j], xj);
+                }
             }
 
             // Gradient g = J^T * r
@@ -1513,13 +1899,40 @@ public:
                 Eigen::MatrixXd J(m, n);
                 const double eps2 = 1e-6;
                 for (size_t j=0; j<n; ++j) {
-                    double xj = x[j];
-                    set(vars[j], xj + eps2);
+                    bool need_numerical = false;
                     for (size_t i=0; i<m; ++i) {
-                        bool okc=false;
-                        J(i, j) = (residual(constraints[i], okc) - rvec[i]) / eps2;
+                        const auto& cc = constraints[i];
+                        if (has_analytical_gradient(cc)) {
+                            int vidx = -1;
+                            for (int k = 0; k < static_cast<int>(cc.vars.size()); ++k) {
+                                if (cc.vars[k].id == vars[j].id && cc.vars[k].key == vars[j].key) {
+                                    vidx = k; break;
+                                }
+                            }
+                            bool ok = false;
+                            double grad = (vidx >= 0) ? analytical_gradient(cc, vidx, get, ok) : 0.0;
+                            if (vidx >= 0 && ok && std::isfinite(grad)) {
+                                J(i, j) = grad;
+                            } else if (vidx < 0) {
+                                J(i, j) = 0.0;
+                            } else {
+                                need_numerical = true;
+                            }
+                        } else {
+                            need_numerical = true;
+                        }
                     }
-                    set(vars[j], xj);
+                    if (need_numerical) {
+                        double xj = x[j];
+                        set(vars[j], xj + eps2);
+                        for (size_t i=0; i<m; ++i) {
+                            if (!has_analytical_gradient(constraints[i])) {
+                                bool okc=false;
+                                J(i, j) = (residual(constraints[i], okc) - rvec[i]) / eps2;
+                            }
+                        }
+                        set(vars[j], xj);
+                    }
                 }
                 Eigen::MatrixXd A = J.transpose() * J;
                 A.diagonal().array() += lambda;
@@ -1618,16 +2031,10 @@ public:
             return 0.5 * f;
         };
 
-        // Gradient via finite differences: grad_j = (F(x+eps*e_j) - F(x)) / eps
+        // Gradient: analytical J^T*r where supported, numerical fallback otherwise
         auto eval_grad = [&](const Eigen::VectorXd& xv, double fx) -> Eigen::VectorXd {
-            Eigen::VectorXd g(n);
-            const double eps = 1e-7;
-            for (int j = 0; j < n; ++j) {
-                Eigen::VectorXd xp = xv; xp[j] += eps;
-                g[j] = (eval_F(xp) - fx) / eps;
-            }
-            write_x(xv); // restore
-            return g;
+            write_x(xv);
+            return compute_objective_gradient(expanded, vars, xv, fx, get, set, residual);
         };
 
         // Initialize inverse Hessian approximation as identity
