@@ -6,6 +6,7 @@
 #include "dxf_math_utils.h"
 #include "dxf_parser_helpers.h"
 #include "dxf_parser_zero_record.h"
+#include "dxf_parser_name_routing.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
 #include "dxf_text_handler.h"
@@ -1581,6 +1582,18 @@ static bool parse_dxf_entities(const std::string& path,
         return build_leader_origin_metadata();
     };
 
+    DxfNameRoutingContext name_ctx{};
+    name_ctx.expect_section_name = &expect_section_name;
+    name_ctx.expect_table_name = &expect_table_name;
+    name_ctx.current_section = &current_section;
+    name_ctx.current_header_var = &current_header_var;
+    name_ctx.current_table = &current_table;
+    name_ctx.in_block = &in_block;
+    name_ctx.in_block_header = &in_block_header;
+    name_ctx.in_layer_table = &in_layer_table;
+    name_ctx.in_style_table = &in_style_table;
+    name_ctx.in_vport_table = &in_vport_table;
+
     while (std::getline(in, code_line)) {
         if (!std::getline(in, value_line)) break;
         trim_code_line(&code_line);
@@ -1594,43 +1607,7 @@ static bool parse_dxf_entities(const std::string& path,
             continue;
         }
 
-        if (expect_section_name && code == 2) {
-            expect_section_name = false;
-            if (value_line == "TABLES") {
-                current_section = DxfSection::Tables;
-                in_block = false;
-                in_block_header = false;
-            } else if (value_line == "HEADER") {
-                current_section = DxfSection::Header;
-                current_header_var.clear();
-                in_block = false;
-                in_block_header = false;
-            } else if (value_line == "ENTITIES") {
-                current_section = DxfSection::Entities;
-                in_block = false;
-                in_block_header = false;
-            } else if (value_line == "BLOCKS") {
-                current_section = DxfSection::Blocks;
-                in_block = false;
-                in_block_header = false;
-            } else if (value_line == "OBJECTS") {
-                current_section = DxfSection::Objects;
-                in_block = false;
-                in_block_header = false;
-            } else {
-                current_section = DxfSection::None;
-                in_block = false;
-                in_block_header = false;
-            }
-            continue;
-        }
-
-        if (expect_table_name && code == 2) {
-            expect_table_name = false;
-            current_table = value_line;
-            in_layer_table = (current_section == DxfSection::Tables && current_table == "LAYER");
-            in_style_table = (current_section == DxfSection::Tables && current_table == "STYLE");
-            in_vport_table = (current_section == DxfSection::Tables && current_table == "VPORT");
+        if (handle_name_routing(code, value_line, name_ctx)) {
             continue;
         }
 
