@@ -4,6 +4,7 @@
 #include "dxf_metadata_writer.h"
 #include "dxf_style.h"
 #include "dxf_math_utils.h"
+#include "dxf_parser_helpers.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
 #include "dxf_text_handler.h"
@@ -1553,23 +1554,6 @@ static bool parse_dxf_entities(const std::string& path,
         blocks[block.name] = block;
     };
 
-    auto parse_entity_space = [&](int code, const std::string& value, int* space_out) -> bool {
-        if (code != 67 || !space_out) return false;
-        int space = 0;
-        if (parse_int(value, &space)) {
-            *space_out = space;
-            if (space == 1) has_paperspace = true;
-        }
-        return true;
-    };
-    auto parse_entity_owner = [&](int code, const std::string& value,
-                                  std::string* owner_out, bool* has_owner_out) -> bool {
-        if (code != 330 || !owner_out || !has_owner_out) return false;
-        *owner_out = value;
-        *has_owner_out = !owner_out->empty();
-        return true;
-    };
-
     while (std::getline(in, code_line)) {
         if (!std::getline(in, value_line)) break;
         trim_code_line(&code_line);
@@ -2033,7 +2017,7 @@ static bool parse_dxf_entities(const std::string& path,
 
         switch (current_kind) {
             case DxfEntityKind::Polyline:
-                if (parse_entity_space(code, value_line, &current_polyline.space)) break;
+                if (parse_entity_space(code, value_line, &current_polyline.space, &has_paperspace)) break;
                 if (parse_entity_owner(code, value_line, &current_polyline.owner_handle,
                                        &current_polyline.has_owner_handle)) break;
                 if (parse_style_code(&current_polyline.style, code, value_line, header_codepage)) break;
@@ -2070,7 +2054,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Line:
-                if (parse_entity_space(code, value_line, &current_line.space)) break;
+                if (parse_entity_space(code, value_line, &current_line.space, &has_paperspace)) break;
                 if (parse_entity_owner(code, value_line, &current_line.owner_handle,
                                        &current_line.has_owner_handle)) break;
                 if (parse_style_code(&current_line.style, code, value_line, header_codepage)) break;
@@ -2103,7 +2087,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Point:
-                if (parse_entity_space(code, value_line, &current_point.space)) break;
+                if (parse_entity_space(code, value_line, &current_point.space, &has_paperspace)) break;
                 if (parse_entity_owner(code, value_line, &current_point.owner_handle,
                                        &current_point.has_owner_handle)) break;
                 if (parse_style_code(&current_point.style, code, value_line, header_codepage)) break;
@@ -2126,7 +2110,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Circle:
-                if (parse_entity_space(code, value_line, &current_circle.space)) break;
+                if (parse_entity_space(code, value_line, &current_circle.space, &has_paperspace)) break;
                 if (parse_entity_owner(code, value_line, &current_circle.owner_handle,
                                        &current_circle.has_owner_handle)) break;
                 if (parse_style_code(&current_circle.style, code, value_line, header_codepage)) break;
@@ -2154,7 +2138,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Arc:
-                if (parse_entity_space(code, value_line, &current_arc.space)) break;
+                if (parse_entity_space(code, value_line, &current_arc.space, &has_paperspace)) break;
                 if (parse_entity_owner(code, value_line, &current_arc.owner_handle,
                                        &current_arc.has_owner_handle)) break;
                 if (parse_style_code(&current_arc.style, code, value_line, header_codepage)) break;
@@ -2192,7 +2176,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Ellipse:
-                if (parse_entity_space(code, value_line, &current_ellipse.space)) break;
+                if (parse_entity_space(code, value_line, &current_ellipse.space, &has_paperspace)) break;
                 if (parse_entity_owner(code, value_line, &current_ellipse.owner_handle,
                                        &current_ellipse.has_owner_handle)) break;
                 if (parse_style_code(&current_ellipse.style, code, value_line, header_codepage)) break;
@@ -2240,7 +2224,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Spline:
-                if (parse_entity_space(code, value_line, &current_spline.space)) break;
+                if (parse_entity_space(code, value_line, &current_spline.space, &has_paperspace)) break;
                 if (parse_entity_owner(code, value_line, &current_spline.owner_handle,
                                        &current_spline.has_owner_handle)) break;
                 if (parse_style_code(&current_spline.style, code, value_line, header_codepage)) break;
@@ -2284,7 +2268,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Text:
-                if (parse_entity_space(code, value_line, &current_text.space)) break;
+                if (parse_entity_space(code, value_line, &current_text.space, &has_paperspace)) break;
                 if (parse_entity_owner(code, value_line, &current_text.owner_handle,
                                        &current_text.has_owner_handle)) break;
                 if (parse_style_code(&current_text.style, code, value_line, header_codepage)) break;
@@ -2409,7 +2393,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Solid:
-                if (parse_entity_space(code, value_line, &current_solid.space)) break;
+                if (parse_entity_space(code, value_line, &current_solid.space, &has_paperspace)) break;
                 if (parse_entity_owner(code, value_line, &current_solid.owner_handle,
                                        &current_solid.has_owner_handle)) break;
                 if (parse_style_code(&current_solid.style, code, value_line, header_codepage)) break;
@@ -2462,7 +2446,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Hatch:
-                if (parse_entity_space(code, value_line, &current_hatch.space)) break;
+                if (parse_entity_space(code, value_line, &current_hatch.space, &has_paperspace)) break;
                 if (parse_entity_owner(code, value_line, &current_hatch.owner_handle,
                                        &current_hatch.has_owner_handle)) break;
                 if (parse_style_code(&current_hatch.style, code, value_line, header_codepage)) break;
@@ -2768,7 +2752,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Insert:
-                if (parse_entity_space(code, value_line, &current_insert.space)) break;
+                if (parse_entity_space(code, value_line, &current_insert.space, &has_paperspace)) break;
                 if (parse_entity_owner(code, value_line, &current_insert.owner_handle,
                                        &current_insert.has_owner_handle)) break;
                 if (parse_style_code(&current_insert.style, code, value_line, header_codepage)) break;
@@ -2877,7 +2861,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Viewport:
-                if (parse_entity_space(code, value_line, &current_viewport.space)) break;
+                if (parse_entity_space(code, value_line, &current_viewport.space, &has_paperspace)) break;
                 switch (code) {
                     case 330:
                         current_viewport.owner_handle = value_line;
