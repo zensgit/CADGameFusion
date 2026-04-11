@@ -136,6 +136,28 @@ struct DxfInsert {
     int local_group_tag = -1;
 };
 
+// ---------- DxfEllipse ------------------------------------------------------
+struct DxfEllipse {
+    std::string layer;
+    std::string owner_handle;
+    bool has_owner_handle = false;
+    std::string layout_name;
+    cadgf_vec2 center{};
+    cadgf_vec2 major_axis{};
+    double ratio = 0.0;
+    double start_param = 0.0;
+    double end_param = 0.0;
+    bool has_cx = false;
+    bool has_cy = false;
+    bool has_ax = false;
+    bool has_ay = false;
+    bool has_ratio = false;
+    bool has_start = false;
+    bool has_end = false;
+    DxfStyle style;
+    int space = 0;
+};
+
 // ---------- DxfViewport / DxfView -------------------------------------------
 struct DxfViewport {
     int space = 0;

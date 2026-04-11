@@ -18,6 +18,7 @@
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
 #include "dxf_text_handler.h"
+#include "dxf_ellipse_entity_parser.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -101,27 +102,6 @@ struct DxfArc {
     bool has_cx = false;
     bool has_cy = false;
     bool has_radius = false;
-    bool has_start = false;
-    bool has_end = false;
-    DxfStyle style;
-    int space = 0;
-};
-
-struct DxfEllipse {
-    std::string layer;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    cadgf_vec2 center{};
-    cadgf_vec2 major_axis{};
-    double ratio = 0.0;
-    double start_param = 0.0;
-    double end_param = 0.0;
-    bool has_cx = false;
-    bool has_cy = false;
-    bool has_ax = false;
-    bool has_ay = false;
-    bool has_ratio = false;
     bool has_start = false;
     bool has_end = false;
     DxfStyle style;
@@ -1698,52 +1678,7 @@ static bool parse_dxf_entities(const std::string& path,
                 }, code, value_line, header_codepage, &has_paperspace);
                 break;
             case DxfEntityKind::Ellipse:
-                if (parse_entity_space(code, value_line, &current_ellipse.space, &has_paperspace)) break;
-                if (parse_entity_owner(code, value_line, &current_ellipse.owner_handle,
-                                       &current_ellipse.has_owner_handle)) break;
-                if (parse_style_code(&current_ellipse.style, code, value_line, header_codepage)) break;
-                switch (code) {
-                    case 8:
-                        current_ellipse.layer = sanitize_utf8(value_line, header_codepage);
-                        break;
-                    case 10:
-                        if (parse_double(value_line, &current_ellipse.center.x)) {
-                            current_ellipse.has_cx = true;
-                        }
-                        break;
-                    case 20:
-                        if (parse_double(value_line, &current_ellipse.center.y)) {
-                            current_ellipse.has_cy = true;
-                        }
-                        break;
-                    case 11:
-                        if (parse_double(value_line, &current_ellipse.major_axis.x)) {
-                            current_ellipse.has_ax = true;
-                        }
-                        break;
-                    case 21:
-                        if (parse_double(value_line, &current_ellipse.major_axis.y)) {
-                            current_ellipse.has_ay = true;
-                        }
-                        break;
-                    case 40:
-                        if (parse_double(value_line, &current_ellipse.ratio)) {
-                            current_ellipse.has_ratio = true;
-                        }
-                        break;
-                    case 41:
-                        if (parse_double(value_line, &current_ellipse.start_param)) {
-                            current_ellipse.has_start = true;
-                        }
-                        break;
-                    case 42:
-                        if (parse_double(value_line, &current_ellipse.end_param)) {
-                            current_ellipse.has_end = true;
-                        }
-                        break;
-                    default:
-                        break;
-                }
+                parse_ellipse_entity_record(code, value_line, &current_ellipse, &has_paperspace, header_codepage);
                 break;
             case DxfEntityKind::Spline:
                 if (parse_entity_space(code, value_line, &current_spline.space, &has_paperspace)) break;
