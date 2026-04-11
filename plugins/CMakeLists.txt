@@ -23,6 +23,7 @@ add_library(cadgf_dxf_importer_plugin SHARED
     dxf_table_block_finalizers.cpp
     dxf_document_commit_context.cpp
     dxf_top_level_entity_committers.cpp
+    dxf_block_entity_committers.cpp
     dxf_simple_geometry_entities.cpp
     dxf_polyline_entity_parser.cpp
     dxf_math_utils.cpp
