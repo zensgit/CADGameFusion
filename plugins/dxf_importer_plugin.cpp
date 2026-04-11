@@ -1,9 +1,12 @@
 #include "core/plugin_abi_c_v1.h"
 
 #include "dxf_types.h"
+#include "dxf_metadata_writer.h"
+#include "dxf_style.h"
 #include "dxf_math_utils.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
+#include "dxf_text_handler.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -17,23 +20,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-
-struct DxfEntityOriginMeta {
-    std::string source_type;
-    std::string edit_mode;
-    std::string proxy_kind;
-    std::string block_name;
-    std::string hatch_pattern;
-    int hatch_id{-1};
-    cadgf_vec2 source_anchor{};
-    bool has_source_anchor{false};
-    cadgf_vec2 leader_landing{};
-    bool has_leader_landing{false};
-    cadgf_vec2 leader_elbow{};
-    bool has_leader_elbow{false};
-    std::string source_anchor_driver_type;
-    std::string source_anchor_driver_kind;
-};
 
 struct DxfPolyline {
     std::string layer;
@@ -143,48 +129,6 @@ struct DxfSpline {
     int space = 0;
 };
 
-struct DxfText {
-    std::string layer;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    std::string style_name;
-    std::string kind;
-    std::string attribute_tag;
-    std::string attribute_default;
-    std::string attribute_prompt;
-    cadgf_vec2 pos{};
-    cadgf_vec2 align_pos{};
-    double height = 0.0;
-    double rotation_deg = 0.0;
-    double width = 0.0;
-    double width_factor = 1.0;
-    std::string text;
-    bool has_x = false;
-    bool has_y = false;
-    bool has_align_x = false;
-    bool has_align_y = false;
-    bool has_width = false;
-    bool has_width_factor = false;
-    int attribute_flags = 0;
-    bool has_attribute_tag = false;
-    bool has_attribute_default = false;
-    bool has_attribute_prompt = false;
-    bool has_attribute_flags = false;
-    int attachment = 0;
-    bool has_attachment = false;
-    int halign = 0;
-    int valign = 0;
-    bool has_halign = false;
-    bool has_valign = false;
-    bool is_mtext = false;
-    bool allow_extended_text = false;
-    DxfStyle style;
-    int space = 0;
-    DxfEntityOriginMeta origin_meta;
-    int local_group_tag = -1;
-};
-
 struct DxfSolidPoint {
     cadgf_vec2 pos{};
     bool has_x = false;
@@ -283,74 +227,6 @@ struct DxfTextStyle {
     bool has_name = false;
     double height = 0.0;
     bool has_height = false;
-};
-
-struct DxfInsert {
-    std::string block_name;
-    std::string layer;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    cadgf_vec2 pos{};
-    double scale_x = 1.0;
-    double scale_y = 1.0;
-    double rotation_deg = 0.0;
-    bool has_x = false;
-    bool has_y = false;
-    bool has_scale_x = false;
-    bool has_scale_y = false;
-    bool is_dimension = false;
-    std::string dim_text;
-    std::string dim_style;
-    cadgf_vec2 dim_text_pos{};
-    bool has_dim_text_pos = false;
-    double dim_measurement = 0.0;
-    bool has_dim_measurement = false;
-    // DIMENSION geometry definition points (DXF codes 13/23 and 14/24)
-    cadgf_vec2 dim_defpoint1{};  // First extension line origin (code 13, 23)
-    cadgf_vec2 dim_defpoint2{};  // Second extension line origin (code 14, 24)
-    bool has_dim_defpoint1 = false;
-    bool has_dim_defpoint2 = false;
-    int dim_type = 0;  // Dimension type (code 70)
-    DxfStyle style;
-    int space = 0;
-    bool has_following_attributes = false;
-    int local_group_tag = -1;
-};
-
-struct DxfViewport {
-    int space = 0;
-    int id = -1;
-    cadgf_vec2 center{};
-    cadgf_vec2 view_center{};
-    double width = 0.0;
-    double height = 0.0;
-    double view_height = 0.0;
-    double twist_deg = 0.0;
-    bool has_center_x = false;
-    bool has_center_y = false;
-    bool has_view_center_x = false;
-    bool has_view_center_y = false;
-    bool has_width = false;
-    bool has_height = false;
-    bool has_view_height = false;
-    bool has_twist = false;
-    bool has_id = false;
-    std::string layout;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-};
-
-struct DxfView {
-    std::string name;
-    bool has_name = false;
-    cadgf_vec2 center{};
-    double view_height = 0.0;
-    double aspect = 0.0;
-    bool has_center_x = false;
-    bool has_center_y = false;
-    bool has_view_height = false;
-    bool has_aspect = false;
 };
 
 struct DxfLayout {
@@ -494,73 +370,6 @@ static bool is_root_space_block_name(const std::string& name) {
 // convert_to_utf8_iconv(), sanitize_utf8()
 // are now provided by dxf_text_encoding.h
 
-// aci_to_rgb(), color_source_label(), resolve_color_metadata()
-// are now provided by dxf_color.h
-
-static void write_color_metadata(cadgf_document* doc, cadgf_entity_id id, const DxfColorMeta& meta) {
-    if (!doc || id == 0) return;
-    const char* label = color_source_label(meta.source);
-    if (!label || !*label) return;
-
-    const std::string base = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id));
-    const std::string source_key = base + ".color_source";
-    (void)cadgf_document_set_meta_value(doc, source_key.c_str(), label);
-
-    if (!meta.has_aci) return;
-    const std::string aci_key = base + ".color_aci";
-    const std::string aci_value = std::to_string(meta.aci);
-    (void)cadgf_document_set_meta_value(doc, aci_key.c_str(), aci_value.c_str());
-}
-
-static void write_space_metadata(cadgf_document* doc, cadgf_entity_id id, int space) {
-    if (!doc || id == 0) return;
-    if (space != 0 && space != 1) return;
-    const std::string key = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id)) + ".space";
-    const std::string value = std::to_string(space);
-    (void)cadgf_document_set_meta_value(doc, key.c_str(), value.c_str());
-}
-
-static void write_layout_metadata(cadgf_document* doc, cadgf_entity_id id, const std::string& layout) {
-    if (!doc || id == 0 || layout.empty()) return;
-    const std::string key = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id)) + ".layout";
-    (void)cadgf_document_set_meta_value(doc, key.c_str(), layout.c_str());
-}
-
-static void write_entity_string_metadata(cadgf_document* doc,
-                                         cadgf_entity_id id,
-                                         const char* suffix,
-                                         const std::string& value) {
-    if (!doc || id == 0 || !suffix || !*suffix || value.empty()) return;
-    const std::string key =
-        "dxf.entity." + std::to_string(static_cast<unsigned long long>(id)) + "." + suffix;
-    (void)cadgf_document_set_meta_value(doc, key.c_str(), value.c_str());
-}
-
-static void write_entity_int_metadata(cadgf_document* doc,
-                                      cadgf_entity_id id,
-                                      const char* suffix,
-                                      int value) {
-    if (!doc || id == 0 || !suffix || !*suffix) return;
-    const std::string key =
-        "dxf.entity." + std::to_string(static_cast<unsigned long long>(id)) + "." + suffix;
-    const std::string encoded = std::to_string(value);
-    (void)cadgf_document_set_meta_value(doc, key.c_str(), encoded.c_str());
-}
-
-static void write_entity_vec2_metadata(cadgf_document* doc,
-                                       cadgf_entity_id id,
-                                       const char* suffix,
-                                       const cadgf_vec2& value) {
-    if (!doc || id == 0 || !suffix || !*suffix) return;
-    char buf[64]{};
-    const std::string base =
-        "dxf.entity." + std::to_string(static_cast<unsigned long long>(id)) + "." + suffix;
-    std::snprintf(buf, sizeof(buf), "%.6f", value.x);
-    (void)cadgf_document_set_meta_value(doc, (base + "_x").c_str(), buf);
-    std::snprintf(buf, sizeof(buf), "%.6f", value.y);
-    (void)cadgf_document_set_meta_value(doc, (base + "_y").c_str(), buf);
-}
-
 static int resolve_local_group_id(cadgf_document* doc,
                                   std::unordered_map<int, int>& local_to_doc_group,
                                   int local_group_tag,
@@ -574,53 +383,6 @@ static int resolve_local_group_id(cadgf_document* doc,
     const int doc_group_id = cadgf_document_alloc_group_id(doc);
     local_to_doc_group.emplace(local_group_tag, doc_group_id);
     return doc_group_id;
-}
-
-static void write_entity_origin_metadata(cadgf_document* doc,
-                                         cadgf_entity_id id,
-                                         const DxfEntityOriginMeta& meta) {
-    if (!doc || id == 0) return;
-    write_entity_string_metadata(doc, id, "source_type", meta.source_type);
-    write_entity_string_metadata(doc, id, "edit_mode", meta.edit_mode);
-    write_entity_string_metadata(doc, id, "proxy_kind", meta.proxy_kind);
-    write_entity_string_metadata(doc, id, "block_name", meta.block_name);
-    write_entity_string_metadata(doc, id, "hatch_pattern", meta.hatch_pattern);
-    if (meta.hatch_id >= 0) {
-        write_entity_int_metadata(doc, id, "hatch_id", meta.hatch_id);
-    }
-    if (meta.has_source_anchor) {
-        write_entity_vec2_metadata(doc, id, "source_anchor", meta.source_anchor);
-    }
-    if (meta.has_leader_landing) {
-        write_entity_vec2_metadata(doc, id, "leader_landing", meta.leader_landing);
-    }
-    if (meta.has_leader_elbow) {
-        write_entity_vec2_metadata(doc, id, "leader_elbow", meta.leader_elbow);
-    }
-    write_entity_string_metadata(doc, id, "source_anchor_driver_type", meta.source_anchor_driver_type);
-    write_entity_string_metadata(doc, id, "source_anchor_driver_kind", meta.source_anchor_driver_kind);
-}
-
-static void write_source_bundle_metadata(cadgf_document* doc,
-                                         cadgf_entity_id id,
-                                         int source_bundle_id) {
-    if (!doc || id == 0 || source_bundle_id < 0) return;
-    write_entity_int_metadata(doc, id, "source_bundle_id", source_bundle_id);
-}
-
-static DxfEntityOriginMeta build_insert_origin_metadata(const DxfInsert& insert) {
-    DxfEntityOriginMeta meta;
-    meta.block_name = insert.block_name;
-    if (insert.is_dimension) {
-        meta.source_type = "DIMENSION";
-        meta.edit_mode = "proxy";
-        meta.proxy_kind = "dimension";
-    } else {
-        meta.source_type = "INSERT";
-        meta.edit_mode = "exploded";
-        meta.proxy_kind = "insert";
-    }
-    return meta;
 }
 
 static DxfEntityOriginMeta build_hatch_origin_metadata(const DxfHatch& hatch) {
@@ -745,53 +507,8 @@ static void apply_classic_leader_text_guide_metadata(DxfEntityOriginMeta& meta,
     meta.source_anchor_driver_kind = "endpoint";
 }
 
-static bool resolve_dimension_anchor_axis(const DxfInsert& insert, cadgf_vec2* out_axis) {
-    if (!out_axis) return false;
-    cadgf_vec2 axis{};
-    const int base_dim_type = insert.dim_type & 7;
-    if (base_dim_type == 1 && insert.has_dim_defpoint1 && insert.has_dim_defpoint2) {
-        axis.x = insert.dim_defpoint2.x - insert.dim_defpoint1.x;
-        axis.y = insert.dim_defpoint2.y - insert.dim_defpoint1.y;
-    } else {
-        const double angle_rad = insert.rotation_deg * kDegToRad;
-        axis.x = std::cos(angle_rad);
-        axis.y = std::sin(angle_rad);
-    }
-    const double length = std::hypot(axis.x, axis.y);
-    if (!(length > 1e-9)) return false;
-    out_axis->x = axis.x / length;
-    out_axis->y = axis.y / length;
-    return true;
-}
-
-static bool apply_dimension_text_guide_metadata(DxfEntityOriginMeta* meta,
-                                                const DxfInsert& insert) {
-    if (!meta || !insert.is_dimension || !insert.has_x || !insert.has_y) return false;
-    cadgf_vec2 axis{};
-    if (!resolve_dimension_anchor_axis(insert, &axis)) return false;
-
-    cadgf_vec2 anchor = insert.pos;
-    if (insert.has_dim_defpoint1 && insert.has_dim_defpoint2) {
-        const auto project_onto_dimension_axis = [&](const cadgf_vec2& point) {
-            const cadgf_vec2 delta{point.x - insert.pos.x, point.y - insert.pos.y};
-            const double along = dot_vec(delta, axis);
-            return cadgf_vec2{
-                insert.pos.x + axis.x * along,
-                insert.pos.y + axis.y * along,
-            };
-        };
-        const cadgf_vec2 projected_a = project_onto_dimension_axis(insert.dim_defpoint1);
-        const cadgf_vec2 projected_b = project_onto_dimension_axis(insert.dim_defpoint2);
-        anchor.x = (projected_a.x + projected_b.x) * 0.5;
-        anchor.y = (projected_a.y + projected_b.y) * 0.5;
-    }
-
-    meta->source_anchor = anchor;
-    meta->has_source_anchor = true;
-    meta->source_anchor_driver_type = "line";
-    meta->source_anchor_driver_kind = "midpoint";
-    return true;
-}
+// resolve_dimension_anchor_axis(), apply_dimension_text_guide_metadata()
+// are now provided by dxf_metadata_writer (used internally by write_dimension_metadata).
 
 static void associate_classic_leader_notes(std::vector<DxfPolyline>& polylines,
                                            std::vector<DxfText>& texts,
@@ -912,343 +629,6 @@ static void annotate_mleader_texts(std::vector<DxfText>& texts) {
     }
 }
 
-static void write_dimension_origin_metadata(cadgf_document* doc,
-                                            cadgf_entity_id id,
-                                            const DxfInsert& insert,
-                                            bool include_text_metadata);
-
-static void write_text_metadata(cadgf_document* doc, cadgf_entity_id id, const DxfText& text) {
-    if (!doc || id == 0) return;
-    const std::string base = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id));
-    if (!text.kind.empty()) {
-        const std::string key = base + ".text_kind";
-        (void)cadgf_document_set_meta_value(doc, key.c_str(), text.kind.c_str());
-    }
-    if (text.has_width) {
-        const std::string key = base + ".text_width";
-        char buf[64]{};
-        std::snprintf(buf, sizeof(buf), "%.6f", text.width);
-        (void)cadgf_document_set_meta_value(doc, key.c_str(), buf);
-    }
-    if (text.has_width_factor) {
-        const std::string key = base + ".text_width_factor";
-        char buf[64]{};
-        std::snprintf(buf, sizeof(buf), "%.6f", text.width_factor);
-        (void)cadgf_document_set_meta_value(doc, key.c_str(), buf);
-    }
-    if (text.has_attachment) {
-        const std::string key = base + ".text_attachment";
-        const std::string value = std::to_string(text.attachment);
-        (void)cadgf_document_set_meta_value(doc, key.c_str(), value.c_str());
-    }
-    if (text.has_halign) {
-        const std::string key = base + ".text_halign";
-        const std::string value = std::to_string(text.halign);
-        (void)cadgf_document_set_meta_value(doc, key.c_str(), value.c_str());
-    }
-    if (text.has_valign) {
-        const std::string key = base + ".text_valign";
-        const std::string value = std::to_string(text.valign);
-        (void)cadgf_document_set_meta_value(doc, key.c_str(), value.c_str());
-    }
-    if (text.has_attribute_tag) {
-        const std::string key = base + ".attribute_tag";
-        (void)cadgf_document_set_meta_value(doc, key.c_str(), text.attribute_tag.c_str());
-    }
-    if (text.has_attribute_default) {
-        const std::string key = base + ".attribute_default";
-        (void)cadgf_document_set_meta_value(doc, key.c_str(), text.attribute_default.c_str());
-    }
-    if (text.has_attribute_prompt) {
-        const std::string key = base + ".attribute_prompt";
-        (void)cadgf_document_set_meta_value(doc, key.c_str(), text.attribute_prompt.c_str());
-    }
-    if (text.has_attribute_flags) {
-        write_entity_int_metadata(doc, id, "attribute_flags", text.attribute_flags);
-        write_entity_int_metadata(doc, id, "attribute_invisible", (text.attribute_flags & 1) != 0 ? 1 : 0);
-        write_entity_int_metadata(doc, id, "attribute_constant", (text.attribute_flags & 2) != 0 ? 1 : 0);
-        write_entity_int_metadata(doc, id, "attribute_verify", (text.attribute_flags & 4) != 0 ? 1 : 0);
-        write_entity_int_metadata(doc, id, "attribute_preset", (text.attribute_flags & 8) != 0 ? 1 : 0);
-        write_entity_int_metadata(doc, id, "attribute_lock_position", (text.attribute_flags & 16) != 0 ? 1 : 0);
-    }
-}
-
-static void write_dimension_metadata(cadgf_document* doc, cadgf_entity_id id, const DxfInsert& insert) {
-    write_dimension_origin_metadata(doc, id, insert, true);
-}
-
-static void write_dimension_origin_metadata(cadgf_document* doc,
-                                            cadgf_entity_id id,
-                                            const DxfInsert& insert,
-                                            bool include_text_metadata) {
-    if (!doc || id == 0 || !insert.is_dimension) return;
-    const std::string base = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id));
-    DxfEntityOriginMeta dimension_meta = build_insert_origin_metadata(insert);
-    if (include_text_metadata) {
-        (void)apply_dimension_text_guide_metadata(&dimension_meta, insert);
-    }
-    write_entity_origin_metadata(doc, id, dimension_meta);
-    {
-        const std::string key = base + ".dim_type";
-        const std::string value = std::to_string(insert.dim_type);
-        (void)cadgf_document_set_meta_value(doc, key.c_str(), value.c_str());
-    }
-    if (!insert.dim_style.empty()) {
-        (void)cadgf_document_set_meta_value(doc, (base + ".dim_style").c_str(), insert.dim_style.c_str());
-    }
-    if (!include_text_metadata) return;
-    (void)cadgf_document_set_meta_value(doc, (base + ".text_kind").c_str(), "dimension");
-    if (insert.has_dim_text_pos) {
-        char buf[64]{};
-        std::snprintf(buf, sizeof(buf), "%.6f", insert.dim_text_pos.x);
-        (void)cadgf_document_set_meta_value(doc, (base + ".dim_text_pos_x").c_str(), buf);
-        std::snprintf(buf, sizeof(buf), "%.6f", insert.dim_text_pos.y);
-        (void)cadgf_document_set_meta_value(doc, (base + ".dim_text_pos_y").c_str(), buf);
-    }
-    {
-        char buf[64]{};
-        const double rotation = insert.rotation_deg * kDegToRad;
-        std::snprintf(buf, sizeof(buf), "%.6f", rotation);
-        (void)cadgf_document_set_meta_value(doc, (base + ".dim_text_rotation").c_str(), buf);
-    }
-}
-
-static void write_insert_derived_metadata(cadgf_document* doc,
-                                          cadgf_entity_id id,
-                                          const DxfInsert* origin_insert,
-                                          bool include_text_metadata = false) {
-    if (!doc || id == 0 || !origin_insert) return;
-    if (origin_insert->is_dimension) {
-        write_dimension_origin_metadata(doc, id, *origin_insert, include_text_metadata);
-        return;
-    }
-    write_entity_origin_metadata(doc, id, build_insert_origin_metadata(*origin_insert));
-}
-
-static void write_viewport_metadata(cadgf_document* doc, size_t index, const DxfViewport& viewport) {
-    if (!doc) return;
-    char buf[64];
-    const std::string base = "dxf.viewport." + std::to_string(static_cast<unsigned long long>(index));
-    std::snprintf(buf, sizeof(buf), "%d", viewport.space);
-    (void)cadgf_document_set_meta_value(doc, (base + ".space").c_str(), buf);
-    if (viewport.has_id) {
-        std::snprintf(buf, sizeof(buf), "%d", viewport.id);
-        (void)cadgf_document_set_meta_value(doc, (base + ".id").c_str(), buf);
-    }
-    std::snprintf(buf, sizeof(buf), "%.6f", viewport.center.x);
-    (void)cadgf_document_set_meta_value(doc, (base + ".center_x").c_str(), buf);
-    std::snprintf(buf, sizeof(buf), "%.6f", viewport.center.y);
-    (void)cadgf_document_set_meta_value(doc, (base + ".center_y").c_str(), buf);
-    std::snprintf(buf, sizeof(buf), "%.6f", viewport.width);
-    (void)cadgf_document_set_meta_value(doc, (base + ".width").c_str(), buf);
-    std::snprintf(buf, sizeof(buf), "%.6f", viewport.height);
-    (void)cadgf_document_set_meta_value(doc, (base + ".height").c_str(), buf);
-    std::snprintf(buf, sizeof(buf), "%.6f", viewport.view_center.x);
-    (void)cadgf_document_set_meta_value(doc, (base + ".view_center_x").c_str(), buf);
-    std::snprintf(buf, sizeof(buf), "%.6f", viewport.view_center.y);
-    (void)cadgf_document_set_meta_value(doc, (base + ".view_center_y").c_str(), buf);
-    std::snprintf(buf, sizeof(buf), "%.6f", viewport.view_height);
-    (void)cadgf_document_set_meta_value(doc, (base + ".view_height").c_str(), buf);
-    if (viewport.has_twist) {
-        std::snprintf(buf, sizeof(buf), "%.6f", viewport.twist_deg);
-        (void)cadgf_document_set_meta_value(doc, (base + ".twist_deg").c_str(), buf);
-    }
-    if (!viewport.layout.empty()) {
-        (void)cadgf_document_set_meta_value(doc, (base + ".layout").c_str(), viewport.layout.c_str());
-    }
-}
-
-static void write_viewport_list_metadata(cadgf_document* doc, const std::vector<DxfViewport>& viewports) {
-    if (!doc || viewports.empty()) return;
-    char buf[32];
-    std::snprintf(buf, sizeof(buf), "%zu", viewports.size());
-    (void)cadgf_document_set_meta_value(doc, "dxf.viewport.count", buf);
-    for (size_t i = 0; i < viewports.size(); ++i) {
-        write_viewport_metadata(doc, i, viewports[i]);
-    }
-}
-
-static void write_active_view_metadata(cadgf_document* doc, const DxfView& view) {
-    if (!doc) return;
-    char buf[64];
-    if (view.has_center_x) {
-        std::snprintf(buf, sizeof(buf), "%.6f", view.center.x);
-        (void)cadgf_document_set_meta_value(doc, "dxf.vport.active.center_x", buf);
-    }
-    if (view.has_center_y) {
-        std::snprintf(buf, sizeof(buf), "%.6f", view.center.y);
-        (void)cadgf_document_set_meta_value(doc, "dxf.vport.active.center_y", buf);
-    }
-    if (view.has_view_height) {
-        std::snprintf(buf, sizeof(buf), "%.6f", view.view_height);
-        (void)cadgf_document_set_meta_value(doc, "dxf.vport.active.view_height", buf);
-    }
-    if (view.has_aspect) {
-        std::snprintf(buf, sizeof(buf), "%.6f", view.aspect);
-        (void)cadgf_document_set_meta_value(doc, "dxf.vport.active.aspect", buf);
-    }
-    if (view.has_name && !view.name.empty()) {
-        (void)cadgf_document_set_meta_value(doc, "dxf.vport.active.name", view.name.c_str());
-    }
-}
-
-static bool parse_style_code(DxfStyle* style, int code, const std::string& value_line,
-                             const std::string& codepage) {
-    if (!style) return false;
-    switch (code) {
-        case 6: {
-            if (value_line == "BYBLOCK") {
-                style->byblock_line_type = true;
-                return true;
-            }
-            if (!value_line.empty() && value_line != "BYLAYER") {
-                style->line_type = sanitize_utf8(value_line, codepage);
-                style->has_line_type = true;
-            }
-            return true;
-        }
-        case 48: {
-            double scale = 0.0;
-            if (parse_double(value_line, &scale)) {
-                style->line_type_scale = scale;
-                style->has_line_scale = true;
-            }
-            return true;
-        }
-        case 370: {
-            int weight = 0;
-            if (parse_int(value_line, &weight)) {
-                if (weight == -2) {
-                    style->byblock_line_weight = true;
-                    return true;
-                }
-                if (weight >= 0) {
-                    style->line_weight = static_cast<double>(weight) / 100.0;
-                    style->has_line_weight = true;
-                }
-            }
-            return true;
-        }
-        case 60: {
-            int hidden = 0;
-            if (parse_int(value_line, &hidden) && hidden != 0) {
-                style->hidden = true;
-            }
-            return true;
-        }
-        case 62: {
-            int index = 0;
-            if (parse_int(value_line, &index)) {
-                if (index == 0) {
-                    style->byblock_color = true;
-                    return true;
-                }
-                if (index == 256) {
-                    return true;
-                }
-                if (index < 0) {
-                    style->hidden = true;
-                    index = -index;
-                }
-                if (index > 0) {
-                    style->color = aci_to_rgb(index);
-                    style->has_color = true;
-                    style->color_aci = index;
-                    style->has_color_aci = true;
-                    style->color_is_true = false;
-                }
-            }
-            return true;
-        }
-        case 420: {
-            int rgb = 0;
-            if (parse_int(value_line, &rgb)) {
-                style->color = static_cast<unsigned int>(rgb) & 0xFFFFFFu;
-                style->has_color = true;
-                style->has_color_aci = false;
-                style->color_is_true = true;
-            }
-            return true;
-        }
-        default:
-            return false;
-    }
-}
-
-static void apply_line_style(cadgf_document* doc, cadgf_entity_id id, const DxfStyle& style,
-                             const DxfStyle* layer_style, const DxfStyle* block_style,
-                             double default_line_scale) {
-    if (!doc || id == 0) return;
-    const bool use_byblock = style.byblock_line_type || style.byblock_line_weight || style.byblock_color;
-    if (style.has_line_type) {
-        (void)cadgf_document_set_entity_line_type(doc, id, style.line_type.c_str());
-    } else if (style.byblock_line_type && block_style && block_style->has_line_type) {
-        (void)cadgf_document_set_entity_line_type(doc, id, block_style->line_type.c_str());
-    } else if (layer_style && layer_style->has_line_type) {
-        (void)cadgf_document_set_entity_line_type(doc, id, layer_style->line_type.c_str());
-    }
-    if (style.has_line_weight) {
-        (void)cadgf_document_set_entity_line_weight(doc, id, style.line_weight);
-    } else if (style.byblock_line_weight && block_style && block_style->has_line_weight) {
-        (void)cadgf_document_set_entity_line_weight(doc, id, block_style->line_weight);
-    } else if (layer_style && layer_style->has_line_weight) {
-        (void)cadgf_document_set_entity_line_weight(doc, id, layer_style->line_weight);
-    }
-    bool line_scale_applied = false;
-    if (style.has_line_scale) {
-        (void)cadgf_document_set_entity_line_type_scale(doc, id, style.line_type_scale);
-        line_scale_applied = true;
-    } else if (use_byblock && block_style && block_style->has_line_scale) {
-        (void)cadgf_document_set_entity_line_type_scale(doc, id, block_style->line_type_scale);
-        line_scale_applied = true;
-    } else if (layer_style && layer_style->has_line_scale) {
-        (void)cadgf_document_set_entity_line_type_scale(doc, id, layer_style->line_type_scale);
-        line_scale_applied = true;
-    }
-    if (!line_scale_applied) {
-        (void)cadgf_document_set_entity_line_type_scale(doc, id, default_line_scale);
-    }
-    unsigned int resolved_color = 0;
-    bool has_color = false;
-    const DxfColorMeta color_meta = resolve_color_metadata(style, layer_style, block_style,
-                                                           &resolved_color, &has_color);
-    if (has_color) {
-        (void)cadgf_document_set_entity_color(doc, id, resolved_color);
-    }
-    write_color_metadata(doc, id, color_meta);
-    if (style.hidden) {
-        (void)cadgf_document_set_entity_visible(doc, id, 0);
-    }
-}
-
-static DxfStyle resolve_insert_byblock_style(const DxfStyle& insert_style, const DxfStyle* parent_style) {
-    if (!parent_style) {
-        return insert_style;
-    }
-    DxfStyle out = insert_style;
-    const bool use_byblock = out.byblock_line_type || out.byblock_line_weight || out.byblock_color;
-    if (out.byblock_line_type && parent_style->has_line_type) {
-        out.line_type = parent_style->line_type;
-        out.has_line_type = true;
-    }
-    if (out.byblock_line_weight && parent_style->has_line_weight) {
-        out.line_weight = parent_style->line_weight;
-        out.has_line_weight = true;
-    }
-    if (out.byblock_color && parent_style->has_color) {
-        out.color = parent_style->color;
-        out.has_color = true;
-        out.color_aci = parent_style->color_aci;
-        out.has_color_aci = parent_style->has_color_aci;
-        out.color_is_true = parent_style->color_is_true;
-    }
-    if (use_byblock && !out.has_line_scale && parent_style->has_line_scale) {
-        out.line_type_scale = parent_style->line_type_scale;
-        out.has_line_scale = true;
-    }
-    return out;
-}
-
 struct Transform2D {
     double m00{1.0};
     double m01{0.0};
@@ -1343,24 +723,6 @@ static void finalize_spline(const DxfSpline& spline, std::vector<DxfSpline>& out
     out.push_back(spline);
 }
 
-static int map_text_attachment(int halign, int valign) {
-    int col = 0;
-    if (halign == 2) {
-        col = 2;
-    } else if (halign == 1 || halign == 3 || halign == 4 || halign == 5) {
-        col = 1;
-    }
-    int row = 2;
-    if (valign == 3) {
-        row = 0;
-    } else if (valign == 2) {
-        row = 1;
-    } else if (valign == 1) {
-        row = 2;
-    }
-    return row * 3 + col + 1;
-}
-
 static void finalize_solid(const DxfSolid& solid, std::vector<DxfPolyline>& out) {
     std::vector<cadgf_vec2> points;
     points.reserve(4);
@@ -1379,18 +741,6 @@ static void finalize_solid(const DxfSolid& solid, std::vector<DxfPolyline>& out)
     finalize_polyline(pl, out);
 }
 
-struct TextImportStats {
-    int entities_seen = 0;
-    int entities_emitted = 0;
-    int skipped_missing_xy = 0;
-    int align_complete = 0;
-    int align_partial = 0;
-    int align_partial_x_only = 0;
-    int align_partial_y_only = 0;
-    int align_used = 0;
-    int nonfinite_values = 0;
-};
-
 static bool looks_nonfinite_number(const std::string& raw) {
     std::string s;
     s.reserve(raw.size());
@@ -1405,44 +755,6 @@ static bool looks_nonfinite_number(const std::string& raw) {
     if (s.find("inf") != std::string::npos) return true;
     if (s.find("ind") != std::string::npos) return true;
     return false;
-}
-
-static void finalize_text(DxfText& text, std::vector<DxfText>& out, TextImportStats* stats) {
-    if (stats) {
-        stats->entities_seen += 1;
-        if (text.has_align_x && text.has_align_y) {
-            stats->align_complete += 1;
-        } else if (text.has_align_x != text.has_align_y) {
-            stats->align_partial += 1;
-            if (text.has_align_x) {
-                stats->align_partial_x_only += 1;
-            } else {
-                stats->align_partial_y_only += 1;
-            }
-        }
-    }
-
-    if (!(text.has_x && text.has_y)) {
-        if (stats) stats->skipped_missing_xy += 1;
-        return;
-    }
-
-    if (!text.is_mtext && (text.has_halign || text.has_valign)) {
-        // Strict alignment policy: only use align_pos when both 11/21 exist.
-        if (text.has_align_x && text.has_align_y) {
-            text.pos = text.align_pos;
-            text.has_x = true;
-            text.has_y = true;
-            if (stats) stats->align_used += 1;
-        }
-        if (!text.has_attachment) {
-            text.attachment = map_text_attachment(text.halign, text.valign);
-            text.has_attachment = true;
-        }
-    }
-
-    out.push_back(text);
-    if (stats) stats->entities_emitted += 1;
 }
 
 struct HatchPatternStats {

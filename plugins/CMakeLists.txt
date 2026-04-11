@@ -15,6 +15,9 @@ add_library(cadgf_dxf_importer_plugin SHARED
     dxf_math_utils.cpp
     dxf_text_encoding.cpp
     dxf_color.cpp
+    dxf_metadata_writer.cpp
+    dxf_style.cpp
+    dxf_text_handler.cpp
 )
 target_link_libraries(cadgf_dxf_importer_plugin PRIVATE core_c)
 target_include_directories(cadgf_dxf_importer_plugin PRIVATE ${CMAKE_SOURCE_DIR}/core/include)
