@@ -10,7 +10,12 @@ set_target_properties(cadgf_sample_plugin PROPERTIES
 )
 
 # DXF importer plugin (lite)
-add_library(cadgf_dxf_importer_plugin SHARED dxf_importer_plugin.cpp)
+add_library(cadgf_dxf_importer_plugin SHARED
+    dxf_importer_plugin.cpp
+    dxf_math_utils.cpp
+    dxf_text_encoding.cpp
+    dxf_color.cpp
+)
 target_link_libraries(cadgf_dxf_importer_plugin PRIVATE core_c)
 target_include_directories(cadgf_dxf_importer_plugin PRIVATE ${CMAKE_SOURCE_DIR}/core/include)
 if(APPLE)
