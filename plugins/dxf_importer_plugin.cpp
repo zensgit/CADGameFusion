@@ -13,6 +13,7 @@
 #include "dxf_table_records.h"
 #include "dxf_view_finalizers.h"
 #include "dxf_table_block_finalizers.h"
+#include "dxf_simple_geometry_entities.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
 #include "dxf_text_handler.h"
@@ -1661,126 +1662,63 @@ static bool parse_dxf_entities(const std::string& path,
                 }
                 break;
             case DxfEntityKind::Line:
-                if (parse_entity_space(code, value_line, &current_line.space, &has_paperspace)) break;
-                if (parse_entity_owner(code, value_line, &current_line.owner_handle,
-                                       &current_line.has_owner_handle)) break;
-                if (parse_style_code(&current_line.style, code, value_line, header_codepage)) break;
-                switch (code) {
-                    case 8:
-                        current_line.layer = sanitize_utf8(value_line, header_codepage);
-                        break;
-                    case 10:
-                        if (parse_double(value_line, &current_line.a.x)) {
-                            current_line.has_ax = true;
-                        }
-                        break;
-                    case 20:
-                        if (parse_double(value_line, &current_line.a.y)) {
-                            current_line.has_ay = true;
-                        }
-                        break;
-                    case 11:
-                        if (parse_double(value_line, &current_line.b.x)) {
-                            current_line.has_bx = true;
-                        }
-                        break;
-                    case 21:
-                        if (parse_double(value_line, &current_line.b.y)) {
-                            current_line.has_by = true;
-                        }
-                        break;
-                    default:
-                        break;
-                }
+                parse_line_entity_record({
+                    &current_line.layer,
+                    &current_line.owner_handle,
+                    &current_line.has_owner_handle,
+                    &current_line.style,
+                    &current_line.space,
+                    &current_line.a,
+                    &current_line.b,
+                    &current_line.has_ax,
+                    &current_line.has_ay,
+                    &current_line.has_bx,
+                    &current_line.has_by,
+                }, code, value_line, header_codepage, &has_paperspace);
                 break;
             case DxfEntityKind::Point:
-                if (parse_entity_space(code, value_line, &current_point.space, &has_paperspace)) break;
-                if (parse_entity_owner(code, value_line, &current_point.owner_handle,
-                                       &current_point.has_owner_handle)) break;
-                if (parse_style_code(&current_point.style, code, value_line, header_codepage)) break;
-                switch (code) {
-                    case 8:
-                        current_point.layer = sanitize_utf8(value_line, header_codepage);
-                        break;
-                    case 10:
-                        if (parse_double(value_line, &current_point.p.x)) {
-                            current_point.has_x = true;
-                        }
-                        break;
-                    case 20:
-                        if (parse_double(value_line, &current_point.p.y)) {
-                            current_point.has_y = true;
-                        }
-                        break;
-                    default:
-                        break;
-                }
+                parse_point_entity_record({
+                    &current_point.layer,
+                    &current_point.owner_handle,
+                    &current_point.has_owner_handle,
+                    &current_point.style,
+                    &current_point.space,
+                    &current_point.p,
+                    &current_point.has_x,
+                    &current_point.has_y,
+                }, code, value_line, header_codepage, &has_paperspace);
                 break;
             case DxfEntityKind::Circle:
-                if (parse_entity_space(code, value_line, &current_circle.space, &has_paperspace)) break;
-                if (parse_entity_owner(code, value_line, &current_circle.owner_handle,
-                                       &current_circle.has_owner_handle)) break;
-                if (parse_style_code(&current_circle.style, code, value_line, header_codepage)) break;
-                switch (code) {
-                    case 8:
-                        current_circle.layer = sanitize_utf8(value_line, header_codepage);
-                        break;
-                    case 10:
-                        if (parse_double(value_line, &current_circle.center.x)) {
-                            current_circle.has_cx = true;
-                        }
-                        break;
-                    case 20:
-                        if (parse_double(value_line, &current_circle.center.y)) {
-                            current_circle.has_cy = true;
-                        }
-                        break;
-                    case 40:
-                        if (parse_double(value_line, &current_circle.radius)) {
-                            current_circle.has_radius = true;
-                        }
-                        break;
-                    default:
-                        break;
-                }
+                parse_circle_entity_record({
+                    &current_circle.layer,
+                    &current_circle.owner_handle,
+                    &current_circle.has_owner_handle,
+                    &current_circle.style,
+                    &current_circle.space,
+                    &current_circle.center,
+                    &current_circle.radius,
+                    &current_circle.has_cx,
+                    &current_circle.has_cy,
+                    &current_circle.has_radius,
+                }, code, value_line, header_codepage, &has_paperspace);
                 break;
             case DxfEntityKind::Arc:
-                if (parse_entity_space(code, value_line, &current_arc.space, &has_paperspace)) break;
-                if (parse_entity_owner(code, value_line, &current_arc.owner_handle,
-                                       &current_arc.has_owner_handle)) break;
-                if (parse_style_code(&current_arc.style, code, value_line, header_codepage)) break;
-                switch (code) {
-                    case 8:
-                        current_arc.layer = sanitize_utf8(value_line, header_codepage);
-                        break;
-                    case 10:
-                        if (parse_double(value_line, &current_arc.center.x)) {
-                            current_arc.has_cx = true;
-                        }
-                        break;
-                    case 20:
-                        if (parse_double(value_line, &current_arc.center.y)) {
-                            current_arc.has_cy = true;
-                        }
-                        break;
-                    case 40:
-                        if (parse_double(value_line, &current_arc.radius)) {
-                            current_arc.has_radius = true;
-                        }
-                        break;
-                    case 50:
-                        if (parse_double(value_line, &current_arc.start_deg)) {
-                            current_arc.has_start = true;
-                        }
-                        break;
-                    case 51:
-                        if (parse_double(value_line, &current_arc.end_deg)) {
-                            current_arc.has_end = true;
-                        }
-                        break;
-                    default:
-                        break;
-                }
+                parse_arc_entity_record({
+                    &current_arc.layer,
+                    &current_arc.owner_handle,
+                    &current_arc.has_owner_handle,
+                    &current_arc.style,
+                    &current_arc.space,
+                    &current_arc.center,
+                    &current_arc.radius,
+                    &current_arc.start_deg,
+                    &current_arc.end_deg,
+                    &current_arc.has_cx,
+                    &current_arc.has_cy,
+                    &current_arc.has_radius,
+                    &current_arc.has_start,
+                    &current_arc.has_end,
+                }, code, value_line, header_codepage, &has_paperspace);
                 break;
             case DxfEntityKind::Ellipse:
                 if (parse_entity_space(code, value_line, &current_ellipse.space, &has_paperspace)) break;
