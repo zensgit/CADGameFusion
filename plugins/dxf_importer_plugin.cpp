@@ -12,6 +12,7 @@
 #include "dxf_layout_objects.h"
 #include "dxf_table_records.h"
 #include "dxf_view_finalizers.h"
+#include "dxf_table_block_finalizers.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
 #include "dxf_text_handler.h"
@@ -1463,22 +1464,17 @@ static bool parse_dxf_entities(const std::string& path,
         current_kind = DxfEntityKind::None;
     };
 
+
     auto finalize_layer = [&](DxfLayer& layer) {
-        if (!layer.has_name) return;
-        if (layer.style.hidden) {
-            layer.visible = false;
-        }
-        layers[layer.name] = layer;
+        ::finalize_layer(layer, layers);
     };
 
     auto finalize_text_style = [&](DxfTextStyle& style) {
-        if (!style.has_name) return;
-        text_styles[style.name] = style;
+        ::finalize_text_style(style, text_styles);
     };
 
     auto finalize_block = [&](DxfBlock& block) {
-        if (!block.has_name) return;
-        blocks[block.name] = block;
+        ::finalize_block(block, blocks);
     };
 
     DxfZeroRecordContext zero_ctx{};
