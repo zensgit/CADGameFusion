@@ -1232,6 +1232,12 @@ bool has_analytical_gradient(const ConstraintSpec& c) {
         case ConstraintKind::FixedPoint:
         case ConstraintKind::Midpoint:
         case ConstraintKind::Symmetric:
+        case ConstraintKind::Distance:
+        case ConstraintKind::PointOnLine:
+        case ConstraintKind::Parallel:
+        case ConstraintKind::Perpendicular:
+        case ConstraintKind::Angle:
+        case ConstraintKind::Tangent:
             return true;
         default:
             return false;
@@ -1242,7 +1248,7 @@ bool has_analytical_gradient(const ConstraintSpec& c) {
 // for supported constraint types.  Sets ok=false and returns NaN for
 // unsupported types or when var_index is not active.
 double analytical_gradient(const ConstraintSpec& c, int var_index,
-                           const ISolver::GetVar& /*get*/, bool& ok) {
+                           const ISolver::GetVar& get, bool& ok) {
     ok = true;
     const auto kind = classifyConstraintKind(c.type);
 
@@ -1343,6 +1349,226 @@ double analytical_gradient(const ConstraintSpec& c, int var_index,
                 if (var_index == 2) return  0.5;  // p2x
                 if (var_index == 4) return -1.0;  // cx
                 return 0.0;
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Parallel: residual = cross / (n1*n2)
+        // cross = v1x*v2y - v1y*v2x, n1 = |v1|, n2 = |v2|
+        // vars: [0]=x0,[1]=y0,[2]=x1,[3]=y1,[4]=x2,[5]=y2,[6]=x3,[7]=y3
+        // v1 = (x1-x0, y1-y0), v2 = (x3-x2, y3-y2)
+        // Quotient rule: d(cross/(n1*n2))/dv = (d_cross * n1*n2 - cross * d(n1*n2)) / (n1*n2)^2
+        case ConstraintKind::Parallel: {
+            if (c.vars.size() < 8) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            bool okv[8]; for(int i=0;i<8;++i) okv[i]=false;
+            double x0=get(c.vars[0],okv[0]),y0=get(c.vars[1],okv[1]),x1=get(c.vars[2],okv[2]),y1=get(c.vars[3],okv[3]);
+            double x2=get(c.vars[4],okv[4]),y2=get(c.vars[5],okv[5]),x3=get(c.vars[6],okv[6]),y3=get(c.vars[7],okv[7]);
+            for(int i=0;i<8;++i) if(!okv[i]){ok=false;return std::numeric_limits<double>::quiet_NaN();}
+            double v1x=x1-x0,v1y=y1-y0,v2x=x3-x2,v2y=y3-y2;
+            double n1sq=v1x*v1x+v1y*v1y, n2sq=v2x*v2x+v2y*v2y;
+            double n1=std::sqrt(n1sq), n2=std::sqrt(n2sq);
+            if(n1<1e-15||n2<1e-15){ok=false;return std::numeric_limits<double>::quiet_NaN();}
+            double cross=v1x*v2y-v1y*v2x;
+            double Q=n1*n2, Q2=Q*Q;
+            // d_cross/d(endpoint) and d(n1*n2)/d(endpoint)
+            // For v1 endpoints: dv1x/dx0=-1, dv1x/dx1=+1, dv1y/dy0=-1, dv1y/dy1=+1
+            // dn1/dv1x = v1x/n1, dn1/dv1y = v1y/n1
+            // d(n1*n2)/d(v1_comp) = n2 * v1_comp/n1
+            auto grad_parallel = [&](double d_cross, double dn1n2) -> double {
+                return (d_cross * Q - cross * dn1n2) / Q2;
+            };
+            switch(var_index) {
+                case 0: return grad_parallel(-v2y, n2*(-v1x)/n1);  // x0: d_cross/dx0=-v2y, dn1/dx0=-v1x/n1
+                case 1: return grad_parallel( v2x, n2*(-v1y)/n1);  // y0: d_cross/dy0=+v2x
+                case 2: return grad_parallel( v2y, n2*( v1x)/n1);  // x1: d_cross/dx1=+v2y
+                case 3: return grad_parallel(-v2x, n2*( v1y)/n1);  // y1: d_cross/dy1=-v2x
+                case 4: return grad_parallel( v1y, n1*(-v2x)/n2);  // x2: d_cross/dx2=+v1y (via -v2x change)
+                case 5: return grad_parallel(-v1x, n1*(-v2y)/n2);  // y2: d_cross/dy2=-v1x
+                case 6: return grad_parallel(-v1y, n1*( v2x)/n2);  // x3: d_cross/dx3=-v1y
+                case 7: return grad_parallel( v1x, n1*( v2y)/n2);  // y3: d_cross/dy3=+v1x
+                default: ok=false; return std::numeric_limits<double>::quiet_NaN();
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Perpendicular: residual = dot / (n1*n2)
+        // dot = v1x*v2x + v1y*v2y
+        // Same quotient-rule structure as parallel but with dot instead of cross
+        case ConstraintKind::Perpendicular: {
+            if (c.vars.size() < 8) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            bool okv[8]; for(int i=0;i<8;++i) okv[i]=false;
+            double x0=get(c.vars[0],okv[0]),y0=get(c.vars[1],okv[1]),x1=get(c.vars[2],okv[2]),y1=get(c.vars[3],okv[3]);
+            double x2=get(c.vars[4],okv[4]),y2=get(c.vars[5],okv[5]),x3=get(c.vars[6],okv[6]),y3=get(c.vars[7],okv[7]);
+            for(int i=0;i<8;++i) if(!okv[i]){ok=false;return std::numeric_limits<double>::quiet_NaN();}
+            double v1x=x1-x0,v1y=y1-y0,v2x=x3-x2,v2y=y3-y2;
+            double n1sq=v1x*v1x+v1y*v1y, n2sq=v2x*v2x+v2y*v2y;
+            double n1=std::sqrt(n1sq), n2=std::sqrt(n2sq);
+            if(n1<1e-15||n2<1e-15){ok=false;return std::numeric_limits<double>::quiet_NaN();}
+            double dot=v1x*v2x+v1y*v2y;
+            double Q=n1*n2, Q2=Q*Q;
+            auto grad_perp = [&](double d_dot, double dn1n2) -> double {
+                return (d_dot * Q - dot * dn1n2) / Q2;
+            };
+            // d_dot/d(v1x)=v2x, d_dot/d(v1y)=v2y, d_dot/d(v2x)=v1x, d_dot/d(v2y)=v1y
+            switch(var_index) {
+                case 0: return grad_perp(-v2x, n2*(-v1x)/n1);  // x0
+                case 1: return grad_perp(-v2y, n2*(-v1y)/n1);  // y0
+                case 2: return grad_perp( v2x, n2*( v1x)/n1);  // x1
+                case 3: return grad_perp( v2y, n2*( v1y)/n1);  // y1
+                case 4: return grad_perp(-v1x, n1*(-v2x)/n2);  // x2
+                case 5: return grad_perp(-v1y, n1*(-v2y)/n2);  // y2
+                case 6: return grad_perp( v1x, n1*( v2x)/n2);  // x3
+                case 7: return grad_perp( v1y, n1*( v2y)/n2);  // y3
+                default: ok=false; return std::numeric_limits<double>::quiet_NaN();
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Angle: residual = acos(cosA) - target
+        // cosA = dot/(n1*n2), same vars as parallel/perpendicular
+        // Chain rule: d(acos(cosA))/dv = -1/sqrt(1-cosA^2) * d(cosA)/dv
+        // d(cosA)/dv is exactly the perpendicular gradient formula
+        case ConstraintKind::Angle: {
+            if (c.vars.size() < 8) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            bool okv[8]; for(int i=0;i<8;++i) okv[i]=false;
+            double x0=get(c.vars[0],okv[0]),y0=get(c.vars[1],okv[1]),x1=get(c.vars[2],okv[2]),y1=get(c.vars[3],okv[3]);
+            double x2=get(c.vars[4],okv[4]),y2=get(c.vars[5],okv[5]),x3=get(c.vars[6],okv[6]),y3=get(c.vars[7],okv[7]);
+            for(int i=0;i<8;++i) if(!okv[i]){ok=false;return std::numeric_limits<double>::quiet_NaN();}
+            double v1x=x1-x0,v1y=y1-y0,v2x=x3-x2,v2y=y3-y2;
+            double n1sq=v1x*v1x+v1y*v1y, n2sq=v2x*v2x+v2y*v2y;
+            double n1=std::sqrt(n1sq), n2=std::sqrt(n2sq);
+            if(n1<1e-15||n2<1e-15){ok=false;return std::numeric_limits<double>::quiet_NaN();}
+            double dot=v1x*v2x+v1y*v2y;
+            double Q=n1*n2, Q2=Q*Q;
+            double cosA=std::max(-1.0,std::min(1.0,dot/Q));
+            double sinA=std::sqrt(std::max(0.0, 1.0-cosA*cosA));
+            if(sinA<1e-15){ok=false;return std::numeric_limits<double>::quiet_NaN();} // degenerate: 0 or 180 deg
+            double acos_deriv = -1.0/sinA; // d(acos(cosA))/d(cosA)
+            // d(cosA)/dv = d(dot/Q)/dv = (d_dot*Q - dot*dQ) / Q^2
+            auto grad_angle = [&](double d_dot, double dn1n2) -> double {
+                double d_cosA = (d_dot * Q - dot * dn1n2) / Q2;
+                return acos_deriv * d_cosA;
+            };
+            switch(var_index) {
+                case 0: return grad_angle(-v2x, n2*(-v1x)/n1);
+                case 1: return grad_angle(-v2y, n2*(-v1y)/n1);
+                case 2: return grad_angle( v2x, n2*( v1x)/n1);
+                case 3: return grad_angle( v2y, n2*( v1y)/n1);
+                case 4: return grad_angle(-v1x, n1*(-v2x)/n2);
+                case 5: return grad_angle(-v1y, n1*(-v2y)/n2);
+                case 6: return grad_angle( v1x, n1*( v2x)/n2);
+                case 7: return grad_angle( v1y, n1*( v2y)/n2);
+                default: ok=false; return std::numeric_limits<double>::quiet_NaN();
+            }
+        }
+
+        // ---------------------------------------------------------------
+        // Tangent: residual = |cross_t| / len - radius
+        // cross_t = (cx-p0x)*dy - (cy-p0y)*dx, dx=p1x-p0x, dy=p1y-p0y, len=sqrt(dx^2+dy^2)
+        // vars: [0]=p0x,[1]=p0y,[2]=p1x,[3]=p1y,[4]=cx,[5]=cy, value=radius
+        // d(|cross_t|/len)/dv = sign(cross_t) * d(cross_t/len)/dv
+        // Then d(cross_t/len)/dv = (d_cross_t*len - cross_t*d_len) / len^2
+        case ConstraintKind::Tangent: {
+            if (c.vars.size() < 6) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            bool okv[6]; for(int i=0;i<6;++i) okv[i]=false;
+            double p0x=get(c.vars[0],okv[0]),p0y=get(c.vars[1],okv[1]);
+            double p1x=get(c.vars[2],okv[2]),p1y=get(c.vars[3],okv[3]);
+            double cx=get(c.vars[4],okv[4]),cy=get(c.vars[5],okv[5]);
+            for(int i=0;i<6;++i) if(!okv[i]){ok=false;return std::numeric_limits<double>::quiet_NaN();}
+            double dx=p1x-p0x, dy=p1y-p0y;
+            double len2=dx*dx+dy*dy, len=std::sqrt(len2);
+            if(len<1e-15){ok=false;return std::numeric_limits<double>::quiet_NaN();}
+            double cross_t=(cx-p0x)*dy-(cy-p0y)*dx;
+            double sgn = (cross_t >= 0.0) ? 1.0 : -1.0;
+            // d(|cross_t|/len)/dv = sgn * (d_cross_t*len - cross_t*d_len) / len^2
+            auto grad_tangent = [&](double d_cross_t, double d_len) -> double {
+                return sgn * (d_cross_t * len - cross_t * d_len) / len2;
+            };
+            // cross_t = (cx-p0x)*dy - (cy-p0y)*dx
+            // d_cross_t/dp0x = -dy - (cy-p0y)*(-1) ... let's be careful:
+            //   cross_t = (cx-p0x)*(p1y-p0y) - (cy-p0y)*(p1x-p0x)
+            //   d/dp0x = (-1)*dy - (cy-p0y)*(-1) = -dy + (cy-p0y)
+            //   d/dp0y = (cx-p0x)*(-1) - (-1)*dx = -(cx-p0x) + dx
+            //   d/dp1x = 0 - (cy-p0y)*(1) = -(cy-p0y)
+            //   d/dp1y = (cx-p0x)*(1) - 0 = (cx-p0x)
+            //   d/dcx  = (1)*dy - 0 = dy
+            //   d/dcy  = 0 - (1)*dx = -dx
+            // d_len/dp0x = (-dx)/len, d_len/dp0y = (-dy)/len
+            // d_len/dp1x = dx/len,    d_len/dp1y = dy/len
+            // d_len/dcx = 0,          d_len/dcy = 0
+            switch(var_index) {
+                case 0: return grad_tangent(-dy+(cy-p0y), -dx/len);       // p0x
+                case 1: return grad_tangent(-(cx-p0x)+dx, -dy/len);      // p0y
+                case 2: return grad_tangent(-(cy-p0y),     dx/len);      // p1x
+                case 3: return grad_tangent( (cx-p0x),     dy/len);      // p1y
+                case 4: return grad_tangent( dy,           0.0);         // cx
+                case 5: return grad_tangent(-dx,           0.0);         // cy
+                default: ok=false; return std::numeric_limits<double>::quiet_NaN();
+            }
+        }
+
+        // distance: residual = sqrt(dx^2+dy^2) - d
+        // vars: [0]=x0, [1]=y0, [2]=x1, [3]=y1, value=d
+        // d/dx0 = -dx/dist, d/dy0 = -dy/dist, d/dx1 = dx/dist, d/dy1 = dy/dist
+        case ConstraintKind::Distance: {
+            if (c.vars.size() < 4) { ok = false; return std::numeric_limits<double>::quiet_NaN(); }
+            bool ok0=false, ok1=false, ok2=false, ok3=false;
+            double x0=get(c.vars[0],ok0), y0=get(c.vars[1],ok1);
+            double x1=get(c.vars[2],ok2), y1=get(c.vars[3],ok3);
+            if (!(ok0&&ok1&&ok2&&ok3)) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            double dx=x1-x0, dy=y1-y0;
+            double dist=std::sqrt(dx*dx+dy*dy);
+            if (dist < 1e-15) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            switch (var_index) {
+                case 0: return -dx/dist;
+                case 1: return -dy/dist;
+                case 2: return  dx/dist;
+                case 3: return  dy/dist;
+                default: ok=false; return std::numeric_limits<double>::quiet_NaN();
+            }
+        }
+
+        // point_on_line: residual = area/len
+        // where area = (px-ax)*dy - (py-ay)*dx, dx=bx-ax, dy=by-ay, len=sqrt(dx^2+dy^2)
+        // vars: [0]=px, [1]=py, [2]=ax, [3]=ay, [4]=bx, [5]=by
+        // Uses quotient rule: d(area/len)/dv = (d_area*len - area*d_len) / len^2
+        case ConstraintKind::PointOnLine: {
+            if (c.vars.size() < 6) { ok = false; return std::numeric_limits<double>::quiet_NaN(); }
+            bool okv[6]; for (int i=0;i<6;++i) okv[i]=false;
+            double px=get(c.vars[0],okv[0]), py=get(c.vars[1],okv[1]);
+            double ax=get(c.vars[2],okv[2]), ay=get(c.vars[3],okv[3]);
+            double bx=get(c.vars[4],okv[4]), by=get(c.vars[5],okv[5]);
+            for (int i=0;i<6;++i) if (!okv[i]) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            double dx=bx-ax, dy=by-ay;
+            double len2=dx*dx+dy*dy, len=std::sqrt(len2);
+            if (len < 1e-15) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            double area=(px-ax)*dy-(py-ay)*dx;
+            // For px,py: only area depends on them, not len
+            // For ax,ay,bx,by: both area and len depend on them
+            switch (var_index) {
+                case 0: return dy/len;       // d_area/dpx=dy, d_len/dpx=0
+                case 1: return -dx/len;      // d_area/dpy=-dx, d_len/dpy=0
+                case 2: { // ax: d_dx/dax=-1, d_dy/dax=0
+                    double d_area = -dy + (py-ay); // -(by-ay) + (py-ay)
+                    double d_len = -dx/len;
+                    return (d_area*len - area*d_len) / len2;
+                }
+                case 3: { // ay: d_dx/day=0, d_dy/day=-1
+                    double d_area = bx-px; // (px-ax)*(-1) rewritten: -(px-ax)+(bx-ax) = bx-px
+                    double d_len = -dy/len;
+                    return (d_area*len - area*d_len) / len2;
+                }
+                case 4: { // bx: d_dx/dbx=1, d_dy/dbx=0
+                    double d_area = -(py-ay);
+                    double d_len = dx/len;
+                    return (d_area*len - area*d_len) / len2;
+                }
+                case 5: { // by: d_dx/dby=0, d_dy/dby=1
+                    double d_area = px-ax;
+                    double d_len = dy/len;
+                    return (d_area*len - area*d_len) / len2;
+                }
+                default: ok=false; return std::numeric_limits<double>::quiet_NaN();
             }
         }
 
@@ -1538,8 +1764,8 @@ Eigen::VectorXd compute_objective_gradient(
 } // namespace
 
 class MinimalSolver : public ISolver {
-    int maxIters_ = 50;
-    double tol_ = 1e-6;
+    int maxIters_ = 80;
+    double tol_ = 1e-8;
 public:
     void setMaxIterations(int iters) override { maxIters_ = iters; }
     void setTolerance(double tol) override { tol_ = tol; }
@@ -1825,8 +2051,8 @@ public:
 };
 
 class DogLegSolver : public ISolver {
-    int maxIters_ = 80;
-    double tol_ = 1e-6;
+    int maxIters_ = 120;
+    double tol_ = 1e-8;
 public:
     void setMaxIterations(int iters) override { maxIters_ = iters; }
     void setTolerance(double tol) override { tol_ = tol; }
@@ -2157,8 +2383,8 @@ public:
 // Minimizes F(x) = 0.5 * ||r(x)||^2 using L-BFGS-style updates.
 // Does not require explicit Jacobian — uses gradient (J^T r) via finite differences.
 class BFGSSolver : public ISolver {
-    int maxIters_ = 100;
-    double tol_ = 1e-6;
+    int maxIters_ = 150;
+    double tol_ = 1e-8;
 public:
     void setMaxIterations(int iters) override { maxIters_ = iters; }
     void setTolerance(double tol) override { tol_ = tol; }
