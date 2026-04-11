@@ -11,6 +11,7 @@
 #include "dxf_block_header.h"
 #include "dxf_layout_objects.h"
 #include "dxf_table_records.h"
+#include "dxf_view_finalizers.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
 #include "dxf_text_handler.h"
@@ -1341,44 +1342,15 @@ static bool parse_dxf_entities(const std::string& path,
     auto reset_layout = [&]() { current_layout = DxfLayout{}; };
 
     auto finalize_viewport = [&](DxfViewport& viewport) {
-        if (!(viewport.has_center_x && viewport.has_center_y &&
-              viewport.has_view_center_x && viewport.has_view_center_y &&
-              viewport.has_width && viewport.has_height && viewport.has_view_height)) {
-            return;
-        }
-        if (!(viewport.width > 0.0) || !(viewport.height > 0.0) || !(viewport.view_height > 0.0)) {
-            return;
-        }
-        if (viewport.space != 1) {
-            bool is_paper = false;
-            if (!viewport.layout.empty() && !is_model_layout_name(viewport.layout)) {
-                is_paper = true;
-            }
-            if (!is_paper && in_block && is_paper_block_name(current_block.name)) {
-                is_paper = true;
-            }
-            if (is_paper) {
-                viewport.space = 1;
-                has_paperspace = true;
-            }
-        }
-        viewports.push_back(viewport);
+        finalize_dxf_viewport(viewport, in_block, current_block.name, has_paperspace, viewports);
     };
 
     auto finalize_vport = [&](DxfView& view) {
-        if (!view.has_name) return;
-        if (!(view.has_center_x && view.has_center_y && view.has_view_height)) return;
-        if (!(view.view_height > 0.0)) return;
-        const std::string upper = uppercase_ascii(view.name);
-        if (upper == "*ACTIVE") {
-            active_view = view;
-            has_active_view = true;
-        }
+        finalize_dxf_vport(view, active_view, has_active_view);
     };
 
     auto finalize_layout = [&]() {
-        if (!(current_layout.has_name && current_layout.has_block_record)) return;
-        layout_by_block_record[current_layout.block_record] = current_layout.name;
+        finalize_dxf_layout(current_layout, layout_by_block_record);
     };
 
     auto flush_current = [&]() {
