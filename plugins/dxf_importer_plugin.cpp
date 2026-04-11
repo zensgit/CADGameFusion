@@ -10,6 +10,7 @@
 #include "dxf_parser_name_routing.h"
 #include "dxf_block_header.h"
 #include "dxf_layout_objects.h"
+#include "dxf_table_records.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
 #include "dxf_text_handler.h"
@@ -218,22 +219,8 @@ struct HatchEdgeEllipse {
     bool has_end = false;
 };
 
-struct DxfLayer {
-    std::string name;
-    bool has_name = false;
-    bool visible = true;
-    bool locked = false;
-    bool frozen = false;
-    bool printable = true;
-    DxfStyle style;
-};
-
-struct DxfTextStyle {
-    std::string name;
-    bool has_name = false;
-    double height = 0.0;
-    bool has_height = false;
-};
+// DxfLayer is defined in dxf_table_records.h
+// DxfTextStyle is defined in dxf_table_records.h
 
 // DxfLayout is defined in dxf_layout_objects.h
 
@@ -1638,79 +1625,17 @@ static bool parse_dxf_entities(const std::string& path,
         }
 
         if (in_layer_table && in_layer_record) {
-            if (parse_style_code(&current_layer.style, code, value_line, header_codepage)) {
-                if (current_layer.style.hidden) current_layer.visible = false;
-                continue;
-            }
-            switch (code) {
-                case 2:
-                    current_layer.name = sanitize_utf8(value_line, header_codepage);
-                    current_layer.has_name = true;
-                    break;
-                case 70: {
-                    int flags = 0;
-                    if (parse_int(value_line, &flags)) {
-                        current_layer.frozen = (flags & 1) != 0 || (flags & 2) != 0;
-                        current_layer.locked = (flags & 4) != 0;
-                        current_layer.printable = (flags & 128) == 0;
-                    }
-                    break;
-                }
-                default:
-                    break;
-            }
+            handle_layer_record_field(code, value_line, header_codepage, current_layer);
             continue;
         }
 
         if (in_style_table && in_style_record) {
-            switch (code) {
-                case 2:
-                    current_text_style.name = sanitize_utf8(value_line, header_codepage);
-                    current_text_style.has_name = !current_text_style.name.empty();
-                    break;
-                case 40: {
-                    double height = 0.0;
-                    if (parse_double(value_line, &height)) {
-                        current_text_style.height = height;
-                        current_text_style.has_height = height > 0.0;
-                    }
-                    break;
-                }
-                default:
-                    break;
-            }
+            handle_style_record_field(code, value_line, header_codepage, current_text_style);
             continue;
         }
 
         if (in_vport_table && in_vport_record) {
-            switch (code) {
-                case 2:
-                    current_vport.name = sanitize_utf8(value_line, header_codepage);
-                    current_vport.has_name = !current_vport.name.empty();
-                    break;
-                case 12:
-                    if (parse_double(value_line, &current_vport.center.x)) {
-                        current_vport.has_center_x = true;
-                    }
-                    break;
-                case 22:
-                    if (parse_double(value_line, &current_vport.center.y)) {
-                        current_vport.has_center_y = true;
-                    }
-                    break;
-                case 40:
-                    if (parse_double(value_line, &current_vport.view_height)) {
-                        current_vport.has_view_height = true;
-                    }
-                    break;
-                case 41:
-                    if (parse_double(value_line, &current_vport.aspect)) {
-                        current_vport.has_aspect = current_vport.aspect > 0.0;
-                    }
-                    break;
-                default:
-                    break;
-            }
+            handle_vport_record_field(code, value_line, header_codepage, current_vport);
             continue;
         }
 
