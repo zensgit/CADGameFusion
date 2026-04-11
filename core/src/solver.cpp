@@ -1232,6 +1232,8 @@ bool has_analytical_gradient(const ConstraintSpec& c) {
         case ConstraintKind::FixedPoint:
         case ConstraintKind::Midpoint:
         case ConstraintKind::Symmetric:
+        case ConstraintKind::Distance:
+        case ConstraintKind::PointOnLine:
             return true;
         default:
             return false;
@@ -1242,7 +1244,7 @@ bool has_analytical_gradient(const ConstraintSpec& c) {
 // for supported constraint types.  Sets ok=false and returns NaN for
 // unsupported types or when var_index is not active.
 double analytical_gradient(const ConstraintSpec& c, int var_index,
-                           const ISolver::GetVar& /*get*/, bool& ok) {
+                           const ISolver::GetVar& get, bool& ok) {
     ok = true;
     const auto kind = classifyConstraintKind(c.type);
 
@@ -1343,6 +1345,71 @@ double analytical_gradient(const ConstraintSpec& c, int var_index,
                 if (var_index == 2) return  0.5;  // p2x
                 if (var_index == 4) return -1.0;  // cx
                 return 0.0;
+            }
+        }
+
+        // distance: residual = sqrt(dx^2+dy^2) - d
+        // vars: [0]=x0, [1]=y0, [2]=x1, [3]=y1, value=d
+        // d/dx0 = -dx/dist, d/dy0 = -dy/dist, d/dx1 = dx/dist, d/dy1 = dy/dist
+        case ConstraintKind::Distance: {
+            if (c.vars.size() < 4) { ok = false; return std::numeric_limits<double>::quiet_NaN(); }
+            bool ok0=false, ok1=false, ok2=false, ok3=false;
+            double x0=get(c.vars[0],ok0), y0=get(c.vars[1],ok1);
+            double x1=get(c.vars[2],ok2), y1=get(c.vars[3],ok3);
+            if (!(ok0&&ok1&&ok2&&ok3)) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            double dx=x1-x0, dy=y1-y0;
+            double dist=std::sqrt(dx*dx+dy*dy);
+            if (dist < 1e-15) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            switch (var_index) {
+                case 0: return -dx/dist;
+                case 1: return -dy/dist;
+                case 2: return  dx/dist;
+                case 3: return  dy/dist;
+                default: ok=false; return std::numeric_limits<double>::quiet_NaN();
+            }
+        }
+
+        // point_on_line: residual = area/len
+        // where area = (px-ax)*dy - (py-ay)*dx, dx=bx-ax, dy=by-ay, len=sqrt(dx^2+dy^2)
+        // vars: [0]=px, [1]=py, [2]=ax, [3]=ay, [4]=bx, [5]=by
+        // Uses quotient rule: d(area/len)/dv = (d_area*len - area*d_len) / len^2
+        case ConstraintKind::PointOnLine: {
+            if (c.vars.size() < 6) { ok = false; return std::numeric_limits<double>::quiet_NaN(); }
+            bool okv[6]; for (int i=0;i<6;++i) okv[i]=false;
+            double px=get(c.vars[0],okv[0]), py=get(c.vars[1],okv[1]);
+            double ax=get(c.vars[2],okv[2]), ay=get(c.vars[3],okv[3]);
+            double bx=get(c.vars[4],okv[4]), by=get(c.vars[5],okv[5]);
+            for (int i=0;i<6;++i) if (!okv[i]) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            double dx=bx-ax, dy=by-ay;
+            double len2=dx*dx+dy*dy, len=std::sqrt(len2);
+            if (len < 1e-15) { ok=false; return std::numeric_limits<double>::quiet_NaN(); }
+            double area=(px-ax)*dy-(py-ay)*dx;
+            // For px,py: only area depends on them, not len
+            // For ax,ay,bx,by: both area and len depend on them
+            switch (var_index) {
+                case 0: return dy/len;       // d_area/dpx=dy, d_len/dpx=0
+                case 1: return -dx/len;      // d_area/dpy=-dx, d_len/dpy=0
+                case 2: { // ax: d_dx/dax=-1, d_dy/dax=0
+                    double d_area = -dy + (py-ay); // -(by-ay) + (py-ay)
+                    double d_len = -dx/len;
+                    return (d_area*len - area*d_len) / len2;
+                }
+                case 3: { // ay: d_dx/day=0, d_dy/day=-1
+                    double d_area = bx-px; // (px-ax)*(-1) rewritten: -(px-ax)+(bx-ax) = bx-px
+                    double d_len = -dy/len;
+                    return (d_area*len - area*d_len) / len2;
+                }
+                case 4: { // bx: d_dx/dbx=1, d_dy/dbx=0
+                    double d_area = -(py-ay);
+                    double d_len = dx/len;
+                    return (d_area*len - area*d_len) / len2;
+                }
+                case 5: { // by: d_dx/dby=0, d_dy/dby=1
+                    double d_area = px-ax;
+                    double d_len = dy/len;
+                    return (d_area*len - area*d_len) / len2;
+                }
+                default: ok=false; return std::numeric_limits<double>::quiet_NaN();
             }
         }
 
