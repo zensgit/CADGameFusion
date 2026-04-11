@@ -8,6 +8,7 @@
 #include "dxf_parser_zero_record.h"
 #include "dxf_header_vars.h"
 #include "dxf_parser_name_routing.h"
+#include "dxf_layout_objects.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
 #include "dxf_text_handler.h"
@@ -233,12 +234,7 @@ struct DxfTextStyle {
     bool has_height = false;
 };
 
-struct DxfLayout {
-    std::string name;
-    std::string block_record;
-    bool has_name = false;
-    bool has_block_record = false;
-};
+// DxfLayout is defined in dxf_layout_objects.h
 
 struct DxfBlock {
     std::string name;
@@ -1706,18 +1702,7 @@ static bool parse_dxf_entities(const std::string& path,
         }
 
         if (current_section == DxfSection::Objects && in_layout_object) {
-            switch (code) {
-                case 1:
-                    current_layout.name = sanitize_utf8(value_line, header_codepage);
-                    current_layout.has_name = !current_layout.name.empty();
-                    break;
-                case 330:
-                    current_layout.block_record = value_line;
-                    current_layout.has_block_record = !current_layout.block_record.empty();
-                    break;
-                default:
-                    break;
-            }
+            handle_layout_object_field(code, value_line, header_codepage, current_layout);
             continue;
         }
 
