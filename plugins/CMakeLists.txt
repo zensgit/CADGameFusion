@@ -13,6 +13,7 @@ set_target_properties(cadgf_sample_plugin PROPERTIES
 add_library(cadgf_dxf_importer_plugin SHARED
     dxf_importer_plugin.cpp
     dxf_parser_helpers.cpp
+    dxf_parser_zero_record.cpp
     dxf_math_utils.cpp
     dxf_text_encoding.cpp
     dxf_color.cpp

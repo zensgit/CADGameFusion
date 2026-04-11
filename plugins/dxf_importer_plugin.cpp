@@ -5,6 +5,7 @@
 #include "dxf_style.h"
 #include "dxf_math_utils.h"
 #include "dxf_parser_helpers.h"
+#include "dxf_parser_zero_record.h"
 #include "dxf_text_encoding.h"
 #include "dxf_color.h"
 #include "dxf_text_handler.h"
@@ -1089,38 +1090,6 @@ static void finalize_insert(DxfInsert& insert, std::vector<DxfInsert>& out) {
     out.push_back(insert);
 }
 
-enum class DxfEntityKind {
-    None,
-    Polyline,
-    Line,
-    Point,
-    Circle,
-    Arc,
-    Ellipse,
-    Spline,
-    Text,
-    Solid,
-    Hatch,
-    Insert,
-    Viewport
-};
-
-enum class DxfSection {
-    None,
-    Header,
-    Tables,
-    Blocks,
-    Entities,
-    Objects
-};
-
-struct DxfImportStats {
-    int entities_parsed = 0;
-    int entities_imported = 0;
-    int entities_skipped = 0;
-    std::unordered_map<std::string, int> unsupported_types;
-    std::vector<std::string> warnings;
-};
 
 static bool parse_dxf_entities(const std::string& path,
                                std::vector<DxfPolyline>& polylines,
@@ -1554,6 +1523,64 @@ static bool parse_dxf_entities(const std::string& path,
         blocks[block.name] = block;
     };
 
+    DxfZeroRecordContext zero_ctx{};
+    zero_ctx.current_kind = &current_kind;
+    zero_ctx.current_section = &current_section;
+    zero_ctx.current_table = &current_table;
+    zero_ctx.in_old_style_polyline = &in_old_style_polyline;
+    zero_ctx.expect_section_name = &expect_section_name;
+    zero_ctx.expect_table_name = &expect_table_name;
+    zero_ctx.in_layer_table = &in_layer_table;
+    zero_ctx.in_layer_record = &in_layer_record;
+    zero_ctx.in_style_table = &in_style_table;
+    zero_ctx.in_style_record = &in_style_record;
+    zero_ctx.in_vport_table = &in_vport_table;
+    zero_ctx.in_vport_record = &in_vport_record;
+    zero_ctx.in_block = &in_block;
+    zero_ctx.in_block_header = &in_block_header;
+    zero_ctx.in_layout_object = &in_layout_object;
+    zero_ctx.has_active_insert_attribute_owner = &has_active_insert_attribute_owner;
+    zero_ctx.has_last_top_level_insert = &has_last_top_level_insert;
+    zero_ctx.active_insert_attribute_owner = &active_insert_attribute_owner;
+    zero_ctx.last_top_level_insert = &last_top_level_insert;
+    zero_ctx.next_insert_attribute_group_tag = &next_insert_attribute_group_tag;
+    zero_ctx.next_hatch_id = &next_hatch_id;
+    zero_ctx.current_text = &current_text;
+    zero_ctx.current_insert = &current_insert;
+    zero_ctx.current_polyline_origin_meta = &current_polyline.origin_meta;
+    zero_ctx.current_hatch_hatch_id = &current_hatch.hatch_id;
+    zero_ctx.import_stats = import_stats;
+    zero_ctx.inserts = &inserts;
+    zero_ctx.flush_current = flush_current;
+    zero_ctx.finalize_layout = finalize_layout;
+    zero_ctx.reset_layout = reset_layout;
+    zero_ctx.finalize_layer = [&]() { finalize_layer(current_layer); };
+    zero_ctx.reset_layer = reset_layer;
+    zero_ctx.finalize_text_style = [&]() { finalize_text_style(current_text_style); };
+    zero_ctx.reset_text_style = reset_text_style;
+    zero_ctx.finalize_vport = [&]() { finalize_vport(current_vport); };
+    zero_ctx.reset_vport = reset_vport;
+    zero_ctx.finalize_block = [&]() { finalize_block(current_block); };
+    zero_ctx.reset_block = reset_block;
+    zero_ctx.reset_polyline = reset_polyline;
+    zero_ctx.reset_line = reset_line;
+    zero_ctx.reset_point = reset_point;
+    zero_ctx.reset_circle = reset_circle;
+    zero_ctx.reset_arc = reset_arc;
+    zero_ctx.reset_ellipse = reset_ellipse;
+    zero_ctx.reset_spline = reset_spline;
+    zero_ctx.reset_text = reset_text;
+    zero_ctx.reset_solid = reset_solid;
+    zero_ctx.reset_hatch = reset_hatch;
+    zero_ctx.reset_insert = reset_insert;
+    zero_ctx.reset_viewport = reset_viewport;
+    zero_ctx.build_insert_origin_metadata = [](const DxfInsert& ins) {
+        return build_insert_origin_metadata(ins);
+    };
+    zero_ctx.build_leader_origin_metadata = []() {
+        return build_leader_origin_metadata();
+    };
+
     while (std::getline(in, code_line)) {
         if (!std::getline(in, value_line)) break;
         trim_code_line(&code_line);
@@ -1563,257 +1590,7 @@ static bool parse_dxf_entities(const std::string& path,
         if (!parse_int(code_line, &code)) continue;
 
         if (code == 0) {
-            if (in_layout_object) {
-                finalize_layout();
-                reset_layout();
-                in_layout_object = false;
-            }
-            // Skip flush for VERTEX within old-style POLYLINE sequence
-            if (in_old_style_polyline && value_line == "VERTEX") {
-                // Don't flush — VERTEX coords will be added to current_polyline
-            } else {
-                if (in_old_style_polyline && value_line != "VERTEX") {
-                    in_old_style_polyline = false; // sequence ended
-                }
-                flush_current();
-            }
-            if (value_line == "SECTION") {
-                expect_section_name = true;
-                continue;
-            }
-            if (value_line == "ENDSEC") {
-                if (in_layer_table && in_layer_record) {
-                    finalize_layer(current_layer);
-                    reset_layer();
-                    in_layer_record = false;
-                }
-                if (in_style_table && in_style_record) {
-                    finalize_text_style(current_text_style);
-                    reset_text_style();
-                    in_style_record = false;
-                }
-                if (in_vport_table && in_vport_record) {
-                    finalize_vport(current_vport);
-                    reset_vport();
-                    in_vport_record = false;
-                }
-                if (in_layout_object) {
-                    finalize_layout();
-                    reset_layout();
-                    in_layout_object = false;
-                }
-                if (in_block) {
-                    finalize_block(current_block);
-                    reset_block();
-                    in_block = false;
-                    in_block_header = false;
-                }
-                in_layer_table = false;
-                in_style_table = false;
-                in_vport_table = false;
-                in_layout_object = false;
-                current_table.clear();
-                current_section = DxfSection::None;
-                continue;
-            }
-            if (value_line == "TABLE" && current_section == DxfSection::Tables) {
-                expect_table_name = true;
-                continue;
-            }
-            if (value_line == "ENDTAB") {
-                if (in_layer_table && in_layer_record) {
-                    finalize_layer(current_layer);
-                    reset_layer();
-                    in_layer_record = false;
-                }
-                if (in_style_table && in_style_record) {
-                    finalize_text_style(current_text_style);
-                    reset_text_style();
-                    in_style_record = false;
-                }
-                if (in_vport_table && in_vport_record) {
-                    finalize_vport(current_vport);
-                    reset_vport();
-                    in_vport_record = false;
-                }
-                in_layer_table = false;
-                in_style_table = false;
-                in_vport_table = false;
-                current_table.clear();
-                continue;
-            }
-            if (in_layer_table && value_line == "LAYER") {
-                if (in_layer_record) {
-                    finalize_layer(current_layer);
-                    reset_layer();
-                }
-                in_layer_record = true;
-                continue;
-            }
-            if (in_style_table && value_line == "STYLE") {
-                if (in_style_record) {
-                    finalize_text_style(current_text_style);
-                    reset_text_style();
-                }
-                in_style_record = true;
-                continue;
-            }
-            if (in_vport_table && value_line == "VPORT") {
-                if (in_vport_record) {
-                    finalize_vport(current_vport);
-                    reset_vport();
-                }
-                reset_vport();
-                in_vport_record = true;
-                continue;
-            }
-            if (value_line == "BLOCK" && current_section == DxfSection::Blocks) {
-                if (in_block) {
-                    finalize_block(current_block);
-                }
-                reset_block();
-                in_block = true;
-                in_block_header = true;
-                continue;
-            }
-            if (value_line == "ENDBLK") {
-                if (in_block) {
-                    finalize_block(current_block);
-                    reset_block();
-                    in_block = false;
-                }
-                in_block_header = false;
-                continue;
-            }
-            if (in_block && in_block_header) {
-                in_block_header = false;
-            }
-            if (value_line == "LAYOUT" && current_section == DxfSection::Objects) {
-                reset_layout();
-                in_layout_object = true;
-                continue;
-            }
-            const bool in_entities = current_section == DxfSection::Entities;
-            const bool in_block_entities = current_section == DxfSection::Blocks && in_block && !in_block_header;
-            if (!in_entities && !in_block_entities) {
-                current_kind = DxfEntityKind::None;
-                continue;
-            }
-            if (value_line == "SEQEND" && in_entities) {
-                has_active_insert_attribute_owner = false;
-                has_last_top_level_insert = false;
-                current_kind = DxfEntityKind::None;
-                continue;
-            }
-            if (value_line == "ATTRIB" && in_entities) {
-                if (has_last_top_level_insert) {
-                    if (!inserts.empty()) {
-                        ensure_insert_attribute_group_tag(&inserts.back());
-                        active_insert_attribute_owner = inserts.back();
-                    } else {
-                        ensure_insert_attribute_group_tag(&last_top_level_insert);
-                        active_insert_attribute_owner = last_top_level_insert;
-                    }
-                    has_active_insert_attribute_owner = true;
-                }
-            } else {
-                has_active_insert_attribute_owner = false;
-            }
-            has_last_top_level_insert = false;
-            import_stats->entities_parsed++;
-            if (value_line == "INSERT" && (in_entities || in_block_entities)) {
-                current_kind = DxfEntityKind::Insert;
-                reset_insert();
-            } else if (value_line == "LWPOLYLINE") {
-                current_kind = DxfEntityKind::Polyline;
-                reset_polyline();
-            } else if (value_line == "LINE") {
-                current_kind = DxfEntityKind::Line;
-                reset_line();
-            } else if (value_line == "POINT") {
-                current_kind = DxfEntityKind::Point;
-                reset_point();
-            } else if (value_line == "CIRCLE") {
-                current_kind = DxfEntityKind::Circle;
-                reset_circle();
-            } else if (value_line == "ARC") {
-                current_kind = DxfEntityKind::Arc;
-                reset_arc();
-            } else if (value_line == "ELLIPSE") {
-                current_kind = DxfEntityKind::Ellipse;
-                reset_ellipse();
-            } else if (value_line == "SPLINE") {
-                current_kind = DxfEntityKind::Spline;
-                reset_spline();
-            } else if (value_line == "SOLID") {
-                current_kind = DxfEntityKind::Solid;
-                reset_solid();
-            } else if (value_line == "HATCH") {
-                current_kind = DxfEntityKind::Hatch;
-                reset_hatch();
-                current_hatch.hatch_id = next_hatch_id++;
-            } else if (value_line == "TEXT" || value_line == "MTEXT" || value_line == "ATTRIB" || value_line == "ATTDEF") {
-                current_kind = DxfEntityKind::Text;
-                reset_text();
-                if (value_line == "MTEXT") {
-                    current_text.allow_extended_text = true;
-                    current_text.is_mtext = true;
-                    current_text.kind = "mtext";
-                } else if (value_line == "ATTRIB") {
-                    current_text.kind = "attrib";
-                    if (has_active_insert_attribute_owner) {
-                        current_text.origin_meta = build_insert_origin_metadata(active_insert_attribute_owner);
-                        current_text.local_group_tag = active_insert_attribute_owner.local_group_tag;
-                    }
-                } else if (value_line == "ATTDEF") {
-                    current_text.kind = "attdef";
-                } else {
-                    current_text.kind = "text";
-                }
-            } else if (value_line == "LEADER" || value_line == "MLEADER") {
-                if (value_line == "MLEADER") {
-                    current_kind = DxfEntityKind::Text;
-                    reset_text();
-                    current_text.allow_extended_text = true;
-                    current_text.is_mtext = true;
-                    current_text.kind = "mleader";
-                } else {
-                    current_kind = DxfEntityKind::Polyline;
-                    reset_polyline();
-                    current_polyline.origin_meta = build_leader_origin_metadata();
-                }
-            } else if (value_line == "DIMENSION") {
-                current_kind = DxfEntityKind::Insert;
-                reset_insert();
-                current_insert.is_dimension = true;
-            } else if (value_line == "TABLE") {
-                current_kind = DxfEntityKind::Text;
-                reset_text();
-                current_text.allow_extended_text = true;
-                current_text.is_mtext = true;
-                current_text.kind = "table";
-            } else if (value_line == "VIEWPORT") {
-                current_kind = DxfEntityKind::Viewport;
-                reset_viewport();
-            } else if (value_line == "POLYLINE" && (in_entities || in_block_entities)) {
-                // Old-style 3D POLYLINE (followed by VERTEX entities then SEQEND)
-                current_kind = DxfEntityKind::Polyline;
-                reset_polyline();
-                in_old_style_polyline = true;
-            } else if (value_line == "VERTEX" && in_old_style_polyline) {
-                // VERTEX within old-style POLYLINE — don't change current_kind, coords parsed in Polyline switch
-            } else if (value_line == "TOLERANCE" && (in_entities || in_block_entities)) {
-                // GD&T tolerance frame — import as text entity with kind="tolerance"
-                current_kind = DxfEntityKind::Text;
-                reset_text();
-                current_text.kind = "tolerance";
-            } else {
-                current_kind = DxfEntityKind::None;
-                if (value_line != "SEQEND" && value_line != "ENDBLK" && value_line != "VERTEX") {
-                    import_stats->unsupported_types[value_line]++;
-                    import_stats->entities_skipped++;
-                }
-            }
+            handle_zero_record(value_line, zero_ctx);
             continue;
         }
 
