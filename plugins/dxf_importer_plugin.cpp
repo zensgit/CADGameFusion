@@ -12,6 +12,7 @@
 #include "dxf_layout_objects.h"
 #include "dxf_table_records.h"
 #include "dxf_view_finalizers.h"
+#include "dxf_document_commit_context.h"
 #include "dxf_table_block_finalizers.h"
 #include "dxf_simple_geometry_entities.h"
 #include "dxf_polyline_entity_parser.h"
@@ -29,203 +30,13 @@
 #include <fstream>
 #include <limits>
 #include <string>
+#include <utility>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
-struct DxfPolyline {
-    std::string layer;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    std::vector<cadgf_vec2> points;
-    bool closed = false;
-    std::string name;
-    DxfStyle style;
-    int space = 0;
-    DxfEntityOriginMeta origin_meta;
-    int local_group_tag = -1;
-};
-
-struct DxfLine {
-    std::string layer;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    cadgf_vec2 a{};
-    cadgf_vec2 b{};
-    bool has_ax = false;
-    bool has_ay = false;
-    bool has_bx = false;
-    bool has_by = false;
-    DxfStyle style;
-    int space = 0;
-    DxfEntityOriginMeta origin_meta;
-};
-
-struct DxfPoint {
-    std::string layer;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    cadgf_vec2 p{};
-    bool has_x = false;
-    bool has_y = false;
-    DxfStyle style;
-    int space = 0;
-    DxfEntityOriginMeta origin_meta;
-};
-
-struct DxfCircle {
-    std::string layer;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    cadgf_vec2 center{};
-    double radius = 0.0;
-    bool has_cx = false;
-    bool has_cy = false;
-    bool has_radius = false;
-    DxfStyle style;
-    int space = 0;
-};
-
-struct DxfArc {
-    std::string layer;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    cadgf_vec2 center{};
-    double radius = 0.0;
-    double start_deg = 0.0;
-    double end_deg = 0.0;
-    bool has_cx = false;
-    bool has_cy = false;
-    bool has_radius = false;
-    bool has_start = false;
-    bool has_end = false;
-    DxfStyle style;
-    int space = 0;
-};
-
-struct DxfSpline {
-    std::string layer;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    int degree = 3;
-    std::vector<cadgf_vec2> control_points;
-    std::vector<double> knots;
-    DxfStyle style;
-    int space = 0;
-};
-
-struct DxfSolidPoint {
-    cadgf_vec2 pos{};
-    bool has_x = false;
-    bool has_y = false;
-};
-
-struct DxfSolid {
-    std::string layer;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    DxfSolidPoint points[4];
-    DxfStyle style;
-    int space = 0;
-};
-
-struct DxfHatch {
-    std::string layer;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    std::vector<std::vector<cadgf_vec2>> boundaries;
-    std::string pattern_name;
-    double pattern_scale = 1.0;
-    bool has_pattern_scale = false;
-    struct PatternLine {
-        double angle_deg = 0.0;
-        double base_x = 0.0;
-        double base_y = 0.0;
-        double offset_x = 0.0;
-        double offset_y = 0.0;
-        std::vector<double> dashes;
-        bool has_angle = false;
-        bool has_base_x = false;
-        bool has_base_y = false;
-        bool has_offset_x = false;
-        bool has_offset_y = false;
-    };
-    std::vector<PatternLine> pattern_lines;
-    bool closed = true;
-    int hatch_id = -1;
-    DxfStyle style;
-    int space = 0;
-};
-
-struct HatchEdgeLine {
-    cadgf_vec2 start{};
-    cadgf_vec2 end{};
-    bool has_start_x = false;
-    bool has_start_y = false;
-    bool has_end_x = false;
-    bool has_end_y = false;
-};
-
-struct HatchEdgeArc {
-    cadgf_vec2 center{};
-    double radius = 0.0;
-    double start_deg = 0.0;
-    double end_deg = 0.0;
-    int ccw = 1;
-    bool has_cx = false;
-    bool has_cy = false;
-    bool has_radius = false;
-    bool has_start = false;
-    bool has_end = false;
-};
-
-struct HatchEdgeEllipse {
-    cadgf_vec2 center{};
-    cadgf_vec2 major_axis{};
-    double ratio = 0.0;
-    double start_param = 0.0;
-    double end_param = 0.0;
-    int ccw = 1;
-    bool has_cx = false;
-    bool has_cy = false;
-    bool has_ax = false;
-    bool has_ay = false;
-    bool has_ratio = false;
-    bool has_start = false;
-    bool has_end = false;
-};
-
-// DxfLayer is defined in dxf_table_records.h
-// DxfTextStyle is defined in dxf_table_records.h
-
-// DxfLayout is defined in dxf_layout_objects.h
-
-struct DxfBlock {
-    std::string name;
-    bool has_name = false;
-    std::string owner_handle;
-    bool has_owner_handle = false;
-    std::string layout_name;
-    cadgf_vec2 base{};
-    bool has_base = false;
-    std::vector<DxfPolyline> polylines;
-    std::vector<DxfLine> lines;
-    std::vector<DxfPoint> points;
-    std::vector<DxfCircle> circles;
-    std::vector<DxfArc> arcs;
-    std::vector<DxfEllipse> ellipses;
-    std::vector<DxfSpline> splines;
-    std::vector<DxfText> texts;
-    std::vector<DxfInsert> inserts;
-};
+// Internal DXF entity and block types are shared with narrow helper modules
+// via dxf_importer_internal_types.h.
 
 // kPi, kTwoPi, kDegToRad, sv(), nearly_equal(), points_nearly_equal()
 // are now provided by dxf_math_utils.h
@@ -728,17 +539,6 @@ static bool looks_nonfinite_number(const std::string& raw) {
     if (s.find("ind") != std::string::npos) return true;
     return false;
 }
-
-struct HatchPatternStats {
-    int emitted_lines = 0;
-    bool clamped = false;
-    int clamped_hatches = 0;
-    int stride_max = 1;
-    int edge_checks = 0;
-    int edge_budget_exhausted_hatches = 0;
-    int boundary_points_clamped_hatches = 0;
-    int boundary_points_max = 0;
-};
 
 // Guardrails for extreme HATCH patterns (very small spacing) to avoid long loops or line explosion.
 static constexpr int kMaxHatchPatternKSteps = 5000;
@@ -2537,192 +2337,22 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
 	            return 0;
 	        }
 
-        std::vector<DxfViewport> paper_viewports;
-        if (!viewports.empty()) {
-            paper_viewports.reserve(viewports.size());
-            for (const auto& viewport : viewports) {
-                if (viewport.space == 1) {
-                    paper_viewports.push_back(viewport);
-                }
-            }
+        DxfDocumentCommitContext commit_ctx{};
+        std::string commit_ctx_err;
+        if (!prepare_dxf_document_commit_context(doc, polylines, lines, points, circles, arcs, ellipses,
+                                                 splines, texts, inserts, viewports, layers,
+                                                 has_paperspace, has_active_view, active_view,
+                                                 default_text_height, hatch_stats, text_stats,
+                                                 import_stats, &commit_ctx, &commit_ctx_err)) {
+            set_error(out_err, 3, commit_ctx_err.empty() ? "failed to prepare commit context"
+                                                        : commit_ctx_err.c_str());
+            return 0;
         }
 
-        auto resolve_default_paper_layout_name = [&]() -> std::string {
-            std::vector<std::string> names;
-            names.reserve(paper_viewports.size());
-            for (const auto& viewport : paper_viewports) {
-                if (viewport.layout.empty() || is_model_layout_name(viewport.layout)) continue;
-                if (std::find(names.begin(), names.end(), viewport.layout) == names.end()) {
-                    names.push_back(viewport.layout);
-                }
-            }
-            if (names.size() == 1) {
-                return names.front();
-            }
-            if (names.empty() && (has_paperspace || !paper_viewports.empty())) {
-                return "PaperSpace";
-            }
-            return {};
-        };
-
-        auto count_entities_in_space = [&](int space) -> size_t {
-            size_t total = 0;
-            for (const auto& pl : polylines) total += (pl.space == space);
-            for (const auto& pt : points) total += (pt.space == space);
-            for (const auto& ln : lines) total += (ln.space == space);
-            for (const auto& circle : circles) total += (circle.space == space);
-            for (const auto& arc : arcs) total += (arc.space == space);
-            for (const auto& ellipse : ellipses) total += (ellipse.space == space);
-            for (const auto& spline : splines) total += (spline.space == space);
-            for (const auto& text : texts) total += (text.space == space);
-            for (const auto& insert : inserts) total += (insert.space == space);
-            return total;
-        };
-
-        const size_t count_space0 = count_entities_in_space(0);
-        const size_t count_space1 = count_entities_in_space(1);
-        const bool has_viewports = !paper_viewports.empty();
-        const bool include_all_spaces =
-            has_paperspace && count_space0 > 0 && (count_space1 > 0 || has_viewports);
-        int target_space = 0;
-        if (count_space1 > 0 && count_space0 == 0) {
-            target_space = 1;
-        } else if (has_paperspace && count_space1 > count_space0) {
-            target_space = 1;
-        }
-        if (has_viewports) {
-            target_space = 1;
-        }
-        const int default_space =
-            include_all_spaces ? (has_viewports ? 1 : ((count_space1 > count_space0) ? 1 : 0)) : target_space;
-        const std::string default_paper_layout_name = resolve_default_paper_layout_name();
-        (void)cadgf_document_set_meta_value(doc, "dxf.default_space",
-                                            default_space == 1 ? "1" : "0");
-	        write_viewport_list_metadata(doc, paper_viewports);
-	        if (default_text_height > 0.0) {
-	            char buf[64]{};
-	            std::snprintf(buf, sizeof(buf), "%.6f", default_text_height);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.default_text_height", buf);
-	        }
-	        {
-	            char buf[64]{};
-	            std::snprintf(buf, sizeof(buf), "%d", hatch_stats.emitted_lines);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_emitted_lines", buf);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_clamped",
-	                                                hatch_stats.clamped ? "1" : "0");
-	            std::snprintf(buf, sizeof(buf), "%d", hatch_stats.clamped_hatches);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_clamped_hatches", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", hatch_stats.stride_max);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_stride_max", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", kMaxHatchPatternKSteps);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_ksteps_limit", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", hatch_stats.edge_checks);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_edge_checks", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", hatch_stats.edge_budget_exhausted_hatches);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_edge_budget_exhausted_hatches", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", hatch_stats.boundary_points_clamped_hatches);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_boundary_points_clamped_hatches", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", hatch_stats.boundary_points_max);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_boundary_points_max", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", kMaxHatchPatternEdgeChecksPerHatch);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_edge_checks_limit_per_hatch", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", kMaxHatchPatternEdgeChecksPerDocument);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_edge_checks_limit_per_doc", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", kMaxHatchPatternBoundaryPointsForPattern);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.hatch_pattern_boundary_points_limit", buf);
-	        }
-	        {
-	            char buf[64]{};
-	            (void)cadgf_document_set_meta_value(doc, "dxf.text.align_policy", "strict");
-	            std::snprintf(buf, sizeof(buf), "%d", text_stats.entities_seen);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.text.entities_seen", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", text_stats.entities_emitted);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.text.entities_emitted", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", text_stats.skipped_missing_xy);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.text.skipped_missing_xy", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", text_stats.align_complete);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.text.align_complete", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", text_stats.align_partial);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.text.align_partial", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", text_stats.align_partial_x_only);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.text.align_partial_x_only", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", text_stats.align_partial_y_only);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.text.align_partial_y_only", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", text_stats.align_used);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.text.align_used", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", text_stats.nonfinite_values);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.text.nonfinite_values", buf);
-	        }
-	        {
-	            char buf[64]{};
-	            std::snprintf(buf, sizeof(buf), "%d", import_stats.entities_parsed);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.import.entities_parsed", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", import_stats.entities_imported);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.import.entities_imported", buf);
-	            std::snprintf(buf, sizeof(buf), "%d", import_stats.entities_skipped);
-	            (void)cadgf_document_set_meta_value(doc, "dxf.import.entities_skipped", buf);
-	            // Serialize unsupported_types as a JSON object string
-	            if (!import_stats.unsupported_types.empty()) {
-	                std::string json = "{";
-	                bool first = true;
-	                // Sort keys for deterministic output
-	                std::vector<std::string> keys;
-	                keys.reserve(import_stats.unsupported_types.size());
-	                for (const auto& kv : import_stats.unsupported_types) {
-	                    keys.push_back(kv.first);
-	                }
-	                std::sort(keys.begin(), keys.end());
-	                for (const auto& key : keys) {
-	                    if (!first) json += ",";
-	                    json += "\"" + key + "\":" + std::to_string(import_stats.unsupported_types.at(key));
-	                    first = false;
-	                }
-	                json += "}";
-	                (void)cadgf_document_set_meta_value(doc, "dxf.import.unsupported_types", json.c_str());
-	            }
-	        }
-	        if (has_active_view) {
-	            write_active_view_metadata(doc, active_view);
-	        }
-
-        std::unordered_map<std::string, int> layer_ids;
-        layer_ids["0"] = 0;
-        layer_ids[""] = 0;
-
-        auto apply_layer_metadata = [&](int layer_id, const DxfLayer& layer) -> bool {
-            if (!cadgf_document_set_layer_visible(doc, layer_id, layer.visible ? 1 : 0)) return false;
-            if (!cadgf_document_set_layer_locked(doc, layer_id, layer.locked ? 1 : 0)) return false;
-            if (!cadgf_document_set_layer_frozen(doc, layer_id, layer.frozen ? 1 : 0)) return false;
-            if (!cadgf_document_set_layer_printable(doc, layer_id, layer.printable ? 1 : 0)) return false;
-            if (layer.style.has_color) {
-                if (!cadgf_document_set_layer_color(doc, layer_id, layer.style.color)) return false;
-            }
-            return true;
-        };
-
-        for (const auto& entry : layers) {
-            const std::string& layer_name = entry.first;
-            if (layer_name.empty()) continue;
-            if (layer_name == "0") {
-                if (!apply_layer_metadata(0, entry.second)) {
-                    set_error(out_err, 3, "failed to apply layer metadata");
-                    return 0;
-                }
-                continue;
-            }
-            if (layer_ids.find(layer_name) != layer_ids.end()) continue;
-            const unsigned int color = entry.second.style.has_color ? entry.second.style.color : 0xFFFFFFu;
-            int new_id = -1;
-            if (!cadgf_document_add_layer(doc, layer_name.c_str(), color, &new_id)) {
-                set_error(out_err, 3, "failed to add layer");
-                return 0;
-            }
-            layer_ids[layer_name] = new_id;
-            if (!apply_layer_metadata(new_id, entry.second)) {
-                set_error(out_err, 3, "failed to apply layer metadata");
-                return 0;
-            }
-        }
+        const std::string& default_paper_layout_name = commit_ctx.default_paper_layout_name;
+        const bool include_all_spaces = commit_ctx.include_all_spaces;
+        const int target_space = commit_ctx.target_space;
+        std::unordered_map<std::string, int> layer_ids = std::move(commit_ctx.layer_ids);
 
         auto resolve_layer_id = [&](const std::string& layer, int* out_layer_id) -> bool {
             const std::string layer_name = layer.empty() ? "0" : layer;
@@ -3423,7 +3053,7 @@ static int32_t importer_import_document(cadgf_document* doc, const char* path_ut
 
         if (has_paperspace && include_space(1)) {
             for (const DxfBlock* block : paper_blocks) {
-                bool should_emit = count_space1 == 0;
+                bool should_emit = commit_ctx.count_space1 == 0;
                 if (!should_emit) {
                     if (!block->layout_name.empty() && !is_model_layout_name(block->layout_name)) {
                         should_emit = top_level_paper_layouts.find(block->layout_name) ==

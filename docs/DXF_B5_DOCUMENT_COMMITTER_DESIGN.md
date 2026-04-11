@@ -4,6 +4,7 @@
 Extract the document-committer prelude from `importer_import_document(...)` into a dedicated helper module without changing behavior.
 
 ### Scope
+- Add `plugins/dxf_importer_internal_types.h`
 - Add `plugins/dxf_document_commit_context.h`
 - Add `plugins/dxf_document_commit_context.cpp`
 - Update `plugins/dxf_importer_plugin.cpp`
@@ -24,6 +25,7 @@ Only extract the prelude/context block that currently:
   - active view metadata
 - initializes the document layer table and layer-id map
 - returns the commit-time context needed by later top-level entity emission
+- introduces a private importer-internal type header only as needed to share DXF importer structs with the new helper
 
 ### Required invariants
 - Preserve exact `default_space` selection behavior.
