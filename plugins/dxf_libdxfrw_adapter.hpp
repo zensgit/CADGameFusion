@@ -104,6 +104,7 @@ public:
     void writeAppId() override {}
 
 private:
+    bool shouldSkipEntity(const DRW_Entity& ent) const;
     int resolveLayer(const std::string& name);
     void addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid,
                           uint32_t color = 0, const std::string& linetype = "",
@@ -129,6 +130,10 @@ private:
     std::map<std::string, int> m_layerMap;
     // layer name → linetype name
     std::map<std::string, std::string> m_layerLineType;
+    // layer name → line weight in mm (0 = default)
+    std::map<std::string, double> m_layerLineWeight;
+    // set of layer names that are frozen or turned off
+    std::set<std::string> m_frozenLayers;
     // linetype name → dash pattern (positive=dash len, negative=gap len, 0=dot)
     std::map<std::string, std::vector<double>> m_linetypes;
 
