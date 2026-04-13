@@ -462,72 +462,150 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
             }
         }
     }
+
+    // Simple hatch fill: generate parallel lines inside boundary
+    if (!data->looplist.empty() && !m_inBlock) {
+        // Compute boundary bbox
+        double hMinX=1e18, hMinY=1e18, hMaxX=-1e18, hMaxY=-1e18;
+        for (const auto* loop : data->looplist) {
+            for (const auto* obj : loop->objlist) {
+                if (obj->eType == DRW::LINE) {
+                    auto* ln = static_cast<const DRW_Line*>(obj);
+                    auto check = [&](double x, double y) {
+                        if(x<hMinX)hMinX=x; if(y<hMinY)hMinY=y;
+                        if(x>hMaxX)hMaxX=x; if(y>hMaxY)hMaxY=y;
+                    };
+                    check(ln->basePoint.x, ln->basePoint.y);
+                    check(ln->secPoint.x, ln->secPoint.y);
+                }
+            }
+        }
+        double hW = hMaxX - hMinX, hH = hMaxY - hMinY;
+        if (hW > 0.1 && hH > 0.1) {
+            // Generate 45-degree hatch lines
+            double spacing = std::max(1.0, std::min(hW, hH) / 15.0);
+            double diag = hW + hH;
+            uint32_t hcol = drw_entity_color(*data);
+            for (double d = -diag; d < diag; d += spacing) {
+                // Line: y = x - d + hMinY, clipped to bbox
+                double x1 = hMinX, y1 = x1 - d + hMinY;
+                double x2 = hMaxX, y2 = x2 - d + hMinY;
+                // Clip to bbox
+                if (y1 < hMinY) { x1 = d + hMinY - hMinY + hMinX; y1 = hMinY; }
+                if (y1 > hMaxY) { x1 = d + hMinY - hMaxY + hMinX + (hMaxY-hMinY); y1 = hMaxY; }
+                if (y2 < hMinY) { x2 = d + hMinY - hMinY + hMinX; y2 = hMinY; }
+                if (y2 > hMaxY) { x2 = d + hMinY + (hMaxY-hMinY) + hMinX - (hMaxY-hMinY); y2 = hMaxY; }
+                // Simple clip
+                x1 = std::max(hMinX, std::min(hMaxX, x1));
+                x2 = std::max(hMinX, std::min(hMaxX, x2));
+                y1 = std::max(hMinY, std::min(hMaxY, y1));
+                y2 = std::max(hMinY, std::min(hMaxY, y2));
+                if (std::abs(x2-x1) > 0.01 || std::abs(y2-y1) > 0.01) {
+                    addPolylineToDoc({{x1,y1},{x2,y2}}, lid, hcol);
+                }
+            }
+        }
+    }
 }
 
-// ─── DIMENSIONS: render as simple lines + text ───
+// ─── DIMENSIONS: render as lines + text ───
+
+// Helper: add dimension text at textPoint
+void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
+                double def1x, double def1y, double def2x, double def2y) {
+    if (!dim) return;
+    std::string txt = dim->getText();
+    if (txt.empty() || txt == "<>") {
+        double dx = def2x - def1x, dy = def2y - def1y;
+        double dist = std::sqrt(dx*dx + dy*dy);
+        char buf[32]; snprintf(buf, sizeof(buf), "%.1f", dist);
+        txt = buf;
+    }
+    // Text position: use textPoint if set, otherwise midpoint of def points
+    double tx = dim->getTextPoint().x, ty = dim->getTextPoint().y;
+    if (std::abs(tx) < 1e-10 && std::abs(ty) < 1e-10) {
+        tx = (def1x + def2x) / 2; ty = (def1y + def2y) / 2;
+    }
+    cadgf_vec2 pos = {tx, ty};
+    cadgf_document_add_text(doc, &pos, 3.5, 0, txt.c_str(), "", lid);
+}
 
 void CadgfDrwAdapter::addDimAlign(const DRW_DimAligned* data) {
     if (!data) return;
     int lid = resolveLayer(data->layer);
-    // Draw dimension line between definition points
+    uint32_t col = drw_entity_color(*data);
+    // Def points → dim line
     std::vector<std::pair<double,double>> pts = {
         {data->getDef1Point().x, data->getDef1Point().y},
         {data->getDef2Point().x, data->getDef2Point().y}
     };
+    // Extension lines to defPoint (dimension line position)
+    std::vector<std::pair<double,double>> ext1 = {
+        {data->getDef1Point().x, data->getDef1Point().y},
+        {data->getDefPoint().x, data->getDefPoint().y}
+    };
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Line; be.pts = pts;
-        be.layerName = data->layer;
+        be.layerName = data->layer; be.color = col;
         m_blocks[m_currentBlockName].push_back(be);
     } else {
-        addPolylineToDoc(pts, lid);
+        addPolylineToDoc(pts, lid, col);
+        addPolylineToDoc(ext1, lid, col);
+        addDimText(m_doc, data, lid, data->getDef1Point().x, data->getDef1Point().y, data->getDef2Point().x, data->getDef2Point().y);
     }
 }
 
 void CadgfDrwAdapter::addDimLinear(const DRW_DimLinear* data) {
     if (!data) return;
     int lid = resolveLayer(data->layer);
+    uint32_t col = drw_entity_color(*data);
     std::vector<std::pair<double,double>> pts = {
         {data->getDef1Point().x, data->getDef1Point().y},
         {data->getDef2Point().x, data->getDef2Point().y}
     };
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Line; be.pts = pts;
-        be.layerName = data->layer;
+        be.layerName = data->layer; be.color = col;
         m_blocks[m_currentBlockName].push_back(be);
     } else {
-        addPolylineToDoc(pts, lid);
+        addPolylineToDoc(pts, lid, col);
+        addDimText(m_doc, data, lid, data->getDef1Point().x, data->getDef1Point().y, data->getDef2Point().x, data->getDef2Point().y);
     }
 }
 
 void CadgfDrwAdapter::addDimRadial(const DRW_DimRadial* data) {
     if (!data) return;
     int lid = resolveLayer(data->layer);
+    uint32_t col = drw_entity_color(*data);
     std::vector<std::pair<double,double>> pts = {
         {data->getCenterPoint().x, data->getCenterPoint().y},
         {data->getDiameterPoint().x, data->getDiameterPoint().y}
     };
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Line; be.pts = pts;
-        be.layerName = data->layer;
+        be.layerName = data->layer; be.color = col;
         m_blocks[m_currentBlockName].push_back(be);
     } else {
-        addPolylineToDoc(pts, lid);
+        addPolylineToDoc(pts, lid, col);
+        addDimText(m_doc, data, lid, data->getCenterPoint().x, data->getCenterPoint().y, data->getDiameterPoint().x, data->getDiameterPoint().y);
     }
 }
 
 void CadgfDrwAdapter::addDimDiametric(const DRW_DimDiametric* data) {
     if (!data) return;
     int lid = resolveLayer(data->layer);
+    uint32_t col = drw_entity_color(*data);
     std::vector<std::pair<double,double>> pts = {
         {data->getDiameter1Point().x, data->getDiameter1Point().y},
         {data->getDiameter2Point().x, data->getDiameter2Point().y}
     };
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Line; be.pts = pts;
-        be.layerName = data->layer;
+        be.layerName = data->layer; be.color = col;
         m_blocks[m_currentBlockName].push_back(be);
     } else {
-        addPolylineToDoc(pts, lid);
+        addPolylineToDoc(pts, lid, col);
+        addDimText(m_doc, data, lid, data->getDiameter1Point().x, data->getDiameter1Point().y, data->getDiameter2Point().x, data->getDiameter2Point().y);
     }
 }
 
