@@ -761,7 +761,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                     cadgf_document_get_polyline_points(tmpDoc, eid, pts.data(), ptCount, &pc2);
                     core::Polyline pl;
                     for (const auto& p : pts) pl.points.push_back({p.x, p.y});
-                    m_document.add_polyline(pl, info.name ? info.name : "");
+                    m_document.add_polyline(pl, "");
                 }
             } else if (info.type == CADGF_ENTITY_TYPE_LINE) {
                 cadgf_line line{};
@@ -770,7 +770,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                 core::Polyline pl;
                 pl.points.push_back({line.a.x, line.a.y});
                 pl.points.push_back({line.b.x, line.b.y});
-                m_document.add_polyline(pl, info.name ? info.name : "");
+                m_document.add_polyline(pl, "");
             } else if (info.type == CADGF_ENTITY_TYPE_CIRCLE) {
                 cadgf_circle circ{};
                 cadgf_document_get_circle(tmpDoc, eid, &circ);
@@ -781,7 +781,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
                     pl.points.push_back({circ.center.x + circ.radius * std::cos(a),
                                          circ.center.y + circ.radius * std::sin(a)});
                 }
-                m_document.add_polyline(pl, info.name ? info.name : "");
+                m_document.add_polyline(pl, "");
             }
         }
         cadgf_document_destroy(tmpDoc);

@@ -96,6 +96,7 @@ target_link_libraries(editor_qt PRIVATE Qt6::Widgets core_c ${CMAKE_DL_LIBS})
 
 # libdxfrw integration for DXF/DWG import
 if(TARGET dxfrw)
+    target_sources(editor_qt PRIVATE ${CMAKE_SOURCE_DIR}/plugins/dxf_libdxfrw_adapter.cpp)
     target_link_libraries(editor_qt PRIVATE dxfrw)
     target_include_directories(editor_qt PRIVATE
         ${CMAKE_SOURCE_DIR}/deps/libdxfrw/src
