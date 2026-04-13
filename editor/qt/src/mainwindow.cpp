@@ -37,6 +37,10 @@
 #include "guide_manager.hpp"
 #include "panels/align_panel.hpp"
 #include "tools/gizmo_tool.hpp"
+#ifdef CADGF_HAS_LIBDXFRW
+#include "libdxfrw.h"
+#include "dxf_libdxfrw_adapter.hpp"
+#endif
 #include "viewport3d.hpp"
 #include "panels/feature_tree_panel.hpp"
 #include "core/version.hpp"
@@ -682,6 +686,68 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* actOpen = fileMenu->addAction("Open...");
     actOpen->setShortcut(QKeySequence::Open);
     connect(actOpen, &QAction::triggered, this, &MainWindow::openFile);
+#ifdef CADGF_HAS_LIBDXFRW
+    auto* actImportDxf = fileMenu->addAction("Import DXF/DWG...");
+    connect(actImportDxf, &QAction::triggered, this, [this]{
+        QString path = QFileDialog::getOpenFileName(this, "Import DXF/DWG", QString(),
+            "DXF/DWG Files (*.dxf *.dwg);;All Files (*)");
+        if (path.isEmpty()) return;
+        // Create a temporary cadgf_document, import via libdxfrw, then merge into our document
+        cadgf_document* tmpDoc = cadgf_document_create();
+        CadgfDrwAdapter adapter(tmpDoc);
+        dxfRW reader(path.toStdString().c_str());
+        bool ok = reader.read(&adapter, false);
+        if (!ok) {
+            cadgf_document_destroy(tmpDoc);
+            QMessageBox::warning(this, "Import", "Failed to read " + path);
+            return;
+        }
+        // Transfer entities from tmpDoc to our document via C API
+        int entityCount = 0;
+        cadgf_document_get_entity_count(tmpDoc, &entityCount);
+        for (int i = 0; i < entityCount; ++i) {
+            cadgf_entity_id eid = 0;
+            cadgf_document_get_entity_id_at(tmpDoc, i, &eid);
+            cadgf_entity_info info{};
+            cadgf_document_get_entity_info(tmpDoc, eid, &info);
+            if (info.type == CADGF_ENTITY_TYPE_POLYLINE) {
+                int ptCount = 0;
+                cadgf_document_get_polyline_points(tmpDoc, eid, nullptr, 0, &ptCount);
+                if (ptCount > 0) {
+                    std::vector<cadgf_vec2> pts(static_cast<size_t>(ptCount));
+                    int pc2 = 0;
+                    cadgf_document_get_polyline_points(tmpDoc, eid, pts.data(), ptCount, &pc2);
+                    core::Polyline pl;
+                    for (const auto& p : pts) pl.points.push_back({p.x, p.y});
+                    m_document.add_polyline(pl, info.name ? info.name : "");
+                }
+            } else if (info.type == CADGF_ENTITY_TYPE_LINE) {
+                cadgf_line line{};
+                cadgf_document_get_line(tmpDoc, eid, &line);
+                // Add as 2-point polyline for rendering
+                core::Polyline pl;
+                pl.points.push_back({line.a.x, line.a.y});
+                pl.points.push_back({line.b.x, line.b.y});
+                m_document.add_polyline(pl, info.name ? info.name : "");
+            } else if (info.type == CADGF_ENTITY_TYPE_CIRCLE) {
+                cadgf_circle circ{};
+                cadgf_document_get_circle(tmpDoc, eid, &circ);
+                // Approximate circle as polyline (64 segments)
+                core::Polyline pl;
+                for (int s = 0; s <= 64; ++s) {
+                    double a = 2.0 * 3.14159265358979 * s / 64;
+                    pl.points.push_back({circ.center.x + circ.radius * std::cos(a),
+                                         circ.center.y + circ.radius * std::sin(a)});
+                }
+                m_document.add_polyline(pl, info.name ? info.name : "");
+            }
+        }
+        cadgf_document_destroy(tmpDoc);
+        markDirty();
+        statusBar()->showMessage(QString("Imported %1 entities from %2")
+            .arg(adapter.entityCount()).arg(QFileInfo(path).fileName()), 3000);
+    });
+#endif // CADGF_HAS_LIBDXFRW
     auto* actSave = fileMenu->addAction("Save");
     actSave->setShortcut(QKeySequence::Save);
     connect(actSave, &QAction::triggered, this, &MainWindow::saveFile);

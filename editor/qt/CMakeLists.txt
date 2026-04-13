@@ -94,6 +94,16 @@ endif()
 
 target_link_libraries(editor_qt PRIVATE Qt6::Widgets core_c ${CMAKE_DL_LIBS})
 
+# libdxfrw integration for DXF/DWG import
+if(TARGET dxfrw)
+    target_link_libraries(editor_qt PRIVATE dxfrw)
+    target_include_directories(editor_qt PRIVATE
+        ${CMAKE_SOURCE_DIR}/deps/libdxfrw/src
+        ${CMAKE_SOURCE_DIR}/plugins
+    )
+    target_compile_definitions(editor_qt PRIVATE CADGF_HAS_LIBDXFRW)
+endif()
+
 if (WIN32)
   set_target_properties(editor_qt PROPERTIES WIN32_EXECUTABLE YES)
 endif()
