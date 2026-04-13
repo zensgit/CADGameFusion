@@ -5,6 +5,24 @@
 
 #include <string>
 #include <map>
+#include <vector>
+#include <cmath>
+
+// Stored entity from a block definition (lightweight copy of geometry)
+struct BlockEntity {
+    enum Type { Line, Circle, Arc, LWPolyline, Point, Text, Ellipse };
+    Type type;
+    // Line/Polyline points
+    std::vector<std::pair<double,double>> pts;
+    // Circle/Arc params
+    double cx{0}, cy{0}, radius{0}, startAngle{0}, endAngle{0};
+    // Text
+    double height{0}, rotation{0};
+    std::string text;
+    // Ellipse
+    double rx{0}, ry{0}, ellRot{0}, ellStart{0}, ellEnd{0};
+    std::string layerName;
+};
 
 // Adapter: bridges libdxfrw DRW_Interface callbacks to cadgf_document C API.
 class CadgfDrwAdapter : public DRW_Interface {
@@ -24,9 +42,9 @@ public:
     void addAppId(const DRW_AppId& data) override {}
 
     // ─── Blocks ───
-    void addBlock(const DRW_Block& data) override {}
+    void addBlock(const DRW_Block& data) override;
     void setBlock(const int handle) override {}
-    void endBlock() override {}
+    void endBlock() override;
 
     // ─── Entities ───
     void addPoint(const DRW_Point& data) override;
@@ -40,7 +58,7 @@ public:
     void addPolyline(const DRW_Polyline& data) override {}
     void addSpline(const DRW_Spline* data) override {}
     void addKnot(const DRW_Entity& data) override {}
-    void addInsert(const DRW_Insert& data) override {}
+    void addInsert(const DRW_Insert& data) override;
     void addTrace(const DRW_Trace& data) override {}
     void add3dFace(const DRW_3Dface& data) override {}
     void addSolid(const DRW_Solid& data) override {}
@@ -63,9 +81,6 @@ public:
     // ─── Objects ───
     void linkImage(const DRW_ImageDef* data) override {}
     void addComment(const char* comment) override {}
-#if __has_include("drw_objects.h")
-    // Some forks add addPlotSettings
-#endif
 
     // Write callbacks (not used for import)
     void writeHeader(DRW_Header& data) override {}
@@ -80,10 +95,22 @@ public:
     void writeAppId() override {}
 
 private:
-    int resolveLayer(const DRW_Entity& ent);
+    int resolveLayer(const std::string& name);
+    void addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid);
+    // Transform a point by INSERT parameters (scale, rotate, translate)
+    std::pair<double,double> transformPoint(double x, double y,
+        double insX, double insY, double xscale, double yscale, double angle) const;
+    // Expand a block's entities into the document with INSERT transform
+    void expandBlock(const std::string& blockName, double insX, double insY,
+                     double xscale, double yscale, double angle, int lid);
 
     cadgf_document* m_doc;
     int m_entityCount{0};
     int m_layerCount{0};
-    std::map<std::string, int> m_layerMap; // layer name → cadgf layer id
+    std::map<std::string, int> m_layerMap;
+
+    // Block definition storage
+    bool m_inBlock{false};
+    std::string m_currentBlockName;
+    std::map<std::string, std::vector<BlockEntity>> m_blocks;
 };
