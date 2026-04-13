@@ -45,7 +45,7 @@ public:
     void addHeader(const DRW_Header* data) override;
     void addLType(const DRW_LType& data) override;
     void addLayer(const DRW_Layer& data) override;
-    void addDimStyle(const DRW_Dimstyle& data) override {}
+    void addDimStyle(const DRW_Dimstyle& data) override;
     void addVport(const DRW_Vport& data) override {}
     void addTextStyle(const DRW_Textstyle& data) override {}
     void addAppId(const DRW_AppId& data) override {}
@@ -136,6 +136,10 @@ private:
     std::set<std::string> m_frozenLayers;
     // linetype name → dash pattern (positive=dash len, negative=gap len, 0=dot)
     std::map<std::string, std::vector<double>> m_linetypes;
+    // Dimension styling from header/$DIMSCALE/$DIMASZ or Standard dimstyle
+    double m_dimArrowSize{3.5};  // effective arrow length in drawing units
+    double m_dimTextHeight{3.5}; // effective dim text height in drawing units
+    double m_ltScale{1.0};       // global linetype scale ($LTSCALE)
 
     // Block definition storage
     bool m_inBlock{false};
