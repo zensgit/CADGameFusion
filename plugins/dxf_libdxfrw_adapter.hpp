@@ -63,7 +63,9 @@ public:
     // ─── Objects ───
     void linkImage(const DRW_ImageDef* data) override {}
     void addComment(const char* comment) override {}
-    void addPlotSettings(const DRW_PlotSettings* data) override {}
+#if __has_include("drw_objects.h")
+    // Some forks add addPlotSettings
+#endif
 
     // Write callbacks (not used for import)
     void writeHeader(DRW_Header& data) override {}
@@ -76,7 +78,6 @@ public:
     void writeVports() override {}
     void writeDimstyles() override {}
     void writeAppId() override {}
-    void writeObjects() override {}
 
 private:
     int resolveLayer(const DRW_Entity& ent);
