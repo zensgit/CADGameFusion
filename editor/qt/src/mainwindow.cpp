@@ -23,6 +23,8 @@
 #include <QCloseEvent>
 #include <QFileInfo>
 #include <QInputDialog>
+#include <QProcess>
+#include <QDateTime>
 #include <QMenu>
 #include <QTimer>
 #include <QDebug>
@@ -692,10 +694,50 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         QString path = QFileDialog::getOpenFileName(this, "Import DXF/DWG", QString(),
             "DXF/DWG Files (*.dxf *.dwg);;All Files (*)");
         if (path.isEmpty()) return;
-        // Create a temporary cadgf_document, import via libdxfrw, then merge into our document
+
+        QString importPath = path;
+        QString tempDxf;
+
+        // If DWG, try to convert to DXF first using dwg2dxf (libredwg)
+        if (path.toLower().endsWith(".dwg")) {
+            tempDxf = QDir::tempPath() + "/cadgf_dwg_import_" +
+                      QString::number(QDateTime::currentMSecsSinceEpoch()) + ".dxf";
+            // Search for dwg2dxf in common locations
+            QStringList searchPaths = {
+                "dwg2dxf",  // in PATH
+                "/usr/local/bin/dwg2dxf",
+                "/opt/homebrew/bin/dwg2dxf",
+            };
+            // Also search relative to app
+            QString appDir = QCoreApplication::applicationDirPath();
+            searchPaths.prepend(appDir + "/dwg2dxf");
+            searchPaths.prepend(appDir + "/../tools/dwg2dxf");
+
+            bool converted = false;
+            for (const auto& dwg2dxf : searchPaths) {
+                QProcess proc;
+                proc.start(dwg2dxf, {path, "-o", tempDxf});
+                if (proc.waitForFinished(30000) && proc.exitCode() == 0 && QFile::exists(tempDxf)) {
+                    importPath = tempDxf;
+                    converted = true;
+                    statusBar()->showMessage("DWG converted to DXF via dwg2dxf", 1500);
+                    break;
+                }
+            }
+            if (!converted) {
+                QMessageBox::warning(this, "Import DWG",
+                    "DWG format requires dwg2dxf (libredwg) to convert.\n"
+                    "Install libredwg or convert to DXF manually.\n\n"
+                    "Attempting direct read (may return 0 entities)...");
+                importPath = path; // fallback to direct libdxfrw read
+                tempDxf.clear();
+            }
+        }
+
+        // Import via libdxfrw
         cadgf_document* tmpDoc = cadgf_document_create();
         CadgfDrwAdapter adapter(tmpDoc);
-        dxfRW reader(path.toStdString().c_str());
+        dxfRW reader(importPath.toStdString().c_str());
         bool ok = reader.read(&adapter, false);
         if (!ok) {
             cadgf_document_destroy(tmpDoc);
@@ -743,6 +785,9 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
             }
         }
         cadgf_document_destroy(tmpDoc);
+        // Clean up temp DXF if we converted from DWG
+        if (!tempDxf.isEmpty() && QFile::exists(tempDxf))
+            QFile::remove(tempDxf);
         markDirty();
         statusBar()->showMessage(QString("Imported %1 entities from %2")
             .arg(adapter.entityCount()).arg(QFileInfo(path).fileName()), 3000);
