@@ -28,6 +28,43 @@ static uint32_t drw_entity_color(const DRW_Entity& ent) {
     return 0; // BYLAYER
 }
 
+// Expand a polyline segment with arc bulge into discrete points.
+// Appends points AFTER (x1,y1) up to and including (x2,y2).
+static void appendBulgeSegment(
+    std::vector<std::pair<double,double>>& pts,
+    double x1, double y1, double x2, double y2, double bulge)
+{
+    if (std::abs(bulge) < 1e-10) {
+        pts.push_back({x2, y2});
+        return;
+    }
+    double dx = x2 - x1, dy = y2 - y1;
+    double d = std::sqrt(dx*dx + dy*dy);
+    if (d < 1e-12) { pts.push_back({x2, y2}); return; }
+
+    double theta = 4.0 * std::atan(std::abs(bulge)); // included arc angle
+    double r = d / (2.0 * std::sin(theta / 2.0));    // radius
+
+    // Center: perpendicular from chord midpoint
+    double mx = (x1 + x2) / 2.0, my = (y1 + y2) / 2.0;
+    double perpX = -dy / d, perpY = dx / d;
+    double h = std::sqrt(std::max(0.0, r*r - (d/2.0)*(d/2.0)));
+    double sign = (bulge > 0) ? 1.0 : -1.0;
+    double cx = mx + sign * h * perpX;
+    double cy = my + sign * h * perpY;
+
+    double startA = std::atan2(y1 - cy, x1 - cx);
+    double endA   = std::atan2(y2 - cy, x2 - cx);
+    if (bulge > 0) { while (endA < startA) endA += 2.0*M_PI; }
+    else           { while (endA > startA) endA -= 2.0*M_PI; }
+
+    int segs = std::max(4, static_cast<int>(std::abs(theta) / (M_PI / 16)));
+    for (int s = 1; s <= segs; ++s) {
+        double a = startA + (endA - startA) * s / segs;
+        pts.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
+    }
+}
+
 // Strip DXF MTEXT formatting codes: {braces}, \H0.7x; \S+1^0; etc.
 // Also handles \\ \{ \} escape sequences.
 static std::string stripDxfFormatting(const std::string& s) {
@@ -324,17 +361,33 @@ void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
 }
 
 void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
+    // Build point list expanding arc segments from bulge values
+    auto buildPts = [](const DRW_LWPolyline& d) {
+        std::vector<std::pair<double,double>> pts;
+        if (d.vertlist.empty()) return pts;
+        pts.push_back({d.vertlist[0]->x, d.vertlist[0]->y});
+        for (size_t i = 0; i + 1 < d.vertlist.size(); ++i) {
+            auto* v0 = d.vertlist[i];
+            auto* v1 = d.vertlist[i + 1];
+            appendBulgeSegment(pts, v0->x, v0->y, v1->x, v1->y, v0->bulge);
+        }
+        // Close if flagged
+        if ((d.flags & 1) && d.vertlist.size() > 1) {
+            auto* vl = d.vertlist.back();
+            auto* vf = d.vertlist.front();
+            appendBulgeSegment(pts, vl->x, vl->y, vf->x, vf->y, vl->bulge);
+        }
+        return pts;
+    };
+
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::LWPolyline;
-        for (const auto& v : data.vertlist)
-            be.pts.push_back({v->x, v->y});
+        be.pts = buildPts(data);
         be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    std::vector<std::pair<double,double>> pts;
-    for (const auto& v : data.vertlist)
-        pts.push_back({v->x, v->y});
+    auto pts = buildPts(data);
     addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
 }
 
@@ -495,44 +548,72 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
         }
     }
 
-    // Simple hatch fill: generate parallel lines inside boundary
-    if (!data->looplist.empty() && !m_inBlock) {
+    // Pattern hatch fill: skip for SOLID (boundary outline is enough),
+    // generate parallel lines for ANSI31/_U style patterns.
+    if (!data->looplist.empty() && !m_inBlock && data->solid == 0) {
         // Compute boundary bbox
         double hMinX=1e18, hMinY=1e18, hMaxX=-1e18, hMaxY=-1e18;
         for (const auto* loop : data->looplist) {
             for (const auto* obj : loop->objlist) {
                 if (obj->eType == DRW::LINE) {
                     auto* ln = static_cast<const DRW_Line*>(obj);
-                    auto check = [&](double x, double y) {
+                    auto chk = [&](double x, double y) {
                         if(x<hMinX)hMinX=x; if(y<hMinY)hMinY=y;
                         if(x>hMaxX)hMaxX=x; if(y>hMaxY)hMaxY=y;
                     };
-                    check(ln->basePoint.x, ln->basePoint.y);
-                    check(ln->secPoint.x, ln->secPoint.y);
+                    chk(ln->basePoint.x, ln->basePoint.y);
+                    chk(ln->secPoint.x, ln->secPoint.y);
+                } else if (obj->eType == DRW::ARC) {
+                    auto* arc = static_cast<const DRW_Arc*>(obj);
+                    // Use center ± radius as a loose bbox contribution
+                    hMinX=std::min(hMinX,arc->basePoint.x-arc->radious);
+                    hMinY=std::min(hMinY,arc->basePoint.y-arc->radious);
+                    hMaxX=std::max(hMaxX,arc->basePoint.x+arc->radious);
+                    hMaxY=std::max(hMaxY,arc->basePoint.y+arc->radious);
                 }
             }
         }
         double hW = hMaxX - hMinX, hH = hMaxY - hMinY;
         if (hW > 0.1 && hH > 0.1) {
-            // Generate 45-degree hatch lines
-            double spacing = std::max(1.0, std::min(hW, hH) / 15.0);
+            // Spacing from DXF scale (1 DXF unit ≈ 3.0 drawing units per ANSI31 line)
+            double baseSpacing = (data->scale > 0.01) ? data->scale * 3.0 : 5.0;
             double diag = hW + hH;
+            // Cap at 25 lines maximum per hatch entity
+            double spacing = std::max(baseSpacing, diag / 25.0);
+            // Use the hatch angle (degrees → radians)
+            double ang = data->angle * M_PI / 180.0;
+            double cosA = std::cos(ang), sinA = std::sin(ang);
             uint32_t hcol = drw_entity_color(*data);
-            for (double d = -diag; d < diag; d += spacing) {
-                // Line: y = x - d + hMinY, clipped to bbox
-                double x1 = hMinX, y1 = x1 - d + hMinY;
-                double x2 = hMaxX, y2 = x2 - d + hMinY;
-                // Clip to bbox
-                if (y1 < hMinY) { x1 = d + hMinY - hMinY + hMinX; y1 = hMinY; }
-                if (y1 > hMaxY) { x1 = d + hMinY - hMaxY + hMinX + (hMaxY-hMinY); y1 = hMaxY; }
-                if (y2 < hMinY) { x2 = d + hMinY - hMinY + hMinX; y2 = hMinY; }
-                if (y2 > hMaxY) { x2 = d + hMinY + (hMaxY-hMinY) + hMinX - (hMaxY-hMinY); y2 = hMaxY; }
-                // Simple clip
-                x1 = std::max(hMinX, std::min(hMaxX, x1));
-                x2 = std::max(hMinX, std::min(hMaxX, x2));
-                y1 = std::max(hMinY, std::min(hMaxY, y1));
-                y2 = std::max(hMinY, std::min(hMaxY, y2));
-                if (std::abs(x2-x1) > 0.01 || std::abs(y2-y1) > 0.01) {
+            // Generate lines perpendicular to hatch angle direction
+            // Project bbox corners onto the perpendicular axis to find sweep range
+            double corners[4][2] = {
+                {hMinX, hMinY}, {hMaxX, hMinY}, {hMaxX, hMaxY}, {hMinX, hMaxY}
+            };
+            double pmin = 1e18, pmax = -1e18;
+            for (auto& c : corners) {
+                double p = -c[0] * sinA + c[1] * cosA; // perp projection
+                pmin = std::min(pmin, p); pmax = std::max(pmax, p);
+            }
+            for (double p = pmin; p <= pmax; p += spacing) {
+                // Line through perp offset p in direction (cosA, sinA)
+                // Parametric: point = t*(cosA,sinA) + p*(-sinA,cosA)
+                // Clip to bbox by finding t range
+                double ox = p * (-sinA), oy = p * cosA;
+                // Use large t range and clip
+                double t1 = -diag*2, t2 = diag*2;
+                if (std::abs(cosA) > 1e-6) {
+                    double ta = (hMinX - ox) / cosA, tb = (hMaxX - ox) / cosA;
+                    t1 = std::max(t1, std::min(ta,tb));
+                    t2 = std::min(t2, std::max(ta,tb));
+                }
+                if (std::abs(sinA) > 1e-6) {
+                    double ta = (hMinY - oy) / sinA, tb = (hMaxY - oy) / sinA;
+                    t1 = std::max(t1, std::min(ta,tb));
+                    t2 = std::min(t2, std::max(ta,tb));
+                }
+                if (t2 > t1 + 0.01) {
+                    double x1 = ox + t1*cosA, y1 = oy + t1*sinA;
+                    double x2 = ox + t2*cosA, y2 = oy + t2*sinA;
                     addPolylineToDoc({{x1,y1},{x2,y2}}, lid, hcol);
                 }
             }
