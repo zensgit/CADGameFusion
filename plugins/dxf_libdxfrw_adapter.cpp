@@ -356,12 +356,20 @@ void CadgfDrwAdapter::addHeader(const DRW_Header* data) {
     readDouble("$DIMSCALE", dimscale);
     readDouble("$DIMTXT",   dimtxt);
     readDouble("$LTSCALE",  ltscale);
+    double dimexo = 0.0, dimexe = 0.0, dimlfac = 0.0;
+    readDouble("$DIMEXO",   dimexo);
+    readDouble("$DIMEXE",   dimexe);
+    readDouble("$DIMLFAC",  dimlfac);
+    int dimdec = 0;
+    readInt("$DIMDEC",  dimdec);
     if (dimscale <= 0.0) dimscale = 1.0;
     if (dimasz   > 0.0) m_dimArrowSize  = dimasz  * dimscale;
     if (dimtxt   > 0.0) m_dimTextHeight = dimtxt  * dimscale;
+    if (dimexo   > 0.0) m_dimExo        = dimexo  * dimscale;
+    if (dimexe   > 0.0) m_dimExe        = dimexe  * dimscale;
+    if (dimlfac  > 0.0) m_dimLFac       = dimlfac;
+    if (dimdec   > 0)   m_dimDecPrecision = std::min(dimdec, 6);
     if (ltscale  > 0.0) m_ltScale       = ltscale;
-    // $INSUNITS (not used for scaling here; drawing units already match geometry)
-    (void)readInt;
 }
 
 void CadgfDrwAdapter::addDimStyle(const DRW_Dimstyle& data) {
@@ -371,12 +379,18 @@ void CadgfDrwAdapter::addDimStyle(const DRW_Dimstyle& data) {
                        || data.name == "ISO-25" || data.name == "iso-25");
     // Only override if this is the standard style, or if we haven't set a value yet
     // (m_dimArrowSize default 3.5 means "not set from header").
-    // If the header already provided $DIMASZ, those take priority unless this is Standard.
-    double eff_arrow = data.dimasz * std::max(0.01, data.dimscale);
-    double eff_text  = data.dimtxt * std::max(0.01, data.dimscale);
+    double sc = std::max(0.01, data.dimscale);
+    double eff_arrow = data.dimasz  * sc;
+    double eff_text  = data.dimtxt  * sc;
+    double eff_exo   = data.dimexo  * sc;
+    double eff_exe   = data.dimexe  * sc;
     if (isStandard || m_dimArrowSize == 3.5) {
-        if (eff_arrow > 0.0) m_dimArrowSize  = eff_arrow;
-        if (eff_text  > 0.0) m_dimTextHeight = eff_text;
+        if (eff_arrow > 0.0) m_dimArrowSize   = eff_arrow;
+        if (eff_text  > 0.0) m_dimTextHeight  = eff_text;
+        if (eff_exo   > 0.0) m_dimExo         = eff_exo;
+        if (eff_exe   > 0.0) m_dimExe         = eff_exe;
+        if (data.dimlfac > 0.0) m_dimLFac     = data.dimlfac;
+        if (data.dimdec  > 0)   m_dimDecPrecision = std::min(data.dimdec, 6);
     }
 }
 
@@ -920,27 +934,29 @@ static void addArrowhead(cadgf_document* doc,
 // Helper: add dimension text at textPoint.
 // prefix: optional prefix ("R" for radial, "Ø" for diametric)
 // textHeight: text height in drawing units
+// lfac: dimension length factor (multiplied into the measured distance)
+// decPrec: decimal digits for number formatting
 void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
                 double def1x, double def1y, double def2x, double def2y,
-                const char* prefix = "", double textHeight = 3.5) {
+                const char* prefix = "", double textHeight = 3.5,
+                double lfac = 1.0, int decPrec = 2) {
     if (!dim) return;
     std::string txt = stripDxfFormatting(dim->getText());
 
     // Compute the measurement value for <> substitution or empty text
     double dx = def2x - def1x, dy = def2y - def1y;
-    double dist = std::sqrt(dx*dx + dy*dy);
-    char buf[48]; snprintf(buf, sizeof(buf), "%s%.1f", prefix, dist);
+    double dist = std::sqrt(dx*dx + dy*dy) * lfac;
+    // Format with requested decimal precision
+    char fmt[16]; snprintf(fmt, sizeof(fmt), "%%s%%.*f");
+    char buf[64];  snprintf(buf,  sizeof(buf),  fmt, prefix, decPrec, dist);
 
     if (txt.empty() || txt == "<>") {
         txt = buf;
     } else {
-        // Replace <> placeholder with computed value
+        // Replace <> placeholder with the computed measurement value
+        char tmpbuf[64]; snprintf(tmpbuf, sizeof(tmpbuf), fmt, prefix, decPrec, dist);
         size_t pos = txt.find("<>");
         while (pos != std::string::npos) {
-            // Insert prefix before computed value if not already present
-            std::string rep = std::string(prefix) + std::to_string(dist).substr(0,
-                std::to_string(dist).find('.') + 2);
-            char tmpbuf[32]; snprintf(tmpbuf, sizeof(tmpbuf), "%s%.1f", prefix, dist);
             txt.replace(pos, 2, tmpbuf);
             pos = txt.find("<>", pos + strlen(tmpbuf));
         }
@@ -980,24 +996,34 @@ void CadgfDrwAdapter::addDimAlign(const DRW_DimAligned* data) {
     double p1x = dpx + t1 * nx, p1y = dpy + t1 * ny;
     double p2x = dpx + t2 * nx, p2y = dpy + t2 * ny;
 
-    auto addLines = [&](int l, uint32_t c) {
-        addPolylineToDoc({{p1x,p1y},{p2x,p2y}}, l, c); // dimension line
-        addPolylineToDoc({{d1x,d1y},{p1x,p1y}}, l, c); // extension line 1
-        addPolylineToDoc({{d2x,d2y},{p2x,p2y}}, l, c); // extension line 2
+    // Build extension lines with gap (DIMEXO) and extension past dim line (DIMEXE)
+    auto extLine = [&](double defX, double defY, double dimX, double dimY)
+        -> std::pair<std::pair<double,double>, std::pair<double,double>> {
+        double ex = dimX - defX, ey = dimY - defY;
+        double el = std::sqrt(ex*ex + ey*ey);
+        if (el < 1e-10) return {{defX,defY},{dimX,dimY}};
+        double ux = ex/el, uy = ey/el;
+        return {{defX + ux*m_dimExo, defY + uy*m_dimExo},
+                {dimX + ux*m_dimExe, dimY + uy*m_dimExe}};
     };
+    auto [e1s, e1e] = extLine(d1x, d1y, p1x, p1y);
+    auto [e2s, e2e] = extLine(d2x, d2y, p2x, p2y);
 
     if (m_inBlock) {
         for (auto& seg : std::vector<std::vector<std::pair<double,double>>>{
-                {{p1x,p1y},{p2x,p2y}}, {{d1x,d1y},{p1x,p1y}}, {{d2x,d2y},{p2x,p2y}}}) {
+                {{p1x,p1y},{p2x,p2y}}, {e1s,e1e}, {e2s,e2e}}) {
             BlockEntity be; be.type = BlockEntity::Line; be.pts = seg;
             be.layerName = data->layer; be.color = col;
             m_blocks[m_currentBlockName].push_back(be);
         }
     } else {
-        addLines(lid, col);
+        addPolylineToDoc({{p1x,p1y},{p2x,p2y}}, lid, col); // dimension line
+        addPolylineToDoc({e1s,e1e}, lid, col);              // extension line 1
+        addPolylineToDoc({e2s,e2e}, lid, col);              // extension line 2
         addArrowhead(m_doc, p1x, p1y, p2x, p2y, lid, col, m_dimArrowSize);
         addArrowhead(m_doc, p2x, p2y, p1x, p1y, lid, col, m_dimArrowSize);
-        addDimText(m_doc, data, lid, d1x, d1y, d2x, d2y, "", m_dimTextHeight);
+        addDimText(m_doc, data, lid, d1x, d1y, d2x, d2y, "",
+                   m_dimTextHeight, m_dimLFac, m_dimDecPrecision);
     }
 }
 
@@ -1021,20 +1047,34 @@ void CadgfDrwAdapter::addDimLinear(const DRW_DimLinear* data) {
     double p1x = dpx + t1 * nx, p1y = dpy + t1 * ny;
     double p2x = dpx + t2 * nx, p2y = dpy + t2 * ny;
 
+    // Extension lines with DIMEXO gap and DIMEXE extension
+    auto extLine2 = [&](double defX, double defY, double dimX, double dimY)
+        -> std::pair<std::pair<double,double>, std::pair<double,double>> {
+        double ex = dimX - defX, ey = dimY - defY;
+        double el = std::sqrt(ex*ex + ey*ey);
+        if (el < 1e-10) return {{defX,defY},{dimX,dimY}};
+        double ux = ex/el, uy = ey/el;
+        return {{defX + ux*m_dimExo, defY + uy*m_dimExo},
+                {dimX + ux*m_dimExe, dimY + uy*m_dimExe}};
+    };
+    auto [e1s, e1e] = extLine2(d1x, d1y, p1x, p1y);
+    auto [e2s, e2e] = extLine2(d2x, d2y, p2x, p2y);
+
     if (m_inBlock) {
         for (auto& seg : std::vector<std::vector<std::pair<double,double>>>{
-                {{p1x,p1y},{p2x,p2y}}, {{d1x,d1y},{p1x,p1y}}, {{d2x,d2y},{p2x,p2y}}}) {
+                {{p1x,p1y},{p2x,p2y}}, {e1s,e1e}, {e2s,e2e}}) {
             BlockEntity be; be.type = BlockEntity::Line; be.pts = seg;
             be.layerName = data->layer; be.color = col;
             m_blocks[m_currentBlockName].push_back(be);
         }
     } else {
         addPolylineToDoc({{p1x,p1y},{p2x,p2y}}, lid, col); // dimension line
-        addPolylineToDoc({{d1x,d1y},{p1x,p1y}}, lid, col); // extension line 1
-        addPolylineToDoc({{d2x,d2y},{p2x,p2y}}, lid, col); // extension line 2
-        addArrowhead(m_doc, p1x, p1y, p2x, p2y, lid, col, m_dimArrowSize); // arrowhead at p1
-        addArrowhead(m_doc, p2x, p2y, p1x, p1y, lid, col, m_dimArrowSize); // arrowhead at p2
-        addDimText(m_doc, data, lid, p1x, p1y, p2x, p2y, "", m_dimTextHeight);
+        addPolylineToDoc({e1s,e1e}, lid, col);              // extension line 1
+        addPolylineToDoc({e2s,e2e}, lid, col);              // extension line 2
+        addArrowhead(m_doc, p1x, p1y, p2x, p2y, lid, col, m_dimArrowSize);
+        addArrowhead(m_doc, p2x, p2y, p1x, p1y, lid, col, m_dimArrowSize);
+        addDimText(m_doc, data, lid, p1x, p1y, p2x, p2y, "",
+                   m_dimTextHeight, m_dimLFac, m_dimDecPrecision);
     }
 }
 
@@ -1053,7 +1093,8 @@ void CadgfDrwAdapter::addDimRadial(const DRW_DimRadial* data) {
     } else {
         addPolylineToDoc(pts, lid, col);
         addArrowhead(m_doc, dp, dpy2, cx, cy, lid, col, m_dimArrowSize); // arrow at circle
-        addDimText(m_doc, data, lid, cx, cy, dp, dpy2, "R", m_dimTextHeight);
+        addDimText(m_doc, data, lid, cx, cy, dp, dpy2, "R",
+                   m_dimTextHeight, m_dimLFac, m_dimDecPrecision);
     }
 }
 
@@ -1073,7 +1114,8 @@ void CadgfDrwAdapter::addDimDiametric(const DRW_DimDiametric* data) {
         addPolylineToDoc(pts, lid, col);
         addArrowhead(m_doc, d1x, d1y, d2x, d2y, lid, col, m_dimArrowSize);
         addArrowhead(m_doc, d2x, d2y, d1x, d1y, lid, col, m_dimArrowSize);
-        addDimText(m_doc, data, lid, d1x, d1y, d2x, d2y, "\xC3\x98", m_dimTextHeight); // UTF-8 Ø
+        addDimText(m_doc, data, lid, d1x, d1y, d2x, d2y, "\xC3\x98", // UTF-8 Ø
+                   m_dimTextHeight, m_dimLFac, m_dimDecPrecision);
     }
 }
 
