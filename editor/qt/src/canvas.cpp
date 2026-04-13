@@ -594,7 +594,35 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
     QPen yPen(QColor(255,120,120), 1); yPen.setCosmetic(true); pr.setPen(yPen);
     pr.drawLine(QPointF(0, -100000), QPointF(0, 100000));
 
-    // 2. Draw Polylines
+    // 2a. Draw Text entities
+    if (m_doc) {
+        pr.setRenderHint(QPainter::Antialiasing, true);
+        for (const auto& e : m_doc->entities()) {
+            if (e.type != core::EntityType::Text) continue;
+            if (!isEntityVisible(e)) continue;
+            const auto* txt = std::get_if<core::Text>(&e.payload);
+            if (!txt || txt->text.empty()) continue;
+            QColor col = resolveEntityColor(e);
+            pr.setPen(col);
+            QPointF worldPos(txt->pos.x, txt->pos.y);
+            // Font size in world units → approximate screen size
+            double fontSize = std::max(1.0, txt->height * scale_ * 0.7);
+            if (fontSize < 2.0) continue; // too small to render
+            if (fontSize > 200.0) fontSize = 200.0;
+            QFont font = pr.font();
+            font.setPixelSize(static_cast<int>(fontSize));
+            pr.setFont(font);
+            QPointF screenPos = worldToScreen(worldPos);
+            pr.save();
+            pr.translate(screenPos);
+            if (std::abs(txt->rotation) > 0.01)
+                pr.rotate(-txt->rotation * 180.0 / M_PI);
+            pr.drawText(QPointF(0, 0), QString::fromStdString(txt->text));
+            pr.restore();
+        }
+    }
+
+    // 2b. Draw Polylines
     pr.setRenderHint(QPainter::Antialiasing, true);
     for (int i=0; i<polylines_.size(); ++i) {
         const auto& pv = polylines_[i];
