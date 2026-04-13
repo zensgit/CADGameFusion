@@ -394,7 +394,7 @@ bool CanvasWidget::removePolyline(EntityId id) {
     }
     const bool selectionUpdated = selected_entities_.remove(id) > 0;
     if (removed || selectionUpdated) scheduleUpdate();
-    if (selectionUpdated) scheduleSelectionChanged();
+    if (selectionUpdated) emit selectionChanged(selectionList());
     return removed || selectionUpdated;
 }
 
@@ -666,7 +666,38 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton && !(e->modifiers() & (Qt::AltModifier | Qt::ShiftModifier))) {
         if (!selected_entities_.isEmpty()) {
             const QPointF mouseWorld = screenToWorld(mouseScreen);
-            const EntityId hitId = hitEntityAtWorld(mouseWorld);
+            EntityId hitId = hitEntityAtWorld(mouseWorld);
+            // If general hit test returned a non-selected entity, check if any
+            // selected entity is also under the cursor (it may be occluded in
+            // reverse-iteration order but still geometrically close enough).
+            if (hitId == 0 || !selected_entities_.contains(hitId)) {
+                const double thPx = 12.0;
+                const double thWorld = thPx / scale_;
+                const double thWorldSq = thWorld * thWorld;
+                for (const auto& pv : polylines_) {
+                    if (!selected_entities_.contains(pv.entityId)) continue;
+                    const auto* entity = entityFor(pv.entityId);
+                    if (!entity || !isEntityVisible(*entity)) continue;
+                    if (!pv.aabb.adjusted(-thWorld, -thWorld, thWorld, thWorld).contains(mouseWorld)) continue;
+                    const auto& poly = pv.pts;
+                    for (int i = 0; i + 1 < poly.size(); ++i) {
+                        const QPointF& a = poly[i];
+                        const QPointF& b = poly[i + 1];
+                        QPointF ab = b - a;
+                        QPointF ap = mouseWorld - a;
+                        double lenSq = ab.x() * ab.x() + ab.y() * ab.y();
+                        double t = (lenSq < 1e-9) ? 0.0 : qBound(0.0, (ab.x() * ap.x() + ab.y() * ap.y()) / lenSq, 1.0);
+                        QPointF h = a + t * ab;
+                        double distSq = (h.x() - mouseWorld.x()) * (h.x() - mouseWorld.x()) +
+                                        (h.y() - mouseWorld.y()) * (h.y() - mouseWorld.y());
+                        if (distSq < thWorldSq) {
+                            hitId = pv.entityId;
+                            break;
+                        }
+                    }
+                    if (hitId != 0 && selected_entities_.contains(hitId)) break;
+                }
+            }
             if (hitId != 0 && selected_entities_.contains(hitId)) {
                 move_active_ = true;
                 move_dragging_ = false;

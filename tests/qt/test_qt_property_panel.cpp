@@ -54,6 +54,11 @@ int main(int argc, char** argv) {
     QCoreApplication::processEvents();
     assert(singleEdits == 0);
 
+    // Ensure checkbox is checked first so setChecked(false) triggers a state change
+    panel.setVisibleCheckState(Qt::Checked, true);
+    QCoreApplication::processEvents();
+    assert(singleEdits == 0);
+
     singleCheck->setChecked(false);
     QCoreApplication::processEvents();
     assert(singleEdits == 1);

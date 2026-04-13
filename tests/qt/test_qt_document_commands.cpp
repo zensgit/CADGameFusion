@@ -138,6 +138,7 @@ public:
         if (!doc_) {
             return;
         }
+        ids_.clear();
         for (const auto& entity : removed_) {
             if (entity.type != core::EntityType::Polyline) {
                 continue;
@@ -150,6 +151,7 @@ public:
             doc_->set_entity_visible(newId, entity.visible);
             doc_->set_entity_group_id(newId, entity.groupId);
             doc_->set_entity_color(newId, entity.color);
+            ids_.push_back(newId);
         }
     }
 

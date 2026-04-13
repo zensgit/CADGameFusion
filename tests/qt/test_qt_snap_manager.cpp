@@ -49,6 +49,8 @@ int main() {
     res = manager.findSnap(polylines, 100.0, QPointF(0.55, 0.02));
     assert(!res.active);
 
+    manager.setSnapCenters(false);
+    manager.setSnapIntersections(false);
     manager.setSnapGrid(true);
     const QPointF gridQuery(0.46, 0.52);
     const double gridStep = SnapManager::gridStepForScale(100.0);
