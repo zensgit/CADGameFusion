@@ -107,4 +107,41 @@ struct Constraint3DSpec {
     std::optional<double> value;
 };
 
+// ─── 3D Mesh (M3) ───
+
+struct TriMesh3D {
+    std::vector<Vec3> vertices;
+    std::vector<Vec3> normals; // per-vertex normals (same count as vertices)
+    std::vector<uint32_t> indices; // 3 per triangle
+};
+
+// ─── Sketch & Feature types (M3) ───
+
+enum class SketchPlaneType { XY, XZ, YZ, Custom };
+
+struct SketchPlane {
+    SketchPlaneType type{SketchPlaneType::XY};
+    Plane custom{}; // used only if type == Custom
+};
+
+enum class FeatureKind { None = 0, Extrude, Revolve };
+
+struct ExtrudeParams {
+    double height{10.0};
+    bool symmetric{false}; // extrude in both directions
+};
+
+struct RevolveParams {
+    Vec3 axisOrigin{};
+    Vec3 axisDirection{0, 1, 0};
+    double angleDeg{360.0};
+};
+
+// ─── Extrude mesh generation ───
+
+// Extrude a 2D closed polyline along Z axis to produce a 3D mesh.
+// The polyline must be closed (first == last point).
+// Returns a TriMesh3D with top face, bottom face, and side quads.
+TriMesh3D extrude_mesh(const Polyline& profile, double height);
+
 } // namespace core

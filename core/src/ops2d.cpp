@@ -262,4 +262,79 @@ void ensure_orientation(std::vector<Vec2>& ring, bool ccw) {
     ring = r;
 }
 
+// ─── 3D Extrude (M3) ───
+
+TriMesh3D extrude_mesh(const Polyline& profile, double height) {
+    TriMesh3D mesh;
+    if (profile.points.size() < 3) return mesh;
+
+    // Remove closing point if present
+    std::vector<Vec2> pts = profile.points;
+    if (pts.size() >= 2 && std::abs(pts.front().x - pts.back().x) < 1e-12
+                        && std::abs(pts.front().y - pts.back().y) < 1e-12) {
+        pts.pop_back();
+    }
+    int n = static_cast<int>(pts.size());
+    if (n < 3) return mesh;
+
+    // Vertices: bottom ring (z=0) + top ring (z=height)
+    mesh.vertices.reserve(static_cast<size_t>(2 * n));
+    mesh.normals.reserve(static_cast<size_t>(2 * n));
+    for (int i = 0; i < n; ++i) {
+        mesh.vertices.push_back(Vec3{pts[i].x, pts[i].y, 0.0});
+        mesh.normals.push_back(Vec3{0, 0, -1}); // bottom face normal
+    }
+    for (int i = 0; i < n; ++i) {
+        mesh.vertices.push_back(Vec3{pts[i].x, pts[i].y, height});
+        mesh.normals.push_back(Vec3{0, 0, 1}); // top face normal
+    }
+
+    // Bottom face: fan triangulation (reversed winding for outward normal)
+    for (int i = 1; i < n - 1; ++i) {
+        mesh.indices.push_back(0);
+        mesh.indices.push_back(static_cast<uint32_t>(i + 1));
+        mesh.indices.push_back(static_cast<uint32_t>(i));
+    }
+
+    // Top face: fan triangulation
+    uint32_t topOff = static_cast<uint32_t>(n);
+    for (int i = 1; i < n - 1; ++i) {
+        mesh.indices.push_back(topOff);
+        mesh.indices.push_back(topOff + static_cast<uint32_t>(i));
+        mesh.indices.push_back(topOff + static_cast<uint32_t>(i + 1));
+    }
+
+    // Side faces: quads between bottom and top rings
+    // Add side vertices with proper normals
+    size_t sideBase = mesh.vertices.size();
+    for (int i = 0; i < n; ++i) {
+        int j = (i + 1) % n;
+        // Side normal: cross product of edge direction × Z
+        double ex = pts[j].x - pts[i].x;
+        double ey = pts[j].y - pts[i].y;
+        double len = std::sqrt(ex * ex + ey * ey);
+        Vec3 sn = (len > 1e-12) ? Vec3{ey / len, -ex / len, 0} : Vec3{0, 0, 0};
+
+        // 4 vertices per quad (2 triangles)
+        uint32_t base = static_cast<uint32_t>(mesh.vertices.size());
+        mesh.vertices.push_back(Vec3{pts[i].x, pts[i].y, 0.0});
+        mesh.normals.push_back(sn);
+        mesh.vertices.push_back(Vec3{pts[j].x, pts[j].y, 0.0});
+        mesh.normals.push_back(sn);
+        mesh.vertices.push_back(Vec3{pts[j].x, pts[j].y, height});
+        mesh.normals.push_back(sn);
+        mesh.vertices.push_back(Vec3{pts[i].x, pts[i].y, height});
+        mesh.normals.push_back(sn);
+
+        mesh.indices.push_back(base);
+        mesh.indices.push_back(base + 1);
+        mesh.indices.push_back(base + 2);
+        mesh.indices.push_back(base);
+        mesh.indices.push_back(base + 2);
+        mesh.indices.push_back(base + 3);
+    }
+
+    return mesh;
+}
+
 } // namespace core

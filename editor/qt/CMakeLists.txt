@@ -72,6 +72,9 @@ add_executable(editor_qt
     # Align panel
     include/panels/align_panel.hpp
     src/panels/align_panel.cpp
+    # Feature tree panel
+    include/panels/feature_tree_panel.hpp
+    src/panels/feature_tree_panel.cpp
 )
 
 target_include_directories(editor_qt PRIVATE
