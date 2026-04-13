@@ -655,46 +655,81 @@ void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
     cadgf_document_add_text(doc, &pos, 3.5, 0, txt.c_str(), "", lid);
 }
 
+// Draw proper aligned dimension: extension lines + offset dimension line
 void CadgfDrwAdapter::addDimAlign(const DRW_DimAligned* data) {
     if (!data) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
-    // Def points → dim line
-    std::vector<std::pair<double,double>> pts = {
-        {data->getDef1Point().x, data->getDef1Point().y},
-        {data->getDef2Point().x, data->getDef2Point().y}
+
+    double d1x = data->getDef1Point().x, d1y = data->getDef1Point().y;
+    double d2x = data->getDef2Point().x, d2y = data->getDef2Point().y;
+    double dpx = data->getDimPoint().x,  dpy = data->getDimPoint().y;
+
+    double dx = d2x - d1x, dy = d2y - d1y;
+    double len = std::sqrt(dx*dx + dy*dy);
+    if (len < 1e-10) return;
+    double nx = dx / len, ny = dy / len; // along dim line
+
+    // Project def1 and def2 onto the dim line (passes through dimPoint, dir n)
+    double t1 = (d1x - dpx) * nx + (d1y - dpy) * ny;
+    double t2 = (d2x - dpx) * nx + (d2y - dpy) * ny;
+    double p1x = dpx + t1 * nx, p1y = dpy + t1 * ny;
+    double p2x = dpx + t2 * nx, p2y = dpy + t2 * ny;
+
+    auto addLines = [&](int l, uint32_t c) {
+        addPolylineToDoc({{p1x,p1y},{p2x,p2y}}, l, c); // dimension line
+        addPolylineToDoc({{d1x,d1y},{p1x,p1y}}, l, c); // extension line 1
+        addPolylineToDoc({{d2x,d2y},{p2x,p2y}}, l, c); // extension line 2
     };
-    // Extension lines to defPoint (dimension line position)
-    std::vector<std::pair<double,double>> ext1 = {
-        {data->getDef1Point().x, data->getDef1Point().y},
-        {data->getDefPoint().x, data->getDefPoint().y}
-    };
+
     if (m_inBlock) {
-        BlockEntity be; be.type = BlockEntity::Line; be.pts = pts;
-        be.layerName = data->layer; be.color = col;
-        m_blocks[m_currentBlockName].push_back(be);
+        for (auto& seg : std::vector<std::vector<std::pair<double,double>>>{
+                {{p1x,p1y},{p2x,p2y}}, {{d1x,d1y},{p1x,p1y}}, {{d2x,d2y},{p2x,p2y}}}) {
+            BlockEntity be; be.type = BlockEntity::Line; be.pts = seg;
+            be.layerName = data->layer; be.color = col;
+            m_blocks[m_currentBlockName].push_back(be);
+        }
     } else {
-        addPolylineToDoc(pts, lid, col);
-        addPolylineToDoc(ext1, lid, col);
-        addDimText(m_doc, data, lid, data->getDef1Point().x, data->getDef1Point().y, data->getDef2Point().x, data->getDef2Point().y);
+        addLines(lid, col);
+        addDimText(m_doc, data, lid, d1x, d1y, d2x, d2y);
     }
 }
 
+// Draw proper linear dimension: extension lines + rotated dimension line
 void CadgfDrwAdapter::addDimLinear(const DRW_DimLinear* data) {
     if (!data) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
-    std::vector<std::pair<double,double>> pts = {
-        {data->getDef1Point().x, data->getDef1Point().y},
-        {data->getDef2Point().x, data->getDef2Point().y}
-    };
+
+    double d1x = data->getDef1Point().x, d1y = data->getDef1Point().y;
+    double d2x = data->getDef2Point().x, d2y = data->getDef2Point().y;
+    double dpx = data->getDimPoint().x,  dpy = data->getDimPoint().y;
+
+    double angle = data->getAngle() * M_PI / 180.0; // measurement direction (degrees)
+    double nx = std::cos(angle), ny = std::sin(angle);
+
+    // Project def1/def2 onto dimension line through dimPoint along direction n
+    double t1 = (d1x - dpx) * nx + (d1y - dpy) * ny;
+    double t2 = (d2x - dpx) * nx + (d2y - dpy) * ny;
+    double p1x = dpx + t1 * nx, p1y = dpy + t1 * ny;
+    double p2x = dpx + t2 * nx, p2y = dpy + t2 * ny;
+
     if (m_inBlock) {
-        BlockEntity be; be.type = BlockEntity::Line; be.pts = pts;
-        be.layerName = data->layer; be.color = col;
-        m_blocks[m_currentBlockName].push_back(be);
+        for (auto& seg : std::vector<std::vector<std::pair<double,double>>>{
+                {{p1x,p1y},{p2x,p2y}}, {{d1x,d1y},{p1x,p1y}}, {{d2x,d2y},{p2x,p2y}}}) {
+            BlockEntity be; be.type = BlockEntity::Line; be.pts = seg;
+            be.layerName = data->layer; be.color = col;
+            m_blocks[m_currentBlockName].push_back(be);
+        }
     } else {
-        addPolylineToDoc(pts, lid, col);
-        addDimText(m_doc, data, lid, data->getDef1Point().x, data->getDef1Point().y, data->getDef2Point().x, data->getDef2Point().y);
+        addPolylineToDoc({{p1x,p1y},{p2x,p2y}}, lid, col); // dimension line
+        addPolylineToDoc({{d1x,d1y},{p1x,p1y}}, lid, col); // extension line 1
+        addPolylineToDoc({{d2x,d2y},{p2x,p2y}}, lid, col); // extension line 2
+        // For linear dim, measurement is projected distance along n
+        double projDist = std::abs(t2 - t1);
+        char buf[32]; snprintf(buf, sizeof(buf), "%.1f", projDist);
+        // Override computed dist in addDimText by using p1/p2 (same Euclidean as projected)
+        addDimText(m_doc, data, lid, p1x, p1y, p2x, p2y);
     }
 }
 
