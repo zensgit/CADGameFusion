@@ -137,9 +137,13 @@ private:
     // linetype name → dash pattern (positive=dash len, negative=gap len, 0=dot)
     std::map<std::string, std::vector<double>> m_linetypes;
     // Dimension styling from header/$DIMSCALE/$DIMASZ or Standard dimstyle
-    double m_dimArrowSize{3.5};  // effective arrow length in drawing units
-    double m_dimTextHeight{3.5}; // effective dim text height in drawing units
-    double m_ltScale{1.0};       // global linetype scale ($LTSCALE)
+    double m_dimArrowSize{3.5};   // effective arrow length in drawing units
+    double m_dimTextHeight{3.5};  // effective dim text height in drawing units
+    double m_dimExo{0.0};         // extension line offset from measurement point
+    double m_dimExe{0.0};         // extension line extension past dim line
+    double m_dimLFac{1.0};        // dimension length factor ($DIMLFAC)
+    int    m_dimDecPrecision{2};  // decimal digits for dimension text ($DIMDEC)
+    double m_ltScale{1.0};        // global linetype scale ($LTSCALE)
 
     // Block definition storage
     bool m_inBlock{false};
