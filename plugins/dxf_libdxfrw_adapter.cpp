@@ -165,19 +165,18 @@ void CadgfDrwAdapter::addPoint(const DRW_Point& data) {
 }
 
 void CadgfDrwAdapter::addLine(const DRW_Line& data) {
+    // Convert to polyline for canvas rendering compatibility
+    std::vector<std::pair<double,double>> pts = {
+        {data.basePoint.x, data.basePoint.y},
+        {data.secPoint.x, data.secPoint.y}
+    };
     if (m_inBlock) {
-        BlockEntity be; be.type = BlockEntity::Line;
-        be.pts.push_back({data.basePoint.x, data.basePoint.y});
-        be.pts.push_back({data.secPoint.x, data.secPoint.y});
+        BlockEntity be; be.type = BlockEntity::Line; be.pts = pts;
         be.layerName = data.layer;
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    cadgf_line line;
-    line.a = {data.basePoint.x, data.basePoint.y};
-    line.b = {data.secPoint.x, data.secPoint.y};
-    cadgf_document_add_line(m_doc, &line, "", resolveLayer(data.layer));
-    ++m_entityCount;
+    addPolylineToDoc(pts, resolveLayer(data.layer));
 }
 
 void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
@@ -190,14 +189,17 @@ void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    cadgf_arc arc;
-    arc.center = {data.basePoint.x, data.basePoint.y};
-    arc.radius = data.radious;
-    arc.start_angle = data.staangle;
-    arc.end_angle = data.endangle;
-    arc.clockwise = 0;
-    cadgf_document_add_arc(m_doc, &arc, "", resolveLayer(data.layer));
-    ++m_entityCount;
+    // Convert arc to polyline for canvas rendering
+    std::vector<std::pair<double,double>> pts;
+    double sa = data.staangle, ea = data.endangle;
+    if (ea < sa) ea += 2.0 * M_PI;
+    int segs = std::max(8, static_cast<int>((ea - sa) / (M_PI / 32)));
+    for (int s = 0; s <= segs; ++s) {
+        double a = sa + (ea - sa) * s / segs;
+        pts.push_back({data.basePoint.x + data.radious * std::cos(a),
+                        data.basePoint.y + data.radious * std::sin(a)});
+    }
+    addPolylineToDoc(pts, resolveLayer(data.layer));
 }
 
 void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
@@ -209,36 +211,46 @@ void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    cadgf_circle circle;
-    circle.center = {data.basePoint.x, data.basePoint.y};
-    circle.radius = data.radious;
-    cadgf_document_add_circle(m_doc, &circle, "", resolveLayer(data.layer));
-    ++m_entityCount;
+    // Convert circle to polyline for canvas rendering
+    std::vector<std::pair<double,double>> pts;
+    for (int s = 0; s <= 64; ++s) {
+        double a = 2.0 * M_PI * s / 64;
+        pts.push_back({data.basePoint.x + data.radious * std::cos(a),
+                        data.basePoint.y + data.radious * std::sin(a)});
+    }
+    addPolylineToDoc(pts, resolveLayer(data.layer));
 }
 
 void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
+    double mx = data.secPoint.x, my = data.secPoint.y;
+    double rx = std::sqrt(mx*mx + my*my);
+    double ry = rx * data.ratio;
+    double rot = std::atan2(my, mx);
+    double sa = data.staparam, ea = data.endparam;
+    if (std::abs(ea - sa) < 1e-10) { sa = 0; ea = 2.0 * M_PI; } // full ellipse
+
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Ellipse;
         be.cx = data.basePoint.x; be.cy = data.basePoint.y;
-        double mx = data.secPoint.x, my = data.secPoint.y;
-        be.rx = std::sqrt(mx*mx + my*my);
-        be.ry = be.rx * data.ratio;
-        be.ellRot = std::atan2(my, mx);
-        be.ellStart = data.staparam; be.ellEnd = data.endparam;
+        be.rx = rx; be.ry = ry; be.ellRot = rot;
+        be.ellStart = sa; be.ellEnd = ea;
         be.layerName = data.layer;
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    cadgf_ellipse ell;
-    ell.center = {data.basePoint.x, data.basePoint.y};
-    double mx = data.secPoint.x, my = data.secPoint.y;
-    ell.rx = std::sqrt(mx*mx + my*my);
-    ell.ry = ell.rx * data.ratio;
-    ell.rotation = std::atan2(my, mx);
-    ell.start_angle = data.staparam;
-    ell.end_angle = data.endparam;
-    cadgf_document_add_ellipse(m_doc, &ell, "", resolveLayer(data.layer));
-    ++m_entityCount;
+    // Convert ellipse to polyline for canvas rendering
+    std::vector<std::pair<double,double>> pts;
+    int segs = 64;
+    double cosR = std::cos(rot), sinR = std::sin(rot);
+    for (int s = 0; s <= segs; ++s) {
+        double t = sa + (ea - sa) * s / segs;
+        double lx = rx * std::cos(t);
+        double ly = ry * std::sin(t);
+        double px = data.basePoint.x + lx * cosR - ly * sinR;
+        double py = data.basePoint.y + lx * sinR + ly * cosR;
+        pts.push_back({px, py});
+    }
+    addPolylineToDoc(pts, resolveLayer(data.layer));
 }
 
 void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
