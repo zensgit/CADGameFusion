@@ -68,6 +68,22 @@ set_target_properties(cadgf_dwg_importer_plugin PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
+# libdxfrw-based DXF importer
+if(TARGET dxfrw)
+    add_library(cadgf_dxf_libdxfrw_plugin SHARED
+        dxf_libdxfrw_adapter.cpp
+    )
+    target_link_libraries(cadgf_dxf_libdxfrw_plugin PRIVATE core_c dxfrw)
+    target_include_directories(cadgf_dxf_libdxfrw_plugin PRIVATE
+        ${CMAKE_SOURCE_DIR}/core/include
+        ${CMAKE_SOURCE_DIR}/deps/libdxfrw/src
+    )
+    set_target_properties(cadgf_dxf_libdxfrw_plugin PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
+endif()
+
 # JSON importer plugin (sample)
 add_library(cadgf_json_importer_plugin SHARED json_importer_plugin.cpp)
 target_link_libraries(cadgf_json_importer_plugin PRIVATE core_c)

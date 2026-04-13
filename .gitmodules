@@ -1,0 +1,3 @@
+[submodule "deps/libdxfrw"]
+	path = deps/libdxfrw
+	url = https://github.com/LibreCAD/libdxfrw.git
