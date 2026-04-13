@@ -6,26 +6,76 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+// Full AutoCAD 256-color ACI palette.
+// Colors 10-249: 24 hue groups × 10 shades (HSV-based).
+// Shades 0,2,4,6,8 = full saturation; 1,3,5,7,9 = 33% saturation.
+// Value levels per pair: 100%, 74%, 51%, 41%, 31%.
 static uint32_t aci_to_rgb(int aci) {
-    static const uint32_t table[] = {
-        0x000000, 0xFF0000, 0xFFFF00, 0x00FF00, 0x00FFFF, 0x0000FF, 0xFF00FF, 0xFFFFFF,
-        0x808080, 0xC0C0C0
+    if (aci <= 0 || aci > 255) return 0xDCDCE6;
+
+    // ACI 1-9: standard primary colors
+    static const uint32_t std9[9] = {
+        0xFF0000, 0xFFFF00, 0x00FF00, 0x00FFFF, 0x0000FF,
+        0xFF00FF, 0xFFFFFF, 0x808080, 0xC0C0C0
     };
-    if (aci >= 0 && aci < 10) return table[aci];
-    if (aci >= 10 && aci <= 255) {
-        // Simplified: map to grayscale-ish for higher ACI
-        int r = ((aci * 37) % 200) + 55;
-        int g = ((aci * 73) % 200) + 55;
-        int b = ((aci * 113) % 200) + 55;
-        return (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b);
+    if (aci <= 9) return std9[aci - 1];
+
+    // ACI 250-255: grays
+    if (aci >= 250) {
+        static const uint32_t grays[6] = {
+            0x333333, 0x5B5B5B, 0x828282, 0xAAAAAA, 0xD2D2D2, 0xFFFFFF
+        };
+        return grays[aci - 250];
     }
-    return 0xDCDCE6;
+
+    // ACI 10-249: compute from hue group and shade
+    int idx       = aci - 10;
+    int hue_group = idx / 10;  // 0..23
+    int shade     = idx % 10;  // 0..9
+
+    // Value levels (per shade pair)
+    static const float V_levels[5] = {1.0f, 0.74f, 0.51f, 0.41f, 0.31f};
+    float V = V_levels[shade / 2];
+    float S = (shade % 2 == 0) ? 1.0f : 0.33f;
+
+    // Hue in [0,360), stepping 15° per group
+    float hue = static_cast<float>(hue_group) * 15.0f;
+
+    // HSV → RGB (float)
+    float h6 = hue / 60.0f;
+    float C  = V * S;
+    float X  = C * (1.0f - std::fabs(std::fmod(h6, 2.0f) - 1.0f));
+    float m  = V - C;
+    float r, g, b;
+    int   hi = static_cast<int>(h6) % 6;
+    switch (hi) {
+        case 0: r=C; g=X; b=0; break;
+        case 1: r=X; g=C; b=0; break;
+        case 2: r=0; g=C; b=X; break;
+        case 3: r=0; g=X; b=C; break;
+        case 4: r=X; g=0; b=C; break;
+        default: r=C; g=0; b=X; break;
+    }
+    auto u8 = [](float v) { return static_cast<uint32_t>(std::min(255.0f, (v + 0.002f) * 255.0f)); };
+    return (u8(r+m) << 16) | (u8(g+m) << 8) | u8(b+m);
+}
+
+// Returns true for entities that should be skipped (paper space, invisible)
+static bool drw_skip_entity(const DRW_Entity& ent) {
+    return ent.space == DRW::PaperSpace;
 }
 
 static uint32_t drw_entity_color(const DRW_Entity& ent) {
     if (ent.color24 != -1) return static_cast<uint32_t>(ent.color24) & 0xFFFFFF;
     if (ent.color > 0 && ent.color <= 255) return aci_to_rgb(ent.color);
     return 0; // BYLAYER
+}
+
+// Convert DRW lineWidth enum to mm (0 = use layer/default)
+static double drw_lweight_mm(DRW_LW_Conv::lineWidth lw) {
+    int dxfVal = DRW_LW_Conv::lineWidth2dxfInt(lw);
+    if (dxfVal <= 0) return 0.0; // bylayer / byblock / default / 0.00mm
+    return dxfVal / 100.0;
 }
 
 // Expand a polyline segment with arc bulge into discrete points.
@@ -152,7 +202,8 @@ std::pair<double,double> CadgfDrwAdapter::transformPoint(
 
 void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double>>& pts,
                                         int lid, uint32_t color,
-                                        const std::string& linetype, const std::string& layerName) {
+                                        const std::string& linetype, const std::string& layerName,
+                                        double lweightMm) {
     if (pts.empty()) return;
     std::vector<cadgf_vec2> vecs;
     vecs.reserve(pts.size());
@@ -161,6 +212,7 @@ void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double
     if (eid != 0) {
         if (color != 0) cadgf_document_set_entity_color(m_doc, eid, color);
         applyLinetype(eid, linetype, layerName);
+        if (lweightMm > 0.0) cadgf_document_set_entity_line_weight(m_doc, eid, lweightMm);
     }
     ++m_entityCount;
 }
@@ -296,6 +348,7 @@ void CadgfDrwAdapter::addLayer(const DRW_Layer& data) {
 // If m_inBlock, store in block definition. Otherwise add to document directly.
 
 void CadgfDrwAdapter::addPoint(const DRW_Point& data) {
+    if (!m_inBlock && drw_skip_entity(data)) return;
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Point;
         be.pts.push_back({data.basePoint.x, data.basePoint.y});
@@ -311,6 +364,7 @@ void CadgfDrwAdapter::addPoint(const DRW_Point& data) {
 }
 
 void CadgfDrwAdapter::addLine(const DRW_Line& data) {
+    if (!m_inBlock && drw_skip_entity(data)) return;
     std::vector<std::pair<double,double>> pts = {
         {data.basePoint.x, data.basePoint.y},
         {data.secPoint.x, data.secPoint.y}
@@ -322,10 +376,11 @@ void CadgfDrwAdapter::addLine(const DRW_Line& data) {
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer);
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer, drw_lweight_mm(data.lWeight));
 }
 
 void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
+    if (!m_inBlock && drw_skip_entity(data)) return;
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Arc;
         be.cx = data.basePoint.x; be.cy = data.basePoint.y;
@@ -346,10 +401,11 @@ void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
         pts.push_back({data.basePoint.x + data.radious * std::cos(a),
                         data.basePoint.y + data.radious * std::sin(a)});
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer);
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer, drw_lweight_mm(data.lWeight));
 }
 
 void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
+    if (!m_inBlock && drw_skip_entity(data)) return;
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Circle;
         be.cx = data.basePoint.x; be.cy = data.basePoint.y;
@@ -366,10 +422,11 @@ void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
         pts.push_back({data.basePoint.x + data.radious * std::cos(a),
                         data.basePoint.y + data.radious * std::sin(a)});
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer);
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer, drw_lweight_mm(data.lWeight));
 }
 
 void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
+    if (!m_inBlock && drw_skip_entity(data)) return;
     double mx = data.secPoint.x, my = data.secPoint.y;
     double rx = std::sqrt(mx*mx + my*my);
     double ry = rx * data.ratio;
@@ -399,10 +456,11 @@ void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
         double py = data.basePoint.y + lx * sinR + ly * cosR;
         pts.push_back({px, py});
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer);
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer, drw_lweight_mm(data.lWeight));
 }
 
 void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
+    if (!m_inBlock && drw_skip_entity(data)) return;
     // Build point list expanding arc segments from bulge values
     auto buildPts = [](const DRW_LWPolyline& d) {
         std::vector<std::pair<double,double>> pts;
@@ -431,10 +489,11 @@ void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
         return;
     }
     auto pts = buildPts(data);
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer);
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer, drw_lweight_mm(data.lWeight));
 }
 
 void CadgfDrwAdapter::addText(const DRW_Text& data) {
+    if (!m_inBlock && drw_skip_entity(data)) return;
     std::string txt = stripDxfFormatting(data.text);
     if (txt.empty()) return;
     if (m_inBlock) {
@@ -453,6 +512,7 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
 }
 
 void CadgfDrwAdapter::addMText(const DRW_MText& data) {
+    if (!m_inBlock && drw_skip_entity(data)) return;
     std::string txt = stripDxfFormatting(data.text);
     if (txt.empty()) return;
     if (m_inBlock) {
@@ -473,6 +533,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
 // ─── SOLID/TRACE: 4-point filled shape → polyline ───
 
 void CadgfDrwAdapter::addSolid(const DRW_Solid& data) {
+    if (!m_inBlock && drw_skip_entity(data)) return;
     // DRW_Solid inherits DRW_Trace: basePoint, secPoint, thirdPoint, fourPoint
     std::vector<std::pair<double,double>> pts = {
         {data.basePoint.x, data.basePoint.y},
@@ -491,6 +552,7 @@ void CadgfDrwAdapter::addSolid(const DRW_Solid& data) {
 }
 
 void CadgfDrwAdapter::addTrace(const DRW_Trace& data) {
+    if (!m_inBlock && drw_skip_entity(data)) return;
     std::vector<std::pair<double,double>> pts = {
         {data.basePoint.x, data.basePoint.y},
         {data.secPoint.x, data.secPoint.y},
@@ -510,38 +572,130 @@ void CadgfDrwAdapter::addTrace(const DRW_Trace& data) {
 // ─── POLYLINE (3D/heavyweight) ───
 
 void CadgfDrwAdapter::addPolyline(const DRW_Polyline& data) {
-    // DRW_Polyline uses vertex list from DRW_Polyline::vertlist (shared_ptr<DRW_Vertex>)
-    // Some forks use different vertex storage; handle gracefully
-    (void)data; // Heavyweight polyline rarely used in modern DXF; skip for now
-}
+    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (data.vertlist.empty()) return;
 
-// ─── SPLINE: sample to polyline ───
-
-void CadgfDrwAdapter::addSpline(const DRW_Spline* data) {
-    if (!data) return;
-    // Use fit points if available, otherwise control points as approximation
+    // Build point list expanding arc bulge values (same as LWPolyline)
     std::vector<std::pair<double,double>> pts;
-    if (!data->fitlist.empty()) {
-        for (const auto* p : data->fitlist)
-            pts.push_back({p->x, p->y});
-    } else if (!data->controllist.empty()) {
-        for (const auto* p : data->controllist)
-            pts.push_back({p->x, p->y});
+    pts.push_back({data.vertlist[0]->basePoint.x, data.vertlist[0]->basePoint.y});
+    for (size_t i = 0; i + 1 < data.vertlist.size(); ++i) {
+        auto* v0 = data.vertlist[i];
+        auto* v1 = data.vertlist[i + 1];
+        appendBulgeSegment(pts, v0->basePoint.x, v0->basePoint.y,
+                           v1->basePoint.x, v1->basePoint.y, v0->bulge);
+    }
+    // Close if flagged (bit 0 of flags)
+    if ((data.flags & 1) && data.vertlist.size() > 1) {
+        auto* vl = data.vertlist.back();
+        auto* vf = data.vertlist.front();
+        appendBulgeSegment(pts, vl->basePoint.x, vl->basePoint.y,
+                           vf->basePoint.x, vf->basePoint.y, vl->bulge);
     }
     if (pts.size() < 2) return;
+
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = pts;
-        be.layerName = data->layer;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
+        be.linetype = data.lineType;
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data->layer), data ? drw_entity_color(*data) : 0);
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data),
+                     data.lineType, data.layer, drw_lweight_mm(data.lWeight));
+}
+
+// ─── SPLINE: De Boor B-spline evaluation ───
+
+// Evaluate a B-spline at parameter t using De Boor's algorithm (2D, XY only).
+// knots: full knot vector; ctrl: control points; degree: spline degree.
+// Returns {x, y}.
+static std::pair<double,double> deBoor(
+    const std::vector<double>& knots,
+    const std::vector<std::pair<double,double>>& ctrl,
+    int degree, double t)
+{
+    const int n = static_cast<int>(ctrl.size()) - 1; // last control index
+    // Find knot span k such that knots[k] <= t < knots[k+1]
+    int k = degree;
+    for (int i = degree; i <= n; ++i) {
+        if (t < knots[i + 1]) { k = i; break; }
+    }
+    // Clamp t to avoid edge effects at the last knot
+    if (t >= knots[n + 1]) k = n;
+
+    // Copy relevant control points into d[]
+    std::vector<std::pair<double,double>> d(degree + 1);
+    for (int j = 0; j <= degree; ++j)
+        d[j] = ctrl[std::min(k - degree + j, n)];
+
+    // De Boor triangular computation
+    for (int r = 1; r <= degree; ++r) {
+        for (int j = degree; j >= r; --j) {
+            int idx = k - degree + j;
+            double denom = knots[idx + degree - r + 1] - knots[idx];
+            double alpha = (denom < 1e-14) ? 0.0 : (t - knots[idx]) / denom;
+            d[j].first  = (1.0 - alpha) * d[j-1].first  + alpha * d[j].first;
+            d[j].second = (1.0 - alpha) * d[j-1].second + alpha * d[j].second;
+        }
+    }
+    return d[degree];
+}
+
+void CadgfDrwAdapter::addSpline(const DRW_Spline* data) {
+    if (!data) return;
+    if (!m_inBlock && drw_skip_entity(*data)) return;
+    std::vector<std::pair<double,double>> pts;
+
+    // Try De Boor B-spline evaluation using control points + knots
+    int degree = data->degree;
+    bool canEval = (degree >= 1
+        && !data->controllist.empty()
+        && static_cast<int>(data->knotslist.size()) >= static_cast<int>(data->controllist.size()) + degree + 1);
+
+    if (canEval) {
+        // Build control point array
+        std::vector<std::pair<double,double>> ctrl;
+        ctrl.reserve(data->controllist.size());
+        for (const auto* p : data->controllist)
+            ctrl.push_back({p->x, p->y});
+
+        const auto& knots = data->knotslist;
+        double tStart = knots[degree];
+        double tEnd   = knots[static_cast<int>(ctrl.size())]; // knots[n+1] where n=ctrl.size()-1
+
+        // Adaptive segment count: more segments for longer/curvier splines
+        int nSeg = std::max(32, static_cast<int>(ctrl.size()) * 8);
+        for (int i = 0; i <= nSeg; ++i) {
+            double t = tStart + (tEnd - tStart) * i / nSeg;
+            pts.push_back(deBoor(knots, ctrl, degree, t));
+        }
+    } else if (!data->fitlist.empty()) {
+        // Fallback: use fit points as polyline approximation
+        for (const auto* p : data->fitlist)
+            pts.push_back({p->x, p->y});
+    } else if (!data->controllist.empty()) {
+        // Last resort: straight lines through control points
+        for (const auto* p : data->controllist)
+            pts.push_back({p->x, p->y});
+    }
+
+    if (pts.size() < 2) return;
+    if (m_inBlock) {
+        BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = pts;
+        be.layerName = data->layer; be.color = drw_entity_color(*data);
+        be.linetype = data->lineType;
+        m_blocks[m_currentBlockName].push_back(be);
+        return;
+    }
+    addPolylineToDoc(pts, resolveLayer(data->layer), drw_entity_color(*data),
+                     data->lineType, data->layer, drw_lweight_mm(data->lWeight));
 }
 
 // ─── LEADER: vertex list → polyline ───
 
 void CadgfDrwAdapter::addLeader(const DRW_Leader* data) {
     if (!data) return;
+    if (!m_inBlock && drw_skip_entity(*data)) return;
     std::vector<std::pair<double,double>> pts;
     for (const auto* v : data->vertexlist)
         pts.push_back({v->x, v->y});
@@ -552,13 +706,15 @@ void CadgfDrwAdapter::addLeader(const DRW_Leader* data) {
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data->layer), data ? drw_entity_color(*data) : 0);
+    addPolylineToDoc(pts, resolveLayer(data->layer), drw_entity_color(*data),
+                     data->lineType, data->layer, drw_lweight_mm(data->lWeight));
 }
 
 // ─── HATCH: extract boundary loops as polylines ───
 
 void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
     if (!data) return;
+    if (!m_inBlock && drw_skip_entity(*data)) return;
     int lid = resolveLayer(data->layer);
     for (const auto* loop : data->looplist) {
         // Each loop contains edge entities (lines, arcs, etc.)
@@ -734,6 +890,7 @@ void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
 // Draw proper aligned dimension: extension lines + offset dimension line
 void CadgfDrwAdapter::addDimAlign(const DRW_DimAligned* data) {
     if (!data) return;
+    if (!m_inBlock && drw_skip_entity(*data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
 
@@ -776,6 +933,7 @@ void CadgfDrwAdapter::addDimAlign(const DRW_DimAligned* data) {
 // Draw proper linear dimension: extension lines + rotated dimension line
 void CadgfDrwAdapter::addDimLinear(const DRW_DimLinear* data) {
     if (!data) return;
+    if (!m_inBlock && drw_skip_entity(*data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
 
@@ -811,6 +969,7 @@ void CadgfDrwAdapter::addDimLinear(const DRW_DimLinear* data) {
 
 void CadgfDrwAdapter::addDimRadial(const DRW_DimRadial* data) {
     if (!data) return;
+    if (!m_inBlock && drw_skip_entity(*data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
     double cx = data->getCenterPoint().x, cy = data->getCenterPoint().y;
@@ -829,6 +988,7 @@ void CadgfDrwAdapter::addDimRadial(const DRW_DimRadial* data) {
 
 void CadgfDrwAdapter::addDimDiametric(const DRW_DimDiametric* data) {
     if (!data) return;
+    if (!m_inBlock && drw_skip_entity(*data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
     double d1x = data->getDiameter1Point().x, d1y = data->getDiameter1Point().y;
@@ -848,6 +1008,7 @@ void CadgfDrwAdapter::addDimDiametric(const DRW_DimDiametric* data) {
 
 void CadgfDrwAdapter::addDimAngular(const DRW_DimAngular* data) {
     if (!data) return;
+    if (!m_inBlock && drw_skip_entity(*data)) return;
     int lid = resolveLayer(data->layer);
     // Just draw the two lines of the angle
     std::vector<std::pair<double,double>> pts1 = {
@@ -885,6 +1046,7 @@ void CadgfDrwAdapter::expandUnreferencedBlocks() {
 // ─── INSERT: expand block reference ───
 
 void CadgfDrwAdapter::addInsert(const DRW_Insert& data) {
+    if (!m_inBlock && drw_skip_entity(data)) return;
     m_referencedBlocks.insert(data.name);
     if (m_inBlock) {
         // Store nested INSERT in block definition for later recursive expansion
