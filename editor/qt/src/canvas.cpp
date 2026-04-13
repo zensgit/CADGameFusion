@@ -610,7 +610,9 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             if (fontSize < 1.0) continue;
             if (fontSize < 6.0) fontSize = 6.0; // minimum readable size
             if (fontSize > 200.0) fontSize = 200.0;
-            QFont font = pr.font();
+            QFont font;
+            font.setStyleHint(QFont::TypeWriter);
+            font.setFamily("Menlo");
             font.setPixelSize(static_cast<int>(fontSize));
             pr.setFont(font);
             QPointF screenPos = worldToScreen(worldPos);
