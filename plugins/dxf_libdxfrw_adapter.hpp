@@ -112,9 +112,11 @@ private:
     // Transform a point by INSERT parameters (scale, rotate, translate)
     std::pair<double,double> transformPoint(double x, double y,
         double insX, double insY, double xscale, double yscale, double angle) const;
-    // Expand a block's entities into the document with INSERT transform
+    // Expand a block's entities into the document with INSERT transform.
+    // insColor: INSERT entity's effective color for BYBLOCK (0xFFFFFFFF) entities; 0 = BYLAYER
     void expandBlock(const std::string& blockName, double insX, double insY,
-                     double xscale, double yscale, double angle, int lid);
+                     double xscale, double yscale, double angle, int lid,
+                     uint32_t insColor = 0);
 
     // Resolve effective linetype name for a DRW entity (entity-level overrides layer)
     std::string resolveLinetype(const std::string& entLinetype,

@@ -68,10 +68,14 @@ bool CadgfDrwAdapter::shouldSkipEntity(const DRW_Entity& ent) const {
     return false;
 }
 
+// Sentinel value meaning "BYBLOCK — inherit from INSERT entity"
+static constexpr uint32_t BYBLOCK_COLOR = 0xFFFFFFFF;
+
 static uint32_t drw_entity_color(const DRW_Entity& ent) {
     if (ent.color24 != -1) return static_cast<uint32_t>(ent.color24) & 0xFFFFFF;
     if (ent.color > 0 && ent.color <= 255) return aci_to_rgb(ent.color);
-    return 0; // BYLAYER
+    if (ent.color == 0) return BYBLOCK_COLOR; // BYBLOCK: inherit from INSERT
+    return 0; // BYLAYER (color == 256)
 }
 
 // Convert DRW lineWidth enum to mm (0 = use layer/default)
@@ -227,13 +231,19 @@ void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double
 }
 
 void CadgfDrwAdapter::expandBlock(const std::string& blockName,
-    double insX, double insY, double xscale, double yscale, double angle, int lid) {
+    double insX, double insY, double xscale, double yscale, double angle, int lid,
+    uint32_t insColor) {
     auto it = m_blocks.find(blockName);
     if (it == m_blocks.end()) return;
 
     for (const auto& ent : it->second) {
         int elid = resolveLayer(ent.layerName.empty() ? "" : ent.layerName);
         if (elid == 0) elid = lid;
+
+        // Resolve BYBLOCK color: use INSERT's color; fallback to BYLAYER (0)
+        uint32_t effectiveColor = ent.color;
+        if (effectiveColor == BYBLOCK_COLOR)
+            effectiveColor = (insColor != BYBLOCK_COLOR) ? insColor : 0;
 
         switch (ent.type) {
         case BlockEntity::Line:
@@ -242,7 +252,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             transformed.reserve(ent.pts.size());
             for (const auto& [px, py] : ent.pts)
                 transformed.push_back(transformPoint(px, py, insX, insY, xscale, yscale, angle));
-            addPolylineToDoc(transformed, elid, ent.color, ent.linetype, ent.layerName);
+            addPolylineToDoc(transformed, elid, effectiveColor, ent.linetype, ent.layerName);
             break;
         }
         case BlockEntity::Circle: {
@@ -253,7 +263,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 double a = 2.0 * M_PI * s / 64;
                 circ.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
             }
-            addPolylineToDoc(circ, elid, ent.color, ent.linetype, ent.layerName);
+            addPolylineToDoc(circ, elid, effectiveColor, ent.linetype, ent.layerName);
             break;
         }
         case BlockEntity::Arc: {
@@ -266,7 +276,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 double a = sa + (ea - sa) * s / segs;
                 arc.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
             }
-            addPolylineToDoc(arc, elid, ent.color, ent.linetype, ent.layerName);
+            addPolylineToDoc(arc, elid, effectiveColor, ent.linetype, ent.layerName);
             break;
         }
         case BlockEntity::Point: {
@@ -315,8 +325,10 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             double combinedXS = xscale * ent.xscale;
             double combinedYS = yscale * ent.yscale;
             double combinedAngle = angle + ent.insAngle;
+            // Propagate insert color: nested BYBLOCK uses the closest non-BYBLOCK color
+            uint32_t nestedInsColor = (ent.color == BYBLOCK_COLOR) ? insColor : ent.color;
             expandBlock(ent.blockName, combinedX, combinedY,
-                        combinedXS, combinedYS, combinedAngle, elid);
+                        combinedXS, combinedYS, combinedAngle, elid, nestedInsColor);
             break;
         }
         }
@@ -1306,10 +1318,13 @@ void CadgfDrwAdapter::addInsert(const DRW_Insert& data) {
             double oy = row * data.rowspace;
             double wx = ox * cosA - oy * sinA;
             double wy = ox * sinA + oy * cosA;
+            // Pass insert's resolved color for BYBLOCK entities inside the block
+            uint32_t insertColor = drw_entity_color(data);
+            if (insertColor == BYBLOCK_COLOR) insertColor = 0; // INSERT is also BYBLOCK → BYLAYER
             expandBlock(data.name,
                         data.basePoint.x + wx,
                         data.basePoint.y + wy,
-                        data.xscale, data.yscale, data.angle, lid);
+                        data.xscale, data.yscale, data.angle, lid, insertColor);
         }
     }
 }
