@@ -69,6 +69,14 @@ signals:
     void moveEntitiesRequested(const QList<qulonglong>& entityIds,
                                const QVector<QVector<QPointF>>& beforePoints,
                                const QPointF& delta);
+    void rotateEntitiesRequested(const QList<qulonglong>& entityIds,
+                                const QVector<QVector<QPointF>>& beforePoints,
+                                double angleDeg, const QPointF& center);
+    void scaleEntitiesRequested(const QList<qulonglong>& entityIds,
+                                const QVector<QVector<QPointF>>& beforePoints,
+                                double factor, const QPointF& center);
+    void cursorWorldPositionChanged(double worldX, double worldY);
+    void snapStateChanged(int snapType);
 
 protected:
     void paintEvent(QPaintEvent*) override;

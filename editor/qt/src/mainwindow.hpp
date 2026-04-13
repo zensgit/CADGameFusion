@@ -15,7 +15,9 @@ class Project;
 class LayerPanel;
 class SnapPanel;
 
+class QLabel;
 class QListWidget;
+class TransformPanel;
 
 namespace cadgf { class PluginRegistry; }
 struct core_document;
@@ -85,4 +87,11 @@ private:
     QMenu* m_pluginExportMenu{nullptr};
     QAction* m_loadPluginAct{nullptr};
     std::unique_ptr<cadgf::PluginRegistry> m_pluginRegistry;
+
+    TransformPanel* m_transformPanel{nullptr};
+
+    // Status bar widgets
+    QLabel* m_coordLabel{nullptr};
+    QLabel* m_selCountLabel{nullptr};
+    QLabel* m_snapTypeLabel{nullptr};
 };

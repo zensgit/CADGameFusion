@@ -766,14 +766,20 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
         QPointF mouseScreen = e->position();
         QPointF mouseWorld = screenToWorld(mouseScreen);
         SnapManager::SnapResult res = computeSnapAt(mouseWorld, false);
-        
+
         bool changed = (res.active != m_currentSnap.active);
         if (res.active) {
             if (res.pos != m_currentSnap.pos || res.type != m_currentSnap.type) changed = true;
         }
         m_currentSnap = res;
-        
+
         if (changed) update();
+    }
+    // Status bar signals: cursor position and snap state
+    {
+        const QPointF wpos = screenToWorld(e->position());
+        emit cursorWorldPositionChanged(wpos.x(), wpos.y());
+        emit snapStateChanged(static_cast<int>(m_currentSnap.active ? m_currentSnap.type : SnapManager::SnapType::None));
     }
 }
 
@@ -841,6 +847,42 @@ void CanvasWidget::keyPressEvent(QKeyEvent* e) {
         triSelected_ = false;
         update();
         emit selectionChanged({});
+    } else if (e->key() == Qt::Key_R && !selected_entities_.isEmpty()) {
+        // Rotate selected entities 90 degrees CCW around centroid
+        QList<qulonglong> ids;
+        QVector<QVector<QPointF>> beforePts;
+        double cx = 0, cy = 0;
+        int totalPts = 0;
+        for (const auto& pv : polylines_) {
+            if (!selected_entities_.contains(pv.entityId)) continue;
+            ids.append(static_cast<qulonglong>(pv.entityId));
+            beforePts.append(pv.pts);
+            for (const auto& pt : pv.pts) { cx += pt.x(); cy += pt.y(); }
+            totalPts += pv.pts.size();
+        }
+        if (totalPts > 0 && !ids.isEmpty()) {
+            cx /= totalPts; cy /= totalPts;
+            emit rotateEntitiesRequested(ids, beforePts, 90.0, QPointF(cx, cy));
+        }
+    } else if ((e->key() == Qt::Key_Plus || e->key() == Qt::Key_Equal ||
+                e->key() == Qt::Key_Minus) && !selected_entities_.isEmpty()) {
+        // Scale selected entities from centroid
+        double factor = (e->key() == Qt::Key_Minus) ? (1.0 / 1.5) : 1.5;
+        QList<qulonglong> ids;
+        QVector<QVector<QPointF>> beforePts;
+        double cx = 0, cy = 0;
+        int totalPts = 0;
+        for (const auto& pv : polylines_) {
+            if (!selected_entities_.contains(pv.entityId)) continue;
+            ids.append(static_cast<qulonglong>(pv.entityId));
+            beforePts.append(pv.pts);
+            for (const auto& pt : pv.pts) { cx += pt.x(); cy += pt.y(); }
+            totalPts += pv.pts.size();
+        }
+        if (totalPts > 0 && !ids.isEmpty()) {
+            cx /= totalPts; cy /= totalPts;
+            emit scaleEntitiesRequested(ids, beforePts, factor, QPointF(cx, cy));
+        }
     }
 }
 

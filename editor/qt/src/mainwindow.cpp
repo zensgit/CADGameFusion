@@ -26,8 +26,11 @@
 #include <QTimer>
 #include <QDebug>
 #include <QSet>
+#include <QLabel>
+#include <cmath>
 
 #include "core/ops2d.hpp"
+#include "panels/transform_panel.hpp"
 #include "core/version.hpp"
 #include "core/core_c_api.h"
 #include "canvas.hpp"
@@ -56,7 +59,9 @@ MainWindow::~MainWindow() = default;
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle("CADGameFusion - Qt Editor");
 
-    // ... (existing code) ...
+    m_undoStack = new QUndoStack(this);
+    m_cmdMgr = new CommandManager(this);
+    m_cmdMgr->setUndoStack(m_undoStack);
 
     auto* canvas = new CanvasWidget(this);
     canvas->setDocument(&m_document);
@@ -124,7 +129,10 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     prop->setDocument(&m_document);
     prop->updateFromSelection({});
     
-    // ... (existing code) ...
+    // Transform panel dock
+    m_transformPanel = new TransformPanel(this);
+    addDockWidget(Qt::RightDockWidgetArea, m_transformPanel);
+
     connect(canvas, &CanvasWidget::selectionChanged, this, [this](const QList<qulonglong>& entityIds){
         if (m_selectionModel) m_selectionModel->setSelection(entityIds);
     });
@@ -177,6 +185,216 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         };
         auto cmd = std::make_unique<MoveEntitiesCommand>(&m_document, entityIds, beforePoints, delta);
         m_cmdMgr->push(std::move(cmd));
+        markDirty();
+    });
+    connect(canvas, &CanvasWidget::rotateEntitiesRequested, this, [this](const QList<qulonglong>& entityIds,
+                                                                        const QVector<QVector<QPointF>>& beforePoints,
+                                                                        double angleDeg, const QPointF& center){
+        if (entityIds.isEmpty() || beforePoints.size() != entityIds.size()) return;
+        struct RotateEntitiesCommand : Command {
+            core::Document* doc;
+            QVector<EntityId> ids;
+            QVector<QVector<QPointF>> before;
+            double angleDeg;
+            QPointF center;
+            RotateEntitiesCommand(core::Document* d,
+                                  const QList<qulonglong>& inIds,
+                                  const QVector<QVector<QPointF>>& inBefore,
+                                  double angle, const QPointF& c)
+                : doc(d), before(inBefore), angleDeg(angle), center(c) {
+                ids.reserve(inIds.size());
+                for (qulonglong id : inIds) ids.push_back(static_cast<EntityId>(id));
+            }
+            void applyPoints(EntityId id, const QVector<QPointF>& pts) {
+                if (!doc) return;
+                core::Polyline pl;
+                pl.points.reserve(static_cast<size_t>(pts.size()));
+                for (const auto& pt : pts) pl.points.push_back(core::Vec2{pt.x(), pt.y()});
+                doc->set_polyline_points(id, pl);
+            }
+            void execute() override {
+                double rad = angleDeg * M_PI / 180.0;
+                double cosA = std::cos(rad), sinA = std::sin(rad);
+                for (int i = 0; i < ids.size(); ++i) {
+                    QVector<QPointF> rotated;
+                    rotated.reserve(before[i].size());
+                    for (const auto& pt : before[i]) {
+                        double dx = pt.x() - center.x();
+                        double dy = pt.y() - center.y();
+                        rotated.append(QPointF(center.x() + dx*cosA - dy*sinA,
+                                               center.y() + dx*sinA + dy*cosA));
+                    }
+                    applyPoints(ids[i], rotated);
+                }
+            }
+            void undo() override {
+                for (int i = 0; i < ids.size(); ++i) applyPoints(ids[i], before[i]);
+            }
+            QString name() const override { return "Rotate Entities"; }
+        };
+        m_cmdMgr->push(std::make_unique<RotateEntitiesCommand>(&m_document, entityIds, beforePoints, angleDeg, center));
+        markDirty();
+    });
+    connect(canvas, &CanvasWidget::scaleEntitiesRequested, this, [this](const QList<qulonglong>& entityIds,
+                                                                        const QVector<QVector<QPointF>>& beforePoints,
+                                                                        double factor, const QPointF& center){
+        if (entityIds.isEmpty() || beforePoints.size() != entityIds.size()) return;
+        struct ScaleEntitiesCommand : Command {
+            core::Document* doc;
+            QVector<EntityId> ids;
+            QVector<QVector<QPointF>> before;
+            double factor;
+            QPointF center;
+            ScaleEntitiesCommand(core::Document* d,
+                                 const QList<qulonglong>& inIds,
+                                 const QVector<QVector<QPointF>>& inBefore,
+                                 double f, const QPointF& c)
+                : doc(d), before(inBefore), factor(f), center(c) {
+                ids.reserve(inIds.size());
+                for (qulonglong id : inIds) ids.push_back(static_cast<EntityId>(id));
+            }
+            void applyPoints(EntityId id, const QVector<QPointF>& pts) {
+                if (!doc) return;
+                core::Polyline pl;
+                pl.points.reserve(static_cast<size_t>(pts.size()));
+                for (const auto& pt : pts) pl.points.push_back(core::Vec2{pt.x(), pt.y()});
+                doc->set_polyline_points(id, pl);
+            }
+            void execute() override {
+                for (int i = 0; i < ids.size(); ++i) {
+                    QVector<QPointF> scaled;
+                    scaled.reserve(before[i].size());
+                    for (const auto& pt : before[i]) {
+                        scaled.append(QPointF(center.x() + (pt.x() - center.x()) * factor,
+                                              center.y() + (pt.y() - center.y()) * factor));
+                    }
+                    applyPoints(ids[i], scaled);
+                }
+            }
+            void undo() override {
+                for (int i = 0; i < ids.size(); ++i) applyPoints(ids[i], before[i]);
+            }
+            QString name() const override { return "Scale Entities"; }
+        };
+        m_cmdMgr->push(std::make_unique<ScaleEntitiesCommand>(&m_document, entityIds, beforePoints, factor, center));
+        markDirty();
+    });
+    // TransformPanel: update centroid on selection change, wire apply buttons
+    connect(m_selectionModel, &SelectionModel::selectionChanged, this, [this](const QList<qulonglong>& ids){
+        if (!m_transformPanel) return;
+        if (ids.isEmpty()) { m_transformPanel->setHasSelection(false); return; }
+        double cx = 0, cy = 0; int total = 0;
+        for (qulonglong id : ids) {
+            auto* e = m_document.get_entity(static_cast<core::EntityId>(id));
+            if (!e) continue;
+            auto* pl = std::get_if<core::Polyline>(&e->payload);
+            if (!pl) continue;
+            for (const auto& pt : pl->points) { cx += pt.x; cy += pt.y; ++total; }
+        }
+        if (total > 0) { cx /= total; cy /= total; }
+        m_transformPanel->setHasSelection(true);
+        m_transformPanel->setCentroid(QPointF(cx, cy));
+    });
+    // Helper lambda: gather selected polyline data
+    auto gatherSelected = [this](QList<qulonglong>& ids, QVector<QVector<QPointF>>& beforePts,
+                                  double& cx, double& cy) -> bool {
+        const auto sel = m_selectionModel ? m_selectionModel->selection() : QList<qulonglong>{};
+        cx = 0; cy = 0; int total = 0;
+        for (qulonglong id : sel) {
+            auto* e = m_document.get_entity(static_cast<core::EntityId>(id));
+            if (!e) continue;
+            auto* pl = std::get_if<core::Polyline>(&e->payload);
+            if (!pl) continue;
+            ids.append(id);
+            QVector<QPointF> pts;
+            for (const auto& p : pl->points) { pts.append(QPointF(p.x, p.y)); cx += p.x; cy += p.y; ++total; }
+            beforePts.append(pts);
+        }
+        if (total > 0) { cx /= total; cy /= total; }
+        return !ids.isEmpty();
+    };
+    connect(m_transformPanel, &TransformPanel::moveRequested, this, [this, gatherSelected](double dx, double dy){
+        QList<qulonglong> ids; QVector<QVector<QPointF>> beforePts; double cx, cy;
+        if (!gatherSelected(ids, beforePts, cx, cy)) return;
+        // Reuse the existing moveEntitiesRequested handler by creating command directly
+        struct MoveCmd : Command {
+            core::Document* doc; QVector<EntityId> ids; QVector<QVector<QPointF>> before; QPointF delta;
+            MoveCmd(core::Document* d, const QList<qulonglong>& in, const QVector<QVector<QPointF>>& b, QPointF dl)
+                : doc(d), before(b), delta(dl) { for (auto id : in) ids.push_back(static_cast<EntityId>(id)); }
+            void applyPts(EntityId id, const QVector<QPointF>& pts) {
+                core::Polyline pl; pl.points.reserve(pts.size());
+                for (const auto& p : pts) pl.points.push_back({p.x(), p.y()});
+                doc->set_polyline_points(id, pl);
+            }
+            void execute() override {
+                for (int i = 0; i < ids.size(); ++i) {
+                    QVector<QPointF> m; m.reserve(before[i].size());
+                    for (const auto& p : before[i]) m.append(p + delta);
+                    applyPts(ids[i], m);
+                }
+            }
+            void undo() override { for (int i = 0; i < ids.size(); ++i) applyPts(ids[i], before[i]); }
+            QString name() const override { return "Move Entities"; }
+        };
+        m_cmdMgr->push(std::make_unique<MoveCmd>(&m_document, ids, beforePts, QPointF(dx, dy)));
+        markDirty();
+    });
+    connect(m_transformPanel, &TransformPanel::rotateRequested, this, [this, gatherSelected](double angleDeg){
+        QList<qulonglong> ids; QVector<QVector<QPointF>> beforePts; double cx, cy;
+        if (!gatherSelected(ids, beforePts, cx, cy)) return;
+        struct RotCmd : Command {
+            core::Document* doc; QVector<EntityId> ids; QVector<QVector<QPointF>> before;
+            double angleDeg; QPointF center;
+            RotCmd(core::Document* d, const QList<qulonglong>& in, const QVector<QVector<QPointF>>& b, double a, QPointF c)
+                : doc(d), before(b), angleDeg(a), center(c) { for (auto id : in) ids.push_back(static_cast<EntityId>(id)); }
+            void applyPts(EntityId id, const QVector<QPointF>& pts) {
+                core::Polyline pl; pl.points.reserve(pts.size());
+                for (const auto& p : pts) pl.points.push_back({p.x(), p.y()});
+                doc->set_polyline_points(id, pl);
+            }
+            void execute() override {
+                double rad = angleDeg * M_PI / 180.0;
+                double cosA = std::cos(rad), sinA = std::sin(rad);
+                for (int i = 0; i < ids.size(); ++i) {
+                    QVector<QPointF> r; r.reserve(before[i].size());
+                    for (const auto& p : before[i]) {
+                        double dx = p.x() - center.x(), dy = p.y() - center.y();
+                        r.append(QPointF(center.x() + dx*cosA - dy*sinA, center.y() + dx*sinA + dy*cosA));
+                    }
+                    applyPts(ids[i], r);
+                }
+            }
+            void undo() override { for (int i = 0; i < ids.size(); ++i) applyPts(ids[i], before[i]); }
+            QString name() const override { return "Rotate Entities"; }
+        };
+        m_cmdMgr->push(std::make_unique<RotCmd>(&m_document, ids, beforePts, angleDeg, QPointF(cx, cy)));
+        markDirty();
+    });
+    connect(m_transformPanel, &TransformPanel::scaleRequested, this, [this, gatherSelected](double factor){
+        QList<qulonglong> ids; QVector<QVector<QPointF>> beforePts; double cx, cy;
+        if (!gatherSelected(ids, beforePts, cx, cy)) return;
+        struct ScaleCmd : Command {
+            core::Document* doc; QVector<EntityId> ids; QVector<QVector<QPointF>> before;
+            double factor; QPointF center;
+            ScaleCmd(core::Document* d, const QList<qulonglong>& in, const QVector<QVector<QPointF>>& b, double f, QPointF c)
+                : doc(d), before(b), factor(f), center(c) { for (auto id : in) ids.push_back(static_cast<EntityId>(id)); }
+            void applyPts(EntityId id, const QVector<QPointF>& pts) {
+                core::Polyline pl; pl.points.reserve(pts.size());
+                for (const auto& p : pts) pl.points.push_back({p.x(), p.y()});
+                doc->set_polyline_points(id, pl);
+            }
+            void execute() override {
+                for (int i = 0; i < ids.size(); ++i) {
+                    QVector<QPointF> s; s.reserve(before[i].size());
+                    for (const auto& p : before[i])
+                        s.append(QPointF(center.x() + (p.x()-center.x())*factor, center.y() + (p.y()-center.y())*factor));
+                    applyPts(ids[i], s);
+                }
+            }
+            void undo() override { for (int i = 0; i < ids.size(); ++i) applyPts(ids[i], before[i]); }
+            QString name() const override { return "Scale Entities"; }
+        };
+        m_cmdMgr->push(std::make_unique<ScaleCmd>(&m_document, ids, beforePts, factor, QPointF(cx, cy)));
         markDirty();
     });
     connect(m_selectionModel, &SelectionModel::selectionChanged, this, [this, prop, canvas](const QList<qulonglong>& entityIds){
@@ -351,6 +569,75 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         }
     });
 
+    // Group / Ungroup
+    auto* actGroup = editMenu->addAction("Group");
+    actGroup->setShortcut(QKeySequence("Ctrl+G"));
+    connect(actGroup, &QAction::triggered, this, [this]{
+        const QList<qulonglong> sel = m_selectionModel ? m_selectionModel->selection() : QList<qulonglong>{};
+        if (sel.size() < 2) { statusBar()->showMessage("Select 2+ entities to group", 1500); return; }
+        struct GroupEntitiesCommand : Command {
+            core::Document* doc;
+            QVector<EntityId> ids;
+            QVector<int> oldGroupIds;
+            int newGroupId;
+            GroupEntitiesCommand(core::Document* d, const QList<qulonglong>& sel)
+                : doc(d), newGroupId(d->alloc_group_id()) {
+                for (qulonglong id : sel) {
+                    EntityId eid = static_cast<EntityId>(id);
+                    if (auto* e = doc->get_entity(eid)) {
+                        ids.push_back(eid);
+                        oldGroupIds.push_back(e->groupId);
+                    }
+                }
+            }
+            void execute() override {
+                for (EntityId eid : ids) doc->set_entity_group_id(eid, newGroupId);
+            }
+            void undo() override {
+                for (int i = 0; i < ids.size(); ++i) doc->set_entity_group_id(ids[i], oldGroupIds[i]);
+            }
+            QString name() const override { return "Group Entities"; }
+        };
+        auto cmd = std::make_unique<GroupEntitiesCommand>(&m_document, sel);
+        if (cmd->ids.isEmpty()) return;
+        m_cmdMgr->push(std::move(cmd));
+        markDirty();
+        statusBar()->showMessage(QString("Grouped %1 entities").arg(sel.size()), 1500);
+    });
+    auto* actUngroup = editMenu->addAction("Ungroup");
+    actUngroup->setShortcut(QKeySequence("Ctrl+Shift+G"));
+    connect(actUngroup, &QAction::triggered, this, [this]{
+        const QList<qulonglong> sel = m_selectionModel ? m_selectionModel->selection() : QList<qulonglong>{};
+        if (sel.isEmpty()) { statusBar()->showMessage("Select entities to ungroup", 1500); return; }
+        struct UngroupEntitiesCommand : Command {
+            core::Document* doc;
+            QVector<EntityId> ids;
+            QVector<int> oldGroupIds;
+            UngroupEntitiesCommand(core::Document* d, const QList<qulonglong>& sel) : doc(d) {
+                for (qulonglong id : sel) {
+                    EntityId eid = static_cast<EntityId>(id);
+                    if (auto* e = doc->get_entity(eid)) {
+                        ids.push_back(eid);
+                        oldGroupIds.push_back(e->groupId);
+                    }
+                }
+            }
+            void execute() override {
+                for (EntityId eid : ids) doc->set_entity_group_id(eid, -1);
+            }
+            void undo() override {
+                for (int i = 0; i < ids.size(); ++i) doc->set_entity_group_id(ids[i], oldGroupIds[i]);
+            }
+            QString name() const override { return "Ungroup Entities"; }
+        };
+        auto cmd = std::make_unique<UngroupEntitiesCommand>(&m_document, sel);
+        if (cmd->ids.isEmpty()) return;
+        m_cmdMgr->push(std::move(cmd));
+        markDirty();
+        statusBar()->showMessage(QString("Ungrouped %1 entities").arg(sel.size()), 1500);
+    });
+    editMenu->addSeparator();
+
     // Test action: push a dummy command to exercise undo/redo
     auto* actDummy = editMenu->addAction("Do Dummy Command");
     connect(actDummy, &QAction::triggered, [this]{
@@ -371,6 +658,29 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     auto* helpMenu = menuBar()->addMenu("Help");
     auto* actAbout = helpMenu->addAction("About Core...");
     connect(actAbout, &QAction::triggered, this, &MainWindow::showAboutCore);
+
+    // Permanent status bar widgets
+    m_coordLabel = new QLabel("X: 0.00  Y: 0.00", this);
+    m_coordLabel->setMinimumWidth(160);
+    m_selCountLabel = new QLabel("Sel: 0", this);
+    m_selCountLabel->setMinimumWidth(60);
+    m_snapTypeLabel = new QLabel("Snap: --", this);
+    m_snapTypeLabel->setMinimumWidth(100);
+    statusBar()->addPermanentWidget(m_coordLabel);
+    statusBar()->addPermanentWidget(m_selCountLabel);
+    statusBar()->addPermanentWidget(m_snapTypeLabel);
+
+    connect(canvas, &CanvasWidget::cursorWorldPositionChanged, this, [this](double x, double y){
+        m_coordLabel->setText(QString("X: %1  Y: %2").arg(x, 0, 'f', 2).arg(y, 0, 'f', 2));
+    });
+    connect(canvas, &CanvasWidget::snapStateChanged, this, [this](int snapType){
+        static const char* snapNames[] = {"--", "Endpoint", "Midpoint", "Center", "Intersection", "Grid"};
+        int idx = (snapType >= 0 && snapType <= 5) ? snapType : 0;
+        m_snapTypeLabel->setText(QString("Snap: %1").arg(snapNames[idx]));
+    });
+    connect(m_selectionModel, &SelectionModel::selectionChanged, this, [this](const QList<qulonglong>& ids){
+        m_selCountLabel->setText(QString("Sel: %1").arg(ids.size()));
+    });
 
     statusBar()->showMessage("Ready | Delete=删单条, Shift+Delete=删同批次/同类, Clear All=清空");
     m_project = new Project();

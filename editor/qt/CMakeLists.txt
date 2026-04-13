@@ -45,6 +45,9 @@ add_executable(editor_qt
     # Snap panel
     include/panels/snap_panel.hpp
     src/panels/snap_panel.cpp
+    # Transform panel
+    include/panels/transform_panel.hpp
+    src/panels/transform_panel.cpp
     # Snap settings
     include/snap/snap_settings.hpp
     src/snap/snap_settings.cpp
