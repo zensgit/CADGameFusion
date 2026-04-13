@@ -338,7 +338,47 @@ void CadgfDrwAdapter::endBlock() {
 
 // ─── Table entries ───
 
-void CadgfDrwAdapter::addHeader(const DRW_Header*) {}
+void CadgfDrwAdapter::addHeader(const DRW_Header* data) {
+    if (!data) return;
+    // Read dimension and linetype scaling variables from DXF header
+    auto readDouble = [&](const char* var, double& out) {
+        auto it = data->vars.find(var);
+        if (it != data->vars.end() && it->second->type() == DRW_Variant::DOUBLE && it->second->content.d != 0.0)
+            out = it->second->content.d;
+    };
+    auto readInt = [&](const char* var, int& out) {
+        auto it = data->vars.find(var);
+        if (it != data->vars.end() && it->second->type() == DRW_Variant::INTEGER)
+            out = it->second->content.i;
+    };
+    double dimasz = 0.0, dimscale = 0.0, dimtxt = 0.0, ltscale = 0.0;
+    readDouble("$DIMASZ",   dimasz);
+    readDouble("$DIMSCALE", dimscale);
+    readDouble("$DIMTXT",   dimtxt);
+    readDouble("$LTSCALE",  ltscale);
+    if (dimscale <= 0.0) dimscale = 1.0;
+    if (dimasz   > 0.0) m_dimArrowSize  = dimasz  * dimscale;
+    if (dimtxt   > 0.0) m_dimTextHeight = dimtxt  * dimscale;
+    if (ltscale  > 0.0) m_ltScale       = ltscale;
+    // $INSUNITS (not used for scaling here; drawing units already match geometry)
+    (void)readInt;
+}
+
+void CadgfDrwAdapter::addDimStyle(const DRW_Dimstyle& data) {
+    // Use the Standard (default) dim style to set arrow/text sizes, or capture
+    // the first dim style encountered as a fallback.
+    bool isStandard = (data.name == "Standard" || data.name == "STANDARD"
+                       || data.name == "ISO-25" || data.name == "iso-25");
+    // Only override if this is the standard style, or if we haven't set a value yet
+    // (m_dimArrowSize default 3.5 means "not set from header").
+    // If the header already provided $DIMASZ, those take priority unless this is Standard.
+    double eff_arrow = data.dimasz * std::max(0.01, data.dimscale);
+    double eff_text  = data.dimtxt * std::max(0.01, data.dimscale);
+    if (isStandard || m_dimArrowSize == 3.5) {
+        if (eff_arrow > 0.0) m_dimArrowSize  = eff_arrow;
+        if (eff_text  > 0.0) m_dimTextHeight = eff_text;
+    }
+}
 
 void CadgfDrwAdapter::addLayer(const DRW_Layer& data) {
     // Negative color means layer is off; bit 0 or 1 of flags means frozen
@@ -851,16 +891,16 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
 // ─── DIMENSIONS: render as lines + text ───
 
 // Append a small open arrowhead at point (px,py) pointing FROM (fromX,fromY).
-// Arrow size ≈ 3.5 drawing units (matches default DXF arrow size).
+// arrowLen: arrow length in drawing units (default = 3.5 for AutoCAD default style).
 static void addArrowhead(cadgf_document* doc,
                           double px, double py, double fromX, double fromY,
-                          int lid, uint32_t col) {
+                          int lid, uint32_t col, double arrowLen = 3.5) {
     double dx = px - fromX, dy = py - fromY;
     double len = std::sqrt(dx*dx + dy*dy);
     if (len < 1e-10) return;
     double nx = dx / len, ny = dy / len;      // unit along dim line
     double px2 = -ny, py2 = nx;               // perpendicular
-    double arrowLen = 3.5, arrowWidth = 1.0;  // in drawing units
+    double arrowWidth = arrowLen * 0.25;       // ~1/4 of arrow length
     // Two lines forming an open arrowhead
     double ax = px - nx * arrowLen, ay = py - ny * arrowLen;
     // wing 1
@@ -879,9 +919,10 @@ static void addArrowhead(cadgf_document* doc,
 
 // Helper: add dimension text at textPoint.
 // prefix: optional prefix ("R" for radial, "Ø" for diametric)
+// textHeight: text height in drawing units
 void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
                 double def1x, double def1y, double def2x, double def2y,
-                const char* prefix = "") {
+                const char* prefix = "", double textHeight = 3.5) {
     if (!dim) return;
     std::string txt = stripDxfFormatting(dim->getText());
 
@@ -914,7 +955,7 @@ void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
     // DXF code 53 (dim text rotation) is in degrees; convert to radians
     double textRot = dim->getDir() * M_PI / 180.0;
     cadgf_vec2 pos = {tx, ty};
-    cadgf_document_add_text(doc, &pos, 3.5, textRot, txt.c_str(), "", lid);
+    cadgf_document_add_text(doc, &pos, textHeight, textRot, txt.c_str(), "", lid);
 }
 
 // Draw proper aligned dimension: extension lines + offset dimension line
@@ -954,9 +995,9 @@ void CadgfDrwAdapter::addDimAlign(const DRW_DimAligned* data) {
         }
     } else {
         addLines(lid, col);
-        addArrowhead(m_doc, p1x, p1y, p2x, p2y, lid, col);
-        addArrowhead(m_doc, p2x, p2y, p1x, p1y, lid, col);
-        addDimText(m_doc, data, lid, d1x, d1y, d2x, d2y);
+        addArrowhead(m_doc, p1x, p1y, p2x, p2y, lid, col, m_dimArrowSize);
+        addArrowhead(m_doc, p2x, p2y, p1x, p1y, lid, col, m_dimArrowSize);
+        addDimText(m_doc, data, lid, d1x, d1y, d2x, d2y, "", m_dimTextHeight);
     }
 }
 
@@ -991,9 +1032,9 @@ void CadgfDrwAdapter::addDimLinear(const DRW_DimLinear* data) {
         addPolylineToDoc({{p1x,p1y},{p2x,p2y}}, lid, col); // dimension line
         addPolylineToDoc({{d1x,d1y},{p1x,p1y}}, lid, col); // extension line 1
         addPolylineToDoc({{d2x,d2y},{p2x,p2y}}, lid, col); // extension line 2
-        addArrowhead(m_doc, p1x, p1y, p2x, p2y, lid, col); // arrowhead at p1
-        addArrowhead(m_doc, p2x, p2y, p1x, p1y, lid, col); // arrowhead at p2
-        addDimText(m_doc, data, lid, p1x, p1y, p2x, p2y);
+        addArrowhead(m_doc, p1x, p1y, p2x, p2y, lid, col, m_dimArrowSize); // arrowhead at p1
+        addArrowhead(m_doc, p2x, p2y, p1x, p1y, lid, col, m_dimArrowSize); // arrowhead at p2
+        addDimText(m_doc, data, lid, p1x, p1y, p2x, p2y, "", m_dimTextHeight);
     }
 }
 
@@ -1011,8 +1052,8 @@ void CadgfDrwAdapter::addDimRadial(const DRW_DimRadial* data) {
         m_blocks[m_currentBlockName].push_back(be);
     } else {
         addPolylineToDoc(pts, lid, col);
-        addArrowhead(m_doc, dp, dpy2, cx, cy, lid, col); // arrow at circle
-        addDimText(m_doc, data, lid, cx, cy, dp, dpy2, "R");
+        addArrowhead(m_doc, dp, dpy2, cx, cy, lid, col, m_dimArrowSize); // arrow at circle
+        addDimText(m_doc, data, lid, cx, cy, dp, dpy2, "R", m_dimTextHeight);
     }
 }
 
@@ -1030,9 +1071,9 @@ void CadgfDrwAdapter::addDimDiametric(const DRW_DimDiametric* data) {
         m_blocks[m_currentBlockName].push_back(be);
     } else {
         addPolylineToDoc(pts, lid, col);
-        addArrowhead(m_doc, d1x, d1y, d2x, d2y, lid, col);
-        addArrowhead(m_doc, d2x, d2y, d1x, d1y, lid, col);
-        addDimText(m_doc, data, lid, d1x, d1y, d2x, d2y, "\xC3\x98"); // UTF-8 Ø
+        addArrowhead(m_doc, d1x, d1y, d2x, d2y, lid, col, m_dimArrowSize);
+        addArrowhead(m_doc, d2x, d2y, d1x, d1y, lid, col, m_dimArrowSize);
+        addDimText(m_doc, data, lid, d1x, d1y, d2x, d2y, "\xC3\x98", m_dimTextHeight); // UTF-8 Ø
     }
 }
 
@@ -1090,6 +1131,22 @@ void CadgfDrwAdapter::addInsert(const DRW_Insert& data) {
         return;
     }
     int lid = resolveLayer(data.layer);
-    expandBlock(data.name, data.basePoint.x, data.basePoint.y,
-                data.xscale, data.yscale, data.angle, lid);
+    // Handle array insert (MINSERT): replicate for each column × row
+    int cols = std::max(1, data.colcount);
+    int rows = std::max(1, data.rowcount);
+    double cosA = std::cos(data.angle), sinA = std::sin(data.angle);
+    for (int row = 0; row < rows; ++row) {
+        for (int col = 0; col < cols; ++col) {
+            // Column offset along X, row offset along Y — both in insert local space,
+            // then rotated by insert angle to get world-space offset.
+            double ox = col * data.colspace;
+            double oy = row * data.rowspace;
+            double wx = ox * cosA - oy * sinA;
+            double wy = ox * sinA + oy * cosA;
+            expandBlock(data.name,
+                        data.basePoint.x + wx,
+                        data.basePoint.y + wy,
+                        data.xscale, data.yscale, data.angle, lid);
+        }
+    }
 }
