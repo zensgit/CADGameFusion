@@ -681,7 +681,15 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             pr.translate(screenPos);
             if (std::abs(txt->rotation) > 0.01)
                 pr.rotate(-txt->rotation * 180.0 / M_PI);
-            pr.drawText(QPointF(0, 0), QString::fromStdString(txt->text));
+            // Handle multi-line text (MTEXT \P paragraph breaks → '\n')
+            {
+                QString qtext = QString::fromStdString(txt->text);
+                QStringList lines = qtext.split('\n');
+                double lineH = fontSize * 1.4;
+                for (int li = 0; li < lines.size(); ++li)
+                    if (!lines[li].isEmpty())
+                        pr.drawText(QPointF(0, li * lineH), lines[li]);
+            }
             pr.restore();
         }
     }
