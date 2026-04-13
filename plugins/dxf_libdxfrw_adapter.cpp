@@ -60,9 +60,12 @@ static uint32_t aci_to_rgb(int aci) {
     return (u8(r+m) << 16) | (u8(g+m) << 8) | u8(b+m);
 }
 
-// Returns true for entities that should be skipped (paper space, invisible)
-static bool drw_skip_entity(const DRW_Entity& ent) {
-    return ent.space == DRW::PaperSpace;
+// Returns true for entities that should be skipped (paper space, frozen layer)
+// Note: frozenLayers pointer may be null during early init (block callbacks)
+bool CadgfDrwAdapter::shouldSkipEntity(const DRW_Entity& ent) const {
+    if (ent.space == DRW::PaperSpace) return true;
+    if (!m_frozenLayers.empty() && m_frozenLayers.count(ent.layer)) return true;
+    return false;
 }
 
 static uint32_t drw_entity_color(const DRW_Entity& ent) {
@@ -212,7 +215,13 @@ void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double
     if (eid != 0) {
         if (color != 0) cadgf_document_set_entity_color(m_doc, eid, color);
         applyLinetype(eid, linetype, layerName);
-        if (lweightMm > 0.0) cadgf_document_set_entity_line_weight(m_doc, eid, lweightMm);
+        // Inherit layer line weight if entity doesn't specify one
+        double eff_lw = lweightMm;
+        if (eff_lw <= 0.0 && !layerName.empty()) {
+            auto it = m_layerLineWeight.find(layerName);
+            if (it != m_layerLineWeight.end()) eff_lw = it->second;
+        }
+        if (eff_lw > 0.0) cadgf_document_set_entity_line_weight(m_doc, eid, eff_lw);
     }
     ++m_entityCount;
 }
@@ -332,9 +341,16 @@ void CadgfDrwAdapter::endBlock() {
 void CadgfDrwAdapter::addHeader(const DRW_Header*) {}
 
 void CadgfDrwAdapter::addLayer(const DRW_Layer& data) {
+    // Negative color means layer is off; bit 0 or 1 of flags means frozen
+    bool isOff = (data.color < 0);
+    bool isFrozen = (data.flags & 0x01) || (data.flags & 0x02);
+    if (isOff || isFrozen)
+        m_frozenLayers.insert(data.name);
+
     uint32_t color = 0xDCDCE6;
-    if (data.color >= 0 && data.color <= 255)
-        color = aci_to_rgb(data.color);
+    int absColor = std::abs(data.color);
+    if (absColor >= 1 && absColor <= 255)
+        color = aci_to_rgb(absColor);
     int id = 0;
     cadgf_document_add_layer(m_doc, data.name.c_str(), color, &id);
     m_layerMap[data.name] = id;
@@ -342,13 +358,16 @@ void CadgfDrwAdapter::addLayer(const DRW_Layer& data) {
     // Store linetype association for later entity resolution
     if (!data.lineType.empty() && data.lineType != "Continuous")
         m_layerLineType[data.name] = data.lineType;
+    // Store layer line weight
+    double lw = drw_lweight_mm(data.lWeight);
+    if (lw > 0.0) m_layerLineWeight[data.name] = lw;
 }
 
 // ─── Entity callbacks ───
 // If m_inBlock, store in block definition. Otherwise add to document directly.
 
 void CadgfDrwAdapter::addPoint(const DRW_Point& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Point;
         be.pts.push_back({data.basePoint.x, data.basePoint.y});
@@ -364,7 +383,7 @@ void CadgfDrwAdapter::addPoint(const DRW_Point& data) {
 }
 
 void CadgfDrwAdapter::addLine(const DRW_Line& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     std::vector<std::pair<double,double>> pts = {
         {data.basePoint.x, data.basePoint.y},
         {data.secPoint.x, data.secPoint.y}
@@ -380,7 +399,7 @@ void CadgfDrwAdapter::addLine(const DRW_Line& data) {
 }
 
 void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Arc;
         be.cx = data.basePoint.x; be.cy = data.basePoint.y;
@@ -405,7 +424,7 @@ void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
 }
 
 void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Circle;
         be.cx = data.basePoint.x; be.cy = data.basePoint.y;
@@ -426,7 +445,7 @@ void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
 }
 
 void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     double mx = data.secPoint.x, my = data.secPoint.y;
     double rx = std::sqrt(mx*mx + my*my);
     double ry = rx * data.ratio;
@@ -460,7 +479,7 @@ void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
 }
 
 void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     // Build point list expanding arc segments from bulge values
     auto buildPts = [](const DRW_LWPolyline& d) {
         std::vector<std::pair<double,double>> pts;
@@ -493,7 +512,7 @@ void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
 }
 
 void CadgfDrwAdapter::addText(const DRW_Text& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     std::string txt = stripDxfFormatting(data.text);
     if (txt.empty()) return;
     if (m_inBlock) {
@@ -512,7 +531,7 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
 }
 
 void CadgfDrwAdapter::addMText(const DRW_MText& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     std::string txt = stripDxfFormatting(data.text);
     if (txt.empty()) return;
     if (m_inBlock) {
@@ -533,7 +552,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
 // ─── SOLID/TRACE: 4-point filled shape → polyline ───
 
 void CadgfDrwAdapter::addSolid(const DRW_Solid& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     // DRW_Solid inherits DRW_Trace: basePoint, secPoint, thirdPoint, fourPoint
     std::vector<std::pair<double,double>> pts = {
         {data.basePoint.x, data.basePoint.y},
@@ -552,7 +571,7 @@ void CadgfDrwAdapter::addSolid(const DRW_Solid& data) {
 }
 
 void CadgfDrwAdapter::addTrace(const DRW_Trace& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     std::vector<std::pair<double,double>> pts = {
         {data.basePoint.x, data.basePoint.y},
         {data.secPoint.x, data.secPoint.y},
@@ -572,7 +591,7 @@ void CadgfDrwAdapter::addTrace(const DRW_Trace& data) {
 // ─── POLYLINE (3D/heavyweight) ───
 
 void CadgfDrwAdapter::addPolyline(const DRW_Polyline& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     if (data.vertlist.empty()) return;
 
     // Build point list expanding arc bulge values (same as LWPolyline)
@@ -643,7 +662,7 @@ static std::pair<double,double> deBoor(
 
 void CadgfDrwAdapter::addSpline(const DRW_Spline* data) {
     if (!data) return;
-    if (!m_inBlock && drw_skip_entity(*data)) return;
+    if (!m_inBlock && shouldSkipEntity(*data)) return;
     std::vector<std::pair<double,double>> pts;
 
     // Try De Boor B-spline evaluation using control points + knots
@@ -695,7 +714,7 @@ void CadgfDrwAdapter::addSpline(const DRW_Spline* data) {
 
 void CadgfDrwAdapter::addLeader(const DRW_Leader* data) {
     if (!data) return;
-    if (!m_inBlock && drw_skip_entity(*data)) return;
+    if (!m_inBlock && shouldSkipEntity(*data)) return;
     std::vector<std::pair<double,double>> pts;
     for (const auto* v : data->vertexlist)
         pts.push_back({v->x, v->y});
@@ -714,7 +733,7 @@ void CadgfDrwAdapter::addLeader(const DRW_Leader* data) {
 
 void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
     if (!data) return;
-    if (!m_inBlock && drw_skip_entity(*data)) return;
+    if (!m_inBlock && shouldSkipEntity(*data)) return;
     int lid = resolveLayer(data->layer);
     for (const auto* loop : data->looplist) {
         // Each loop contains edge entities (lines, arcs, etc.)
@@ -890,7 +909,7 @@ void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
 // Draw proper aligned dimension: extension lines + offset dimension line
 void CadgfDrwAdapter::addDimAlign(const DRW_DimAligned* data) {
     if (!data) return;
-    if (!m_inBlock && drw_skip_entity(*data)) return;
+    if (!m_inBlock && shouldSkipEntity(*data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
 
@@ -933,7 +952,7 @@ void CadgfDrwAdapter::addDimAlign(const DRW_DimAligned* data) {
 // Draw proper linear dimension: extension lines + rotated dimension line
 void CadgfDrwAdapter::addDimLinear(const DRW_DimLinear* data) {
     if (!data) return;
-    if (!m_inBlock && drw_skip_entity(*data)) return;
+    if (!m_inBlock && shouldSkipEntity(*data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
 
@@ -969,7 +988,7 @@ void CadgfDrwAdapter::addDimLinear(const DRW_DimLinear* data) {
 
 void CadgfDrwAdapter::addDimRadial(const DRW_DimRadial* data) {
     if (!data) return;
-    if (!m_inBlock && drw_skip_entity(*data)) return;
+    if (!m_inBlock && shouldSkipEntity(*data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
     double cx = data->getCenterPoint().x, cy = data->getCenterPoint().y;
@@ -988,7 +1007,7 @@ void CadgfDrwAdapter::addDimRadial(const DRW_DimRadial* data) {
 
 void CadgfDrwAdapter::addDimDiametric(const DRW_DimDiametric* data) {
     if (!data) return;
-    if (!m_inBlock && drw_skip_entity(*data)) return;
+    if (!m_inBlock && shouldSkipEntity(*data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
     double d1x = data->getDiameter1Point().x, d1y = data->getDiameter1Point().y;
@@ -1008,7 +1027,7 @@ void CadgfDrwAdapter::addDimDiametric(const DRW_DimDiametric* data) {
 
 void CadgfDrwAdapter::addDimAngular(const DRW_DimAngular* data) {
     if (!data) return;
-    if (!m_inBlock && drw_skip_entity(*data)) return;
+    if (!m_inBlock && shouldSkipEntity(*data)) return;
     int lid = resolveLayer(data->layer);
     // Just draw the two lines of the angle
     std::vector<std::pair<double,double>> pts1 = {
@@ -1046,7 +1065,7 @@ void CadgfDrwAdapter::expandUnreferencedBlocks() {
 // ─── INSERT: expand block reference ───
 
 void CadgfDrwAdapter::addInsert(const DRW_Insert& data) {
-    if (!m_inBlock && drw_skip_entity(data)) return;
+    if (!m_inBlock && shouldSkipEntity(data)) return;
     m_referencedBlocks.insert(data.name);
     if (m_inBlock) {
         // Store nested INSERT in block definition for later recursive expansion
