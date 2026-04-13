@@ -5,12 +5,13 @@
 
 #include <string>
 #include <map>
+#include <set>
 #include <vector>
 #include <cmath>
 
 // Stored entity from a block definition (lightweight copy of geometry)
 struct BlockEntity {
-    enum Type { Line, Circle, Arc, LWPolyline, Point, Text, Ellipse };
+    enum Type { Line, Circle, Arc, LWPolyline, Point, Text, Ellipse, Insert };
     Type type;
     // Line/Polyline points
     std::vector<std::pair<double,double>> pts;
@@ -23,6 +24,9 @@ struct BlockEntity {
     double rx{0}, ry{0}, ellRot{0}, ellStart{0}, ellEnd{0};
     std::string layerName;
     uint32_t color{0};
+    // Insert-specific
+    std::string blockName;
+    double insX{0}, insY{0}, xscale{1}, yscale{1}, insAngle{0};
 };
 
 // Adapter: bridges libdxfrw DRW_Interface callbacks to cadgf_document C API.
@@ -32,6 +36,9 @@ public:
 
     int entityCount() const { return m_entityCount; }
     int layerCount() const { return m_layerCount; }
+
+    // Call after read() to expand XRef blocks not referenced by any INSERT
+    void expandUnreferencedBlocks();
 
     // ─── Table entries ───
     void addHeader(const DRW_Header* data) override;
@@ -114,4 +121,5 @@ private:
     bool m_inBlock{false};
     std::string m_currentBlockName;
     std::map<std::string, std::vector<BlockEntity>> m_blocks;
+    std::set<std::string> m_referencedBlocks; // blocks referenced by INSERT
 };

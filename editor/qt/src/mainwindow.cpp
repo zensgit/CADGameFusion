@@ -739,6 +739,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         CadgfDrwAdapter adapter(tmpDoc);
         dxfRW reader(importPath.toStdString().c_str());
         bool ok = reader.read(&adapter, false);
+        if (ok) adapter.expandUnreferencedBlocks(); // expand XRef blocks
         if (!ok) {
             cadgf_document_destroy(tmpDoc);
             QMessageBox::warning(this, "Import", "Failed to read " + path);

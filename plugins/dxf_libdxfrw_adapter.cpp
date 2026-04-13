@@ -143,6 +143,21 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             ++m_entityCount;
             break;
         }
+        case BlockEntity::Insert: {
+            // Recursive block expansion: compose transforms
+            // Inner transform: ent.insX/Y, ent.xscale/yscale, ent.insAngle
+            // Outer transform: insX/Y, xscale/yscale, angle
+            // Combined: first apply inner, then outer
+            double cosO = std::cos(angle), sinO = std::sin(angle);
+            double combinedX = insX + (ent.insX * xscale * cosO - ent.insY * yscale * sinO);
+            double combinedY = insY + (ent.insX * xscale * sinO + ent.insY * yscale * cosO);
+            double combinedXS = xscale * ent.xscale;
+            double combinedYS = yscale * ent.yscale;
+            double combinedAngle = angle + ent.insAngle;
+            expandBlock(ent.blockName, combinedX, combinedY,
+                        combinedXS, combinedYS, combinedAngle, elid);
+            break;
+        }
         }
     }
 }
@@ -541,9 +556,32 @@ void CadgfDrwAdapter::addDimAngular(const DRW_DimAngular* data) {
     }
 }
 
+// ─── Expand unreferenced XRef blocks ───
+
+void CadgfDrwAdapter::expandUnreferencedBlocks() {
+    for (auto& [name, entities] : m_blocks) {
+        if (m_referencedBlocks.count(name)) continue;
+        if (name.empty() || name[0] == '*') continue; // skip *Model_Space, *Paper_Space, *D#, *T#, *U#
+        if (entities.empty()) continue;
+        expandBlock(name, 0, 0, 1, 1, 0, 0);
+    }
+}
+
 // ─── INSERT: expand block reference ───
 
 void CadgfDrwAdapter::addInsert(const DRW_Insert& data) {
+    m_referencedBlocks.insert(data.name);
+    if (m_inBlock) {
+        // Store nested INSERT in block definition for later recursive expansion
+        BlockEntity be; be.type = BlockEntity::Insert;
+        be.blockName = data.name;
+        be.insX = data.basePoint.x; be.insY = data.basePoint.y;
+        be.xscale = data.xscale; be.yscale = data.yscale;
+        be.insAngle = data.angle;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
+        m_blocks[m_currentBlockName].push_back(be);
+        return;
+    }
     int lid = resolveLayer(data.layer);
     expandBlock(data.name, data.basePoint.x, data.basePoint.y,
                 data.xscale, data.yscale, data.angle, lid);
