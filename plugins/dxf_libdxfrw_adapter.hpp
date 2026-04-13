@@ -55,26 +55,26 @@ public:
     void addCircle(const DRW_Circle& data) override;
     void addEllipse(const DRW_Ellipse& data) override;
     void addLWPolyline(const DRW_LWPolyline& data) override;
-    void addPolyline(const DRW_Polyline& data) override {}
-    void addSpline(const DRW_Spline* data) override {}
+    void addPolyline(const DRW_Polyline& data) override;
+    void addSpline(const DRW_Spline* data) override;
     void addKnot(const DRW_Entity& data) override {}
     void addInsert(const DRW_Insert& data) override;
-    void addTrace(const DRW_Trace& data) override {}
+    void addTrace(const DRW_Trace& data) override;
     void add3dFace(const DRW_3Dface& data) override {}
-    void addSolid(const DRW_Solid& data) override {}
+    void addSolid(const DRW_Solid& data) override;
     void addMText(const DRW_MText& data) override;
     void addText(const DRW_Text& data) override;
 
     // ─── Dimensions ───
-    void addDimAlign(const DRW_DimAligned* data) override {}
-    void addDimLinear(const DRW_DimLinear* data) override {}
-    void addDimRadial(const DRW_DimRadial* data) override {}
-    void addDimDiametric(const DRW_DimDiametric* data) override {}
-    void addDimAngular(const DRW_DimAngular* data) override {}
+    void addDimAlign(const DRW_DimAligned* data) override;
+    void addDimLinear(const DRW_DimLinear* data) override;
+    void addDimRadial(const DRW_DimRadial* data) override;
+    void addDimDiametric(const DRW_DimDiametric* data) override;
+    void addDimAngular(const DRW_DimAngular* data) override;
     void addDimAngular3P(const DRW_DimAngular3p* data) override {}
     void addDimOrdinate(const DRW_DimOrdinate* data) override {}
-    void addLeader(const DRW_Leader* data) override {}
-    void addHatch(const DRW_Hatch* data) override {}
+    void addLeader(const DRW_Leader* data) override;
+    void addHatch(const DRW_Hatch* data) override;
     void addViewport(const DRW_Viewport& data) override {}
     void addImage(const DRW_Image* data) override {}
 
