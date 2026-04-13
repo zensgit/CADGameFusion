@@ -427,4 +427,25 @@ if(BUILD_EDITOR_QT)
     AUTOMOC ON
   )
   add_test(NAME qt_guide_persistence_run COMMAND test_qt_guide_persistence)
+
+  add_executable(test_qt_viewport3d
+    test_qt_viewport3d.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/viewport3d.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/viewport3d.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/panels/feature_tree_panel.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/panels/feature_tree_panel.cpp
+  )
+  target_include_directories(test_qt_viewport3d PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_viewport3d PRIVATE Qt6::Widgets core)
+  set_target_properties(test_qt_viewport3d PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_viewport3d_run COMMAND test_qt_viewport3d)
 endif()

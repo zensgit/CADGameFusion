@@ -23,6 +23,8 @@ class MeasureTool;
 class GuideManager;
 class AlignPanel;
 class GizmoTool;
+class Viewport3D;
+class FeatureTreePanel;
 
 namespace cadgf { class PluginRegistry; }
 struct core_document;
@@ -99,6 +101,8 @@ private:
     GuideManager* m_guideManager{nullptr};
     AlignPanel* m_alignPanel{nullptr};
     GizmoTool* m_gizmoTool{nullptr};
+    Viewport3D* m_viewport3d{nullptr};
+    FeatureTreePanel* m_featureTree{nullptr};
 
     // Status bar widgets
     QLabel* m_coordLabel{nullptr};

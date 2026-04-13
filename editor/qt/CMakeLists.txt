@@ -75,6 +75,9 @@ add_executable(editor_qt
     # Feature tree panel
     include/panels/feature_tree_panel.hpp
     src/panels/feature_tree_panel.cpp
+    # 3D Viewport
+    include/viewport3d.hpp
+    src/viewport3d.cpp
 )
 
 target_include_directories(editor_qt PRIVATE

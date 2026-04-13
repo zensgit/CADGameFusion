@@ -37,6 +37,8 @@
 #include "guide_manager.hpp"
 #include "panels/align_panel.hpp"
 #include "tools/gizmo_tool.hpp"
+#include "viewport3d.hpp"
+#include "panels/feature_tree_panel.hpp"
 #include "core/version.hpp"
 #include "core/core_c_api.h"
 #include "canvas.hpp"
@@ -154,6 +156,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // Align panel
     m_alignPanel = new AlignPanel(this);
     addDockWidget(Qt::RightDockWidgetArea, m_alignPanel);
+
+    // Feature tree panel (left dock)
+    m_featureTree = new FeatureTreePanel(this);
+    addDockWidget(Qt::LeftDockWidgetArea, m_featureTree);
+
+    // 3D Viewport (bottom dock)
+    m_viewport3d = new Viewport3D(this);
+    auto* viewport3dDock = new QDockWidget("3D View", this);
+    viewport3dDock->setWidget(m_viewport3d);
+    addDockWidget(Qt::BottomDockWidgetArea, viewport3dDock);
 
     // Pivot mode connection
     connect(m_transformPanel, &TransformPanel::pivotChanged, this, [canvas](int mode, QPointF custom){
@@ -931,6 +943,37 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     connect(actClearGuides, &QAction::triggered, this, [this]{
         m_guideManager->clearGuides();
         statusBar()->showMessage("Guides cleared", 1000);
+    });
+
+    toolsMenu->addSeparator();
+    auto* actExtrude = toolsMenu->addAction("Extrude Selection...");
+    actExtrude->setShortcut(QKeySequence("E"));
+    connect(actExtrude, &QAction::triggered, this, [this]{
+        const auto sel = m_selectionModel ? m_selectionModel->selection() : QList<qulonglong>{};
+        if (sel.isEmpty()) { statusBar()->showMessage("Select a polyline to extrude", 1500); return; }
+        bool ok = false;
+        double height = QInputDialog::getDouble(this, "Extrude", "Height:", 10.0, 0.01, 1e6, 2, &ok);
+        if (!ok) return;
+        // Collect first selected polyline
+        for (qulonglong id : sel) {
+            auto* e = m_document.get_entity(static_cast<core::EntityId>(id));
+            if (!e) continue;
+            auto* pl = std::get_if<core::Polyline>(&e->payload);
+            if (!pl || pl->points.size() < 3) continue;
+            // Extrude to 3D mesh
+            auto mesh = core::extrude_mesh(*pl, height);
+            if (m_viewport3d) m_viewport3d->setMesh(mesh);
+            // Update feature tree
+            if (m_featureTree) {
+                QVector<FeatureEntry> features;
+                features.append(FeatureEntry{1, QString::fromStdString(e->name), "Sketch", -1});
+                features.append(FeatureEntry{2, QString("Extrude h=%1").arg(height), "Extrude", 1});
+                m_featureTree->setFeatures(features);
+            }
+            statusBar()->showMessage(QString("Extruded: %1 verts, %2 tris")
+                .arg(mesh.vertices.size()).arg(mesh.indices.size()/3), 2000);
+            break;
+        }
     });
 
     // Help menu
