@@ -24,6 +24,7 @@ struct BlockEntity {
     double rx{0}, ry{0}, ellRot{0}, ellStart{0}, ellEnd{0};
     std::string layerName;
     uint32_t color{0};
+    std::string linetype; // entity-level linetype (empty = bylayer)
     // Insert-specific
     std::string blockName;
     double insX{0}, insY{0}, xscale{1}, yscale{1}, insAngle{0};
@@ -42,7 +43,7 @@ public:
 
     // ─── Table entries ───
     void addHeader(const DRW_Header* data) override;
-    void addLType(const DRW_LType& data) override {}
+    void addLType(const DRW_LType& data) override;
     void addLayer(const DRW_Layer& data) override;
     void addDimStyle(const DRW_Dimstyle& data) override {}
     void addVport(const DRW_Vport& data) override {}
@@ -104,7 +105,9 @@ public:
 
 private:
     int resolveLayer(const std::string& name);
-    void addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid, uint32_t color = 0);
+    void addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid,
+                          uint32_t color = 0, const std::string& linetype = "",
+                          const std::string& layerName = "");
     // Transform a point by INSERT parameters (scale, rotate, translate)
     std::pair<double,double> transformPoint(double x, double y,
         double insX, double insY, double xscale, double yscale, double angle) const;
@@ -112,10 +115,22 @@ private:
     void expandBlock(const std::string& blockName, double insX, double insY,
                      double xscale, double yscale, double angle, int lid);
 
+    // Resolve effective linetype name for a DRW entity (entity-level overrides layer)
+    std::string resolveLinetype(const std::string& entLinetype,
+                                const std::string& layerName) const;
+    // Set entity linetype after creation (skips empty/continuous/bylayer)
+    void applyLinetype(cadgf_entity_id eid,
+                       const std::string& entLinetype,
+                       const std::string& layerName);
+
     cadgf_document* m_doc;
     int m_entityCount{0};
     int m_layerCount{0};
     std::map<std::string, int> m_layerMap;
+    // layer name → linetype name
+    std::map<std::string, std::string> m_layerLineType;
+    // linetype name → dash pattern (positive=dash len, negative=gap len, 0=dot)
+    std::map<std::string, std::vector<double>> m_linetypes;
 
     // Block definition storage
     bool m_inBlock{false};
