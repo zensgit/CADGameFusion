@@ -33,52 +33,62 @@ void Viewport3D::setOrbit(double yaw, double pitch, double dist) {
 }
 
 QPointF Viewport3D::project(const core::Vec3& p) const {
-    // Camera position from orbit
+    // Camera position from orbit (spherical → cartesian)
     double yawR = m_yaw * kDegToRad;
     double pitchR = m_pitch * kDegToRad;
-    double cx = m_dist * std::cos(pitchR) * std::sin(yawR);
-    double cy = m_dist * std::sin(pitchR);
-    double cz = m_dist * std::cos(pitchR) * std::cos(yawR);
+    double camPosX = m_dist * std::cos(pitchR) * std::sin(yawR);
+    double camPosY = m_dist * std::sin(pitchR);
+    double camPosZ = m_dist * std::cos(pitchR) * std::cos(yawR);
 
-    // View direction (camera looks at origin)
-    double fx = -std::cos(pitchR) * std::sin(yawR);
-    double fy = -std::sin(pitchR);
-    double fz = -std::cos(pitchR) * std::cos(yawR);
+    // Forward vector: camera → target (origin)
+    double len = m_dist;
+    if (len < 1e-12) len = 1.0;
+    double fwdX = -camPosX / len;
+    double fwdY = -camPosY / len;
+    double fwdZ = -camPosZ / len;
 
-    // Right vector (cross of forward × world up)
-    double rx = std::cos(yawR);
-    double ry = 0.0;
-    double rz = -std::sin(yawR);
+    // Right vector: forward × world_up(0,1,0), then normalize
+    // right = forward × (0,1,0)
+    double rX = fwdZ;  // fwdY*0 - fwdZ*0 ... wait, cross(fwd, up)
+    // cross(fwd, (0,1,0)) = (fwdZ*0 - fwdY*0, ... no, let me be explicit:
+    // cross(a,b) = (a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x)
+    // cross(fwd, (0,1,0)) = (fwdY*0 - fwdZ*1, fwdZ*0 - fwdX*0, fwdX*1 - fwdY*0)
+    //                      = (-fwdZ, 0, fwdX)
+    rX = -fwdZ;
+    double rY = 0.0;
+    double rZ = fwdX;
+    double rLen = std::sqrt(rX*rX + rZ*rZ);
+    if (rLen > 1e-12) { rX /= rLen; rZ /= rLen; }
+    else { rX = 1; rZ = 0; } // degenerate case (looking straight up/down)
 
-    // Up vector (cross of right × forward)
-    double ux = ry*fz - rz*fy;
-    double uy = rz*fx - rx*fz;
-    double uz = rx*fy - ry*fx;
+    // Up vector: right × forward
+    double uX = rY*fwdZ - rZ*fwdY;
+    double uY = rZ*fwdX - rX*fwdZ;
+    double uZ = rX*fwdY - rY*fwdX;
 
     // Vector from camera to point
-    double dx = p.x - cx;
-    double dy = p.y - cy;
-    double dz = p.z - cz;
+    double dx = p.x - camPosX;
+    double dy = p.y - camPosY;
+    double dz = p.z - camPosZ;
 
-    // Camera-space coordinates
-    double camX = rx*dx + ry*dy + rz*dz;
-    double camY = ux*dx + uy*dy + uz*dz;
-    double camZ = fx*dx + fy*dy + fz*dz;
+    // Camera-space coordinates (right=X, up=Y, forward=Z into screen)
+    double camX = rX*dx + rY*dy + rZ*dz;
+    double camY = uX*dx + uY*dy + uZ*dz;
+    double camZ = fwdX*dx + fwdY*dy + fwdZ*dz;  // positive = in front
 
     // Perspective projection
     int w = std::max(1, width());
     int h = std::max(1, height());
     double aspect = static_cast<double>(w) / h;
-    double fovR = m_fov * kDegToRad * 0.5;
-    double tanFov = std::tan(fovR);
+    double tanFov = std::tan(m_fov * kDegToRad * 0.5);
 
-    if (camZ >= -0.01) {
-        // Behind camera — clip
+    if (camZ < 0.01) {
+        // Behind camera
         return QPointF(-1e6, -1e6);
     }
 
-    double ndcX = camX / (-camZ * tanFov * aspect);
-    double ndcY = camY / (-camZ * tanFov);
+    double ndcX = camX / (camZ * tanFov * aspect);
+    double ndcY = camY / (camZ * tanFov);
 
     // NDC [-1,1] → screen
     double screenX = (ndcX * 0.5 + 0.5) * w;

@@ -289,20 +289,48 @@ TriMesh3D extrude_mesh(const Polyline& profile, double height) {
         mesh.normals.push_back(Vec3{0, 0, 1}); // top face normal
     }
 
-    // Bottom face: fan triangulation (reversed winding for outward normal)
-    for (int i = 1; i < n - 1; ++i) {
-        mesh.indices.push_back(0);
-        mesh.indices.push_back(static_cast<uint32_t>(i + 1));
-        mesh.indices.push_back(static_cast<uint32_t>(i));
-    }
+    // Face triangulation — use earcut if available (handles concave), else fan fallback
+    auto triangulateFace = [&](uint32_t baseIdx, bool flipWinding) {
+#if defined(USE_EARCUT)
+        using EarPoint = std::array<double, 2>;
+        std::vector<std::vector<EarPoint>> polygon(1);
+        polygon[0].reserve(static_cast<size_t>(n));
+        for (int i = 0; i < n; ++i)
+            polygon[0].push_back(EarPoint{pts[i].x, pts[i].y});
+        auto indices = mapbox::earcut<uint32_t>(polygon);
+        for (size_t i = 0; i + 2 < indices.size(); i += 3) {
+            if (flipWinding) {
+                mesh.indices.push_back(baseIdx + indices[i]);
+                mesh.indices.push_back(baseIdx + indices[i+2]);
+                mesh.indices.push_back(baseIdx + indices[i+1]);
+            } else {
+                mesh.indices.push_back(baseIdx + indices[i]);
+                mesh.indices.push_back(baseIdx + indices[i+1]);
+                mesh.indices.push_back(baseIdx + indices[i+2]);
+            }
+        }
+#else
+        // Fan triangulation fallback (convex only)
+        for (int i = 1; i < n - 1; ++i) {
+            if (flipWinding) {
+                mesh.indices.push_back(baseIdx);
+                mesh.indices.push_back(baseIdx + static_cast<uint32_t>(i + 1));
+                mesh.indices.push_back(baseIdx + static_cast<uint32_t>(i));
+            } else {
+                mesh.indices.push_back(baseIdx);
+                mesh.indices.push_back(baseIdx + static_cast<uint32_t>(i));
+                mesh.indices.push_back(baseIdx + static_cast<uint32_t>(i + 1));
+            }
+        }
+#endif
+    };
 
-    // Top face: fan triangulation
+    // Bottom face (flip winding for outward normal pointing -Z)
+    triangulateFace(0, true);
+
+    // Top face
     uint32_t topOff = static_cast<uint32_t>(n);
-    for (int i = 1; i < n - 1; ++i) {
-        mesh.indices.push_back(topOff);
-        mesh.indices.push_back(topOff + static_cast<uint32_t>(i));
-        mesh.indices.push_back(topOff + static_cast<uint32_t>(i + 1));
-    }
+    triangulateFace(topOff, false);
 
     // Side faces: quads between bottom and top rings
     // Add side vertices with proper normals
