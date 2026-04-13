@@ -233,6 +233,31 @@ if(BUILD_EDITOR_QT)
   )
   add_test(NAME qt_m1_transforms_run COMMAND test_qt_m1_transforms)
 
+  add_executable(test_qt_m1_e2e
+    test_qt_m1_e2e.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/command/command_manager.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/command/command_manager.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/export/export_helpers.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/exporter.cpp
+  )
+  target_include_directories(test_qt_m1_e2e PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_m1_e2e PRIVATE Qt6::Widgets core)
+  target_compile_definitions(test_qt_m1_e2e PRIVATE CADGF_QT_TEST_ACCESS)
+  set_target_properties(test_qt_m1_e2e PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_m1_e2e_run COMMAND test_qt_m1_e2e)
+
   add_executable(test_qt_selection_model
     test_qt_selection_model.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/selection/selection_model.cpp

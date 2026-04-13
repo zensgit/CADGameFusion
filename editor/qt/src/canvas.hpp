@@ -144,6 +144,12 @@ private:
     QPointF move_anchor_world_;
     QPointF move_last_delta_;
     QVector<MoveEntity> move_entities_;
+    // Free-rotation interaction state
+    bool rotate_active_{false};
+    QPointF rotate_center_;
+    double rotate_base_angle_{0.0};
+    double rotate_current_angle_{0.0};
+    QVector<MoveEntity> rotate_entities_;
     bool update_pending_{false};
     bool selection_change_pending_{false};
     core::Document* m_doc{nullptr};

@@ -70,10 +70,11 @@ int main(int argc, char** argv) {
     assert(info.type == CADGF_ENTITY_TYPE_POLYLINE);
 
     int point_count = 0;
-    assert(cadgf_document_get_polyline_point_count(doc, id, &point_count));
+    assert(cadgf_document_get_polyline_points(doc, id, nullptr, 0, &point_count));
     assert(point_count == 3);
     std::vector<cadgf_vec2> points(static_cast<size_t>(point_count));
-    assert(cadgf_document_get_polyline_points(doc, id, points.data(), point_count));
+    int pc2 = 0;
+    assert(cadgf_document_get_polyline_points(doc, id, points.data(), point_count, &pc2));
     assert(points[0].x == 6.0);
     assert(points[0].y == 6.0);
     assert(points[1].x == 18.0);

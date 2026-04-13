@@ -631,6 +631,22 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             pr.drawLine(QPointF(sPos.x(), sPos.y() - half), QPointF(sPos.x(), sPos.y() + half));
         }
     }
+    // 6. Rotate guide (screen space)
+    if (rotate_active_) {
+        QPointF centerScreen = worldToScreen(rotate_center_);
+        QPointF mouseScreen = mapFromGlobal(QCursor::pos());
+        QPen rotatePen(QColor(255, 180, 60), 1, Qt::DashLine);
+        rotatePen.setCosmetic(true);
+        pr.setPen(rotatePen);
+        pr.drawLine(centerScreen, mouseScreen);
+        // Angle label
+        pr.setPen(QColor(255, 255, 255));
+        QString label = QString("%1\u00B0").arg(rotate_current_angle_, 0, 'f', 1);
+        pr.drawText(mouseScreen + QPointF(15, -10), label);
+        // Center dot
+        pr.setBrush(QColor(255, 180, 60));
+        pr.drawEllipse(centerScreen, 4, 4);
+    }
 }
 
 void CanvasWidget::wheelEvent(QWheelEvent* e) {
@@ -649,7 +665,23 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
     if (e->button() == Qt::MiddleButton || (e->button()==Qt::LeftButton && e->modifiers() & Qt::ShiftModifier)) {
         lastPos_ = e->pos();
     }
-    
+
+    // Commit free rotation on left click
+    if (e->button() == Qt::LeftButton && rotate_active_) {
+        QList<qulonglong> ids;
+        QVector<QVector<QPointF>> beforePts;
+        for (const auto& re : rotate_entities_) {
+            ids.append(static_cast<qulonglong>(re.id));
+            beforePts.append(re.points);
+        }
+        emit rotateEntitiesRequested(ids, beforePts, rotate_current_angle_, rotate_center_);
+        rotate_active_ = false;
+        rotate_entities_.clear();
+        setCursor(Qt::ArrowCursor);
+        update();
+        return;
+    }
+
     const QPointF mouseScreen = e->position();
 
     if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::AltModifier)) {
@@ -792,6 +824,31 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
         if (selection_dragging_) {
             update();
         }
+    } else if (rotate_active_) {
+        // Free-rotation preview: compute angle from centroid to cursor
+        const QPointF mouseWorld = screenToWorld(e->position());
+        double dx = mouseWorld.x() - rotate_center_.x();
+        double dy = mouseWorld.y() - rotate_center_.y();
+        double currentAngle = std::atan2(dy, dx);
+        double deltaRad = currentAngle - rotate_base_angle_;
+        rotate_current_angle_ = deltaRad * 180.0 / M_PI;
+
+        if (m_doc) {
+            double cosA = std::cos(deltaRad), sinA = std::sin(deltaRad);
+            for (const auto& re : rotate_entities_) {
+                core::Polyline pl;
+                pl.points.reserve(static_cast<size_t>(re.points.size()));
+                for (const auto& pt : re.points) {
+                    double ox = pt.x() - rotate_center_.x();
+                    double oy = pt.y() - rotate_center_.y();
+                    pl.points.push_back(core::Vec2{
+                        rotate_center_.x() + ox * cosA - oy * sinA,
+                        rotate_center_.y() + ox * sinA + oy * cosA});
+                }
+                m_doc->set_polyline_points(re.id, pl);
+            }
+        }
+        update();
     } else {
         // Snap logic
         QPointF mouseScreen = e->position();
@@ -875,25 +932,70 @@ void CanvasWidget::keyPressEvent(QKeyEvent* e) {
         }
         emit deleteRequested(e->modifiers() & Qt::ShiftModifier);
     } else if (e->key() == Qt::Key_Escape) {
+        if (rotate_active_) {
+            // Cancel free rotation — restore original points
+            if (m_doc) {
+                for (const auto& re : rotate_entities_) {
+                    core::Polyline pl;
+                    pl.points.reserve(static_cast<size_t>(re.points.size()));
+                    for (const auto& pt : re.points)
+                        pl.points.push_back(core::Vec2{pt.x(), pt.y()});
+                    m_doc->set_polyline_points(re.id, pl);
+                }
+            }
+            rotate_active_ = false;
+            rotate_entities_.clear();
+            setCursor(Qt::ArrowCursor);
+            update();
+            return;
+        }
         triSelected_ = false;
         update();
         emit selectionChanged({});
     } else if (e->key() == Qt::Key_R && !selected_entities_.isEmpty()) {
-        // Rotate selected entities 90 degrees CCW around centroid
-        QList<qulonglong> ids;
-        QVector<QVector<QPointF>> beforePts;
-        double cx = 0, cy = 0;
-        int totalPts = 0;
-        for (const auto& pv : polylines_) {
-            if (!selected_entities_.contains(pv.entityId)) continue;
-            ids.append(static_cast<qulonglong>(pv.entityId));
-            beforePts.append(pv.pts);
-            for (const auto& pt : pv.pts) { cx += pt.x(); cy += pt.y(); }
-            totalPts += pv.pts.size();
-        }
-        if (totalPts > 0 && !ids.isEmpty()) {
-            cx /= totalPts; cy /= totalPts;
-            emit rotateEntitiesRequested(ids, beforePts, 90.0, QPointF(cx, cy));
+        if (rotate_active_) return; // already in rotate mode
+        if (e->modifiers() & Qt::ShiftModifier) {
+            // Shift+R: instant 90-degree rotation (original behavior)
+            QList<qulonglong> ids;
+            QVector<QVector<QPointF>> beforePts;
+            double cx = 0, cy = 0;
+            int totalPts = 0;
+            for (const auto& pv : polylines_) {
+                if (!selected_entities_.contains(pv.entityId)) continue;
+                ids.append(static_cast<qulonglong>(pv.entityId));
+                beforePts.append(pv.pts);
+                for (const auto& pt : pv.pts) { cx += pt.x(); cy += pt.y(); }
+                totalPts += pv.pts.size();
+            }
+            if (totalPts > 0 && !ids.isEmpty()) {
+                cx /= totalPts; cy /= totalPts;
+                emit rotateEntitiesRequested(ids, beforePts, 90.0, QPointF(cx, cy));
+            }
+        } else {
+            // R: enter free-rotation mode
+            double cx = 0, cy = 0;
+            int totalPts = 0;
+            rotate_entities_.clear();
+            for (const auto& pv : polylines_) {
+                if (!selected_entities_.contains(pv.entityId)) continue;
+                rotate_entities_.append(MoveEntity{pv.entityId, pv.pts});
+                for (const auto& pt : pv.pts) { cx += pt.x(); cy += pt.y(); }
+                totalPts += pv.pts.size();
+            }
+            if (totalPts > 0 && !rotate_entities_.isEmpty()) {
+                cx /= totalPts; cy /= totalPts;
+                rotate_center_ = QPointF(cx, cy);
+                // Compute base angle from current cursor position
+                QPointF mouseScreen = mapFromGlobal(QCursor::pos());
+                QPointF mouseWorld = screenToWorld(mouseScreen);
+                rotate_base_angle_ = std::atan2(mouseWorld.y() - cy, mouseWorld.x() - cx);
+                rotate_current_angle_ = 0.0;
+                rotate_active_ = true;
+                move_active_ = false;
+                selection_active_ = false;
+                setCursor(Qt::CrossCursor);
+                update();
+            }
         }
     } else if ((e->key() == Qt::Key_Plus || e->key() == Qt::Key_Equal ||
                 e->key() == Qt::Key_Minus) && !selected_entities_.isEmpty()) {
