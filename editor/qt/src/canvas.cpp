@@ -18,19 +18,44 @@
 
 namespace {
 
-uint32_t aci_to_rgb(int index) {
-    switch (index) {
-        case 1: return 0xFF0000u;
-        case 2: return 0xFFFF00u;
-        case 3: return 0x00FF00u;
-        case 4: return 0x00FFFFu;
-        case 5: return 0x0000FFu;
-        case 6: return 0xFF00FFu;
-        case 7: return 0xFFFFFFu;
-        case 8: return 0x808080u;
-        case 9: return 0xC0C0C0u;
-        default: return 0xFFFFFFu;
+uint32_t aci_to_rgb(int aci) {
+    if (aci <= 0 || aci > 255) return 0xFFFFFFu;
+    // ACI 1-9: standard primary colors
+    static const uint32_t std9[9] = {
+        0xFF0000u, 0xFFFF00u, 0x00FF00u, 0x00FFFFu, 0x0000FFu,
+        0xFF00FFu, 0xFFFFFFu, 0x808080u, 0xC0C0C0u
+    };
+    if (aci <= 9) return std9[aci - 1];
+    // ACI 250-255: specific grays
+    if (aci >= 250) {
+        static const uint32_t grays[6] = {
+            0x333333u, 0x5B5B5Bu, 0x828282u, 0xAAAAAAu, 0xD2D2D2u, 0xFFFFFFu
+        };
+        return grays[aci - 250];
     }
+    // ACI 10-249: 24 hue groups × 10 shades (HSV-based)
+    int idx       = aci - 10;
+    int hue_group = idx / 10;
+    int shade     = idx % 10;
+    static const float V_levels[5] = {1.0f, 0.74f, 0.51f, 0.41f, 0.31f};
+    float V = V_levels[shade / 2];
+    float S = (shade % 2 == 0) ? 1.0f : 0.33f;
+    float hue = static_cast<float>(hue_group) * 15.0f;
+    float h6  = hue / 60.0f;
+    float C   = V * S;
+    float X   = C * (1.0f - std::fabs(std::fmod(h6, 2.0f) - 1.0f));
+    float m_v = V - C;
+    float r, g, b;
+    switch (static_cast<int>(h6) % 6) {
+        case 0: r=C; g=X; b=0; break;
+        case 1: r=X; g=C; b=0; break;
+        case 2: r=0; g=C; b=X; break;
+        case 3: r=0; g=X; b=C; break;
+        case 4: r=X; g=0; b=C; break;
+        default: r=C; g=0; b=X; break;
+    }
+    auto u8 = [](float v) { return static_cast<uint32_t>(std::min(255.0f, (v + 0.002f) * 255.0f)); };
+    return (u8(r+m_v) << 16) | (u8(g+m_v) << 8) | u8(b+m_v);
 }
 
 bool parse_int(const std::string& s, int* out) {

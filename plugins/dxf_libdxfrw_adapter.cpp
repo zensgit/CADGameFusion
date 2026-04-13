@@ -217,7 +217,8 @@ void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double
     for (const auto& [x, y] : pts) vecs.push_back({x, y});
     cadgf_entity_id eid = cadgf_document_add_polyline_ex(m_doc, vecs.data(), static_cast<int>(vecs.size()), "", lid);
     if (eid != 0) {
-        if (color != 0) cadgf_document_set_entity_color(m_doc, eid, color);
+        // Store resolved RGB color; treat BYBLOCK sentinel same as BYLAYER (0) at top level
+        if (color != 0 && color != BYBLOCK_COLOR) cadgf_document_set_entity_color(m_doc, eid, color);
         applyLinetype(eid, linetype, layerName);
         // Inherit layer line weight if entity doesn't specify one
         double eff_lw = lweightMm;
