@@ -15,6 +15,7 @@ add_library(core SHARED
     src/commands.cpp
     src/ops2d.cpp
     src/solver.cpp
+    src/mesh_export.cpp
 )
 
 target_link_libraries(core PUBLIC core_headers)

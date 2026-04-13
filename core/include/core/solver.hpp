@@ -23,7 +23,14 @@ enum class ConstraintKind {
     PointOnLine,
     Symmetric,
     Midpoint,
-    FixedPoint
+    FixedPoint,
+    // Extended constraint types (Sprint-C)
+    EqualLength,    // len(A) == len(B): 4 vars (ax0,ay0,ax1,ay1) + 4 vars (bx0,by0,bx1,by1)
+    EqualRadius,    // r1 == r2: 2 vars (r1, r2)
+    PointOnCircle,  // dist(pt, center) == radius: 5 vars (px,py,cx,cy,r)
+    P2LDistance,    // signed_dist(pt, line) == value: 6 vars + value
+    ArcAngle,       // angle of arc == value: 2 vars (startAngle, endAngle) + value
+    LengthRatio     // len(A)/len(B) == ratio: 8 vars + value
 };
 
 enum class SolverAlgorithm {

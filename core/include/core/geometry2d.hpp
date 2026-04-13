@@ -144,4 +144,12 @@ struct RevolveParams {
 // Returns a TriMesh3D with top face, bottom face, and side quads.
 TriMesh3D extrude_mesh(const Polyline& profile, double height);
 
+// Revolve a 2D closed polyline around an axis to produce a 3D mesh.
+// Profile assumed in XZ plane (x=radial distance, y=height along axis).
+// axisOrigin + axisDir define the revolution axis.
+// angleDeg: revolution angle (360 = full revolution).
+// segments: number of angular steps.
+TriMesh3D revolve_mesh(const Polyline& profile, const Vec3& axisOrigin,
+                       const Vec3& axisDir, double angleDeg, int segments = 36);
+
 } // namespace core

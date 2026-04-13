@@ -365,4 +365,106 @@ TriMesh3D extrude_mesh(const Polyline& profile, double height) {
     return mesh;
 }
 
+// ─── 3D Revolve (M3+) ───
+
+TriMesh3D revolve_mesh(const Polyline& profile, const Vec3& axisOrigin,
+                       const Vec3& axisDir, double angleDeg, int segments) {
+    TriMesh3D mesh;
+    if (profile.points.size() < 2 || segments < 3) return mesh;
+
+    // Normalize axis direction
+    double axLen = std::sqrt(axisDir.x*axisDir.x + axisDir.y*axisDir.y + axisDir.z*axisDir.z);
+    if (axLen < 1e-12) return mesh;
+    Vec3 ax = {axisDir.x/axLen, axisDir.y/axLen, axisDir.z/axLen};
+
+    // Remove closing point if present
+    std::vector<Vec2> pts = profile.points;
+    if (pts.size() >= 2 && std::abs(pts.front().x - pts.back().x) < 1e-12
+                        && std::abs(pts.front().y - pts.back().y) < 1e-12) {
+        pts.pop_back();
+    }
+    int n = static_cast<int>(pts.size());
+    if (n < 2) return mesh;
+
+    bool fullRevolution = (std::abs(angleDeg) >= 359.99);
+    int rings = fullRevolution ? segments : segments + 1;
+    double angleStep = (angleDeg * M_PI / 180.0) / segments;
+
+    // Helper: rotate a 3D point around axis using Rodrigues' formula
+    auto rotateAroundAxis = [&](const Vec3& p, double theta) -> Vec3 {
+        double cosT = std::cos(theta), sinT = std::sin(theta);
+        // v = p - axisOrigin
+        double vx = p.x - axisOrigin.x;
+        double vy = p.y - axisOrigin.y;
+        double vz = p.z - axisOrigin.z;
+        // dot(axis, v)
+        double dot = ax.x*vx + ax.y*vy + ax.z*vz;
+        // cross(axis, v)
+        double cx = ax.y*vz - ax.z*vy;
+        double cy = ax.z*vx - ax.x*vz;
+        double cz = ax.x*vy - ax.y*vx;
+        // Rodrigues: v*cosT + cross(k,v)*sinT + k*dot(k,v)*(1-cosT)
+        double rx = vx*cosT + cx*sinT + ax.x*dot*(1-cosT);
+        double ry = vy*cosT + cy*sinT + ax.y*dot*(1-cosT);
+        double rz = vz*cosT + cz*sinT + ax.z*dot*(1-cosT);
+        return {axisOrigin.x + rx, axisOrigin.y + ry, axisOrigin.z + rz};
+    };
+
+    // Convert 2D profile to 3D (assume profile is in XZ plane: x=radial, y→z)
+    std::vector<Vec3> profile3d(static_cast<size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        profile3d[i] = {pts[i].x, 0.0, pts[i].y};
+    }
+
+    // Generate all ring vertices
+    mesh.vertices.reserve(static_cast<size_t>(rings * n));
+    mesh.normals.reserve(static_cast<size_t>(rings * n));
+    for (int r = 0; r < rings; ++r) {
+        double theta = r * angleStep;
+        for (int i = 0; i < n; ++i) {
+            Vec3 v = rotateAroundAxis(profile3d[i], theta);
+            mesh.vertices.push_back(v);
+            // Normal: radial direction from axis
+            double px = v.x - axisOrigin.x, py = v.y - axisOrigin.y, pz = v.z - axisOrigin.z;
+            double dot = ax.x*px + ax.y*py + ax.z*pz;
+            double nx = px - ax.x*dot, ny = py - ax.y*dot, nz = pz - ax.z*dot;
+            double nlen = std::sqrt(nx*nx + ny*ny + nz*nz);
+            if (nlen > 1e-12) { nx/=nlen; ny/=nlen; nz/=nlen; }
+            mesh.normals.push_back({nx, ny, nz});
+        }
+    }
+
+    // Side faces: connect adjacent rings
+    for (int r = 0; r < (fullRevolution ? rings : rings - 1); ++r) {
+        int nextR = (r + 1) % rings;
+        for (int i = 0; i < n - 1; ++i) {
+            uint32_t a = static_cast<uint32_t>(r * n + i);
+            uint32_t b = static_cast<uint32_t>(r * n + i + 1);
+            uint32_t c = static_cast<uint32_t>(nextR * n + i + 1);
+            uint32_t d = static_cast<uint32_t>(nextR * n + i);
+            mesh.indices.push_back(a); mesh.indices.push_back(b); mesh.indices.push_back(c);
+            mesh.indices.push_back(a); mesh.indices.push_back(c); mesh.indices.push_back(d);
+        }
+    }
+
+    // End caps (only if not full revolution)
+    if (!fullRevolution && n >= 3) {
+        // Start cap (ring 0)
+        for (int i = 1; i < n - 1; ++i) {
+            mesh.indices.push_back(0);
+            mesh.indices.push_back(static_cast<uint32_t>(i + 1));
+            mesh.indices.push_back(static_cast<uint32_t>(i));
+        }
+        // End cap (last ring)
+        uint32_t lastBase = static_cast<uint32_t>((rings - 1) * n);
+        for (int i = 1; i < n - 1; ++i) {
+            mesh.indices.push_back(lastBase);
+            mesh.indices.push_back(lastBase + static_cast<uint32_t>(i));
+            mesh.indices.push_back(lastBase + static_cast<uint32_t>(i + 1));
+        }
+    }
+
+    return mesh;
+}
+
 } // namespace core

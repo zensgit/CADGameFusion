@@ -25,6 +25,12 @@ ConstraintKind classifyConstraintKind(const std::string& type) {
     if (type == "symmetric") return ConstraintKind::Symmetric;
     if (type == "midpoint") return ConstraintKind::Midpoint;
     if (type == "fixed_point") return ConstraintKind::FixedPoint;
+    if (type == "equal_length") return ConstraintKind::EqualLength;
+    if (type == "equal_radius") return ConstraintKind::EqualRadius;
+    if (type == "point_on_circle") return ConstraintKind::PointOnCircle;
+    if (type == "p2l_distance") return ConstraintKind::P2LDistance;
+    if (type == "arc_angle") return ConstraintKind::ArcAngle;
+    if (type == "length_ratio") return ConstraintKind::LengthRatio;
     return ConstraintKind::Unknown;
 }
 
@@ -44,6 +50,12 @@ const char* constraintKindName(ConstraintKind kind) {
         case ConstraintKind::Symmetric: return "symmetric";
         case ConstraintKind::Midpoint: return "midpoint";
         case ConstraintKind::FixedPoint: return "fixed_point";
+        case ConstraintKind::EqualLength: return "equal_length";
+        case ConstraintKind::EqualRadius: return "equal_radius";
+        case ConstraintKind::PointOnCircle: return "point_on_circle";
+        case ConstraintKind::P2LDistance: return "p2l_distance";
+        case ConstraintKind::ArcAngle: return "arc_angle";
+        case ConstraintKind::LengthRatio: return "length_ratio";
         case ConstraintKind::Unknown:
         default: return "unknown";
     }
@@ -477,6 +489,18 @@ int expected_arity(ConstraintKind kind) {
             return 6;
         case ConstraintKind::FixedPoint:
             return 2;
+        case ConstraintKind::EqualLength:
+            return 8; // ax0,ay0,ax1,ay1,bx0,by0,bx1,by1
+        case ConstraintKind::EqualRadius:
+            return 2; // r1, r2
+        case ConstraintKind::PointOnCircle:
+            return 5; // px,py,cx,cy,r
+        case ConstraintKind::P2LDistance:
+            return 6; // px,py,lx0,ly0,lx1,ly1
+        case ConstraintKind::ArcAngle:
+            return 2; // startAngle, endAngle
+        case ConstraintKind::LengthRatio:
+            return 8; // ax0,ay0,ax1,ay1,bx0,by0,bx1,by1
         case ConstraintKind::Unknown:
         default:
             return -1;
@@ -485,7 +509,9 @@ int expected_arity(ConstraintKind kind) {
 
 bool requires_numeric_value(ConstraintKind kind) {
     return kind == ConstraintKind::Distance || kind == ConstraintKind::Angle
-        || kind == ConstraintKind::Tangent || kind == ConstraintKind::FixedPoint;
+        || kind == ConstraintKind::Tangent || kind == ConstraintKind::FixedPoint
+        || kind == ConstraintKind::P2LDistance || kind == ConstraintKind::ArcAngle
+        || kind == ConstraintKind::LengthRatio;
 }
 
 // Constraints that expand into x/y sub-constraints for 2D residuals
@@ -512,6 +538,12 @@ bool has_numeric_residual_implementation(ConstraintKind kind) {
         case ConstraintKind::Symmetric:
         case ConstraintKind::Midpoint:
         case ConstraintKind::FixedPoint:
+        case ConstraintKind::EqualLength:
+        case ConstraintKind::EqualRadius:
+        case ConstraintKind::PointOnCircle:
+        case ConstraintKind::P2LDistance:
+        case ConstraintKind::ArcAngle:
+        case ConstraintKind::LengthRatio:
             return true;
         case ConstraintKind::Unknown:
         default:
@@ -1212,6 +1244,52 @@ double residual_for_constraint(const ConstraintSpec& c, const ISolver::GetVar& g
         double val=get(c.vars[0],ok0); (void)get(c.vars[1],ok1);
         ok=ok0&&ok1; if (!ok) return 0.0;
         return val - *c.value;
+    }
+    // ─── Extended constraint types ───
+    if (c.type == "equal_length" && c.vars.size() >= 8) {
+        bool okv[8]; for (int i=0;i<8;++i) okv[i]=false;
+        double ax0=get(c.vars[0],okv[0]),ay0=get(c.vars[1],okv[1]),ax1=get(c.vars[2],okv[2]),ay1=get(c.vars[3],okv[3]);
+        double bx0=get(c.vars[4],okv[4]),by0=get(c.vars[5],okv[5]),bx1=get(c.vars[6],okv[6]),by1=get(c.vars[7],okv[7]);
+        for (int i=0;i<8;++i) if (!okv[i]) { ok=false; return 0.0; }
+        double la=std::sqrt((ax1-ax0)*(ax1-ax0)+(ay1-ay0)*(ay1-ay0));
+        double lb=std::sqrt((bx1-bx0)*(bx1-bx0)+(by1-by0)*(by1-by0));
+        return la - lb;
+    }
+    if (c.type == "equal_radius" && c.vars.size() >= 2) {
+        bool ok0=false,ok1=false;
+        double r1=get(c.vars[0],ok0),r2=get(c.vars[1],ok1);
+        ok=ok0&&ok1; return ok?(r1-r2):0.0;
+    }
+    if (c.type == "point_on_circle" && c.vars.size() >= 5) {
+        bool okv[5]; for (int i=0;i<5;++i) okv[i]=false;
+        double px=get(c.vars[0],okv[0]),py=get(c.vars[1],okv[1]),cx=get(c.vars[2],okv[2]),cy=get(c.vars[3],okv[3]),r=get(c.vars[4],okv[4]);
+        for (int i=0;i<5;++i) if (!okv[i]) { ok=false; return 0.0; }
+        return std::sqrt((px-cx)*(px-cx)+(py-cy)*(py-cy)) - r;
+    }
+    if (c.type == "p2l_distance" && c.vars.size() >= 6 && c.value.has_value()) {
+        bool okv[6]; for (int i=0;i<6;++i) okv[i]=false;
+        double px=get(c.vars[0],okv[0]),py=get(c.vars[1],okv[1]),ax=get(c.vars[2],okv[2]),ay=get(c.vars[3],okv[3]);
+        double bx=get(c.vars[4],okv[4]),by=get(c.vars[5],okv[5]);
+        for (int i=0;i<6;++i) if (!okv[i]) { ok=false; return 0.0; }
+        double dx=bx-ax,dy=by-ay,len=std::sqrt(dx*dx+dy*dy);
+        if (len<1e-15) return 0.0;
+        return ((px-ax)*dy-(py-ay)*dx)/len - *c.value;
+    }
+    if (c.type == "arc_angle" && c.vars.size() >= 2 && c.value.has_value()) {
+        bool ok0=false,ok1=false;
+        double startA=get(c.vars[0],ok0),endA=get(c.vars[1],ok1);
+        ok=ok0&&ok1; if (!ok) return 0.0;
+        return (endA - startA) - *c.value;
+    }
+    if (c.type == "length_ratio" && c.vars.size() >= 8 && c.value.has_value()) {
+        bool okv[8]; for (int i=0;i<8;++i) okv[i]=false;
+        double ax0=get(c.vars[0],okv[0]),ay0=get(c.vars[1],okv[1]),ax1=get(c.vars[2],okv[2]),ay1=get(c.vars[3],okv[3]);
+        double bx0=get(c.vars[4],okv[4]),by0=get(c.vars[5],okv[5]),bx1=get(c.vars[6],okv[6]),by1=get(c.vars[7],okv[7]);
+        for (int i=0;i<8;++i) if (!okv[i]) { ok=false; return 0.0; }
+        double la=std::sqrt((ax1-ax0)*(ax1-ax0)+(ay1-ay0)*(ay1-ay0));
+        double lb=std::sqrt((bx1-bx0)*(bx1-bx0)+(by1-by0)*(by1-by0));
+        if (lb < 1e-15) return 0.0;
+        return la/lb - *c.value;
     }
     ok = true; return 0.0;
 }
