@@ -22,6 +22,7 @@
 #include <QApplication>
 #include <QCloseEvent>
 #include <QFileInfo>
+#include <QInputDialog>
 #include <QMenu>
 #include <QTimer>
 #include <QDebug>
@@ -32,6 +33,8 @@
 #include "core/ops2d.hpp"
 #include "panels/transform_panel.hpp"
 #include "live_export_manager.hpp"
+#include "tools/measure_tool.hpp"
+#include "guide_manager.hpp"
 #include "core/version.hpp"
 #include "core/core_c_api.h"
 #include "canvas.hpp"
@@ -696,6 +699,49 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         m_cmdMgr->push(std::make_unique<DummyCmd>(&s_counter));
         statusBar()->showMessage(QString("Dummy executed, counter=%1").arg(s_counter), 1500);
         connect(m_cmdMgr, &CommandManager::commandExecuted, this, [this](const QString& n){ statusBar()->showMessage("Command: "+n, 800); });
+    });
+
+    // Tools menu
+    auto* toolsMenu = menuBar()->addMenu("Tools");
+    m_measureTool = new MeasureTool();
+    m_guideManager = new GuideManager(this);
+    canvas->setGuideManager(m_guideManager);
+
+    auto* actMeasure = toolsMenu->addAction("Measure");
+    actMeasure->setShortcut(QKeySequence("M"));
+    actMeasure->setCheckable(true);
+    connect(actMeasure, &QAction::toggled, this, [this, canvas, actMeasure](bool on){
+        if (on) {
+            canvas->setActiveTool(m_measureTool);
+            statusBar()->showMessage("Measure tool: click two points", 2000);
+        } else {
+            canvas->setActiveTool(nullptr);
+            m_measureTool->reset();
+            statusBar()->showMessage("Measure tool off", 1000);
+        }
+    });
+    auto* actAddHGuide = toolsMenu->addAction("Add Horizontal Guide...");
+    connect(actAddHGuide, &QAction::triggered, this, [this]{
+        bool ok = false;
+        double pos = QInputDialog::getDouble(this, "Horizontal Guide", "Y position:", 0, -1e6, 1e6, 2, &ok);
+        if (ok) {
+            m_guideManager->addGuide(Guide::Horizontal, pos);
+            statusBar()->showMessage(QString("Added H guide at Y=%1").arg(pos), 1500);
+        }
+    });
+    auto* actAddVGuide = toolsMenu->addAction("Add Vertical Guide...");
+    connect(actAddVGuide, &QAction::triggered, this, [this]{
+        bool ok = false;
+        double pos = QInputDialog::getDouble(this, "Vertical Guide", "X position:", 0, -1e6, 1e6, 2, &ok);
+        if (ok) {
+            m_guideManager->addGuide(Guide::Vertical, pos);
+            statusBar()->showMessage(QString("Added V guide at X=%1").arg(pos), 1500);
+        }
+    });
+    auto* actClearGuides = toolsMenu->addAction("Clear All Guides");
+    connect(actClearGuides, &QAction::triggered, this, [this]{
+        m_guideManager->clearGuides();
+        statusBar()->showMessage("Guides cleared", 1000);
     });
 
     // Help menu

@@ -60,6 +60,13 @@ add_executable(editor_qt
     # Live export
     include/live_export_manager.hpp
     src/live_export_manager.cpp
+    # Tool system
+    include/tools/tool.hpp
+    include/tools/measure_tool.hpp
+    src/tools/measure_tool.cpp
+    # Guide manager
+    include/guide_manager.hpp
+    src/guide_manager.cpp
 )
 
 target_include_directories(editor_qt PRIVATE

@@ -19,6 +19,8 @@ class QLabel;
 class QListWidget;
 class TransformPanel;
 class LiveExportManager;
+class MeasureTool;
+class GuideManager;
 
 namespace cadgf { class PluginRegistry; }
 struct core_document;
@@ -91,6 +93,8 @@ private:
 
     TransformPanel* m_transformPanel{nullptr};
     LiveExportManager* m_liveExport{nullptr};
+    MeasureTool* m_measureTool{nullptr};
+    GuideManager* m_guideManager{nullptr};
 
     // Status bar widgets
     QLabel* m_coordLabel{nullptr};

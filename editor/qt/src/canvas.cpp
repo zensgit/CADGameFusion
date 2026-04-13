@@ -2,6 +2,8 @@
 #include "core/document.hpp"
 #include "core/geometry2d.hpp"
 #include "snap/snap_settings.hpp"
+#include "tools/tool.hpp"
+#include "guide_manager.hpp"
 
 #include <QPainter>
 #include <QPainterPath>
@@ -96,6 +98,11 @@ void CanvasWidget::setDocument(core::Document* doc) {
 
 void CanvasWidget::setSnapSettings(SnapSettings* settings) {
     snap_settings_ = settings;
+}
+
+void CanvasWidget::setActiveTool(Tool* tool) {
+    m_activeTool = tool;
+    update();
 }
 
 const core::Entity* CanvasWidget::entityFor(EntityId id) const {
@@ -652,6 +659,25 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
         pr.setBrush(QColor(255, 180, 60));
         pr.drawEllipse(centerScreen, 4, 4);
     }
+    // 7. Guide lines
+    if (m_guideManager) {
+        QPen guidePen(QColor(0, 200, 200), 1, Qt::DashDotLine);
+        guidePen.setCosmetic(true);
+        pr.setPen(guidePen);
+        for (const auto& g : m_guideManager->guides()) {
+            if (g.orientation == Guide::Horizontal) {
+                double sy = worldToScreen(QPointF(0, g.position)).y();
+                pr.drawLine(QPointF(0, sy), QPointF(width(), sy));
+            } else {
+                double sx = worldToScreen(QPointF(g.position, 0)).x();
+                pr.drawLine(QPointF(sx, 0), QPointF(sx, height()));
+            }
+        }
+    }
+    // 8. Active tool overlay
+    if (m_activeTool) {
+        m_activeTool->paint(pr, scale_, pan_);
+    }
 }
 
 void CanvasWidget::wheelEvent(QWheelEvent* e) {
@@ -667,6 +693,8 @@ void CanvasWidget::wheelEvent(QWheelEvent* e) {
 }
 
 void CanvasWidget::mousePressEvent(QMouseEvent* e) {
+    if (m_activeTool && m_activeTool->mousePressEvent(e)) { update(); return; }
+
     if (e->button() == Qt::MiddleButton || (e->button()==Qt::LeftButton && e->modifiers() & Qt::ShiftModifier)) {
         lastPos_ = e->pos();
     }
@@ -779,6 +807,8 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
 }
 
 void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
+    if (m_activeTool && m_activeTool->mouseMoveEvent(e)) { update(); goto emit_status; }
+
     if (e->buttons() & Qt::MiddleButton || (e->buttons() & Qt::LeftButton && e->modifiers() & Qt::ShiftModifier)) {
         const QPoint d = e->pos() - lastPos_;
         pan_ += QPointF(d.x(), d.y());
@@ -876,6 +906,7 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent* e) {
 
         if (changed) update();
     }
+emit_status:
     // Status bar signals: cursor position and snap state
     {
         const QPointF wpos = screenToWorld(e->position());
@@ -934,6 +965,8 @@ void CanvasWidget::mouseReleaseEvent(QMouseEvent* e) {
 }
 
 void CanvasWidget::keyPressEvent(QKeyEvent* e) {
+    if (m_activeTool && m_activeTool->keyPressEvent(e)) { update(); return; }
+
     if (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) {
         if (triSelected_) {
             triVerts_.clear();

@@ -13,6 +13,9 @@
 #include "snap_manager.hpp"
 #include "core/document.hpp"
 
+class Tool;
+class GuideManager;
+
 class QPainterPath;
 class QRectF;
 class SnapSettings;
@@ -48,6 +51,9 @@ public:
     void setDocument(core::Document* doc);
     void setSnapSettings(SnapSettings* settings);
     SnapSettings* snapSettings() const { return snap_settings_; }
+    void setActiveTool(Tool* tool);
+    Tool* activeTool() const { return m_activeTool; }
+    void setGuideManager(GuideManager* gm) { m_guideManager = gm; }
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
     QPointF snapWorldPosition(const QPointF& worldPos, bool* snapped = nullptr);
 
@@ -155,6 +161,8 @@ private:
     bool selection_change_pending_{false};
     core::Document* m_doc{nullptr};
     SnapSettings* snap_settings_{nullptr};
+    Tool* m_activeTool{nullptr};
+    GuideManager* m_guideManager{nullptr};
 };
 
 #ifdef CADGF_QT_TEST_ACCESS

@@ -7,7 +7,7 @@
 
 class SnapManager {
 public:
-    enum class SnapType { None, Endpoint, Midpoint, Center, Intersection, Grid };
+    enum class SnapType { None, Endpoint, Midpoint, Center, Intersection, Grid, Guide };
     struct SnapResult {
         bool active{false};
         QPointF pos;

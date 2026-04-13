@@ -314,4 +314,38 @@ if(BUILD_EDITOR_QT)
     AUTOMOC ON
   )
   add_test(NAME qt_layer_lock_run COMMAND test_qt_layer_lock)
+
+  add_executable(test_qt_measure_tool
+    test_qt_measure_tool.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/tools/measure_tool.cpp
+  )
+  target_include_directories(test_qt_measure_tool PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+  )
+  target_link_libraries(test_qt_measure_tool PRIVATE Qt6::Widgets)
+  set_target_properties(test_qt_measure_tool PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC OFF
+  )
+  add_test(NAME qt_measure_tool_run COMMAND test_qt_measure_tool)
+
+  add_executable(test_qt_guides
+    test_qt_guides.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/guide_manager.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/guide_manager.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
+  )
+  target_include_directories(test_qt_guides PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+  )
+  target_link_libraries(test_qt_guides PRIVATE Qt6::Widgets)
+  set_target_properties(test_qt_guides PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_guides_run COMMAND test_qt_guides)
 endif()
