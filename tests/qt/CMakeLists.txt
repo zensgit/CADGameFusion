@@ -385,4 +385,46 @@ if(BUILD_EDITOR_QT)
     AUTOMOC ON
   )
   add_test(NAME qt_pivot_run COMMAND test_qt_pivot)
+
+  add_executable(test_qt_gizmo
+    test_qt_gizmo.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/tools/gizmo_tool.cpp
+  )
+  target_include_directories(test_qt_gizmo PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+  )
+  target_link_libraries(test_qt_gizmo PRIVATE Qt6::Widgets)
+  set_target_properties(test_qt_gizmo PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC OFF
+  )
+  add_test(NAME qt_gizmo_run COMMAND test_qt_gizmo)
+
+  add_executable(test_qt_guide_persistence
+    test_qt_guide_persistence.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap/snap_settings.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/snap/snap_settings.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/project/project.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/project/project.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/guide_manager.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/guide_manager.cpp
+  )
+  target_include_directories(test_qt_guide_persistence PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_guide_persistence PRIVATE Qt6::Widgets core)
+  set_target_properties(test_qt_guide_persistence PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_guide_persistence_run COMMAND test_qt_guide_persistence)
 endif()

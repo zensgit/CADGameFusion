@@ -3,6 +3,7 @@
 #include "core/geometry2d.hpp"
 #include "../canvas.hpp"
 #include "editor/qt/include/snap/snap_settings.hpp"
+#include "editor/qt/include/guide_manager.hpp"
 #include <QFile>
 #include <QHash>
 #include <QJsonDocument>
@@ -121,6 +122,18 @@ bool Project::save(const QString& path, const core::Document& doc, CanvasWidget*
             snapJson.insert("gridPixelSpacing", snap->gridPixelSpacing());
             QJsonObject editorJson;
             editorJson.insert("snap", snapJson);
+            // Serialize guides
+            if (auto* gm = canvas->findChild<GuideManager*>()) {
+                QJsonArray guidesArr;
+                for (const auto& g : gm->guides()) {
+                    QJsonObject gobj;
+                    gobj.insert("orientation", g.orientation == Guide::Horizontal ? "H" : "V");
+                    gobj.insert("position", g.position);
+                    guidesArr.append(gobj);
+                }
+                if (!guidesArr.isEmpty())
+                    editorJson.insert("guides", guidesArr);
+            }
             root.insert("editor", editorJson);
         }
     }
@@ -306,6 +319,17 @@ bool Project::load(const QString& path, core::Document& doc, CanvasWidget* canva
                 snap->setSnapGrid(snapJson.value("grid").toBool(snap->snapGrid()));
                 snap->setSnapRadiusPixels(snapJson.value("radiusPx").toDouble(snap->snapRadiusPixels()));
                 snap->setGridPixelSpacing(snapJson.value("gridPixelSpacing").toDouble(snap->gridPixelSpacing()));
+            }
+            // Restore guides
+            if (auto* gm = canvas->findChild<GuideManager*>()) {
+                gm->clearGuides();
+                const auto guidesArr = editorJson.value("guides").toArray();
+                for (const auto& gval : guidesArr) {
+                    auto gobj = gval.toObject();
+                    auto orient = gobj.value("orientation").toString() == "H"
+                        ? Guide::Horizontal : Guide::Vertical;
+                    gm->addGuide(orient, gobj.value("position").toDouble());
+                }
             }
         }
     }

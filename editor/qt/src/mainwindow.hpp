@@ -22,6 +22,7 @@ class LiveExportManager;
 class MeasureTool;
 class GuideManager;
 class AlignPanel;
+class GizmoTool;
 
 namespace cadgf { class PluginRegistry; }
 struct core_document;
@@ -97,6 +98,7 @@ private:
     MeasureTool* m_measureTool{nullptr};
     GuideManager* m_guideManager{nullptr};
     AlignPanel* m_alignPanel{nullptr};
+    GizmoTool* m_gizmoTool{nullptr};
 
     // Status bar widgets
     QLabel* m_coordLabel{nullptr};

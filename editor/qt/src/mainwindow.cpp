@@ -36,6 +36,7 @@
 #include "tools/measure_tool.hpp"
 #include "guide_manager.hpp"
 #include "panels/align_panel.hpp"
+#include "tools/gizmo_tool.hpp"
 #include "core/version.hpp"
 #include "core/core_c_api.h"
 #include "canvas.hpp"
@@ -839,8 +840,61 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // Tools menu
     auto* toolsMenu = menuBar()->addMenu("Tools");
     m_measureTool = new MeasureTool();
+    m_gizmoTool = new GizmoTool();
     m_guideManager = new GuideManager(this);
     canvas->setGuideManager(m_guideManager);
+
+    // GizmoTool callbacks
+    m_gizmoTool->setCallbacks(
+        [this, canvas](QPointF delta) { // move
+            const auto sel = m_selectionModel ? m_selectionModel->selection() : QList<qulonglong>{};
+            if (sel.isEmpty()) return;
+            QList<qulonglong> ids; QVector<QVector<QPointF>> before;
+            for (auto id : sel) {
+                auto* e = m_document.get_entity(static_cast<core::EntityId>(id));
+                if (!e) continue;
+                auto* pl = std::get_if<core::Polyline>(&e->payload);
+                if (!pl) continue;
+                ids.append(id);
+                QVector<QPointF> pts;
+                for (const auto& p : pl->points) pts.append(QPointF(p.x, p.y));
+                before.append(pts);
+            }
+            if (!ids.isEmpty()) emit canvas->moveEntitiesRequested(ids, before, delta);
+        },
+        [canvas](double angle, QPointF center) { // rotate
+            // Will be handled by existing rotateEntitiesRequested handler
+            // For now emit via canvas signal infrastructure
+        },
+        [canvas](double factor, QPointF center) { // scale
+            // Will be handled by existing scaleEntitiesRequested handler
+        }
+    );
+    // Update gizmo on selection change
+    connect(m_selectionModel, &SelectionModel::selectionChanged, this, [this, canvas](const QList<qulonglong>& ids){
+        if (ids.isEmpty()) {
+            m_gizmoTool->clearSelection();
+            if (canvas->activeTool() == m_gizmoTool) canvas->setActiveTool(nullptr);
+            return;
+        }
+        // Compute AABB + pivot
+        double minX=1e18, minY=1e18, maxX=-1e18, maxY=-1e18;
+        for (auto id : ids) {
+            auto* e = m_document.get_entity(static_cast<core::EntityId>(id));
+            if (!e) continue;
+            auto* pl = std::get_if<core::Polyline>(&e->payload);
+            if (!pl) continue;
+            for (const auto& p : pl->points) {
+                if (p.x<minX) minX=p.x; if (p.y<minY) minY=p.y;
+                if (p.x>maxX) maxX=p.x; if (p.y>maxY) maxY=p.y;
+            }
+        }
+        QRectF bbox(QPointF(minX, minY), QPointF(maxX, maxY));
+        QPointF pivot = canvas->computePivot();
+        m_gizmoTool->setSelection(bbox, pivot);
+        if (!canvas->activeTool() || canvas->activeTool() == m_gizmoTool)
+            canvas->setActiveTool(m_gizmoTool);
+    });
 
     auto* actMeasure = toolsMenu->addAction("Measure");
     actMeasure->setShortcut(QKeySequence("M"));

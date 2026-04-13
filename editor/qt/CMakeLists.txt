@@ -64,6 +64,8 @@ add_executable(editor_qt
     include/tools/tool.hpp
     include/tools/measure_tool.hpp
     src/tools/measure_tool.cpp
+    include/tools/gizmo_tool.hpp
+    src/tools/gizmo_tool.cpp
     # Guide manager
     include/guide_manager.hpp
     src/guide_manager.cpp
