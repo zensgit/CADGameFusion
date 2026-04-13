@@ -107,7 +107,7 @@ private:
     int resolveLayer(const std::string& name);
     void addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid,
                           uint32_t color = 0, const std::string& linetype = "",
-                          const std::string& layerName = "");
+                          const std::string& layerName = "", double lweightMm = 0.0);
     // Transform a point by INSERT parameters (scale, rotate, translate)
     std::pair<double,double> transformPoint(double x, double y,
         double insX, double insY, double xscale, double yscale, double angle) const;

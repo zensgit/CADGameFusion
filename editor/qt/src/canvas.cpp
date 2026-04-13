@@ -672,17 +672,23 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
         QPen pen(resolveEntityColor(*entity), 1);
         pen.setCosmetic(true);
 
+        // Line weight: entity value in mm → pixels; 0 = use thin default
+        double lwPx = 0.0;
+        if (entity->line_weight > 0.0)
+            lwPx = std::max(1.0, entity->line_weight * scale_);
+
         // Apply linetype dash pattern if not continuous
         if (!entity->line_type.empty()) {
             auto dashPat = linetypeDashPattern(entity->line_type, scale_);
             if (!dashPat.isEmpty()) {
                 pen.setStyle(Qt::CustomDashLine);
                 pen.setDashPattern(dashPat);
+                pen.setWidthF(lwPx > 0.0 ? lwPx : 1.0);
             } else {
-                pen.setWidthF(1.5); // solid non-standard = treat as thicker solid
+                pen.setWidthF(lwPx > 0.0 ? lwPx : 1.5);
             }
         } else {
-            pen.setWidthF(1.5); // default solid line
+            pen.setWidthF(lwPx > 0.0 ? lwPx : 1.5);
         }
 
         if (selected_entities_.contains(pv.entityId)) {
