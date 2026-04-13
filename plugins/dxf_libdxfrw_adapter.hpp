@@ -22,6 +22,7 @@ struct BlockEntity {
     // Ellipse
     double rx{0}, ry{0}, ellRot{0}, ellStart{0}, ellEnd{0};
     std::string layerName;
+    uint32_t color{0};
 };
 
 // Adapter: bridges libdxfrw DRW_Interface callbacks to cadgf_document C API.
@@ -96,7 +97,7 @@ public:
 
 private:
     int resolveLayer(const std::string& name);
-    void addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid);
+    void addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid, uint32_t color = 0);
     // Transform a point by INSERT parameters (scale, rotate, translate)
     std::pair<double,double> transformPoint(double x, double y,
         double insX, double insY, double xscale, double yscale, double angle) const;

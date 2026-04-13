@@ -2,6 +2,32 @@
 #include <vector>
 #include <cmath>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+static uint32_t aci_to_rgb(int aci) {
+    static const uint32_t table[] = {
+        0x000000, 0xFF0000, 0xFFFF00, 0x00FF00, 0x00FFFF, 0x0000FF, 0xFF00FF, 0xFFFFFF,
+        0x808080, 0xC0C0C0
+    };
+    if (aci >= 0 && aci < 10) return table[aci];
+    if (aci >= 10 && aci <= 255) {
+        // Simplified: map to grayscale-ish for higher ACI
+        int r = ((aci * 37) % 200) + 55;
+        int g = ((aci * 73) % 200) + 55;
+        int b = ((aci * 113) % 200) + 55;
+        return (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | static_cast<uint32_t>(b);
+    }
+    return 0xDCDCE6;
+}
+
+static uint32_t drw_entity_color(const DRW_Entity& ent) {
+    if (ent.color24 != -1) return static_cast<uint32_t>(ent.color24) & 0xFFFFFF;
+    if (ent.color > 0 && ent.color <= 255) return aci_to_rgb(ent.color);
+    return 0; // BYLAYER
+}
+
 int CadgfDrwAdapter::resolveLayer(const std::string& name) {
     if (name.empty()) return 0;
     auto it = m_layerMap.find(name);
@@ -27,12 +53,15 @@ std::pair<double,double> CadgfDrwAdapter::transformPoint(
     return {rx + insX, ry + insY};
 }
 
-void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid) {
+void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid, uint32_t color) {
     if (pts.empty()) return;
     std::vector<cadgf_vec2> vecs;
     vecs.reserve(pts.size());
     for (const auto& [x, y] : pts) vecs.push_back({x, y});
-    cadgf_document_add_polyline_ex(m_doc, vecs.data(), static_cast<int>(vecs.size()), "", lid);
+    cadgf_entity_id eid = cadgf_document_add_polyline_ex(m_doc, vecs.data(), static_cast<int>(vecs.size()), "", lid);
+    if (color != 0 && eid != 0) {
+        cadgf_document_set_entity_color(m_doc, eid, color);
+    }
     ++m_entityCount;
 }
 
@@ -52,11 +81,10 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             transformed.reserve(ent.pts.size());
             for (const auto& [px, py] : ent.pts)
                 transformed.push_back(transformPoint(px, py, insX, insY, xscale, yscale, angle));
-            addPolylineToDoc(transformed, elid);
+            addPolylineToDoc(transformed, elid, ent.color);
             break;
         }
         case BlockEntity::Circle: {
-            // Approximate circle as polyline
             std::vector<std::pair<double,double>> circ;
             double r = ent.radius * std::abs(xscale);
             auto [cx, cy] = transformPoint(ent.cx, ent.cy, insX, insY, xscale, yscale, angle);
@@ -64,7 +92,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 double a = 2.0 * M_PI * s / 64;
                 circ.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
             }
-            addPolylineToDoc(circ, elid);
+            addPolylineToDoc(circ, elid, ent.color);
             break;
         }
         case BlockEntity::Arc: {
@@ -77,7 +105,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 double a = sa + (ea - sa) * s / segs;
                 arc.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
             }
-            addPolylineToDoc(arc, elid);
+            addPolylineToDoc(arc, elid, ent.color);
             break;
         }
         case BlockEntity::Point: {
@@ -137,9 +165,9 @@ void CadgfDrwAdapter::endBlock() {
 void CadgfDrwAdapter::addHeader(const DRW_Header*) {}
 
 void CadgfDrwAdapter::addLayer(const DRW_Layer& data) {
-    uint32_t color = 0xFFFFFF;
+    uint32_t color = 0xDCDCE6;
     if (data.color >= 0 && data.color <= 255)
-        color = static_cast<uint32_t>(data.color) * 0x010101;
+        color = aci_to_rgb(data.color);
     int id = 0;
     cadgf_document_add_layer(m_doc, data.name.c_str(), color, &id);
     m_layerMap[data.name] = id;
@@ -153,7 +181,7 @@ void CadgfDrwAdapter::addPoint(const DRW_Point& data) {
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Point;
         be.pts.push_back({data.basePoint.x, data.basePoint.y});
-        be.layerName = data.layer;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
@@ -165,18 +193,17 @@ void CadgfDrwAdapter::addPoint(const DRW_Point& data) {
 }
 
 void CadgfDrwAdapter::addLine(const DRW_Line& data) {
-    // Convert to polyline for canvas rendering compatibility
     std::vector<std::pair<double,double>> pts = {
         {data.basePoint.x, data.basePoint.y},
         {data.secPoint.x, data.secPoint.y}
     };
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Line; be.pts = pts;
-        be.layerName = data.layer;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
 }
 
 void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
@@ -185,7 +212,7 @@ void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
         be.cx = data.basePoint.x; be.cy = data.basePoint.y;
         be.radius = data.radious;
         be.startAngle = data.staangle; be.endAngle = data.endangle;
-        be.layerName = data.layer;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
@@ -199,7 +226,7 @@ void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
         pts.push_back({data.basePoint.x + data.radious * std::cos(a),
                         data.basePoint.y + data.radious * std::sin(a)});
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
 }
 
 void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
@@ -207,7 +234,7 @@ void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
         BlockEntity be; be.type = BlockEntity::Circle;
         be.cx = data.basePoint.x; be.cy = data.basePoint.y;
         be.radius = data.radious;
-        be.layerName = data.layer;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
@@ -218,7 +245,7 @@ void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
         pts.push_back({data.basePoint.x + data.radious * std::cos(a),
                         data.basePoint.y + data.radious * std::sin(a)});
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
 }
 
 void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
@@ -234,7 +261,7 @@ void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
         be.cx = data.basePoint.x; be.cy = data.basePoint.y;
         be.rx = rx; be.ry = ry; be.ellRot = rot;
         be.ellStart = sa; be.ellEnd = ea;
-        be.layerName = data.layer;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
@@ -250,7 +277,7 @@ void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
         double py = data.basePoint.y + lx * sinR + ly * cosR;
         pts.push_back({px, py});
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
 }
 
 void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
@@ -258,14 +285,14 @@ void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
         BlockEntity be; be.type = BlockEntity::LWPolyline;
         for (const auto& v : data.vertlist)
             be.pts.push_back({v->x, v->y});
-        be.layerName = data.layer;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
     std::vector<std::pair<double,double>> pts;
     for (const auto& v : data.vertlist)
         pts.push_back({v->x, v->y});
-    addPolylineToDoc(pts, resolveLayer(data.layer));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
 }
 
 void CadgfDrwAdapter::addText(const DRW_Text& data) {
@@ -274,7 +301,7 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
         be.pts.push_back({data.basePoint.x, data.basePoint.y});
         be.height = data.height; be.rotation = data.angle;
         be.text = data.text;
-        be.layerName = data.layer;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
@@ -290,7 +317,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         be.pts.push_back({data.basePoint.x, data.basePoint.y});
         be.height = data.height; be.rotation = data.angle;
         be.text = data.text;
-        be.layerName = data.layer;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
@@ -313,11 +340,11 @@ void CadgfDrwAdapter::addSolid(const DRW_Solid& data) {
     };
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = pts;
-        be.layerName = data.layer;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
 }
 
 void CadgfDrwAdapter::addTrace(const DRW_Trace& data) {
@@ -330,11 +357,11 @@ void CadgfDrwAdapter::addTrace(const DRW_Trace& data) {
     };
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = pts;
-        be.layerName = data.layer;
+        be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
 }
 
 // ─── POLYLINE (3D/heavyweight) ───
@@ -365,7 +392,7 @@ void CadgfDrwAdapter::addSpline(const DRW_Spline* data) {
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data->layer));
+    addPolylineToDoc(pts, resolveLayer(data->layer), data ? drw_entity_color(*data) : 0);
 }
 
 // ─── LEADER: vertex list → polyline ───
@@ -382,7 +409,7 @@ void CadgfDrwAdapter::addLeader(const DRW_Leader* data) {
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data->layer));
+    addPolylineToDoc(pts, resolveLayer(data->layer), data ? drw_entity_color(*data) : 0);
 }
 
 // ─── HATCH: extract boundary loops as polylines ───
