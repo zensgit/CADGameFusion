@@ -93,6 +93,38 @@ static std::string stripDxfFormatting(const std::string& s) {
     return out;
 }
 
+void CadgfDrwAdapter::addLType(const DRW_LType& data) {
+    // Normalise name to uppercase for case-insensitive lookup
+    std::string key = data.name;
+    for (char& c : key) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    if (!data.path.empty())
+        m_linetypes[key] = data.path;
+}
+
+std::string CadgfDrwAdapter::resolveLinetype(const std::string& entLt,
+                                              const std::string& layerName) const {
+    // Explicit entity-level linetype takes priority
+    std::string lt = entLt;
+    if (lt.empty() || lt == "BYLAYER" || lt == "ByLayer") {
+        auto it = m_layerLineType.find(layerName);
+        if (it != m_layerLineType.end()) lt = it->second;
+    }
+    // Normalise
+    for (char& c : lt) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    if (lt.empty() || lt == "CONTINUOUS" || lt == "BYBLOCK" || lt == "BYLAYER")
+        return "";
+    return lt;
+}
+
+void CadgfDrwAdapter::applyLinetype(cadgf_entity_id eid,
+                                     const std::string& entLt,
+                                     const std::string& layerName) {
+    if (eid == 0) return;
+    std::string lt = resolveLinetype(entLt, layerName);
+    if (!lt.empty())
+        cadgf_document_set_entity_line_type(m_doc, eid, lt.c_str());
+}
+
 int CadgfDrwAdapter::resolveLayer(const std::string& name) {
     if (name.empty()) return 0;
     auto it = m_layerMap.find(name);
@@ -118,14 +150,17 @@ std::pair<double,double> CadgfDrwAdapter::transformPoint(
     return {rx + insX, ry + insY};
 }
 
-void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid, uint32_t color) {
+void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double>>& pts,
+                                        int lid, uint32_t color,
+                                        const std::string& linetype, const std::string& layerName) {
     if (pts.empty()) return;
     std::vector<cadgf_vec2> vecs;
     vecs.reserve(pts.size());
     for (const auto& [x, y] : pts) vecs.push_back({x, y});
     cadgf_entity_id eid = cadgf_document_add_polyline_ex(m_doc, vecs.data(), static_cast<int>(vecs.size()), "", lid);
-    if (color != 0 && eid != 0) {
-        cadgf_document_set_entity_color(m_doc, eid, color);
+    if (eid != 0) {
+        if (color != 0) cadgf_document_set_entity_color(m_doc, eid, color);
+        applyLinetype(eid, linetype, layerName);
     }
     ++m_entityCount;
 }
@@ -146,7 +181,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             transformed.reserve(ent.pts.size());
             for (const auto& [px, py] : ent.pts)
                 transformed.push_back(transformPoint(px, py, insX, insY, xscale, yscale, angle));
-            addPolylineToDoc(transformed, elid, ent.color);
+            addPolylineToDoc(transformed, elid, ent.color, ent.linetype, ent.layerName);
             break;
         }
         case BlockEntity::Circle: {
@@ -157,7 +192,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 double a = 2.0 * M_PI * s / 64;
                 circ.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
             }
-            addPolylineToDoc(circ, elid, ent.color);
+            addPolylineToDoc(circ, elid, ent.color, ent.linetype, ent.layerName);
             break;
         }
         case BlockEntity::Arc: {
@@ -170,7 +205,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 double a = sa + (ea - sa) * s / segs;
                 arc.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
             }
-            addPolylineToDoc(arc, elid, ent.color);
+            addPolylineToDoc(arc, elid, ent.color, ent.linetype, ent.layerName);
             break;
         }
         case BlockEntity::Point: {
@@ -252,6 +287,9 @@ void CadgfDrwAdapter::addLayer(const DRW_Layer& data) {
     cadgf_document_add_layer(m_doc, data.name.c_str(), color, &id);
     m_layerMap[data.name] = id;
     ++m_layerCount;
+    // Store linetype association for later entity resolution
+    if (!data.lineType.empty() && data.lineType != "Continuous")
+        m_layerLineType[data.name] = data.lineType;
 }
 
 // ─── Entity callbacks ───
@@ -280,10 +318,11 @@ void CadgfDrwAdapter::addLine(const DRW_Line& data) {
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Line; be.pts = pts;
         be.layerName = data.layer; be.color = drw_entity_color(data);
+        be.linetype = data.lineType;
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer);
 }
 
 void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
@@ -293,6 +332,7 @@ void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
         be.radius = data.radious;
         be.startAngle = data.staangle; be.endAngle = data.endangle;
         be.layerName = data.layer; be.color = drw_entity_color(data);
+        be.linetype = data.lineType;
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
@@ -306,7 +346,7 @@ void CadgfDrwAdapter::addArc(const DRW_Arc& data) {
         pts.push_back({data.basePoint.x + data.radious * std::cos(a),
                         data.basePoint.y + data.radious * std::sin(a)});
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer);
 }
 
 void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
@@ -315,6 +355,7 @@ void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
         be.cx = data.basePoint.x; be.cy = data.basePoint.y;
         be.radius = data.radious;
         be.layerName = data.layer; be.color = drw_entity_color(data);
+        be.linetype = data.lineType;
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
@@ -325,7 +366,7 @@ void CadgfDrwAdapter::addCircle(const DRW_Circle& data) {
         pts.push_back({data.basePoint.x + data.radious * std::cos(a),
                         data.basePoint.y + data.radious * std::sin(a)});
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer);
 }
 
 void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
@@ -342,6 +383,7 @@ void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
         be.rx = rx; be.ry = ry; be.ellRot = rot;
         be.ellStart = sa; be.ellEnd = ea;
         be.layerName = data.layer; be.color = drw_entity_color(data);
+        be.linetype = data.lineType;
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
@@ -357,7 +399,7 @@ void CadgfDrwAdapter::addEllipse(const DRW_Ellipse& data) {
         double py = data.basePoint.y + lx * sinR + ly * cosR;
         pts.push_back({px, py});
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer);
 }
 
 void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
@@ -384,11 +426,12 @@ void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
         BlockEntity be; be.type = BlockEntity::LWPolyline;
         be.pts = buildPts(data);
         be.layerName = data.layer; be.color = drw_entity_color(data);
+        be.linetype = data.lineType;
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
     auto pts = buildPts(data);
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer);
 }
 
 void CadgfDrwAdapter::addText(const DRW_Text& data) {

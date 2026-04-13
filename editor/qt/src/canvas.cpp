@@ -559,6 +559,41 @@ void CanvasWidget::selectAtPoint(const QPointF& mouseWorld) {
     emit selectionChanged({});
 }
 
+// Standard DXF linetype patterns: {dash_mm, gap_mm, dash_mm, gap_mm, ...}
+// Dot is represented as very short dash (0.5mm).
+static QVector<qreal> linetypeDashPattern(const std::string& lt, double scalePixPerMm) {
+    // Normalise to uppercase
+    std::string name = lt;
+    for (char& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+
+    static const struct { const char* name; std::initializer_list<double> pat; } table[] = {
+        {"DASHED",    {12.7,  6.35}},
+        {"DASHED2",   { 6.35, 3.175}},
+        {"DASHEDX2",  {25.4, 12.7}},
+        {"HIDDEN",    { 6.35, 3.175}},
+        {"HIDDEN2",   { 3.175, 1.587}},
+        {"CENTER",    {31.75, 6.35, 6.35, 6.35}},
+        {"CENTER2",   {15.875, 3.175, 3.175, 3.175}},
+        {"DASHDOT",   {12.7,  3.175, 0.5, 3.175}},
+        {"DASHDOT2",  { 6.35, 1.587, 0.5, 1.587}},
+        {"PHANTOM",   {31.75, 6.35, 6.35, 6.35, 6.35, 6.35}},
+        {"PHANTOM2",  {15.875, 3.175, 3.175, 3.175, 3.175, 3.175}},
+        {"DIVIDE",    {31.75, 3.175, 0.5, 3.175, 0.5, 3.175}},
+        {"DOT",       { 0.5,  3.175}},
+        {"_U",        {12.7,  6.35}},   // user-defined fallback
+    };
+
+    for (const auto& row : table) {
+        if (name == row.name) {
+            QVector<qreal> q;
+            for (double v : row.pat)
+                q.append(std::max(1.0, v * scalePixPerMm));
+            return q;
+        }
+    }
+    return {};
+}
+
 void CanvasWidget::paintEvent(QPaintEvent*) {
     QPainter pr(this);
     pr.fillRect(rect(), QColor(30,30,35));
@@ -633,11 +668,26 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
         if (!entity) continue;
         if (!isEntityVisible(*entity)) continue;
 
-        QPen pen(resolveEntityColor(*entity), 2);
+        QPen pen(resolveEntityColor(*entity), 1);
         pen.setCosmetic(true);
+
+        // Apply linetype dash pattern if not continuous
+        if (!entity->line_type.empty()) {
+            auto dashPat = linetypeDashPattern(entity->line_type, scale_);
+            if (!dashPat.isEmpty()) {
+                pen.setStyle(Qt::CustomDashLine);
+                pen.setDashPattern(dashPat);
+            } else {
+                pen.setWidthF(1.5); // solid non-standard = treat as thicker solid
+            }
+        } else {
+            pen.setWidthF(1.5); // default solid line
+        }
+
         if (selected_entities_.contains(pv.entityId)) {
             pen.setColor(QColor(255,220,100));
-            pen.setWidth(3);
+            pen.setStyle(Qt::SolidLine);
+            pen.setWidthF(2.5);
         }
         pr.setPen(pen);
         pr.drawPath(pv.cachePath);
