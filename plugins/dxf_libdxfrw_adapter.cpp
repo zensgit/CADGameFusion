@@ -515,17 +515,24 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
     if (!m_inBlock && shouldSkipEntity(data)) return;
     std::string txt = stripDxfFormatting(data.text);
     if (txt.empty()) return;
+    // Use secPoint (alignment point) when non-default alignment is specified
+    bool useSecPoint = (data.alignH != DRW_Text::HLeft || data.alignV != DRW_Text::VBaseLine)
+                       && (data.secPoint.x != 0.0 || data.secPoint.y != 0.0);
+    double px = useSecPoint ? data.secPoint.x : data.basePoint.x;
+    double py = useSecPoint ? data.secPoint.y : data.basePoint.y;
+    // DRW_Text::angle is in degrees; cadgf_document_add_text expects radians
+    double rotRad = data.angle * M_PI / 180.0;
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Text;
-        be.pts.push_back({data.basePoint.x, data.basePoint.y});
-        be.height = data.height; be.rotation = data.angle;
+        be.pts.push_back({px, py});
+        be.height = data.height; be.rotation = rotRad;
         be.text = txt;
         be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    cadgf_vec2 pos = {data.basePoint.x, data.basePoint.y};
-    cadgf_document_add_text(m_doc, &pos, data.height, data.angle, txt.c_str(),
+    cadgf_vec2 pos = {px, py};
+    cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(),
                             "", resolveLayer(data.layer));
     ++m_entityCount;
 }
@@ -534,17 +541,19 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
     if (!m_inBlock && shouldSkipEntity(data)) return;
     std::string txt = stripDxfFormatting(data.text);
     if (txt.empty()) return;
+    // DRW_MText::angle is in degrees; cadgf_document_add_text expects radians
+    double rotRad = data.angle * M_PI / 180.0;
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Text;
         be.pts.push_back({data.basePoint.x, data.basePoint.y});
-        be.height = data.height; be.rotation = data.angle;
+        be.height = data.height; be.rotation = rotRad;
         be.text = txt;
         be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
     cadgf_vec2 pos = {data.basePoint.x, data.basePoint.y};
-    cadgf_document_add_text(m_doc, &pos, data.height, data.angle, txt.c_str(),
+    cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(),
                             "", resolveLayer(data.layer));
     ++m_entityCount;
 }
@@ -902,8 +911,10 @@ void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
     if (std::abs(tx) < 1e-10 && std::abs(ty) < 1e-10) {
         tx = (def1x + def2x) / 2; ty = (def1y + def2y) / 2;
     }
+    // DXF code 53 (dim text rotation) is in degrees; convert to radians
+    double textRot = dim->getDir() * M_PI / 180.0;
     cadgf_vec2 pos = {tx, ty};
-    cadgf_document_add_text(doc, &pos, 3.5, 0, txt.c_str(), "", lid);
+    cadgf_document_add_text(doc, &pos, 3.5, textRot, txt.c_str(), "", lid);
 }
 
 // Draw proper aligned dimension: extension lines + offset dimension line
