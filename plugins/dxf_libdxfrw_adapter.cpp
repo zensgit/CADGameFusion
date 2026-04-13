@@ -1123,26 +1123,147 @@ void CadgfDrwAdapter::addDimAngular(const DRW_DimAngular* data) {
     if (!data) return;
     if (!m_inBlock && shouldSkipEntity(*data)) return;
     int lid = resolveLayer(data->layer);
-    // Just draw the two lines of the angle
-    std::vector<std::pair<double,double>> pts1 = {
-        {data->getFirstLine1().x, data->getFirstLine1().y},
-        {data->getFirstLine2().x, data->getFirstLine2().y}
-    };
-    std::vector<std::pair<double,double>> pts2 = {
-        {data->getSecondLine1().x, data->getSecondLine1().y},
-        {data->getSecondLine2().x, data->getSecondLine2().y}
-    };
-    if (m_inBlock) {
-        BlockEntity be1; be1.type = BlockEntity::Line; be1.pts = pts1;
-        be1.layerName = data->layer;
-        m_blocks[m_currentBlockName].push_back(be1);
-        BlockEntity be2; be2.type = BlockEntity::Line; be2.pts = pts2;
-        be2.layerName = data->layer;
-        m_blocks[m_currentBlockName].push_back(be2);
-    } else {
-        addPolylineToDoc(pts1, lid);
-        addPolylineToDoc(pts2, lid);
+    uint32_t col = drw_entity_color(*data);
+
+    // Points: line1 = (FL1→FL2), line2 = (SL1→SL2=defPoint), arc through dimPoint
+    double l1x1 = data->getFirstLine1().x,  l1y1 = data->getFirstLine1().y;
+    double l1x2 = data->getFirstLine2().x,  l1y2 = data->getFirstLine2().y;
+    double l2x1 = data->getSecondLine1().x, l2y1 = data->getSecondLine1().y;
+    double l2x2 = data->getSecondLine2().x, l2y2 = data->getSecondLine2().y;
+    double dpx  = data->getDimPoint().x,    dpy  = data->getDimPoint().y;
+
+    // Find vertex = intersection of the two lines (extended as rays)
+    // Line1 passes through (l1x2, l1y2) in direction (l1x2-l1x1, l1y2-l1y1)
+    // Line2 passes through (l2x2, l2y2) in direction (l2x2-l2x1, l2y2-l2y1)
+    double d1x = l1x2 - l1x1, d1y = l1y2 - l1y1;
+    double d2x = l2x2 - l2x1, d2y = l2y2 - l2y1;
+    double vx = l1x2, vy = l1y2; // fallback: use FL2 as vertex
+    double det = d1x * (-d2y) - d1y * (-d2x);
+    if (std::abs(det) > 1e-10) {
+        double dx12 = l2x2 - l1x2, dy12 = l2y2 - l1y2;
+        double t = (dx12 * (-d2y) - dy12 * (-d2x)) / det;
+        vx = l1x2 + t * d1x;
+        vy = l1y2 + t * d1y;
     }
+
+    // Arc: center at vertex, radius = distance from vertex to dimPoint
+    double r = std::sqrt((dpx-vx)*(dpx-vx) + (dpy-vy)*(dpy-vy));
+    if (r < 1e-10) r = std::sqrt((l1x2-vx)*(l1x2-vx) + (l1y2-vy)*(l1y2-vy));
+
+    double startA = std::atan2(l1y2 - vy, l1x2 - vx); // angle to FL2 (first arc end)
+    double endA   = std::atan2(l2y1 - vy, l2x1 - vx); // angle to SL1 (second arc end)
+
+    // Ensure arc goes the short way (< π)
+    while (endA < startA) endA += 2.0 * M_PI;
+    if (endA - startA > M_PI) { std::swap(startA, endA); endA += 2.0 * M_PI; }
+
+    // Draw extension lines (from vertex to arc points)
+    auto addSeg = [&](double ax, double ay, double bx, double by) {
+        if (m_inBlock) {
+            BlockEntity be; be.type = BlockEntity::Line;
+            be.pts = {{ax,ay},{bx,by}};
+            be.layerName = data->layer; be.color = col;
+            m_blocks[m_currentBlockName].push_back(be);
+        } else {
+            addPolylineToDoc({{ax,ay},{bx,by}}, lid, col);
+        }
+    };
+    addSeg(l1x2, l1y2, vx + (l1x2-vx)/std::hypot(l1x2-vx,l1y2-vy)*r,
+                        vy + (l1y2-vy)/std::hypot(l1x2-vx,l1y2-vy)*r);
+    addSeg(l2x1, l2y1, vx + (l2x1-vx)/std::hypot(l2x1-vx,l2y1-vy)*r,
+                        vy + (l2y1-vy)/std::hypot(l2x1-vx,l2y1-vy)*r);
+
+    // Draw the arc
+    int segs = std::max(4, static_cast<int>((endA - startA) / (M_PI / 32)));
+    std::vector<std::pair<double,double>> arcPts;
+    for (int s = 0; s <= segs; ++s) {
+        double a = startA + (endA - startA) * s / segs;
+        arcPts.push_back({vx + r*std::cos(a), vy + r*std::sin(a)});
+    }
+    if (m_inBlock) {
+        BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = arcPts;
+        be.layerName = data->layer; be.color = col;
+        m_blocks[m_currentBlockName].push_back(be);
+    } else {
+        addPolylineToDoc(arcPts, lid, col);
+        // Arrowheads at arc ends
+        if (arcPts.size() >= 2) {
+            addArrowhead(m_doc, arcPts.front().first, arcPts.front().second,
+                         arcPts[1].first, arcPts[1].second, lid, col, m_dimArrowSize);
+            addArrowhead(m_doc, arcPts.back().first, arcPts.back().second,
+                         arcPts[arcPts.size()-2].first, arcPts[arcPts.size()-2].second,
+                         lid, col, m_dimArrowSize);
+        }
+        // Dimension text at dimPoint
+        // Angular dimension value in degrees
+        double angDeg = (endA - startA) * 180.0 / M_PI;
+        char angBuf[32]; snprintf(angBuf, sizeof(angBuf), "%.*f°", m_dimDecPrecision, angDeg);
+        std::string overrideText = stripDxfFormatting(data->getText());
+        if (!overrideText.empty() && overrideText != "<>") angBuf[0] = 0; // use DXF text
+        double tx = (std::abs(dpx) > 1e-10 || std::abs(dpy) > 1e-10) ? dpx :
+                    vx + (endA+startA)/2.0 * 0.0; // fallback to mid-arc
+        // Use the actual dim point for text position
+        std::string finalText = (angBuf[0] != 0) ? angBuf : overrideText;
+        if (!finalText.empty()) {
+            cadgf_vec2 tp = {dpx, dpy};
+            cadgf_document_add_text(m_doc, &tp, m_dimTextHeight, 0.0,
+                                    finalText.c_str(), "", lid);
+        }
+    }
+}
+
+void CadgfDrwAdapter::addDimAngular3P(const DRW_DimAngular3p* data) {
+    if (!data) return;
+    if (!m_inBlock && shouldSkipEntity(*data)) return;
+    int lid = resolveLayer(data->layer);
+    uint32_t col = drw_entity_color(*data);
+    // Center = getDefPoint, points = getFirstLine, getSecondLine
+    double cx = data->getDefPoint().x,  cy = data->getDefPoint().y;
+    double p1x = data->getFirstLine().x, p1y = data->getFirstLine().y;
+    double p2x = data->getSecondLine().x, p2y = data->getSecondLine().y;
+    double r = std::sqrt((p1x-cx)*(p1x-cx) + (p1y-cy)*(p1y-cy));
+    double sa = std::atan2(p1y-cy, p1x-cx);
+    double ea = std::atan2(p2y-cy, p2x-cx);
+    while (ea < sa) ea += 2.0*M_PI;
+    if (ea - sa > M_PI) { std::swap(sa,ea); ea += 2.0*M_PI; }
+    int segs = std::max(4, (int)((ea-sa)/(M_PI/32)));
+    std::vector<std::pair<double,double>> arcPts;
+    for (int s = 0; s <= segs; ++s) {
+        double a = sa + (ea-sa)*s/segs;
+        arcPts.push_back({cx+r*std::cos(a), cy+r*std::sin(a)});
+    }
+    if (m_inBlock) {
+        BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = arcPts;
+        be.layerName = data->layer; be.color = col;
+        m_blocks[m_currentBlockName].push_back(be);
+    } else {
+        addPolylineToDoc(arcPts, lid, col);
+    }
+}
+
+void CadgfDrwAdapter::addDimOrdinate(const DRW_DimOrdinate* data) {
+    if (!data) return;
+    if (!m_inBlock && shouldSkipEntity(*data)) return;
+    int lid = resolveLayer(data->layer);
+    uint32_t col = drw_entity_color(*data);
+    // Feature point → leader end point line
+    double fx = data->getFirstLine().x,  fy = data->getFirstLine().y;
+    double lx = data->getSecondLine().x, ly = data->getSecondLine().y;
+    // Origin for computing the ordinate value
+    double ox = data->getOriginPoint().x, oy = data->getOriginPoint().y;
+    if (m_inBlock) {
+        BlockEntity be; be.type = BlockEntity::Line;
+        be.pts = {{fx,fy},{lx,ly}}; be.layerName = data->layer; be.color = col;
+        m_blocks[m_currentBlockName].push_back(be);
+        return;
+    }
+    addPolylineToDoc({{fx,fy},{lx,ly}}, lid, col);
+    // Determine X vs Y type from leader direction: horizontal → Y-ordinate, vertical → X-ordinate
+    bool isYType = std::abs(lx - fx) > std::abs(ly - fy);
+    double measured = (isYType ? (fy - oy) : (fx - ox)) * m_dimLFac;
+    char buf[32]; snprintf(buf, sizeof(buf), "%.*f", m_dimDecPrecision, measured);
+    cadgf_vec2 tp = {lx, ly};
+    cadgf_document_add_text(m_doc, &tp, m_dimTextHeight, 0.0, buf, "", lid);
 }
 
 // ─── Expand unreferenced XRef blocks ───

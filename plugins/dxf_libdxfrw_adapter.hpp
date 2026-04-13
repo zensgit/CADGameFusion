@@ -80,8 +80,8 @@ public:
     void addDimRadial(const DRW_DimRadial* data) override;
     void addDimDiametric(const DRW_DimDiametric* data) override;
     void addDimAngular(const DRW_DimAngular* data) override;
-    void addDimAngular3P(const DRW_DimAngular3p* data) override {}
-    void addDimOrdinate(const DRW_DimOrdinate* data) override {}
+    void addDimAngular3P(const DRW_DimAngular3p* data) override;
+    void addDimOrdinate(const DRW_DimOrdinate* data) override;
     void addLeader(const DRW_Leader* data) override;
     void addHatch(const DRW_Hatch* data) override;
     void addViewport(const DRW_Viewport& data) override {}
