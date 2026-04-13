@@ -21,6 +21,7 @@ class TransformPanel;
 class LiveExportManager;
 class MeasureTool;
 class GuideManager;
+class AlignPanel;
 
 namespace cadgf { class PluginRegistry; }
 struct core_document;
@@ -95,6 +96,7 @@ private:
     LiveExportManager* m_liveExport{nullptr};
     MeasureTool* m_measureTool{nullptr};
     GuideManager* m_guideManager{nullptr};
+    AlignPanel* m_alignPanel{nullptr};
 
     // Status bar widgets
     QLabel* m_coordLabel{nullptr};

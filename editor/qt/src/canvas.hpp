@@ -15,6 +15,7 @@
 
 class Tool;
 class GuideManager;
+enum class PivotMode;
 
 class QPainterPath;
 class QRectF;
@@ -54,6 +55,8 @@ public:
     void setActiveTool(Tool* tool);
     Tool* activeTool() const { return m_activeTool; }
     void setGuideManager(GuideManager* gm) { m_guideManager = gm; }
+    void setPivotMode(int mode, const QPointF& custom = {});
+    QPointF computePivot() const; // computes based on pivot mode + selection
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
     QPointF snapWorldPosition(const QPointF& worldPos, bool* snapped = nullptr);
 
@@ -163,6 +166,8 @@ private:
     SnapSettings* snap_settings_{nullptr};
     Tool* m_activeTool{nullptr};
     GuideManager* m_guideManager{nullptr};
+    int m_pivotMode{0}; // PivotMode cast to int
+    QPointF m_customPivot;
 };
 
 #ifdef CADGF_QT_TEST_ACCESS

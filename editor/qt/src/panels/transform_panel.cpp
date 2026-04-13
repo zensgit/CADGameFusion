@@ -1,5 +1,6 @@
 #include "panels/transform_panel.hpp"
 
+#include <QComboBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
 #include <QGroupBox>
@@ -62,6 +63,39 @@ TransformPanel::TransformPanel(QWidget* parent) : QDockWidget("Transform", paren
     scaleForm->addRow(m_scaleBtn);
     layout->addWidget(scaleBox);
 
+    // Pivot section
+    auto* pivotBox = new QGroupBox("Pivot");
+    auto* pivotForm = new QFormLayout(pivotBox);
+    m_pivotCombo = new QComboBox;
+    m_pivotCombo->addItems({"Centroid", "Origin (0,0)", "BBox Center", "Custom"});
+    pivotForm->addRow("Mode:", m_pivotCombo);
+    m_pivotX = new QDoubleSpinBox;
+    m_pivotX->setRange(-1e6, 1e6);
+    m_pivotX->setDecimals(2);
+    m_pivotX->setEnabled(false);
+    pivotForm->addRow("X:", m_pivotX);
+    m_pivotY = new QDoubleSpinBox;
+    m_pivotY->setRange(-1e6, 1e6);
+    m_pivotY->setDecimals(2);
+    m_pivotY->setEnabled(false);
+    pivotForm->addRow("Y:", m_pivotY);
+    layout->addWidget(pivotBox);
+
+    connect(m_pivotCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx){
+        bool custom = (idx == static_cast<int>(PivotMode::Custom));
+        m_pivotX->setEnabled(custom);
+        m_pivotY->setEnabled(custom);
+        emit pivotChanged(idx, QPointF(m_pivotX->value(), m_pivotY->value()));
+    });
+    connect(m_pivotX, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]{
+        if (m_pivotCombo->currentIndex() == static_cast<int>(PivotMode::Custom))
+            emit pivotChanged(static_cast<int>(PivotMode::Custom), QPointF(m_pivotX->value(), m_pivotY->value()));
+    });
+    connect(m_pivotY, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]{
+        if (m_pivotCombo->currentIndex() == static_cast<int>(PivotMode::Custom))
+            emit pivotChanged(static_cast<int>(PivotMode::Custom), QPointF(m_pivotX->value(), m_pivotY->value()));
+    });
+
     layout->addStretch();
     setWidget(content);
 
@@ -83,6 +117,14 @@ void TransformPanel::setCentroid(const QPointF& centroid) {
     m_centroidLabel->setText(QString("Center: (%1, %2)")
         .arg(centroid.x(), 0, 'f', 2)
         .arg(centroid.y(), 0, 'f', 2));
+}
+
+PivotMode TransformPanel::pivotMode() const {
+    return static_cast<PivotMode>(m_pivotCombo ? m_pivotCombo->currentIndex() : 0);
+}
+
+QPointF TransformPanel::customPivot() const {
+    return QPointF(m_pivotX ? m_pivotX->value() : 0, m_pivotY ? m_pivotY->value() : 0);
 }
 
 void TransformPanel::setHasSelection(bool has) {

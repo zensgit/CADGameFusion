@@ -348,4 +348,41 @@ if(BUILD_EDITOR_QT)
     AUTOMOC ON
   )
   add_test(NAME qt_guides_run COMMAND test_qt_guides)
+
+  add_executable(test_qt_align_panel
+    test_qt_align_panel.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/command/command_manager.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/command/command_manager.cpp
+  )
+  target_include_directories(test_qt_align_panel PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_align_panel PRIVATE Qt6::Widgets core)
+  set_target_properties(test_qt_align_panel PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_align_panel_run COMMAND test_qt_align_panel)
+
+  add_executable(test_qt_pivot
+    test_qt_pivot.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
+  )
+  target_include_directories(test_qt_pivot PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_pivot PRIVATE Qt6::Widgets core)
+  target_compile_definitions(test_qt_pivot PRIVATE CADGF_QT_TEST_ACCESS)
+  set_target_properties(test_qt_pivot PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_pivot_run COMMAND test_qt_pivot)
 endif()

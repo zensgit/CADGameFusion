@@ -67,6 +67,9 @@ add_executable(editor_qt
     # Guide manager
     include/guide_manager.hpp
     src/guide_manager.cpp
+    # Align panel
+    include/panels/align_panel.hpp
+    src/panels/align_panel.cpp
 )
 
 target_include_directories(editor_qt PRIVATE

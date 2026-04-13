@@ -35,6 +35,7 @@
 #include "live_export_manager.hpp"
 #include "tools/measure_tool.hpp"
 #include "guide_manager.hpp"
+#include "panels/align_panel.hpp"
 #include "core/version.hpp"
 #include "core/core_c_api.h"
 #include "canvas.hpp"
@@ -148,6 +149,15 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     // Transform panel dock
     m_transformPanel = new TransformPanel(this);
     addDockWidget(Qt::RightDockWidgetArea, m_transformPanel);
+
+    // Align panel
+    m_alignPanel = new AlignPanel(this);
+    addDockWidget(Qt::RightDockWidgetArea, m_alignPanel);
+
+    // Pivot mode connection
+    connect(m_transformPanel, &TransformPanel::pivotChanged, this, [canvas](int mode, QPointF custom){
+        canvas->setPivotMode(mode, custom);
+    });
 
     connect(canvas, &CanvasWidget::selectionChanged, this, [this](const QList<qulonglong>& entityIds){
         if (m_selectionModel) m_selectionModel->setSelection(entityIds);
@@ -310,6 +320,131 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         if (total > 0) { cx /= total; cy /= total; }
         m_transformPanel->setHasSelection(true);
         m_transformPanel->setCentroid(QPointF(cx, cy));
+        if (m_alignPanel) m_alignPanel->setHasMultipleSelection(ids.size() >= 2);
+    });
+    // AlignPanel: align/distribute commands
+    connect(m_alignPanel, &AlignPanel::alignRequested, this, [this](int alignType){
+        const auto sel = m_selectionModel ? m_selectionModel->selection() : QList<qulonglong>{};
+        if (sel.size() < 2) return;
+        struct AlignCmd : Command {
+            core::Document* doc;
+            QVector<core::EntityId> ids;
+            QVector<QVector<QPointF>> before;
+            int alignType;
+            AlignCmd(core::Document* d, const QList<qulonglong>& s, int at) : doc(d), alignType(at) {
+                for (auto id : s) {
+                    auto* e = doc->get_entity(static_cast<core::EntityId>(id));
+                    if (!e) continue;
+                    auto* pl = std::get_if<core::Polyline>(&e->payload);
+                    if (!pl) continue;
+                    ids.push_back(static_cast<core::EntityId>(id));
+                    QVector<QPointF> pts;
+                    for (const auto& p : pl->points) pts.append(QPointF(p.x, p.y));
+                    before.append(pts);
+                }
+            }
+            void apply(core::EntityId id, const QVector<QPointF>& pts) {
+                core::Polyline pl; pl.points.reserve(pts.size());
+                for (const auto& p : pts) pl.points.push_back({p.x(), p.y()});
+                doc->set_polyline_points(id, pl);
+            }
+            void execute() override {
+                // Compute target from all entities' AABBs
+                double gMinX=1e18, gMinY=1e18, gMaxX=-1e18, gMaxY=-1e18;
+                for (const auto& pts : before)
+                    for (const auto& p : pts) {
+                        if (p.x()<gMinX) gMinX=p.x(); if (p.y()<gMinY) gMinY=p.y();
+                        if (p.x()>gMaxX) gMaxX=p.x(); if (p.y()>gMaxY) gMaxY=p.y();
+                    }
+                for (int i = 0; i < ids.size(); ++i) {
+                    double eMinX=1e18, eMinY=1e18, eMaxX=-1e18, eMaxY=-1e18;
+                    for (const auto& p : before[i]) {
+                        if (p.x()<eMinX) eMinX=p.x(); if (p.y()<eMinY) eMinY=p.y();
+                        if (p.x()>eMaxX) eMaxX=p.x(); if (p.y()>eMaxY) eMaxY=p.y();
+                    }
+                    double dx=0, dy=0;
+                    switch(alignType) {
+                        case 0: dx = gMinX - eMinX; break; // Left
+                        case 1: dx = (gMinX+gMaxX)/2 - (eMinX+eMaxX)/2; break; // CenterH
+                        case 2: dx = gMaxX - eMaxX; break; // Right
+                        case 3: dy = gMinY - eMinY; break; // Top
+                        case 4: dy = (gMinY+gMaxY)/2 - (eMinY+eMaxY)/2; break; // CenterV
+                        case 5: dy = gMaxY - eMaxY; break; // Bottom
+                    }
+                    QVector<QPointF> moved;
+                    for (const auto& p : before[i]) moved.append(p + QPointF(dx, dy));
+                    apply(ids[i], moved);
+                }
+            }
+            void undo() override { for (int i = 0; i < ids.size(); ++i) apply(ids[i], before[i]); }
+            QString name() const override { return "Align Entities"; }
+        };
+        auto cmd = std::make_unique<AlignCmd>(&m_document, sel, alignType);
+        if (cmd->ids.size() < 2) return;
+        m_cmdMgr->push(std::move(cmd));
+        markDirty();
+    });
+    connect(m_alignPanel, &AlignPanel::distributeRequested, this, [this](int axis){
+        const auto sel = m_selectionModel ? m_selectionModel->selection() : QList<qulonglong>{};
+        if (sel.size() < 3) return;
+        struct DistCmd : Command {
+            core::Document* doc;
+            QVector<core::EntityId> ids;
+            QVector<QVector<QPointF>> before;
+            int axis; // 0=H, 1=V
+            DistCmd(core::Document* d, const QList<qulonglong>& s, int a) : doc(d), axis(a) {
+                for (auto id : s) {
+                    auto* e = doc->get_entity(static_cast<core::EntityId>(id));
+                    if (!e) continue;
+                    auto* pl = std::get_if<core::Polyline>(&e->payload);
+                    if (!pl) continue;
+                    ids.push_back(static_cast<core::EntityId>(id));
+                    QVector<QPointF> pts;
+                    for (const auto& p : pl->points) pts.append(QPointF(p.x, p.y));
+                    before.append(pts);
+                }
+            }
+            void apply(core::EntityId id, const QVector<QPointF>& pts) {
+                core::Polyline pl; pl.points.reserve(pts.size());
+                for (const auto& p : pts) pl.points.push_back({p.x(), p.y()});
+                doc->set_polyline_points(id, pl);
+            }
+            void execute() override {
+                if (ids.size() < 3) return;
+                // Compute center of each entity's AABB along the axis
+                QVector<QPair<double, int>> centers; // (center, index)
+                for (int i = 0; i < before.size(); ++i) {
+                    double lo=1e18, hi=-1e18;
+                    for (const auto& p : before[i]) {
+                        double v = (axis==0) ? p.x() : p.y();
+                        if (v<lo) lo=v; if (v>hi) hi=v;
+                    }
+                    centers.append({(lo+hi)/2, i});
+                }
+                std::sort(centers.begin(), centers.end(),
+                          [](const QPair<double,int>& a, const QPair<double,int>& b){ return a.first < b.first; });
+                double first = centers.first().first;
+                double last = centers.last().first;
+                double step = (last - first) / (centers.size() - 1);
+                for (int ci = 1; ci < centers.size()-1; ++ci) {
+                    int idx = centers[ci].second;
+                    double target = first + step * ci;
+                    double delta = target - centers[ci].first;
+                    QVector<QPointF> moved;
+                    for (const auto& p : before[idx]) {
+                        if (axis==0) moved.append(p + QPointF(delta, 0));
+                        else moved.append(p + QPointF(0, delta));
+                    }
+                    apply(ids[idx], moved);
+                }
+            }
+            void undo() override { for (int i = 0; i < ids.size(); ++i) apply(ids[i], before[i]); }
+            QString name() const override { return "Distribute Entities"; }
+        };
+        auto cmd = std::make_unique<DistCmd>(&m_document, sel, axis);
+        if (cmd->ids.size() < 3) return;
+        m_cmdMgr->push(std::move(cmd));
+        markDirty();
     });
     // Helper lambda: gather selected polyline data
     auto gatherSelected = [this](QList<qulonglong>& ids, QVector<QVector<QPointF>>& beforePts,

@@ -105,6 +105,35 @@ void CanvasWidget::setActiveTool(Tool* tool) {
     update();
 }
 
+void CanvasWidget::setPivotMode(int mode, const QPointF& custom) {
+    m_pivotMode = mode;
+    m_customPivot = custom;
+    update();
+}
+
+QPointF CanvasWidget::computePivot() const {
+    if (m_pivotMode == 1) return QPointF(0, 0); // Origin
+    if (m_pivotMode == 3) return m_customPivot;  // Custom
+
+    // Centroid (0) or BBoxCenter (2) — compute from selected entities
+    double minX = 1e18, minY = 1e18, maxX = -1e18, maxY = -1e18;
+    double cx = 0, cy = 0;
+    int totalPts = 0;
+    for (const auto& pv : polylines_) {
+        if (!selected_entities_.contains(pv.entityId)) continue;
+        for (const auto& pt : pv.pts) {
+            cx += pt.x(); cy += pt.y(); ++totalPts;
+            if (pt.x() < minX) minX = pt.x();
+            if (pt.y() < minY) minY = pt.y();
+            if (pt.x() > maxX) maxX = pt.x();
+            if (pt.y() > maxY) maxY = pt.y();
+        }
+    }
+    if (totalPts == 0) return QPointF(0, 0);
+    if (m_pivotMode == 2) return QPointF((minX+maxX)/2, (minY+maxY)/2); // BBoxCenter
+    return QPointF(cx / totalPts, cy / totalPts); // Centroid
+}
+
 const core::Entity* CanvasWidget::entityFor(EntityId id) const {
     if (!m_doc || id == 0) return nullptr;
     return m_doc->get_entity(id);
@@ -674,7 +703,19 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             }
         }
     }
-    // 8. Active tool overlay
+    // 8. Pivot marker (when entities selected)
+    if (!selected_entities_.isEmpty()) {
+        QPointF pivot = computePivot();
+        QPointF ps = worldToScreen(pivot);
+        QPen pivotPen(QColor(255, 100, 255), 1);
+        pivotPen.setCosmetic(true);
+        pr.setPen(pivotPen);
+        pr.setBrush(Qt::NoBrush);
+        pr.drawEllipse(ps, 6, 6);
+        pr.drawLine(ps - QPointF(8, 0), ps + QPointF(8, 0));
+        pr.drawLine(ps - QPointF(0, 8), ps + QPointF(0, 8));
+    }
+    // 9. Active tool overlay
     if (m_activeTool) {
         m_activeTool->paint(pr, scale_, pan_);
     }
