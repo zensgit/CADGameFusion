@@ -290,7 +290,7 @@ static std::string stripDxfFormatting(const std::string& s) {
             // H=height, A=alignment, C=color, W=width, T=tracking,
             // Q=oblique, F/f=font, p=paragraph indent settings (lowercase p!)
             if (nu == 'H' || nu == 'A' || nu == 'C' || nu == 'W' || nu == 'T' ||
-                nu == 'Q' || nu == 'F' || n == 'p' || nu == 'X') {
+                nu == 'Q' || nu == 'F' || n == 'p') {
                 ++i; // skip command char
                 while (i < s.size() && s[i] != ';') ++i; // skip to ';'
                 // s[i] is ';'; outer loop does ++i to advance past it
