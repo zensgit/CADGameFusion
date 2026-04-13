@@ -607,7 +607,8 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             QPointF worldPos(txt->pos.x, txt->pos.y);
             // Font size in world units → approximate screen size
             double fontSize = std::max(1.0, txt->height * scale_ * 0.7);
-            if (fontSize < 2.0) continue; // too small to render
+            if (fontSize < 1.0) continue;
+            if (fontSize < 6.0) fontSize = 6.0; // minimum readable size
             if (fontSize > 200.0) fontSize = 200.0;
             QFont font = pr.font();
             font.setPixelSize(static_cast<int>(fontSize));

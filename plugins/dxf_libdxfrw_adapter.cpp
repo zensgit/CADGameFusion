@@ -28,6 +28,34 @@ static uint32_t drw_entity_color(const DRW_Entity& ent) {
     return 0; // BYLAYER
 }
 
+// Strip DXF MTEXT formatting codes: {braces}, \H0.7x; \S+1^0; etc.
+// Also handles \\ \{ \} escape sequences.
+static std::string stripDxfFormatting(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    int depth = 0;
+    for (size_t i = 0; i < s.size(); ++i) {
+        char c = s[i];
+        if (c == '{') { ++depth; continue; }
+        if (c == '}') { if (depth > 0) --depth; continue; }
+        if (c == '\\' && i + 1 < s.size()) {
+            char n = s[i + 1];
+            // Format codes that take arguments ending with ';'
+            if (n == 'H' || n == 'S' || n == 'A' || n == 'C' || n == 'P' ||
+                n == 'W' || n == 'T' || n == 'Q' || n == 'f') {
+                while (i < s.size() && s[i] != ';') ++i;
+                continue;
+            }
+            // Escape sequences
+            if (n == '\\') { if (depth == 0) out += '\\'; ++i; continue; }
+            if (n == '{' || n == '}') { if (depth == 0) out += n; ++i; continue; }
+            if (n == 'n' || n == 'N') { if (depth == 0) out += '\n'; ++i; continue; }
+        }
+        if (depth == 0) out += c;
+    }
+    return out;
+}
+
 int CadgfDrwAdapter::resolveLayer(const std::string& name) {
     if (name.empty()) return 0;
     auto it = m_layerMap.find(name);
@@ -311,33 +339,37 @@ void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
 }
 
 void CadgfDrwAdapter::addText(const DRW_Text& data) {
+    std::string txt = stripDxfFormatting(data.text);
+    if (txt.empty()) return;
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Text;
         be.pts.push_back({data.basePoint.x, data.basePoint.y});
         be.height = data.height; be.rotation = data.angle;
-        be.text = data.text;
+        be.text = txt;
         be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
     cadgf_vec2 pos = {data.basePoint.x, data.basePoint.y};
-    cadgf_document_add_text(m_doc, &pos, data.height, data.angle, data.text.c_str(),
+    cadgf_document_add_text(m_doc, &pos, data.height, data.angle, txt.c_str(),
                             "", resolveLayer(data.layer));
     ++m_entityCount;
 }
 
 void CadgfDrwAdapter::addMText(const DRW_MText& data) {
+    std::string txt = stripDxfFormatting(data.text);
+    if (txt.empty()) return;
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Text;
         be.pts.push_back({data.basePoint.x, data.basePoint.y});
         be.height = data.height; be.rotation = data.angle;
-        be.text = data.text;
+        be.text = txt;
         be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
     cadgf_vec2 pos = {data.basePoint.x, data.basePoint.y};
-    cadgf_document_add_text(m_doc, &pos, data.height, data.angle, data.text.c_str(),
+    cadgf_document_add_text(m_doc, &pos, data.height, data.angle, txt.c_str(),
                             "", resolveLayer(data.layer));
     ++m_entityCount;
 }
@@ -514,13 +546,25 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
 void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
                 double def1x, double def1y, double def2x, double def2y) {
     if (!dim) return;
-    std::string txt = dim->getText();
+    std::string txt = stripDxfFormatting(dim->getText());
+
+    // Compute the measurement value for <> substitution or empty text
+    double dx = def2x - def1x, dy = def2y - def1y;
+    double dist = std::sqrt(dx*dx + dy*dy);
+    char buf[32]; snprintf(buf, sizeof(buf), "%.1f", dist);
+
     if (txt.empty() || txt == "<>") {
-        double dx = def2x - def1x, dy = def2y - def1y;
-        double dist = std::sqrt(dx*dx + dy*dy);
-        char buf[32]; snprintf(buf, sizeof(buf), "%.1f", dist);
         txt = buf;
+    } else {
+        // Replace <> placeholder with computed value
+        size_t pos = txt.find("<>");
+        while (pos != std::string::npos) {
+            txt.replace(pos, 2, buf);
+            pos = txt.find("<>", pos + strlen(buf));
+        }
     }
+    if (txt.empty()) return;
+
     // Text position: use textPoint if set, otherwise midpoint of def points
     double tx = dim->getTextPoint().x, ty = dim->getTextPoint().y;
     if (std::abs(tx) < 1e-10 && std::abs(ty) < 1e-10) {
