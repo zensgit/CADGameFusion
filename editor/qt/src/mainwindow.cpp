@@ -31,6 +31,7 @@
 
 #include "core/ops2d.hpp"
 #include "panels/transform_panel.hpp"
+#include "live_export_manager.hpp"
 #include "core/version.hpp"
 #include "core/core_c_api.h"
 #include "canvas.hpp"
@@ -79,11 +80,23 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         }
         markDirty();
     });
+    connect(m_layerPanel, &LayerPanel::layerLockChanged, this, [this](int layerId, bool locked){
+        if (!m_document.set_layer_locked(layerId, locked)) {
+            statusBar()->showMessage("Layer not found", 1500);
+            return;
+        }
+        markDirty();
+        statusBar()->showMessage(QString("Layer %1 %2").arg(layerId).arg(locked ? "locked" : "unlocked"), 1200);
+    });
     connect(m_layerPanel, &LayerPanel::layerAdded, this, [this](const QString& name){
         int id = m_document.add_layer(name.toStdString());
         markDirty();
         statusBar()->showMessage(QString("Added layer id=%1").arg(id), 1500);
     });
+
+    // Live export manager
+    m_liveExport = new LiveExportManager(this);
+    m_liveExport->setDocument(&m_document);
 
     m_selectionModel = new SelectionModel(this);
     m_snapSettings = new SnapSettings(this);
@@ -536,6 +549,37 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     fileMenu->addSeparator();
     auto* actExportOpt = fileMenu->addAction("Export with Options...");
     connect(actExportOpt, &QAction::triggered, this, &MainWindow::exportWithOptions);
+
+    fileMenu->addSeparator();
+    // Live Preview
+    auto* actLiveToggle = fileMenu->addAction("Live Preview");
+    actLiveToggle->setCheckable(true);
+    actLiveToggle->setChecked(false);
+    connect(actLiveToggle, &QAction::toggled, this, [this](bool on){
+        m_liveExport->setEnabled(on);
+        statusBar()->showMessage(QString("Live Preview %1").arg(on ? "ON" : "OFF"), 1500);
+    });
+    auto* actLiveDir = fileMenu->addAction("Set Live Preview Directory...");
+    connect(actLiveDir, &QAction::triggered, this, [this, actLiveToggle]{
+        QString dir = QFileDialog::getExistingDirectory(this, "Live Preview Export Directory");
+        if (dir.isEmpty()) return;
+        m_liveExport->setExportDir(dir);
+        QSettings settings("CADGameFusion", "LivePreview");
+        settings.setValue("dir", dir);
+        statusBar()->showMessage("Live dir: " + dir, 2000);
+    });
+    connect(m_liveExport, &LiveExportManager::exported, this, [this](const QString& dir){
+        statusBar()->showMessage("Live export: " + dir, 1200);
+    });
+    connect(m_liveExport, &LiveExportManager::exportFailed, this, [this](const QString& err){
+        statusBar()->showMessage("Live export failed: " + err, 3000);
+    });
+    // Restore last live preview directory
+    {
+        QSettings settings("CADGameFusion", "LivePreview");
+        QString lastDir = settings.value("dir").toString();
+        if (!lastDir.isEmpty()) m_liveExport->setExportDir(lastDir);
+    }
 
     fileMenu->addSeparator();
     m_pluginsMenu = fileMenu->addMenu("Plugins");

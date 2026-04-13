@@ -18,6 +18,7 @@ class SnapPanel;
 class QLabel;
 class QListWidget;
 class TransformPanel;
+class LiveExportManager;
 
 namespace cadgf { class PluginRegistry; }
 struct core_document;
@@ -89,6 +90,7 @@ private:
     std::unique_ptr<cadgf::PluginRegistry> m_pluginRegistry;
 
     TransformPanel* m_transformPanel{nullptr};
+    LiveExportManager* m_liveExport{nullptr};
 
     // Status bar widgets
     QLabel* m_coordLabel{nullptr};

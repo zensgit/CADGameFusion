@@ -16,6 +16,7 @@ public:
 
 signals:
     void layerVisibilityChanged(int layerId, bool visible);
+    void layerLockChanged(int layerId, bool locked);
     void layerColorChanged(int layerId, uint32_t color);
     void activeLayerChanged(int layerId);
     void layerAdded(const QString& name);

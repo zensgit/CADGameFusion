@@ -115,6 +115,11 @@ bool CanvasWidget::isEntityVisible(const core::Entity& entity) const {
     return true;
 }
 
+bool CanvasWidget::isEntityLocked(const core::Entity& entity) const {
+    const auto* layer = layerFor(entity.layerId);
+    return layer && layer->locked;
+}
+
 QColor CanvasWidget::resolveEntityColor(const core::Entity& entity) const {
     uint32_t color = entity.color;
     const auto* layer = layerFor(entity.layerId);
@@ -731,6 +736,14 @@ void CanvasWidget::mousePressEvent(QMouseEvent* e) {
                 }
             }
             if (hitId != 0 && selected_entities_.contains(hitId)) {
+                // Block move on locked layers
+                const auto* hitEntity = entityFor(hitId);
+                if (hitEntity && isEntityLocked(*hitEntity)) {
+                    // Still allow selection but prevent move
+                    selection_active_ = false;
+                    update();
+                    return;
+                }
                 move_active_ = true;
                 move_dragging_ = false;
                 move_snap_locked_ = false;
@@ -954,6 +967,11 @@ void CanvasWidget::keyPressEvent(QKeyEvent* e) {
         emit selectionChanged({});
     } else if (e->key() == Qt::Key_R && !selected_entities_.isEmpty()) {
         if (rotate_active_) return; // already in rotate mode
+        // Block rotation if any selected entity is on a locked layer
+        for (auto eid : selected_entities_) {
+            const auto* ent = entityFor(eid);
+            if (ent && isEntityLocked(*ent)) return;
+        }
         if (e->modifiers() & Qt::ShiftModifier) {
             // Shift+R: instant 90-degree rotation (original behavior)
             QList<qulonglong> ids;
@@ -999,6 +1017,11 @@ void CanvasWidget::keyPressEvent(QKeyEvent* e) {
         }
     } else if ((e->key() == Qt::Key_Plus || e->key() == Qt::Key_Equal ||
                 e->key() == Qt::Key_Minus) && !selected_entities_.isEmpty()) {
+        // Block scale if any selected entity is on a locked layer
+        for (auto eid : selected_entities_) {
+            const auto* ent = entityFor(eid);
+            if (ent && isEntityLocked(*ent)) return;
+        }
         // Scale selected entities from centroid
         double factor = (e->key() == Qt::Key_Minus) ? (1.0 / 1.5) : 1.5;
         QList<qulonglong> ids;

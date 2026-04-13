@@ -273,4 +273,45 @@ if(BUILD_EDITOR_QT)
     AUTOMOC ON
   )
   add_test(NAME qt_selection_model_run COMMAND test_qt_selection_model)
+
+  add_executable(test_qt_live_export
+    test_qt_live_export.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/live_export_manager.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/live_export_manager.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/export/export_helpers.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/exporter.cpp
+  )
+  target_include_directories(test_qt_live_export PRIVATE
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_live_export PRIVATE Qt6::Widgets core)
+  set_target_properties(test_qt_live_export PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_live_export_run COMMAND test_qt_live_export)
+
+  add_executable(test_qt_layer_lock
+    test_qt_layer_lock.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
+  )
+  target_include_directories(test_qt_layer_lock PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/editor/qt/include
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_layer_lock PRIVATE Qt6::Widgets core)
+  target_compile_definitions(test_qt_layer_lock PRIVATE CADGF_QT_TEST_ACCESS)
+  set_target_properties(test_qt_layer_lock PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC ON
+  )
+  add_test(NAME qt_layer_lock_run COMMAND test_qt_layer_lock)
 endif()

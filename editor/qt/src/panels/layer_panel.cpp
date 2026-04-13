@@ -18,10 +18,11 @@ LayerPanel::LayerPanel(QWidget* parent) : QDockWidget(parent) {
     lay->addWidget(btnAdd);
 
     m_tree = new QTreeWidget(w);
-    m_tree->setColumnCount(2);
-    m_tree->setHeaderLabels({"Name", "Vis"});
+    m_tree->setColumnCount(3);
+    m_tree->setHeaderLabels({"Name", "Vis", "Lock"});
     m_tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     m_tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    m_tree->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
     lay->addWidget(m_tree);
 
     w->setLayout(lay);
@@ -89,6 +90,19 @@ void LayerPanel::refresh() {
         });
 #endif
         m_tree->setItemWidget(item, 1, chk);
+
+        auto* lockChk = new QCheckBox();
+        lockChk->setChecked(layer.locked);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+        connect(lockChk, &QCheckBox::checkStateChanged, this, [this, lid](Qt::CheckState state){
+            emit layerLockChanged(lid, state == Qt::Checked);
+        });
+#else
+        connect(lockChk, &QCheckBox::stateChanged, this, [this, lid](int state){
+            emit layerLockChanged(lid, state == Qt::Checked);
+        });
+#endif
+        m_tree->setItemWidget(item, 2, lockChk);
     }
 }
 

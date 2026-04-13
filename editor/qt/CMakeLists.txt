@@ -57,6 +57,9 @@ add_executable(editor_qt
     # Project management
     include/project/project.hpp
     src/project/project.cpp
+    # Live export
+    include/live_export_manager.hpp
+    src/live_export_manager.cpp
 )
 
 target_include_directories(editor_qt PRIVATE

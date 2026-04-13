@@ -115,6 +115,7 @@ private:
     const core::Entity* entityFor(EntityId id) const;
     const core::Layer* layerFor(int layerId) const;
     bool isEntityVisible(const core::Entity& entity) const;
+    bool isEntityLocked(const core::Entity& entity) const;
     QColor resolveEntityColor(const core::Entity& entity) const;
     QVector<PolylineState> polylineStates() const; // debug-only: derived from Document + cache
 
