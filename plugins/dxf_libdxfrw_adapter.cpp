@@ -940,7 +940,12 @@ void CadgfDrwAdapter::addSpline(const DRW_Spline* data) {
                      data->lineType, data->layer, drw_lweight_mm(data->lWeight));
 }
 
-// ─── LEADER: vertex list → polyline ───
+// Forward declaration: defined in the DIMENSIONS section below.
+static void addArrowhead(cadgf_document* doc,
+                          double px, double py, double fromX, double fromY,
+                          int lid, uint32_t col, double arrowLen);
+
+// ─── LEADER: vertex list → polyline + arrowhead ───
 
 void CadgfDrwAdapter::addLeader(const DRW_Leader* data) {
     if (!data) return;
@@ -949,14 +954,20 @@ void CadgfDrwAdapter::addLeader(const DRW_Leader* data) {
     for (const auto* v : data->vertexlist)
         pts.push_back({v->x, v->y});
     if (pts.size() < 2) return;
+    int lid = resolveLayer(data->layer);
+    uint32_t col = drw_entity_color(*data);
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = pts;
-        be.layerName = data->layer;
+        be.layerName = data->layer; be.color = col;
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data->layer), drw_entity_color(*data),
-                     data->lineType, data->layer, drw_lweight_mm(data->lWeight));
+    addPolylineToDoc(pts, lid, col, data->lineType, data->layer, drw_lweight_mm(data->lWeight));
+    // Add arrowhead at first vertex (tip pointing to the annotated object) when enabled
+    if (data->arrow != 0 && pts.size() >= 2) {
+        addArrowhead(m_doc, pts[0].first, pts[0].second,
+                     pts[1].first, pts[1].second, lid, col, m_dimArrowSize);
+    }
 }
 
 // ─── HATCH: extract boundary loops as polylines ───
