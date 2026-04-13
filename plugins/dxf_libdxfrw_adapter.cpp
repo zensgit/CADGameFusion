@@ -666,16 +666,45 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
 
 // ─── DIMENSIONS: render as lines + text ───
 
-// Helper: add dimension text at textPoint
+// Append a small open arrowhead at point (px,py) pointing FROM (fromX,fromY).
+// Arrow size ≈ 3.5 drawing units (matches default DXF arrow size).
+static void addArrowhead(cadgf_document* doc,
+                          double px, double py, double fromX, double fromY,
+                          int lid, uint32_t col) {
+    double dx = px - fromX, dy = py - fromY;
+    double len = std::sqrt(dx*dx + dy*dy);
+    if (len < 1e-10) return;
+    double nx = dx / len, ny = dy / len;      // unit along dim line
+    double px2 = -ny, py2 = nx;               // perpendicular
+    double arrowLen = 3.5, arrowWidth = 1.0;  // in drawing units
+    // Two lines forming an open arrowhead
+    double ax = px - nx * arrowLen, ay = py - ny * arrowLen;
+    // wing 1
+    std::vector<std::pair<double,double>> w1 = {{px,py},{ax+px2*arrowWidth,ay+py2*arrowWidth}};
+    // wing 2
+    std::vector<std::pair<double,double>> w2 = {{px,py},{ax-px2*arrowWidth,ay-py2*arrowWidth}};
+
+    auto addArrow = [&](const std::vector<std::pair<double,double>>& pts) {
+        std::vector<cadgf_vec2> v; v.reserve(pts.size());
+        for (auto& [x,y] : pts) v.push_back({x,y});
+        cadgf_entity_id eid = cadgf_document_add_polyline_ex(doc, v.data(), (int)v.size(), "", lid);
+        if (eid && col) cadgf_document_set_entity_color(doc, eid, col);
+    };
+    addArrow(w1); addArrow(w2);
+}
+
+// Helper: add dimension text at textPoint.
+// prefix: optional prefix ("R" for radial, "Ø" for diametric)
 void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
-                double def1x, double def1y, double def2x, double def2y) {
+                double def1x, double def1y, double def2x, double def2y,
+                const char* prefix = "") {
     if (!dim) return;
     std::string txt = stripDxfFormatting(dim->getText());
 
     // Compute the measurement value for <> substitution or empty text
     double dx = def2x - def1x, dy = def2y - def1y;
     double dist = std::sqrt(dx*dx + dy*dy);
-    char buf[32]; snprintf(buf, sizeof(buf), "%.1f", dist);
+    char buf[48]; snprintf(buf, sizeof(buf), "%s%.1f", prefix, dist);
 
     if (txt.empty() || txt == "<>") {
         txt = buf;
@@ -683,8 +712,12 @@ void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
         // Replace <> placeholder with computed value
         size_t pos = txt.find("<>");
         while (pos != std::string::npos) {
-            txt.replace(pos, 2, buf);
-            pos = txt.find("<>", pos + strlen(buf));
+            // Insert prefix before computed value if not already present
+            std::string rep = std::string(prefix) + std::to_string(dist).substr(0,
+                std::to_string(dist).find('.') + 2);
+            char tmpbuf[32]; snprintf(tmpbuf, sizeof(tmpbuf), "%s%.1f", prefix, dist);
+            txt.replace(pos, 2, tmpbuf);
+            pos = txt.find("<>", pos + strlen(tmpbuf));
         }
     }
     if (txt.empty()) return;
@@ -734,6 +767,8 @@ void CadgfDrwAdapter::addDimAlign(const DRW_DimAligned* data) {
         }
     } else {
         addLines(lid, col);
+        addArrowhead(m_doc, p1x, p1y, p2x, p2y, lid, col);
+        addArrowhead(m_doc, p2x, p2y, p1x, p1y, lid, col);
         addDimText(m_doc, data, lid, d1x, d1y, d2x, d2y);
     }
 }
@@ -768,10 +803,8 @@ void CadgfDrwAdapter::addDimLinear(const DRW_DimLinear* data) {
         addPolylineToDoc({{p1x,p1y},{p2x,p2y}}, lid, col); // dimension line
         addPolylineToDoc({{d1x,d1y},{p1x,p1y}}, lid, col); // extension line 1
         addPolylineToDoc({{d2x,d2y},{p2x,p2y}}, lid, col); // extension line 2
-        // For linear dim, measurement is projected distance along n
-        double projDist = std::abs(t2 - t1);
-        char buf[32]; snprintf(buf, sizeof(buf), "%.1f", projDist);
-        // Override computed dist in addDimText by using p1/p2 (same Euclidean as projected)
+        addArrowhead(m_doc, p1x, p1y, p2x, p2y, lid, col); // arrowhead at p1
+        addArrowhead(m_doc, p2x, p2y, p1x, p1y, lid, col); // arrowhead at p2
         addDimText(m_doc, data, lid, p1x, p1y, p2x, p2y);
     }
 }
@@ -780,17 +813,17 @@ void CadgfDrwAdapter::addDimRadial(const DRW_DimRadial* data) {
     if (!data) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
-    std::vector<std::pair<double,double>> pts = {
-        {data->getCenterPoint().x, data->getCenterPoint().y},
-        {data->getDiameterPoint().x, data->getDiameterPoint().y}
-    };
+    double cx = data->getCenterPoint().x, cy = data->getCenterPoint().y;
+    double dp = data->getDiameterPoint().x, dpy2 = data->getDiameterPoint().y;
+    std::vector<std::pair<double,double>> pts = {{cx,cy},{dp,dpy2}};
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Line; be.pts = pts;
         be.layerName = data->layer; be.color = col;
         m_blocks[m_currentBlockName].push_back(be);
     } else {
         addPolylineToDoc(pts, lid, col);
-        addDimText(m_doc, data, lid, data->getCenterPoint().x, data->getCenterPoint().y, data->getDiameterPoint().x, data->getDiameterPoint().y);
+        addArrowhead(m_doc, dp, dpy2, cx, cy, lid, col); // arrow at circle
+        addDimText(m_doc, data, lid, cx, cy, dp, dpy2, "R");
     }
 }
 
@@ -798,17 +831,18 @@ void CadgfDrwAdapter::addDimDiametric(const DRW_DimDiametric* data) {
     if (!data) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
-    std::vector<std::pair<double,double>> pts = {
-        {data->getDiameter1Point().x, data->getDiameter1Point().y},
-        {data->getDiameter2Point().x, data->getDiameter2Point().y}
-    };
+    double d1x = data->getDiameter1Point().x, d1y = data->getDiameter1Point().y;
+    double d2x = data->getDiameter2Point().x, d2y = data->getDiameter2Point().y;
+    std::vector<std::pair<double,double>> pts = {{d1x,d1y},{d2x,d2y}};
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Line; be.pts = pts;
         be.layerName = data->layer; be.color = col;
         m_blocks[m_currentBlockName].push_back(be);
     } else {
         addPolylineToDoc(pts, lid, col);
-        addDimText(m_doc, data, lid, data->getDiameter1Point().x, data->getDiameter1Point().y, data->getDiameter2Point().x, data->getDiameter2Point().y);
+        addArrowhead(m_doc, d1x, d1y, d2x, d2y, lid, col);
+        addArrowhead(m_doc, d2x, d2y, d1x, d1y, lid, col);
+        addDimText(m_doc, data, lid, d1x, d1y, d2x, d2y, "\xC3\x98"); // UTF-8 Ø
     }
 }
 
