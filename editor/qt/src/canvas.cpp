@@ -646,8 +646,9 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             if (fontSize < 6.0) fontSize = 6.0; // minimum readable size
             if (fontSize > 200.0) fontSize = 200.0;
             QFont font;
-            font.setStyleHint(QFont::TypeWriter);
-            font.setFamily("Menlo");
+            // Use a font with both Latin and CJK coverage (title block has Chinese)
+            font.setStyleHint(QFont::SansSerif);
+            font.setFamily("Heiti SC"); // macOS CJK sans-serif (both Latin + Chinese)
             font.setPixelSize(static_cast<int>(fontSize));
             pr.setFont(font);
             QPointF screenPos = worldToScreen(worldPos);
