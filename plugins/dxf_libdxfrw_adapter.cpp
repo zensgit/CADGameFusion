@@ -1,6 +1,9 @@
 #include "dxf_libdxfrw_adapter.hpp"
 #include <vector>
 #include <cmath>
+#if !defined(_WIN32)
+#include <iconv.h>
+#endif
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -124,6 +127,60 @@ static void appendBulgeSegment(
 
 // Strip DXF MTEXT formatting codes: {braces}, \H0.7x; \S+1^0; etc.
 // Also handles \\ \{ \} escape sequences.
+// Encode a Unicode codepoint as UTF-8 bytes appended to out.
+static void appendUnicode(std::string& out, uint32_t cp) {
+    if (cp < 0x80) {
+        out += static_cast<char>(cp);
+    } else if (cp < 0x800) {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else {
+        out += static_cast<char>(0xF0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
+}
+
+// Convert GB2312 two-byte sequence to UTF-8 using iconv.
+static bool appendGB2312(std::string& out, uint8_t b1, uint8_t b2) {
+#if defined(_WIN32)
+    // Fallback: emit raw bytes (will likely be mojibake on Windows without iconv)
+    out += static_cast<char>(b1); out += static_cast<char>(b2);
+    return false;
+#else
+    // Use a thread-local iconv handle to avoid repeated open/close overhead.
+    static thread_local iconv_t cd = iconv_open("UTF-8", "GB2312");
+    if (cd == (iconv_t)-1) {
+        // Try GB18030 (superset of GB2312)
+        static thread_local iconv_t cd2 = iconv_open("UTF-8", "GB18030");
+        if (cd2 == (iconv_t)-1) {
+            out += static_cast<char>(b1); out += static_cast<char>(b2); return false;
+        }
+        char in_buf[2] = {static_cast<char>(b1), static_cast<char>(b2)};
+        char out_buf[8] = {};
+        char* in_p = in_buf; char* out_p = out_buf;
+        size_t il = 2, ol = 8;
+        if (iconv(cd2, &in_p, &il, &out_p, &ol) != (size_t)-1)
+            out.append(out_buf, 8 - ol);
+        else { out += static_cast<char>(b1); out += static_cast<char>(b2); }
+        return true;
+    }
+    char in_buf[2] = {static_cast<char>(b1), static_cast<char>(b2)};
+    char out_buf[8] = {};
+    char* in_p = in_buf; char* out_p = out_buf;
+    size_t il = 2, ol = 8;
+    if (iconv(cd, &in_p, &il, &out_p, &ol) != (size_t)-1)
+        out.append(out_buf, 8 - ol);
+    else { out += static_cast<char>(b1); out += static_cast<char>(b2); }
+    return true;
+#endif
+}
+
 static std::string stripDxfFormatting(const std::string& s) {
     // Strips MTEXT/TEXT DXF inline format codes while preserving visible text.
     // Rules:
@@ -131,6 +188,7 @@ static std::string stripDxfFormatting(const std::string& s) {
     //   %%C/%%D/%%P — special chars: Ø, °, ±
     //   \P or \p — paragraph break → newline (no semicolon argument)
     //   \N or \n — newline
+    //   \M+HHHHH — GB2312 char (last 4 hex digits), or \U+HHHH — Unicode char
     //   \H…; \A…; \C…; \W…; \T…; \Q…; \F…; \f…; — format args up to ;: skip
     //   \S<top>/<bot>; or \S<top>^<bot>; — stacked fraction: render as top/bot
     //   \L \l \O \o \K \k — toggle decoration (no arg, no ;): skip
@@ -163,8 +221,55 @@ static std::string stripDxfFormatting(const std::string& s) {
             if (n == '{')  { out += '{';  ++i; continue; }
             if (n == '}')  { out += '}';  ++i; continue; }
             if (n == '~')  { out += ' ';  ++i; continue; } // non-breaking space
-            // Single-char decoration toggles (no argument): \L \l \O \o \K \k \U \u
-            if (nu == 'L' || nu == 'O' || nu == 'K' || nu == 'U') { ++i; continue; }
+            // \U+HHHH — Unicode codepoint (4 hex digits)
+            if (nu == 'U' && i + 2 < s.size() && s[i + 2] == '+') {
+                size_t hexStart = i + 3;
+                size_t hexEnd = hexStart;
+                while (hexEnd < s.size() && hexEnd < hexStart + 6 &&
+                       std::isxdigit(static_cast<unsigned char>(s[hexEnd])))
+                    ++hexEnd;
+                if (hexEnd > hexStart) {
+                    uint32_t cp = 0;
+                    for (size_t k = hexStart; k < hexEnd; ++k) {
+                        char hc = s[k];
+                        cp = cp * 16 + (hc >= '0' && hc <= '9' ? hc - '0' :
+                                        hc >= 'a' && hc <= 'f' ? hc - 'a' + 10 :
+                                        hc - 'A' + 10);
+                    }
+                    appendUnicode(out, cp);
+                    i = hexEnd - 1; // outer ++i moves past last hex digit
+                    continue;
+                }
+                // fallthrough if no valid hex digits
+                ++i; continue;
+            }
+            // \M+HHHHH — GB2312/GB18030 char encoded as 5 hex digits;
+            // last 4 hex digits = 2-byte GB2312 code (first digit = codepage id).
+            if (nu == 'M' && i + 2 < s.size() && s[i + 2] == '+') {
+                size_t hexStart = i + 3;
+                // Read exactly 5 hex digits
+                size_t hexEnd = hexStart;
+                while (hexEnd < s.size() && hexEnd < hexStart + 5 &&
+                       std::isxdigit(static_cast<unsigned char>(s[hexEnd])))
+                    ++hexEnd;
+                if (hexEnd == hexStart + 5) {
+                    // Last 4 hex digits are the GB2312 2-byte code
+                    auto hexNib = [&](size_t pos) -> uint8_t {
+                        char hc = s[pos];
+                        return hc >= '0' && hc <= '9' ? (uint8_t)(hc - '0') :
+                               hc >= 'a' && hc <= 'f' ? (uint8_t)(hc - 'a' + 10) :
+                                                         (uint8_t)(hc - 'A' + 10);
+                    };
+                    uint8_t b1 = (hexNib(hexStart + 1) << 4) | hexNib(hexStart + 2);
+                    uint8_t b2 = (hexNib(hexStart + 3) << 4) | hexNib(hexStart + 4);
+                    appendGB2312(out, b1, b2);
+                    i = hexEnd - 1;
+                    continue;
+                }
+                ++i; continue;
+            }
+            // Single-char decoration toggles (no argument): \L \l \O \o \K \k
+            if (nu == 'L' || nu == 'O' || nu == 'K') { ++i; continue; }
             // Stacked fraction: \S<top>/<bot>; or \S<top>^<bot>;
             if (nu == 'S') {
                 ++i; // skip 'S'
