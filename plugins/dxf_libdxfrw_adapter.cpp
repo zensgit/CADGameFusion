@@ -125,27 +125,76 @@ static void appendBulgeSegment(
 // Strip DXF MTEXT formatting codes: {braces}, \H0.7x; \S+1^0; etc.
 // Also handles \\ \{ \} escape sequences.
 static std::string stripDxfFormatting(const std::string& s) {
+    // Strips MTEXT/TEXT DXF inline format codes while preserving visible text.
+    // Rules:
+    //   {…}  — style scope braces: discard delimiters, keep content
+    //   %%C/%%D/%%P — special chars: Ø, °, ±
+    //   \P or \p — paragraph break → newline (no semicolon argument)
+    //   \N or \n — newline
+    //   \H…; \A…; \C…; \W…; \T…; \Q…; \F…; \f…; — format args up to ;: skip
+    //   \S<top>/<bot>; or \S<top>^<bot>; — stacked fraction: render as top/bot
+    //   \L \l \O \o \K \k — toggle decoration (no arg, no ;): skip
+    //   \\ \{ \} — literal escapes
     std::string out;
     out.reserve(s.size());
-    int depth = 0;
     for (size_t i = 0; i < s.size(); ++i) {
         char c = s[i];
-        if (c == '{') { ++depth; continue; }
-        if (c == '}') { if (depth > 0) --depth; continue; }
+        // Discard group delimiters — they scope style changes but content is kept
+        if (c == '{' || c == '}') continue;
+        // %%X special characters
+        if (c == '%' && i + 2 < s.size() && s[i+1] == '%') {
+            char code = static_cast<char>(std::toupper(static_cast<unsigned char>(s[i+2])));
+            i += 2; // consume %%X
+            if (code == 'C') { out += "\xC3\x98"; continue; } // Ø  U+00D8
+            if (code == 'D') { out += "\xC2\xB0"; continue; } // °  U+00B0
+            if (code == 'P') { out += "\xC2\xB1"; continue; } // ±  U+00B1
+            // Other %%X: skip silently
+            continue;
+        }
         if (c == '\\' && i + 1 < s.size()) {
             char n = s[i + 1];
-            // Format codes that take arguments ending with ';'
-            if (n == 'H' || n == 'S' || n == 'A' || n == 'C' || n == 'P' ||
-                n == 'W' || n == 'T' || n == 'Q' || n == 'f') {
-                while (i < s.size() && s[i] != ';') ++i;
+            char nu = static_cast<char>(std::toupper(static_cast<unsigned char>(n)));
+            // \P (uppercase) = hard paragraph break → newline (no argument)
+            // \N or \n = newline (no argument)
+            // \p (lowercase) = paragraph settings code with ';'-terminated arg → skip
+            if (n == 'P' || nu == 'N') { out += '\n'; ++i; continue; }
+            // Literal escapes
+            if (n == '\\') { out += '\\'; ++i; continue; }
+            if (n == '{')  { out += '{';  ++i; continue; }
+            if (n == '}')  { out += '}';  ++i; continue; }
+            if (n == '~')  { out += ' ';  ++i; continue; } // non-breaking space
+            // Single-char decoration toggles (no argument): \L \l \O \o \K \k \U \u
+            if (nu == 'L' || nu == 'O' || nu == 'K' || nu == 'U') { ++i; continue; }
+            // Stacked fraction: \S<top>/<bot>; or \S<top>^<bot>;
+            if (nu == 'S') {
+                ++i; // skip 'S'
+                std::string part1, part2;
+                bool in2 = false;
+                while (i + 1 < s.size() && s[i + 1] != ';') {
+                    ++i;
+                    char sc = s[i];
+                    if (sc == '^' || sc == '/') { in2 = true; continue; }
+                    if (!in2) part1 += sc; else part2 += sc;
+                }
+                if (i + 1 < s.size()) ++i; // skip ';'
+                if (!part1.empty()) out += part1;
+                if (!part2.empty()) { out += '/'; out += part2; }
                 continue;
             }
-            // Escape sequences
-            if (n == '\\') { if (depth == 0) out += '\\'; ++i; continue; }
-            if (n == '{' || n == '}') { if (depth == 0) out += n; ++i; continue; }
-            if (n == 'n' || n == 'N') { if (depth == 0) out += '\n'; ++i; continue; }
+            // Format codes with ';'-terminated arguments: skip entire argument
+            // H=height, A=alignment, C=color, W=width, T=tracking,
+            // Q=oblique, F/f=font, p=paragraph indent settings (lowercase p!)
+            if (nu == 'H' || nu == 'A' || nu == 'C' || nu == 'W' || nu == 'T' ||
+                nu == 'Q' || nu == 'F' || n == 'p' || nu == 'X') {
+                ++i; // skip command char
+                while (i < s.size() && s[i] != ';') ++i; // skip to ';'
+                // s[i] is ';'; outer loop does ++i to advance past it
+                continue;
+            }
+            // Unknown backslash: output the char after backslash
+            out += n; ++i; continue;
         }
-        if (depth == 0) out += c;
+        out += c;
     }
     return out;
 }
