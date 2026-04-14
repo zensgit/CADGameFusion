@@ -67,9 +67,9 @@ static uint32_t aci_to_rgb(int aci) {
 // Note: frozenLayers pointer may be null during early init (block callbacks)
 bool CadgfDrwAdapter::shouldSkipEntity(const DRW_Entity& ent) const {
     if (ent.space == DRW::PaperSpace) return true;
+    if (!ent.visible) return true; // DXF code 60 = 1 means invisible
     if (!m_frozenLayers.empty() && m_frozenLayers.count(ent.layer)) return true;
     // Defpoints is AutoCAD's non-printing layer for dimension definition points.
-    // It is never plotted regardless of layer state.
     if (ent.layer == "Defpoints" || ent.layer == "DEFPOINTS") return true;
     return false;
 }
@@ -597,7 +597,8 @@ void CadgfDrwAdapter::addLayer(const DRW_Layer& data) {
     // Negative color means layer is off; bit 0 or 1 of flags means frozen
     bool isOff = (data.color < 0);
     bool isFrozen = (data.flags & 0x01) || (data.flags & 0x02);
-    if (isOff || isFrozen)
+    bool noPlot = !data.plotF; // code 290: false = non-plottable
+    if (isOff || isFrozen || noPlot)
         m_frozenLayers.insert(data.name);
 
     uint32_t color = 0xDCDCE6;
