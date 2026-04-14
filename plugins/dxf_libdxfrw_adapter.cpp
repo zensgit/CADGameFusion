@@ -1145,70 +1145,96 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
         }
     }
 
-    // Pattern hatch fill: generate parallel lines for ANSI31/_U style patterns.
+    // Pattern hatch fill: generate parallel lines clipped to actual boundary polygon.
     // Skip for SOLID hatches (already rendered as filled polygons above).
     if (!data->looplist.empty() && !m_inBlock && data->solid == 0) {
-        // Compute boundary bbox
+        // Build combined boundary polygon from ALL loops for clipping
+        // (first loop = outer boundary, subsequent loops = holes, but for line
+        // clipping we treat all edges uniformly via even-odd intersection rule)
+        std::vector<std::pair<double,double>> boundary;
         double hMinX=1e18, hMinY=1e18, hMaxX=-1e18, hMaxY=-1e18;
         for (const auto* loop : data->looplist) {
             for (const auto* obj : loop->objlist) {
                 if (obj->eType == DRW::LINE) {
                     auto* ln = static_cast<const DRW_Line*>(obj);
-                    auto chk = [&](double x, double y) {
-                        if(x<hMinX)hMinX=x; if(y<hMinY)hMinY=y;
-                        if(x>hMaxX)hMaxX=x; if(y>hMaxY)hMaxY=y;
-                    };
-                    chk(ln->basePoint.x, ln->basePoint.y);
-                    chk(ln->secPoint.x, ln->secPoint.y);
+                    if (boundary.empty()) boundary.push_back({ln->basePoint.x, ln->basePoint.y});
+                    boundary.push_back({ln->secPoint.x, ln->secPoint.y});
                 } else if (obj->eType == DRW::ARC) {
                     auto* arc = static_cast<const DRW_Arc*>(obj);
-                    // Use center ± radius as a loose bbox contribution
-                    hMinX=std::min(hMinX,arc->basePoint.x-arc->radious);
-                    hMinY=std::min(hMinY,arc->basePoint.y-arc->radious);
-                    hMaxX=std::max(hMaxX,arc->basePoint.x+arc->radious);
-                    hMaxY=std::max(hMaxY,arc->basePoint.y+arc->radious);
+                    double sa = arc->staangle, ea = arc->endangle;
+                    for (int s = 0; s <= 16; ++s) {
+                        double a = sa + (ea - sa) * s / 16;
+                        boundary.push_back({arc->basePoint.x + arc->radious * std::cos(a),
+                                            arc->basePoint.y + arc->radious * std::sin(a)});
+                    }
+                } else if (obj->eType == DRW::ELLIPSE) {
+                    auto* ell = static_cast<const DRW_Ellipse*>(obj);
+                    double cx = ell->basePoint.x, cy = ell->basePoint.y;
+                    double mx = ell->secPoint.x, my = ell->secPoint.y;
+                    double ratio = ell->ratio;
+                    double sa = ell->staparam, ea = ell->endparam;
+                    double majLen = std::sqrt(mx*mx + my*my);
+                    double rot = std::atan2(my, mx);
+                    for (int s = 0; s <= 24; ++s) {
+                        double a = sa + (ea - sa) * s / 24;
+                        double ex = majLen * std::cos(a), ey = majLen * ratio * std::sin(a);
+                        double cR = std::cos(rot), sR = std::sin(rot);
+                        boundary.push_back({cx + ex*cR - ey*sR, cy + ex*sR + ey*cR});
+                    }
+                } else if (obj->eType == DRW::LWPOLYLINE) {
+                    auto* lw = static_cast<const DRW_LWPolyline*>(obj);
+                    for (const auto& v : lw->vertlist) boundary.push_back({v->x, v->y});
                 }
             }
         }
+        // Compute bbox from boundary
+        for (auto& [bx, by] : boundary) {
+            hMinX = std::min(hMinX, bx); hMinY = std::min(hMinY, by);
+            hMaxX = std::max(hMaxX, bx); hMaxY = std::max(hMaxY, by);
+        }
+        // Close boundary
+        if (boundary.size() >= 3 &&
+            (std::abs(boundary.front().first - boundary.back().first) > 1e-6 ||
+             std::abs(boundary.front().second - boundary.back().second) > 1e-6))
+            boundary.push_back(boundary.front());
+
         double hW = hMaxX - hMinX, hH = hMaxY - hMinY;
-        if (hW > 0.1 && hH > 0.1) {
-            // Spacing from DXF scale (1 DXF unit ≈ 3.0 drawing units per ANSI31 line)
+        if (hW > 0.1 && hH > 0.1 && boundary.size() >= 3) {
             double baseSpacing = (data->scale > 0.01) ? data->scale * 3.0 : 5.0;
             double diag = hW + hH;
-            // Cap at 25 lines maximum per hatch entity
             double spacing = std::max(baseSpacing, diag / 25.0);
-            // Use the hatch angle (degrees → radians)
             double ang = data->angle * M_PI / 180.0;
             double cosA = std::cos(ang), sinA = std::sin(ang);
             uint32_t hcol = drw_entity_color(*data);
-            // Generate lines perpendicular to hatch angle direction
-            // Project bbox corners onto the perpendicular axis to find sweep range
-            double corners[4][2] = {
-                {hMinX, hMinY}, {hMaxX, hMinY}, {hMaxX, hMaxY}, {hMinX, hMaxY}
-            };
+
+            // Sweep range: project boundary onto perpendicular axis
             double pmin = 1e18, pmax = -1e18;
-            for (auto& c : corners) {
-                double p = -c[0] * sinA + c[1] * cosA; // perp projection
+            for (auto& [bx, by] : boundary) {
+                double p = -bx * sinA + by * cosA;
                 pmin = std::min(pmin, p); pmax = std::max(pmax, p);
             }
+
             for (double p = pmin; p <= pmax; p += spacing) {
-                // Line through perp offset p in direction (cosA, sinA)
-                // Parametric: point = t*(cosA,sinA) + p*(-sinA,cosA)
-                // Clip to bbox by finding t range
+                // Line origin at perpendicular offset p
                 double ox = p * (-sinA), oy = p * cosA;
-                // Use large t range and clip
-                double t1 = -diag*2, t2 = diag*2;
-                if (std::abs(cosA) > 1e-6) {
-                    double ta = (hMinX - ox) / cosA, tb = (hMaxX - ox) / cosA;
-                    t1 = std::max(t1, std::min(ta,tb));
-                    t2 = std::min(t2, std::max(ta,tb));
+                // Find all intersections of this line with boundary edges
+                std::vector<double> tHits;
+                for (size_t i = 0; i + 1 < boundary.size(); ++i) {
+                    double ex1 = boundary[i].first, ey1 = boundary[i].second;
+                    double ex2 = boundary[i+1].first, ey2 = boundary[i+1].second;
+                    double edx = ex2 - ex1, edy = ey2 - ey1;
+                    double denom = cosA * edy - sinA * edx;
+                    if (std::abs(denom) < 1e-10) continue;
+                    double u = ((ex1 - ox) * sinA - (ey1 - oy) * cosA) / (-denom);
+                    if (u < -1e-10 || u > 1.0 + 1e-10) continue;
+                    double t = ((ex1 - ox) * edy - (ey1 - oy) * edx) / (-denom);
+                    tHits.push_back(t);
                 }
-                if (std::abs(sinA) > 1e-6) {
-                    double ta = (hMinY - oy) / sinA, tb = (hMaxY - oy) / sinA;
-                    t1 = std::max(t1, std::min(ta,tb));
-                    t2 = std::min(t2, std::max(ta,tb));
-                }
-                if (t2 > t1 + 0.01) {
+                std::sort(tHits.begin(), tHits.end());
+                // Even-odd rule: take consecutive pairs as inside segments
+                for (size_t j = 0; j + 1 < tHits.size(); j += 2) {
+                    double t1 = tHits[j], t2 = tHits[j + 1];
+                    if (t2 - t1 < 0.01) continue;
                     double x1 = ox + t1*cosA, y1 = oy + t1*sinA;
                     double x2 = ox + t2*cosA, y2 = oy + t2*sinA;
                     addPolylineToDoc({{x1,y1},{x2,y2}}, lid, hcol);
