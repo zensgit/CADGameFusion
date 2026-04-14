@@ -568,6 +568,28 @@ void CadgfDrwAdapter::addDimStyle(const DRW_Dimstyle& data) {
     }
 }
 
+void CadgfDrwAdapter::addTextStyle(const DRW_Textstyle& data) {
+    TextStyleInfo info;
+    info.fontFile = data.font;
+    info.widthFactor = (data.width > 0.01) ? data.width : 1.0;
+    // Map SHX font file names to known character width/height ratios
+    std::string fn = data.font;
+    for (char& c : fn) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (fn.find("romans") != std::string::npos || fn.find("isocp") != std::string::npos ||
+        fn.find("simplex") != std::string::npos)
+        info.charRatio = 0.6;
+    else if (fn.find("txt") != std::string::npos || fn.find("monotxt") != std::string::npos)
+        info.charRatio = 0.8;
+    else if (fn.find("hz") != std::string::npos || fn.find("gbcbig") != std::string::npos ||
+             fn.find("chineset") != std::string::npos || fn.find("gbenor") != std::string::npos)
+        info.charRatio = 1.0; // CJK bigfont
+    else if (fn.find("arial") != std::string::npos || fn.find("宋体") != std::string::npos)
+        info.charRatio = 0.55; // TrueType
+    else
+        info.charRatio = 0.65; // general default
+    m_textStyles[data.name] = info;
+}
+
 void CadgfDrwAdapter::addLayer(const DRW_Layer& data) {
     // Negative color means layer is off; bit 0 or 1 of flags means frozen
     bool isOff = (data.color < 0);
@@ -740,23 +762,27 @@ void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
 }
 
 // Estimate text width in drawing units: CJK chars ≈ 1.0×h, Latin ≈ 0.55×h.
-static double estimateTextWidth(const std::string& txt, double height) {
+// Estimate text width in drawing units.
+// latinRatio: width/height ratio for ASCII chars (from SHX font or default 0.6)
+// widthFactor: DXF text style width factor (default 1.0)
+static double estimateTextWidth(const std::string& txt, double height,
+                                 double latinRatio = 0.6, double widthFactor = 1.0) {
     double w = 0.0;
     for (size_t i = 0; i < txt.size(); ) {
         auto c = static_cast<unsigned char>(txt[i]);
         if (c >= 0xE0) {
-            // 3-byte UTF-8 (CJK, most common)
+            // 3-byte UTF-8 (CJK) — always ~1.0× height regardless of font
             w += height * 1.0;
             i += (c >= 0xF0) ? 4 : 3;
         } else if (c >= 0xC0) {
-            w += height * 0.6; // 2-byte (extended Latin, etc.)
+            w += height * latinRatio; // 2-byte (extended Latin)
             i += 2;
         } else {
-            w += height * 0.55; // ASCII
+            w += height * latinRatio; // ASCII
             ++i;
         }
     }
-    return w;
+    return w * widthFactor;
 }
 
 void CadgfDrwAdapter::addText(const DRW_Text& data) {
@@ -772,7 +798,15 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
     double rotRad = data.angle * M_PI / 180.0;
     // Approximate horizontal alignment offset (since core::Text has no alignment fields)
     if (useSecPoint && data.height > 0.0) {
-        double tw = estimateTextWidth(txt, data.height);
+        // Look up font-specific width ratio from text style
+        double latinR = 0.6, wFac = 1.0;
+        auto sit = m_textStyles.find(data.style);
+        if (sit != m_textStyles.end()) {
+            latinR = sit->second.charRatio;
+            wFac = sit->second.widthFactor;
+        }
+        wFac *= data.widthscale; // entity-level width scale
+        double tw = estimateTextWidth(txt, data.height, latinR, wFac);
         double cosR = std::cos(rotRad), sinR = std::sin(rotRad);
         double dx = 0.0, dy = 0.0;
         switch (data.alignH) {
@@ -829,7 +863,14 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         for (char c : txt) if (c == '\n') ++nLines;
         // Estimate first-line width for horizontal alignment
         std::string firstLine = txt.substr(0, txt.find('\n'));
-        double tw = estimateTextWidth(firstLine, data.height);
+        double latinR = 0.6, wFac = 1.0;
+        auto sit = m_textStyles.find(data.style);
+        if (sit != m_textStyles.end()) {
+            latinR = sit->second.charRatio;
+            wFac = sit->second.widthFactor;
+        }
+        wFac *= data.widthscale;
+        double tw = estimateTextWidth(firstLine, data.height, latinR, wFac);
         double th = data.height * 1.4 * nLines; // total text block height
 
         int ap = data.textgen; // code 71: attachment point 1-9
