@@ -812,16 +812,45 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
     if (txt.empty()) return;
     // DRW_MText::angle is in degrees; cadgf_document_add_text expects radians
     double rotRad = data.angle * M_PI / 180.0;
+
+    double px = data.basePoint.x, py = data.basePoint.y;
+    // Apply MTEXT attachment point offset (1=TopLeft … 9=BottomRight)
+    // Since core::Text has no alignment fields, shift position at import time.
+    if (data.height > 0.0) {
+        // Count lines for multi-line height
+        int nLines = 1;
+        for (char c : txt) if (c == '\n') ++nLines;
+        // Estimate first-line width for horizontal alignment
+        std::string firstLine = txt.substr(0, txt.find('\n'));
+        double tw = estimateTextWidth(firstLine, data.height);
+        double th = data.height * 1.4 * nLines; // total text block height
+
+        int ap = data.textgen; // code 71: attachment point 1-9
+        double dx = 0.0, dy = 0.0;
+        // Horizontal: 1,4,7=Left  2,5,8=Center  3,6,9=Right
+        int hmod = ((ap - 1) % 3);
+        if (hmod == 1) dx = -tw * 0.5; // Center
+        else if (hmod == 2) dx = -tw;  // Right
+        // Vertical: 1,2,3=Top  4,5,6=Middle  7,8,9=Bottom
+        int vmod = ((ap - 1) / 3);
+        if (vmod == 1) dy = th * 0.5;  // Middle (shift up)
+        else if (vmod == 2) dy = th;   // Bottom (shift up)
+        // Rotate offset by text angle
+        double cosR = std::cos(rotRad), sinR = std::sin(rotRad);
+        px += dx * cosR - dy * sinR;
+        py += dx * sinR + dy * cosR;
+    }
+
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Text;
-        be.pts.push_back({data.basePoint.x, data.basePoint.y});
+        be.pts.push_back({px, py});
         be.height = data.height; be.rotation = rotRad;
         be.text = txt;
         be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    cadgf_vec2 pos = {data.basePoint.x, data.basePoint.y};
+    cadgf_vec2 pos = {px, py};
     cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(),
                             "", resolveLayer(data.layer));
     ++m_entityCount;
@@ -1069,18 +1098,29 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
             }
         }
         if (pts.size() >= 2) {
+            // For SOLID hatches: render boundary as filled polygon
+            bool isSolid = (data->solid != 0);
+            uint32_t hcol = drw_entity_color(*data);
             if (m_inBlock) {
                 BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = pts;
-                be.layerName = data->layer;
+                be.layerName = data->layer; be.color = hcol;
+                if (isSolid) be.linetype = "__SOLID__";
                 m_blocks[m_currentBlockName].push_back(be);
+            } else if (isSolid) {
+                // Close the polygon if not already closed
+                if (pts.size() >= 3 &&
+                    (std::abs(pts.front().first - pts.back().first) > 1e-6 ||
+                     std::abs(pts.front().second - pts.back().second) > 1e-6))
+                    pts.push_back(pts.front());
+                addPolylineToDoc(pts, lid, hcol, "", data->layer, 0.0, "__SOLID__");
             } else {
-                addPolylineToDoc(pts, lid);
+                addPolylineToDoc(pts, lid, hcol);
             }
         }
     }
 
-    // Pattern hatch fill: skip for SOLID (boundary outline is enough),
-    // generate parallel lines for ANSI31/_U style patterns.
+    // Pattern hatch fill: generate parallel lines for ANSI31/_U style patterns.
+    // Skip for SOLID hatches (already rendered as filled polygons above).
     if (!data->looplist.empty() && !m_inBlock && data->solid == 0) {
         // Compute boundary bbox
         double hMinX=1e18, hMinY=1e18, hMaxX=-1e18, hMaxY=-1e18;
@@ -1154,7 +1194,7 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
 
 // ─── DIMENSIONS: render as lines + text ───
 
-// Append a small open arrowhead at point (px,py) pointing FROM (fromX,fromY).
+// Append a closed filled arrowhead at point (px,py) pointing FROM (fromX,fromY).
 // arrowLen: arrow length in drawing units (default = 3.5 for AutoCAD default style).
 static void addArrowhead(cadgf_document* doc,
                           double px, double py, double fromX, double fromY,
@@ -1164,21 +1204,18 @@ static void addArrowhead(cadgf_document* doc,
     if (len < 1e-10) return;
     double nx = dx / len, ny = dy / len;      // unit along dim line
     double px2 = -ny, py2 = nx;               // perpendicular
-    double arrowWidth = arrowLen * 0.25;       // ~1/4 of arrow length
-    // Two lines forming an open arrowhead
+    double arrowWidth = arrowLen * 0.28;       // ~1/3.5 of arrow length
+    // Closed filled triangle: tip → wing1 → wing2 → tip
     double ax = px - nx * arrowLen, ay = py - ny * arrowLen;
-    // wing 1
-    std::vector<std::pair<double,double>> w1 = {{px,py},{ax+px2*arrowWidth,ay+py2*arrowWidth}};
-    // wing 2
-    std::vector<std::pair<double,double>> w2 = {{px,py},{ax-px2*arrowWidth,ay-py2*arrowWidth}};
-
-    auto addArrow = [&](const std::vector<std::pair<double,double>>& pts) {
-        std::vector<cadgf_vec2> v; v.reserve(pts.size());
-        for (auto& [x,y] : pts) v.push_back({x,y});
-        cadgf_entity_id eid = cadgf_document_add_polyline_ex(doc, v.data(), (int)v.size(), "", lid);
-        if (eid && col) cadgf_document_set_entity_color(doc, eid, col);
+    std::vector<cadgf_vec2> tri = {
+        {px, py},
+        {ax + px2 * arrowWidth, ay + py2 * arrowWidth},
+        {ax - px2 * arrowWidth, ay - py2 * arrowWidth},
+        {px, py}  // close
     };
-    addArrow(w1); addArrow(w2);
+    cadgf_entity_id eid = cadgf_document_add_polyline_ex(doc, tri.data(),
+                            static_cast<int>(tri.size()), "__SOLID__", lid);
+    if (eid && col) cadgf_document_set_entity_color(doc, eid, col);
 }
 
 // Helper: add dimension text at textPoint.
