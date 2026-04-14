@@ -68,6 +68,9 @@ static uint32_t aci_to_rgb(int aci) {
 bool CadgfDrwAdapter::shouldSkipEntity(const DRW_Entity& ent) const {
     if (ent.space == DRW::PaperSpace) return true;
     if (!m_frozenLayers.empty() && m_frozenLayers.count(ent.layer)) return true;
+    // Defpoints is AutoCAD's non-printing layer for dimension definition points.
+    // It is never plotted regardless of layer state.
+    if (ent.layer == "Defpoints" || ent.layer == "DEFPOINTS") return true;
     return false;
 }
 
