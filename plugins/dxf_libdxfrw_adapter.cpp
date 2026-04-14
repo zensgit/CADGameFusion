@@ -454,8 +454,11 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 auto [px, py] = transformPoint(ent.pts[0].first, ent.pts[0].second,
                                                insX, insY, xscale, yscale, angle);
                 cadgf_vec2 pos = {px, py};
-                cadgf_document_add_text(m_doc, &pos, ent.height * std::abs(yscale),
+                cadgf_entity_id tid = cadgf_document_add_text(m_doc, &pos,
+                    ent.height * std::abs(yscale),
                     ent.rotation + angle, ent.text.c_str(), "", elid);
+                if (tid && effectiveColor != 0 && effectiveColor != BYBLOCK_COLOR)
+                    cadgf_document_set_entity_color(m_doc, tid, effectiveColor);
                 ++m_entityCount;
             }
             break;
@@ -801,8 +804,12 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
         return;
     }
     cadgf_vec2 pos = {px, py};
-    cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(),
-                            "", resolveLayer(data.layer));
+    int lid = resolveLayer(data.layer);
+    cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(), "", lid);
+    // Set explicit entity color (BYLAYER entities keep color=0)
+    uint32_t col = drw_entity_color(data);
+    if (eid && col != 0 && col != BYBLOCK_COLOR)
+        cadgf_document_set_entity_color(m_doc, eid, col);
     ++m_entityCount;
 }
 
@@ -856,8 +863,11 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         return;
     }
     cadgf_vec2 pos = {px, py};
-    cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(),
-                            "", resolveLayer(data.layer));
+    int lid = resolveLayer(data.layer);
+    cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(), "", lid);
+    uint32_t col = drw_entity_color(data);
+    if (eid && col != 0 && col != BYBLOCK_COLOR)
+        cadgf_document_set_entity_color(m_doc, eid, col);
     ++m_entityCount;
 }
 
@@ -1310,7 +1320,11 @@ void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
     // DXF code 53 (dim text rotation) is in degrees; convert to radians
     double textRot = dim->getDir() * M_PI / 180.0;
     cadgf_vec2 pos = {tx, ty};
-    cadgf_document_add_text(doc, &pos, textHeight, textRot, txt.c_str(), "", lid);
+    cadgf_entity_id eid = cadgf_document_add_text(doc, &pos, textHeight, textRot, txt.c_str(), "", lid);
+    // Set dimension text color from the dimension entity
+    uint32_t col = drw_entity_color(*dim);
+    if (eid && col != 0 && col != BYBLOCK_COLOR)
+        cadgf_document_set_entity_color(doc, eid, col);
 }
 
 // Draw proper aligned dimension: extension lines + offset dimension line
