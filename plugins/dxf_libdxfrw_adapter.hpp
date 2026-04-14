@@ -47,7 +47,7 @@ public:
     void addLayer(const DRW_Layer& data) override;
     void addDimStyle(const DRW_Dimstyle& data) override;
     void addVport(const DRW_Vport& data) override {}
-    void addTextStyle(const DRW_Textstyle& data) override {}
+    void addTextStyle(const DRW_Textstyle& data) override;
     void addAppId(const DRW_AppId& data) override {}
 
     // ─── Blocks ───
@@ -147,6 +147,14 @@ private:
     double m_dimLFac{1.0};        // dimension length factor ($DIMLFAC)
     int    m_dimDecPrecision{2};  // decimal digits for dimension text ($DIMDEC)
     double m_ltScale{1.0};        // global linetype scale ($LTSCALE)
+
+    // Text style info: style name → {font file, width factor, char width ratio}
+    struct TextStyleInfo {
+        std::string fontFile;      // e.g., "romans.shx"
+        double widthFactor{1.0};   // DXF code 41 (style-level width scale)
+        double charRatio{0.6};     // base char width/height ratio for this font
+    };
+    std::map<std::string, TextStyleInfo> m_textStyles;
 
     // Block definition storage
     bool m_inBlock{false};
