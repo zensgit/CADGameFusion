@@ -826,15 +826,20 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         double th = data.height * 1.4 * nLines; // total text block height
 
         int ap = data.textgen; // code 71: attachment point 1-9
+        if (ap < 1 || ap > 9) ap = 1;  // default TopLeft
         double dx = 0.0, dy = 0.0;
         // Horizontal: 1,4,7=Left  2,5,8=Center  3,6,9=Right
         int hmod = ((ap - 1) % 3);
         if (hmod == 1) dx = -tw * 0.5; // Center
         else if (hmod == 2) dx = -tw;  // Right
-        // Vertical: 1,2,3=Top  4,5,6=Middle  7,8,9=Bottom
+        // Vertical: MTEXT basePoint is at anchor; renderer draws at baseline.
+        // First convert anchor → top-of-text, then shift down by height
+        // to get the first line's baseline position.
+        // 1,2,3=Top → dy=0;  4,5,6=Middle → dy=+th/2;  7,8,9=Bottom → dy=+th
         int vmod = ((ap - 1) / 3);
-        if (vmod == 1) dy = th * 0.5;  // Middle (shift up)
-        else if (vmod == 2) dy = th;   // Bottom (shift up)
+        if (vmod == 1) dy = th * 0.5;  // Middle → top
+        else if (vmod == 2) dy = th;   // Bottom → top
+        dy -= data.height; // top → baseline of first line
         // Rotate offset by text angle
         double cosR = std::cos(rotRad), sinR = std::sin(rotRad);
         px += dx * cosR - dy * sinR;
@@ -1095,6 +1100,27 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                     pts.push_back({arc->basePoint.x + arc->radious * std::cos(a),
                                    arc->basePoint.y + arc->radious * std::sin(a)});
                 }
+            } else if (obj->eType == DRW::ELLIPSE) {
+                auto* ell = static_cast<const DRW_Ellipse*>(obj);
+                double cx = ell->basePoint.x, cy = ell->basePoint.y;
+                double mx = ell->secPoint.x, my = ell->secPoint.y; // major axis endpoint (relative)
+                double ratio = ell->ratio; // minor/major ratio
+                double sa = ell->staparam, ea = ell->endparam;
+                double majLen = std::sqrt(mx*mx + my*my);
+                double rot = std::atan2(my, mx);
+                int segs = 24;
+                for (int s = 0; s <= segs; ++s) {
+                    double a = sa + (ea - sa) * s / segs;
+                    double ex = majLen * std::cos(a);
+                    double ey = majLen * ratio * std::sin(a);
+                    double cosR = std::cos(rot), sinR = std::sin(rot);
+                    pts.push_back({cx + ex * cosR - ey * sinR,
+                                   cy + ex * sinR + ey * cosR});
+                }
+            } else if (obj->eType == DRW::LWPOLYLINE) {
+                auto* lw = static_cast<const DRW_LWPolyline*>(obj);
+                for (const auto& v : lw->vertlist)
+                    pts.push_back({v->x, v->y});
             }
         }
         if (pts.size() >= 2) {
