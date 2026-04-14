@@ -765,24 +765,47 @@ void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
     addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer, drw_lweight_mm(data.lWeight));
 }
 
-// Estimate text width in drawing units: CJK chars ≈ 1.0×h, Latin ≈ 0.55×h.
-// Estimate text width in drawing units.
-// latinRatio: width/height ratio for ASCII chars (from SHX font or default 0.6)
-// widthFactor: DXF text style width factor (default 1.0)
+// Per-character width tables from SHX font files (extracted via ezdxf).
+// Values in design units; divide by above-baseline height to get ratio.
+// Romans.shx: above=21, 96 entries for chars 32-127
+static const uint8_t kRomansWidths[96] = {
+    21,10,15,21,21,24,27,11,14,14,16,29,11,26,10,22,
+    20,19,22,21,20,20,20,20,19,20,10,11,24,26,24,17,
+    27,18,21,21,21,19,18,21,22, 8,17,24,17,24,22,22,
+    21,20,21,21,16,21,18,24,20,18,20,14,22,13,22,23,
+    11,19,19,18,19,18,12,20,18, 8,10,19, 8,28,18,19,
+    19,19,12,17,12,18,16,22,17,17,17,14, 8,14,25,13,
+};
+static constexpr int kRomansAbove = 21;
+
+// Txt.shx: above=6, average ratio ~0.85
+// (simpler monospace-like font, all chars ≈ same width)
+
+// Estimate text width in drawing units using per-character SHX widths.
+// fontName: SHX font file name (lowercase), used for table lookup
+// widthFactor: DXF text style width factor × entity widthscale
 static double estimateTextWidth(const std::string& txt, double height,
-                                 double latinRatio = 0.6, double widthFactor = 1.0) {
+                                 double latinRatio = 0.6, double widthFactor = 1.0,
+                                 const std::string& fontName = "") {
+    // Use romans per-char table when available
+    bool useRomans = (fontName.find("romans") != std::string::npos ||
+                      fontName.find("isocp") != std::string::npos ||
+                      fontName.find("simplex") != std::string::npos);
     double w = 0.0;
     for (size_t i = 0; i < txt.size(); ) {
         auto c = static_cast<unsigned char>(txt[i]);
         if (c >= 0xE0) {
-            // 3-byte UTF-8 (CJK) — always ~1.0× height regardless of font
-            w += height * 1.0;
+            w += height * 1.0; // CJK
             i += (c >= 0xF0) ? 4 : 3;
         } else if (c >= 0xC0) {
-            w += height * latinRatio; // 2-byte (extended Latin)
+            w += height * latinRatio;
             i += 2;
         } else {
-            w += height * latinRatio; // ASCII
+            if (useRomans && c >= 32 && c < 128) {
+                w += height * kRomansWidths[c - 32] / (double)kRomansAbove;
+            } else {
+                w += height * latinRatio;
+            }
             ++i;
         }
     }
@@ -804,13 +827,16 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
     if (useSecPoint && data.height > 0.0) {
         // Look up font-specific width ratio from text style
         double latinR = 0.6, wFac = 1.0;
+        std::string fontName;
         auto sit = m_textStyles.find(data.style);
         if (sit != m_textStyles.end()) {
             latinR = sit->second.charRatio;
             wFac = sit->second.widthFactor;
+            fontName = sit->second.fontFile;
+            for (char& c : fontName) c = (char)std::tolower((unsigned char)c);
         }
-        wFac *= data.widthscale; // entity-level width scale
-        double tw = estimateTextWidth(txt, data.height, latinR, wFac);
+        wFac *= data.widthscale;
+        double tw = estimateTextWidth(txt, data.height, latinR, wFac, fontName);
         double cosR = std::cos(rotRad), sinR = std::sin(rotRad);
         double dx = 0.0, dy = 0.0;
         switch (data.alignH) {
@@ -868,14 +894,17 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         // Estimate first-line width for horizontal alignment
         std::string firstLine = txt.substr(0, txt.find('\n'));
         double latinR = 0.6, wFac = 1.0;
+        std::string fontName;
         auto sit = m_textStyles.find(data.style);
         if (sit != m_textStyles.end()) {
             latinR = sit->second.charRatio;
             wFac = sit->second.widthFactor;
+            fontName = sit->second.fontFile;
+            for (char& c : fontName) c = (char)std::tolower((unsigned char)c);
         }
         wFac *= data.widthscale;
-        double tw = estimateTextWidth(firstLine, data.height, latinR, wFac);
-        double th = data.height * 1.4 * nLines; // total text block height
+        double tw = estimateTextWidth(firstLine, data.height, latinR, wFac, fontName);
+        double th = data.height * 1.4 * nLines;
 
         int ap = data.textgen; // code 71: attachment point 1-9
         if (ap < 1 || ap > 9) ap = 1;  // default TopLeft
