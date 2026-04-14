@@ -694,6 +694,29 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
         }
     }
 
+    // 2b-pre. Draw Ellipses (from block expansion — stored as native Ellipse type)
+    for (const auto& e : m_doc->entities()) {
+        if (e.type != core::EntityType::Ellipse) continue;
+        if (!isEntityVisible(e)) continue;
+        const auto* ell = std::get_if<core::Ellipse>(&e.payload);
+        if (!ell) continue;
+        QPen pen(resolveEntityColor(e), 1); pen.setCosmetic(true);
+        pr.setPen(pen);
+        double sa = ell->start_angle, ea = ell->end_angle;
+        if (std::abs(ea - sa) < 1e-10) { sa = 0; ea = 2.0 * M_PI; }
+        QPointF prev;
+        for (int s = 0; s <= 64; ++s) {
+            double a = sa + (ea - sa) * s / 64;
+            double lx = ell->rx * std::cos(a), ly = ell->ry * std::sin(a);
+            double cosR = std::cos(ell->rotation), sinR = std::sin(ell->rotation);
+            QPointF cur = worldToScreen(QPointF(
+                ell->center.x + lx*cosR - ly*sinR,
+                ell->center.y + lx*sinR + ly*cosR));
+            if (s > 0) pr.drawLine(prev, cur);
+            prev = cur;
+        }
+    }
+
     // 2b. Draw Polylines
     pr.setRenderHint(QPainter::Antialiasing, true);
     for (int i=0; i<polylines_.size(); ++i) {
