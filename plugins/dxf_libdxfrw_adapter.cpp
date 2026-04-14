@@ -1104,7 +1104,15 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
             } else if (obj->eType == DRW::ARC) {
                 auto* arc = static_cast<const DRW_Arc*>(obj);
                 double sa = arc->staangle, ea = arc->endangle;
-                int segs = 16;
+                // Respect CW/CCW direction for correct boundary winding
+                if (arc->isccw == 1) {
+                    // CCW: ensure ea > sa
+                    if (ea <= sa) ea += 2.0 * M_PI;
+                } else {
+                    // CW: ensure ea < sa (go backwards)
+                    if (ea >= sa) ea -= 2.0 * M_PI;
+                }
+                int segs = 32;
                 for (int s = 0; s <= segs; ++s) {
                     double a = sa + (ea - sa) * s / segs;
                     pts.push_back({arc->basePoint.x + arc->radious * std::cos(a),
@@ -1172,8 +1180,10 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                 } else if (obj->eType == DRW::ARC) {
                     auto* arc = static_cast<const DRW_Arc*>(obj);
                     double sa = arc->staangle, ea = arc->endangle;
-                    for (int s = 0; s <= 16; ++s) {
-                        double a = sa + (ea - sa) * s / 16;
+                    if (arc->isccw == 1) { if (ea <= sa) ea += 2.0*M_PI; }
+                    else { if (ea >= sa) ea -= 2.0*M_PI; }
+                    for (int s = 0; s <= 32; ++s) {
+                        double a = sa + (ea - sa) * s / 32;
                         boundary.push_back({arc->basePoint.x + arc->radious * std::cos(a),
                                             arc->basePoint.y + arc->radious * std::sin(a)});
                     }
