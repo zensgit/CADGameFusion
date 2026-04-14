@@ -778,8 +778,16 @@ static const uint8_t kRomansWidths[96] = {
 };
 static constexpr int kRomansAbove = 21;
 
-// Txt.shx: above=6, average ratio ~0.85
-// (simpler monospace-like font, all chars ≈ same width)
+// Txt.shx: above=6, 96 entries for chars 32-127
+static const uint8_t kTxtWidths[96] = {
+     6, 2, 4, 5, 6, 6, 5, 3, 4, 4, 5, 5, 3, 6, 2, 6,
+     5, 4, 6, 6, 6, 6, 6, 7, 6, 6, 2, 3, 5, 6, 5, 5,
+     5, 5, 6, 5, 6, 6, 6, 5, 6, 4, 5, 6, 6, 5, 6, 6,
+     6, 5, 5, 6, 6, 5, 7, 8, 6, 6, 6, 4, 6, 4, 4, 6,
+     2, 5, 6, 5, 6, 6, 6, 6, 5, 2, 4, 5, 3, 5, 5, 6,
+     6, 6, 5, 6, 6, 5, 5, 6, 4, 6, 7, 4, 2, 4, 5, 5,
+};
+static constexpr int kTxtAbove = 6;
 
 // Estimate text width in drawing units using per-character SHX widths.
 // fontName: SHX font file name (lowercase), used for table lookup
@@ -787,10 +795,17 @@ static constexpr int kRomansAbove = 21;
 static double estimateTextWidth(const std::string& txt, double height,
                                  double latinRatio = 0.6, double widthFactor = 1.0,
                                  const std::string& fontName = "") {
-    // Use romans per-char table when available
-    bool useRomans = (fontName.find("romans") != std::string::npos ||
-                      fontName.find("isocp") != std::string::npos ||
-                      fontName.find("simplex") != std::string::npos);
+    // Select per-character width table based on font
+    const uint8_t* charTable = nullptr;
+    int charAbove = 0;
+    if (fontName.find("romans") != std::string::npos ||
+        fontName.find("isocp") != std::string::npos ||
+        fontName.find("simplex") != std::string::npos) {
+        charTable = kRomansWidths; charAbove = kRomansAbove;
+    } else if (fontName.find("txt") != std::string::npos ||
+               fontName.find("monotxt") != std::string::npos) {
+        charTable = kTxtWidths; charAbove = kTxtAbove;
+    }
     double w = 0.0;
     for (size_t i = 0; i < txt.size(); ) {
         auto c = static_cast<unsigned char>(txt[i]);
@@ -801,8 +816,8 @@ static double estimateTextWidth(const std::string& txt, double height,
             w += height * latinRatio;
             i += 2;
         } else {
-            if (useRomans && c >= 32 && c < 128) {
-                w += height * kRomansWidths[c - 32] / (double)kRomansAbove;
+            if (charTable && c >= 32 && c < 128) {
+                w += height * charTable[c - 32] / (double)charAbove;
             } else {
                 w += height * latinRatio;
             }
