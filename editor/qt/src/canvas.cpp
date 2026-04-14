@@ -730,6 +730,16 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             pen.setWidthF(2.5);
         }
         pr.setPen(pen);
+        // SOLID/TRACE entities: filled polygon
+        if (entity->name == "__SOLID__" && pv.pts.size() >= 3) {
+            pr.setPen(Qt::NoPen);
+            pr.setBrush(pen.color());
+            QPolygonF poly;
+            for (const auto& pt : pv.pts) poly << worldToScreen(QPointF(pt.x(), pt.y()));
+            pr.drawPolygon(poly);
+            pr.setBrush(Qt::NoBrush);
+            continue;
+        }
         pr.drawPath(pv.cachePath);
     }
 

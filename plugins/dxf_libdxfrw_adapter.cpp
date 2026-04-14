@@ -364,12 +364,13 @@ std::pair<double,double> CadgfDrwAdapter::transformPoint(
 void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double>>& pts,
                                         int lid, uint32_t color,
                                         const std::string& linetype, const std::string& layerName,
-                                        double lweightMm) {
+                                        double lweightMm, const char* entityName) {
     if (pts.empty()) return;
     std::vector<cadgf_vec2> vecs;
     vecs.reserve(pts.size());
     for (const auto& [x, y] : pts) vecs.push_back({x, y});
-    cadgf_entity_id eid = cadgf_document_add_polyline_ex(m_doc, vecs.data(), static_cast<int>(vecs.size()), "", lid);
+    cadgf_entity_id eid = cadgf_document_add_polyline_ex(m_doc, vecs.data(), static_cast<int>(vecs.size()),
+                                                          entityName ? entityName : "", lid);
     if (eid != 0) {
         // Store resolved RGB color; treat BYBLOCK sentinel same as BYLAYER (0) at top level
         if (color != 0 && color != BYBLOCK_COLOR) cadgf_document_set_entity_color(m_doc, eid, color);
@@ -407,7 +408,10 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             transformed.reserve(ent.pts.size());
             for (const auto& [px, py] : ent.pts)
                 transformed.push_back(transformPoint(px, py, insX, insY, xscale, yscale, angle));
-            addPolylineToDoc(transformed, elid, effectiveColor, ent.linetype, ent.layerName);
+            bool isSolid = (ent.linetype == "__SOLID__");
+            addPolylineToDoc(transformed, elid, effectiveColor,
+                             isSolid ? "" : ent.linetype, ent.layerName, 0.0,
+                             isSolid ? "__SOLID__" : nullptr);
             break;
         }
         case BlockEntity::Circle: {
@@ -732,6 +736,26 @@ void CadgfDrwAdapter::addLWPolyline(const DRW_LWPolyline& data) {
     addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data), data.lineType, data.layer, drw_lweight_mm(data.lWeight));
 }
 
+// Estimate text width in drawing units: CJK chars ≈ 1.0×h, Latin ≈ 0.55×h.
+static double estimateTextWidth(const std::string& txt, double height) {
+    double w = 0.0;
+    for (size_t i = 0; i < txt.size(); ) {
+        auto c = static_cast<unsigned char>(txt[i]);
+        if (c >= 0xE0) {
+            // 3-byte UTF-8 (CJK, most common)
+            w += height * 1.0;
+            i += (c >= 0xF0) ? 4 : 3;
+        } else if (c >= 0xC0) {
+            w += height * 0.6; // 2-byte (extended Latin, etc.)
+            i += 2;
+        } else {
+            w += height * 0.55; // ASCII
+            ++i;
+        }
+    }
+    return w;
+}
+
 void CadgfDrwAdapter::addText(const DRW_Text& data) {
     if (!m_inBlock && shouldSkipEntity(data)) return;
     std::string txt = stripDxfFormatting(data.text);
@@ -743,6 +767,30 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
     double py = useSecPoint ? data.secPoint.y : data.basePoint.y;
     // DRW_Text::angle is in degrees; cadgf_document_add_text expects radians
     double rotRad = data.angle * M_PI / 180.0;
+    // Approximate horizontal alignment offset (since core::Text has no alignment fields)
+    if (useSecPoint && data.height > 0.0) {
+        double tw = estimateTextWidth(txt, data.height);
+        double cosR = std::cos(rotRad), sinR = std::sin(rotRad);
+        double dx = 0.0, dy = 0.0;
+        switch (data.alignH) {
+            case DRW_Text::HCenter: case DRW_Text::HMiddle:
+                dx = -tw * 0.5; break;
+            case DRW_Text::HRight:
+                dx = -tw; break;
+            default: break;
+        }
+        // Vertical offset: drawText draws from baseline; adjust for other origins
+        switch (data.alignV) {
+            case DRW_Text::VTop:
+                dy = -data.height; break;
+            case DRW_Text::VMiddle:
+                dy = -data.height * 0.5; break;
+            default: break; // VBaseLine, VBottom ≈ baseline already
+        }
+        // Rotate the offset by the text angle
+        px += dx * cosR - dy * sinR;
+        py += dx * sinR + dy * cosR;
+    }
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Text;
         be.pts.push_back({px, py});
@@ -784,38 +832,62 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
 void CadgfDrwAdapter::addSolid(const DRW_Solid& data) {
     if (!m_inBlock && shouldSkipEntity(data)) return;
     // DRW_Solid inherits DRW_Trace: basePoint, secPoint, thirdPoint, fourPoint
-    std::vector<std::pair<double,double>> pts = {
-        {data.basePoint.x, data.basePoint.y},
-        {data.secPoint.x, data.secPoint.y},
-        {data.thirdPoint.x, data.thirdPoint.y},
-        {data.fourPoint.x, data.fourPoint.y},
-        {data.basePoint.x, data.basePoint.y} // close
-    };
+    // DXF SOLID vertex order: p1, p2, p3, p4 where the winding is p1-p2-p4-p3 (zig-zag)
+    // AutoCAD draws: triangle(p1,p2,p3) if p3==p4, else quad(p1,p2,p4,p3)
+    std::vector<std::pair<double,double>> pts;
+    bool isTriangle = (std::abs(data.thirdPoint.x - data.fourPoint.x) < 1e-10 &&
+                       std::abs(data.thirdPoint.y - data.fourPoint.y) < 1e-10);
+    if (isTriangle) {
+        pts = {{data.basePoint.x, data.basePoint.y},
+               {data.secPoint.x, data.secPoint.y},
+               {data.thirdPoint.x, data.thirdPoint.y},
+               {data.basePoint.x, data.basePoint.y}};
+    } else {
+        // DXF SOLID has zig-zag vertex order: 1-2-4-3 for correct quad fill
+        pts = {{data.basePoint.x, data.basePoint.y},
+               {data.secPoint.x, data.secPoint.y},
+               {data.fourPoint.x, data.fourPoint.y},
+               {data.thirdPoint.x, data.thirdPoint.y},
+               {data.basePoint.x, data.basePoint.y}};
+    }
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = pts;
         be.layerName = data.layer; be.color = drw_entity_color(data);
+        be.linetype = "__SOLID__"; // tag for filled rendering
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data),
+                     "", data.layer, 0.0, "__SOLID__");
 }
 
 void CadgfDrwAdapter::addTrace(const DRW_Trace& data) {
     if (!m_inBlock && shouldSkipEntity(data)) return;
-    std::vector<std::pair<double,double>> pts = {
-        {data.basePoint.x, data.basePoint.y},
-        {data.secPoint.x, data.secPoint.y},
-        {data.thirdPoint.x, data.thirdPoint.y},
-        {data.fourPoint.x, data.fourPoint.y},
-        {data.basePoint.x, data.basePoint.y}
-    };
+    // TRACE uses same zig-zag vertex order as SOLID
+    bool isTriangle = (std::abs(data.thirdPoint.x - data.fourPoint.x) < 1e-10 &&
+                       std::abs(data.thirdPoint.y - data.fourPoint.y) < 1e-10);
+    std::vector<std::pair<double,double>> pts;
+    if (isTriangle) {
+        pts = {{data.basePoint.x, data.basePoint.y},
+               {data.secPoint.x, data.secPoint.y},
+               {data.thirdPoint.x, data.thirdPoint.y},
+               {data.basePoint.x, data.basePoint.y}};
+    } else {
+        pts = {{data.basePoint.x, data.basePoint.y},
+               {data.secPoint.x, data.secPoint.y},
+               {data.fourPoint.x, data.fourPoint.y},
+               {data.thirdPoint.x, data.thirdPoint.y},
+               {data.basePoint.x, data.basePoint.y}};
+    }
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = pts;
         be.layerName = data.layer; be.color = drw_entity_color(data);
+        be.linetype = "__SOLID__";
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
-    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data));
+    addPolylineToDoc(pts, resolveLayer(data.layer), drw_entity_color(data),
+                     "", data.layer, 0.0, "__SOLID__");
 }
 
 // ─── POLYLINE (3D/heavyweight) ───
