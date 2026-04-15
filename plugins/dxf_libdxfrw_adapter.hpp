@@ -38,6 +38,15 @@ public:
     int entityCount() const { return m_entityCount; }
     int layerCount() const { return m_layerCount; }
 
+    // Drawing extents from DXF/DWG header ($EXTMIN/$EXTMAX).
+    // Returns true if header provided valid extents.
+    bool getExtents(double& minX, double& minY, double& maxX, double& maxY) const {
+        if (!m_hasExtents) return false;
+        minX = m_extMinX; minY = m_extMinY;
+        maxX = m_extMaxX; maxY = m_extMaxY;
+        return true;
+    }
+
     // Call after read() to expand XRef blocks not referenced by any INSERT
     void expandUnreferencedBlocks();
 
@@ -147,6 +156,10 @@ private:
     double m_dimLFac{1.0};        // dimension length factor ($DIMLFAC)
     int    m_dimDecPrecision{2};  // decimal digits for dimension text ($DIMDEC)
     double m_ltScale{1.0};        // global linetype scale ($LTSCALE)
+
+    // Drawing extents from $EXTMIN/$EXTMAX header variables
+    bool m_hasExtents{false};
+    double m_extMinX{0}, m_extMinY{0}, m_extMaxX{0}, m_extMaxY{0};
 
     // Text style info: style name → {font file, width factor, char width ratio}
     struct TextStyleInfo {
