@@ -1719,44 +1719,48 @@ void MainWindow::importFileFromPath(const QString& path) {
     // The cadgf_document is actually a core::Document — copy entities directly
     core::Document* srcDoc = reinterpret_cast<core::Document*>(tmpDoc);
 
-    // Copy layers first
+    // Copy layers and build ID mapping (src layerId → dst layerId)
+    std::map<int, int> layerMap;
+    cadgf_document* dstDoc = reinterpret_cast<cadgf_document*>(&m_document);
     for (int lid = 0; lid < 1000; ++lid) {
         auto* layer = srcDoc->get_layer(lid);
         if (!layer) continue;
-        m_document.add_layer(layer->name, layer->color);
+        int newLid = 0;
+        cadgf_document_add_layer(dstDoc, layer->name.c_str(), layer->color, &newLid);
+        layerMap[lid] = newLid;
     }
 
-    // Copy all entities with their properties
+    // Copy all entities with their full properties
     for (const auto& e : srcDoc->entities()) {
+        int dstLayer = layerMap.count(e.layerId) ? layerMap[e.layerId] : 0;
         core::EntityId newId = 0;
+
         if (auto* pl = std::get_if<core::Polyline>(&e.payload)) {
-            newId = m_document.add_polyline(*pl, e.name);
+            std::vector<cadgf_vec2> pts;
+            pts.reserve(pl->points.size());
+            for (auto& p : pl->points) pts.push_back({p.x, p.y});
+            newId = cadgf_document_add_polyline_ex(dstDoc, pts.data(),
+                static_cast<int>(pts.size()), e.name.c_str(), dstLayer);
         } else if (auto* t = std::get_if<core::Text>(&e.payload)) {
             cadgf_vec2 pos = {t->pos.x, t->pos.y};
-            newId = cadgf_document_add_text(
-                reinterpret_cast<cadgf_document*>(&m_document),
-                &pos, t->height, t->rotation, t->text.c_str(), e.name.c_str(), e.layerId);
+            newId = cadgf_document_add_text(dstDoc, &pos, t->height,
+                t->rotation, t->text.c_str(), e.name.c_str(), dstLayer);
         } else if (auto* ell = std::get_if<core::Ellipse>(&e.payload)) {
             cadgf_ellipse ce;
             ce.center = {ell->center.x, ell->center.y};
             ce.rx = ell->rx; ce.ry = ell->ry;
             ce.rotation = ell->rotation;
             ce.start_angle = ell->start_angle; ce.end_angle = ell->end_angle;
-            newId = cadgf_document_add_ellipse(
-                reinterpret_cast<cadgf_document*>(&m_document),
-                &ce, e.name.c_str(), e.layerId);
+            newId = cadgf_document_add_ellipse(dstDoc, &ce, e.name.c_str(), dstLayer);
         }
-        // Copy entity properties
+
         if (newId > 0) {
             if (e.color != 0)
-                cadgf_document_set_entity_color(
-                    reinterpret_cast<cadgf_document*>(&m_document), newId, e.color);
+                cadgf_document_set_entity_color(dstDoc, newId, e.color);
             if (!e.line_type.empty())
-                cadgf_document_set_entity_line_type(
-                    reinterpret_cast<cadgf_document*>(&m_document), newId, e.line_type.c_str());
+                cadgf_document_set_entity_line_type(dstDoc, newId, e.line_type.c_str());
             if (e.line_weight > 0)
-                cadgf_document_set_entity_line_weight(
-                    reinterpret_cast<cadgf_document*>(&m_document), newId, e.line_weight);
+                cadgf_document_set_entity_line_weight(dstDoc, newId, e.line_weight);
         }
     }
     cadgf_document_destroy(tmpDoc);
