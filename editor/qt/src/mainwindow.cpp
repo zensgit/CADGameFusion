@@ -1,4 +1,6 @@
 #include "mainwindow.hpp"
+#include "core/document.hpp"
+#include "core/geometry2d.hpp"
 
 #include <QAction>
 #include <QListWidget>
@@ -1713,41 +1715,48 @@ void MainWindow::importFileFromPath(const QString& path) {
         QMessageBox::warning(this, "Import", "Failed to read " + path);
         return;
     }
-    int entityCount = 0;
-    cadgf_document_get_entity_count(tmpDoc, &entityCount);
-    for (int i = 0; i < entityCount; ++i) {
-        cadgf_entity_id eid = 0;
-        cadgf_document_get_entity_id_at(tmpDoc, i, &eid);
-        cadgf_entity_info info{};
-        cadgf_document_get_entity_info(tmpDoc, eid, &info);
-        if (info.type == CADGF_ENTITY_TYPE_POLYLINE) {
-            int ptCount = 0;
-            cadgf_document_get_polyline_points(tmpDoc, eid, nullptr, 0, &ptCount);
-            if (ptCount > 0) {
-                std::vector<cadgf_vec2> pts(static_cast<size_t>(ptCount));
-                int pc2 = 0;
-                cadgf_document_get_polyline_points(tmpDoc, eid, pts.data(), ptCount, &pc2);
-                core::Polyline pl;
-                for (const auto& p : pts) pl.points.push_back({p.x, p.y});
-                m_document.add_polyline(pl, "");
-            }
-        } else if (info.type == CADGF_ENTITY_TYPE_LINE) {
-            cadgf_line line{};
-            cadgf_document_get_line(tmpDoc, eid, &line);
-            core::Polyline pl;
-            pl.points.push_back({line.a.x, line.a.y});
-            pl.points.push_back({line.b.x, line.b.y});
-            m_document.add_polyline(pl, "");
-        } else if (info.type == CADGF_ENTITY_TYPE_CIRCLE) {
-            cadgf_circle circ{};
-            cadgf_document_get_circle(tmpDoc, eid, &circ);
-            core::Polyline pl;
-            for (int s = 0; s <= 64; ++s) {
-                double a = 2.0 * 3.14159265358979 * s / 64;
-                pl.points.push_back({circ.center.x + circ.radius * std::cos(a),
-                                     circ.center.y + circ.radius * std::sin(a)});
-            }
-            m_document.add_polyline(pl, "");
+    // Transfer ALL entities with full metadata (color, layer, linetype, text)
+    // The cadgf_document is actually a core::Document — copy entities directly
+    core::Document* srcDoc = reinterpret_cast<core::Document*>(tmpDoc);
+
+    // Copy layers first
+    for (int lid = 0; lid < 1000; ++lid) {
+        auto* layer = srcDoc->get_layer(lid);
+        if (!layer) continue;
+        m_document.add_layer(layer->name, layer->color);
+    }
+
+    // Copy all entities with their properties
+    for (const auto& e : srcDoc->entities()) {
+        core::EntityId newId = 0;
+        if (auto* pl = std::get_if<core::Polyline>(&e.payload)) {
+            newId = m_document.add_polyline(*pl, e.name);
+        } else if (auto* t = std::get_if<core::Text>(&e.payload)) {
+            cadgf_vec2 pos = {t->pos.x, t->pos.y};
+            newId = cadgf_document_add_text(
+                reinterpret_cast<cadgf_document*>(&m_document),
+                &pos, t->height, t->rotation, t->text.c_str(), e.name.c_str(), e.layerId);
+        } else if (auto* ell = std::get_if<core::Ellipse>(&e.payload)) {
+            cadgf_ellipse ce;
+            ce.center = {ell->center.x, ell->center.y};
+            ce.rx = ell->rx; ce.ry = ell->ry;
+            ce.rotation = ell->rotation;
+            ce.start_angle = ell->start_angle; ce.end_angle = ell->end_angle;
+            newId = cadgf_document_add_ellipse(
+                reinterpret_cast<cadgf_document*>(&m_document),
+                &ce, e.name.c_str(), e.layerId);
+        }
+        // Copy entity properties
+        if (newId > 0) {
+            if (e.color != 0)
+                cadgf_document_set_entity_color(
+                    reinterpret_cast<cadgf_document*>(&m_document), newId, e.color);
+            if (!e.line_type.empty())
+                cadgf_document_set_entity_line_type(
+                    reinterpret_cast<cadgf_document*>(&m_document), newId, e.line_type.c_str());
+            if (e.line_weight > 0)
+                cadgf_document_set_entity_line_weight(
+                    reinterpret_cast<cadgf_document*>(&m_document), newId, e.line_weight);
         }
     }
     cadgf_document_destroy(tmpDoc);
