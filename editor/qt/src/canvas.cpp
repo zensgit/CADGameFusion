@@ -615,11 +615,19 @@ static QVector<qreal> linetypeDashPattern(const std::string& lt, double scalePix
         {"_U",        {12.7,  6.35}},   // user-defined fallback
     };
 
+    // Match by exact name or substring (e.g., ACAD_ISO04W100 → DASHED)
     for (const auto& row : table) {
-        if (name == row.name) {
+        if (name == row.name || name.find(row.name) != std::string::npos) {
             QVector<qreal> q;
-            for (double v : row.pat)
-                q.append(std::max(1.0, v * scalePixPerMm));
+            bool isDash = true;
+            for (double v : row.pat) {
+                double px = v * scalePixPerMm;
+                // Enforce minimum visibility: 10px dash, 6px gap
+                if (isDash) { if (px < 10.0) px = 10.0; }
+                else        { if (px < 6.0) px = 6.0; }
+                isDash = !isDash;
+                q.append(px);
+            }
             return q;
         }
     }
@@ -742,10 +750,21 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
         QPen pen(resolveEntityColor(*entity), 1);
         pen.setCosmetic(true);
 
-        // Line weight: entity value in mm → pixels; 0 = use thin default
+        // Line weight: entity value in mm → pixels; infer from layer if not set
         double lwPx = 0.0;
-        if (entity->line_weight > 0.0)
-            lwPx = std::max(1.0, entity->line_weight * scale_);
+        if (entity->line_weight > 0.0) {
+            lwPx = std::max(1.5, entity->line_weight * scale_);
+        } else {
+            auto* layer = layerFor(entity->layerId);
+            std::string ln = layer ? layer->name : "";
+            if (ln.find("粗实线") != std::string::npos || ln.find("YGJ粗") != std::string::npos)
+                lwPx = 2.5;
+            else if (ln.find("细实线") != std::string::npos || ln.find("标注") != std::string::npos ||
+                     ln.find("尺寸") != std::string::npos)
+                lwPx = 1.0;
+            else if (ln.find("虚线") != std::string::npos || ln.find("中心线") != std::string::npos)
+                lwPx = 1.0;
+        }
 
         // Apply linetype dash pattern if not continuous
         if (!entity->line_type.empty()) {
@@ -767,13 +786,11 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             pen.setWidthF(2.5);
         }
         pr.setPen(pen);
-        // SOLID/TRACE entities: filled polygon
+        // SOLID/TRACE entities: filled polygon (drawn in world coords via transform)
         if (entity->name == "__SOLID__" && pv.pts.size() >= 3) {
             pr.setPen(Qt::NoPen);
             pr.setBrush(pen.color());
-            QPolygonF poly;
-            for (const auto& pt : pv.pts) poly << worldToScreen(QPointF(pt.x(), pt.y()));
-            pr.drawPolygon(poly);
+            pr.drawPath(pv.cachePath); // cachePath is in world coords, transform handles it
             pr.setBrush(Qt::NoBrush);
             continue;
         }
