@@ -547,6 +547,25 @@ void CadgfDrwAdapter::addHeader(const DRW_Header* data) {
     if (dimlfac  > 0.0) m_dimLFac       = dimlfac;
     if (dimdec   > 0)   m_dimDecPrecision = std::min(dimdec, 6);
     if (ltscale  > 0.0) m_ltScale       = ltscale;
+
+    // Read drawing extents ($EXTMIN/$EXTMAX = AutoCAD's zoom-extents bbox)
+    auto readCoord = [&](const char* var, double& x, double& y) -> bool {
+        auto it = data->vars.find(var);
+        if (it == data->vars.end()) return false;
+        if (it->second->type() != DRW_Variant::COORD) return false;
+        x = it->second->content.v->x;
+        y = it->second->content.v->y;
+        return true;
+    };
+    double emX=0, emY=0, eMX=0, eMY=0;
+    // DXF uses "$EXTMIN", DWG uses "EXTMIN" (both via same DRW_Header)
+    bool hasMin = readCoord("$EXTMIN", emX, emY) || readCoord("EXTMIN", emX, emY);
+    bool hasMax = readCoord("$EXTMAX", eMX, eMY) || readCoord("EXTMAX", eMX, eMY);
+    if (hasMin && hasMax && eMX > emX && eMY > emY) {
+        m_hasExtents = true;
+        m_extMinX = emX; m_extMinY = emY;
+        m_extMaxX = eMX; m_extMaxY = eMY;
+    }
 }
 
 void CadgfDrwAdapter::addDimStyle(const DRW_Dimstyle& data) {
