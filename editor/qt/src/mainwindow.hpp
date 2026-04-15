@@ -36,6 +36,7 @@ class MainWindow : public QMainWindow {
 public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
+    void importFileFromPath(const QString& path); // CLI import
 private slots:
     void newFile();
     void openFile();

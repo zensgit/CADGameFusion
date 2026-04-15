@@ -695,112 +695,27 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
         QString path = QFileDialog::getOpenFileName(this, "Import DXF/DWG", QString(),
             "DXF/DWG Files (*.dxf *.dwg);;All Files (*)");
         if (path.isEmpty()) return;
-
-        // Import via libdxfrw (DXF) or built-in dwgR (DWG)
-        cadgf_document* tmpDoc = cadgf_document_create();
-        CadgfDrwAdapter adapter(tmpDoc);
-        bool ok = false;
-        bool isDwg = path.toLower().endsWith(".dwg");
-
-        if (isDwg) {
-            // Native DWG reading via libdxfrw's dwgR class
-            // Works reliably for AC1015 (2000) and AC1018 (2004).
-            // 2010+ versions may crash due to libdxfrw limitations.
-            try {
-                dwgR dwgReader(path.toStdString().c_str());
-                ok = dwgReader.read(&adapter, false);
-                if (!ok) {
-                    statusBar()->showMessage(
-                        QString("DWG read error: %1").arg((int)dwgReader.getError()), 3000);
-                }
-            } catch (const std::exception& e) {
-                ok = false;
-                statusBar()->showMessage(
-                    QString("DWG parse exception: %1").arg(e.what()), 3000);
-            } catch (...) {
-                ok = false;
-            }
-            if (!ok) {
-                // Fallback: try ODA File Converter or dwg2dxf for 2010+ files
-                QString tempDxf = QDir::tempPath() + "/cadgf_dwg_" +
-                    QString::number(QDateTime::currentMSecsSinceEpoch()) + ".dxf";
-                QStringList tools = {"dwg2dxf", "/usr/local/bin/dwg2dxf",
-                    "/opt/homebrew/bin/dwg2dxf",
-                    QCoreApplication::applicationDirPath() + "/dwg2dxf"};
-                for (const auto& tool : tools) {
-                    QProcess proc;
-                    proc.start(tool, {path, "-o", tempDxf});
-                    if (proc.waitForFinished(30000) && proc.exitCode() == 0
-                        && QFile::exists(tempDxf)) {
-                        // Re-create adapter for clean state
-                        cadgf_document_destroy(tmpDoc);
-                        tmpDoc = cadgf_document_create();
-                        adapter = CadgfDrwAdapter(tmpDoc);
-                        dxfRW dxfReader(tempDxf.toStdString().c_str());
-                        ok = dxfReader.read(&adapter, false);
-                        QFile::remove(tempDxf);
-                        if (ok) statusBar()->showMessage("DWG→DXF via dwg2dxf", 2000);
-                        break;
-                    }
-                }
-            }
-        } else {
-            // DXF reading
-            dxfRW reader(path.toStdString().c_str());
-            ok = reader.read(&adapter, false);
-        }
-        if (ok) adapter.expandUnreferencedBlocks();
-        if (!ok) {
-            cadgf_document_destroy(tmpDoc);
-            QMessageBox::warning(this, "Import", "Failed to read " + path);
-            return;
-        }
-        // Transfer entities from tmpDoc to our document via C API
-        int entityCount = 0;
-        cadgf_document_get_entity_count(tmpDoc, &entityCount);
-        for (int i = 0; i < entityCount; ++i) {
-            cadgf_entity_id eid = 0;
-            cadgf_document_get_entity_id_at(tmpDoc, i, &eid);
-            cadgf_entity_info info{};
-            cadgf_document_get_entity_info(tmpDoc, eid, &info);
-            if (info.type == CADGF_ENTITY_TYPE_POLYLINE) {
-                int ptCount = 0;
-                cadgf_document_get_polyline_points(tmpDoc, eid, nullptr, 0, &ptCount);
-                if (ptCount > 0) {
-                    std::vector<cadgf_vec2> pts(static_cast<size_t>(ptCount));
-                    int pc2 = 0;
-                    cadgf_document_get_polyline_points(tmpDoc, eid, pts.data(), ptCount, &pc2);
-                    core::Polyline pl;
-                    for (const auto& p : pts) pl.points.push_back({p.x, p.y});
-                    m_document.add_polyline(pl, "");
-                }
-            } else if (info.type == CADGF_ENTITY_TYPE_LINE) {
-                cadgf_line line{};
-                cadgf_document_get_line(tmpDoc, eid, &line);
-                // Add as 2-point polyline for rendering
-                core::Polyline pl;
-                pl.points.push_back({line.a.x, line.a.y});
-                pl.points.push_back({line.b.x, line.b.y});
-                m_document.add_polyline(pl, "");
-            } else if (info.type == CADGF_ENTITY_TYPE_CIRCLE) {
-                cadgf_circle circ{};
-                cadgf_document_get_circle(tmpDoc, eid, &circ);
-                // Approximate circle as polyline (64 segments)
-                core::Polyline pl;
-                for (int s = 0; s <= 64; ++s) {
-                    double a = 2.0 * 3.14159265358979 * s / 64;
-                    pl.points.push_back({circ.center.x + circ.radius * std::cos(a),
-                                         circ.center.y + circ.radius * std::sin(a)});
-                }
-                m_document.add_polyline(pl, "");
-            }
-        }
-        cadgf_document_destroy(tmpDoc);
-        markDirty();
-        statusBar()->showMessage(QString("Imported %1 entities from %2")
-            .arg(adapter.entityCount()).arg(QFileInfo(path).fileName()), 3000);
+        importFileFromPath(path);
     });
 #endif // CADGF_HAS_LIBDXFRW
+    auto* actScreenshot = fileMenu->addAction("Screenshot to /tmp");
+    actScreenshot->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_P));
+    connect(actScreenshot, &QAction::triggered, this, [this]{
+        if (auto* cv = qobject_cast<CanvasWidget*>(centralWidget())) {
+            QPixmap pm = cv->grab();
+            QString path = "/tmp/cadgf_screenshot.png";
+            pm.save(path);
+            statusBar()->showMessage("Screenshot saved: " + path, 3000);
+        }
+    });
+
+    auto* actZoomFit = fileMenu->addAction("Zoom to Fit");
+    actZoomFit->setShortcut(QKeySequence(Qt::Key_F));
+    connect(actZoomFit, &QAction::triggered, this, [this]{
+        if (auto* cv = qobject_cast<CanvasWidget*>(centralWidget()))
+            cv->zoomToFit();
+    });
+
     auto* actSave = fileMenu->addAction("Save");
     actSave->setShortcut(QKeySequence::Save);
     connect(actSave, &QAction::triggered, this, &MainWindow::saveFile);
@@ -1753,3 +1668,104 @@ void MainWindow::exportViaPlugin(const cadgf_exporter_api_v1* exporter) {
 
     statusBar()->showMessage(QString("Exported via plugin: %1").arg(outPath), 3000);
 }
+
+#ifdef CADGF_HAS_LIBDXFRW
+void MainWindow::importFileFromPath(const QString& path) {
+    cadgf_document* tmpDoc = cadgf_document_create();
+    CadgfDrwAdapter adapter(tmpDoc);
+    bool ok = false;
+    bool isDwg = path.toLower().endsWith(".dwg");
+
+    if (isDwg) {
+        try {
+            dwgR dwgReader(path.toStdString().c_str());
+            ok = dwgReader.read(&adapter, false);
+            if (!ok) statusBar()->showMessage(QString("DWG error: %1").arg((int)dwgReader.getError()), 3000);
+        } catch (const std::exception& e) {
+            ok = false;
+            statusBar()->showMessage(QString("DWG exception: %1").arg(e.what()), 3000);
+        } catch (...) { ok = false; }
+        if (!ok) {
+            QString tempDxf = QDir::tempPath() + "/cadgf_dwg_" +
+                QString::number(QDateTime::currentMSecsSinceEpoch()) + ".dxf";
+            QStringList tools = {"dwg2dxf", "/usr/local/bin/dwg2dxf", "/opt/homebrew/bin/dwg2dxf"};
+            for (const auto& tool : tools) {
+                QProcess proc;
+                proc.start(tool, {path, "-o", tempDxf});
+                if (proc.waitForFinished(30000) && proc.exitCode() == 0 && QFile::exists(tempDxf)) {
+                    cadgf_document_destroy(tmpDoc);
+                    tmpDoc = cadgf_document_create();
+                    adapter = CadgfDrwAdapter(tmpDoc);
+                    dxfRW dxfReader(tempDxf.toStdString().c_str());
+                    ok = dxfReader.read(&adapter, false);
+                    QFile::remove(tempDxf);
+                    break;
+                }
+            }
+        }
+    } else {
+        dxfRW reader(path.toStdString().c_str());
+        ok = reader.read(&adapter, false);
+    }
+    if (ok) adapter.expandUnreferencedBlocks();
+    if (!ok) {
+        cadgf_document_destroy(tmpDoc);
+        QMessageBox::warning(this, "Import", "Failed to read " + path);
+        return;
+    }
+    int entityCount = 0;
+    cadgf_document_get_entity_count(tmpDoc, &entityCount);
+    for (int i = 0; i < entityCount; ++i) {
+        cadgf_entity_id eid = 0;
+        cadgf_document_get_entity_id_at(tmpDoc, i, &eid);
+        cadgf_entity_info info{};
+        cadgf_document_get_entity_info(tmpDoc, eid, &info);
+        if (info.type == CADGF_ENTITY_TYPE_POLYLINE) {
+            int ptCount = 0;
+            cadgf_document_get_polyline_points(tmpDoc, eid, nullptr, 0, &ptCount);
+            if (ptCount > 0) {
+                std::vector<cadgf_vec2> pts(static_cast<size_t>(ptCount));
+                int pc2 = 0;
+                cadgf_document_get_polyline_points(tmpDoc, eid, pts.data(), ptCount, &pc2);
+                core::Polyline pl;
+                for (const auto& p : pts) pl.points.push_back({p.x, p.y});
+                m_document.add_polyline(pl, "");
+            }
+        } else if (info.type == CADGF_ENTITY_TYPE_LINE) {
+            cadgf_line line{};
+            cadgf_document_get_line(tmpDoc, eid, &line);
+            core::Polyline pl;
+            pl.points.push_back({line.a.x, line.a.y});
+            pl.points.push_back({line.b.x, line.b.y});
+            m_document.add_polyline(pl, "");
+        } else if (info.type == CADGF_ENTITY_TYPE_CIRCLE) {
+            cadgf_circle circ{};
+            cadgf_document_get_circle(tmpDoc, eid, &circ);
+            core::Polyline pl;
+            for (int s = 0; s <= 64; ++s) {
+                double a = 2.0 * 3.14159265358979 * s / 64;
+                pl.points.push_back({circ.center.x + circ.radius * std::cos(a),
+                                     circ.center.y + circ.radius * std::sin(a)});
+            }
+            m_document.add_polyline(pl, "");
+        }
+    }
+    cadgf_document_destroy(tmpDoc);
+    markDirty();
+    // Zoom to extents using EXTMIN/EXTMAX if available, else zoomToFit
+    if (auto* cv = qobject_cast<CanvasWidget*>(centralWidget())) {
+        double emx, emy, eMx, eMy;
+        if (adapter.getExtents(emx, emy, eMx, eMy)) {
+            QTimer::singleShot(200, cv, [cv, emx, emy, eMx, eMy]{
+                cv->zoomToExtents(emx, emy, eMx, eMy);
+            });
+        } else {
+            QTimer::singleShot(200, cv, &CanvasWidget::zoomToFit);
+        }
+    }
+    statusBar()->showMessage(QString("Imported %1 entities from %2")
+        .arg(adapter.entityCount()).arg(QFileInfo(path).fileName()), 3000);
+}
+#else
+void MainWindow::importFileFromPath(const QString&) {}
+#endif

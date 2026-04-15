@@ -301,11 +301,11 @@ QList<qulonglong> CanvasWidget::selectEntitiesInWorldRect(const QRectF& rect, bo
 }
 
 QPointF CanvasWidget::worldToScreen(const QPointF& p) const {
-    return QPointF(p.x() * scale_ + pan_.x(), p.y() * scale_ + pan_.y());
+    return QPointF(p.x() * scale_ + pan_.x(), p.y() * (-scale_) + pan_.y());
 }
 
 QPointF CanvasWidget::screenToWorld(const QPointF& p) const {
-    return QPointF((p.x() - pan_.x()) / scale_, (p.y() - pan_.y()) / scale_);
+    return QPointF((p.x() - pan_.x()) / scale_, (p.y() - pan_.y()) / (-scale_));
 }
 
 SnapManager::SnapResult CanvasWidget::computeSnapAt(const QPointF& worldPos, bool excludeSelection) {
@@ -625,7 +625,7 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
 
     QTransform transform;
     transform.translate(pan_.x(), pan_.y());
-    transform.scale(scale_, scale_);
+    transform.scale(scale_, -scale_); // negative Y to flip CAD Y-up to screen Y-down
     
     // 1. Draw Grid
     const double targetSpacing = snap_settings_ ? snap_settings_->gridPixelSpacing() : 50.0;
@@ -1341,6 +1341,116 @@ void CanvasWidget::selectGroupAtWorld(const QPointF& mouseWorld) {
     selected_entities_.clear();
     update();
     emit selectionChanged({});
+}
+
+void CanvasWidget::zoomToFit() {
+    if (!m_doc) return;
+    int w = width(), h = height();
+    if (w < 10 || h < 10) return; // widget not laid out yet
+
+    // Compute bounding box of all entities
+    double mnx = 1e18, mny = 1e18, mxx = -1e18, mxy = -1e18;
+    for (const auto& e : m_doc->entities()) {
+        if (auto* pl = std::get_if<core::Polyline>(&e.payload)) {
+            for (auto& p : pl->points) {
+                if (p.x < mnx) mnx = p.x; if (p.x > mxx) mxx = p.x;
+                if (p.y < mny) mny = p.y; if (p.y > mxy) mxy = p.y;
+            }
+        } else if (auto* t = std::get_if<core::Text>(&e.payload)) {
+            if (t->pos.x < mnx) mnx = t->pos.x; if (t->pos.x > mxx) mxx = t->pos.x;
+            if (t->pos.y < mny) mny = t->pos.y; if (t->pos.y > mxy) mxy = t->pos.y;
+        }
+    }
+    double dw = mxx - mnx, dh = mxy - mny;
+    if (dw < 1 || dh < 1) return;
+    // 5% margin
+    mnx -= dw * 0.05; mxx += dw * 0.05;
+    mny -= dh * 0.05; mxy += dh * 0.05;
+    dw = mxx - mnx; dh = mxy - mny;
+
+    // Canvas transform: screen = world * scale_ + pan_
+    // screen Y increases downward, world Y increases upward.
+    // The canvas transform does NOT flip Y — so worldY=0 is at screenY=panY,
+    // and higher worldY goes further DOWN on screen.
+    //
+    // For correct CAD display, worldMaxY should be at screen top (small Y)
+    // and worldMinY at screen bottom (large Y).
+    //
+    // Solution: set panY so that mxy maps to screen top margin and
+    // mny maps to screen bottom margin.
+    //   screen_top    = mxy * scale_ + panY → panY = margin - mxy*scale_
+    //   screen_bottom = mny * scale_ + panY
+    //   scale_ = (h - 2*margin) / (mny - mxy)  [NOTE: mny < mxy so this is negative!]
+    //
+    // Since canvas uses positive scale_ uniformly, we can't use negative scale.
+    // Instead: negate the world Y coordinates in pan calculation.
+    // Treat it as: screenY = (-worldY) * scale_ + panY
+    //   → panY = screenCenter - (-wcy) * scale_ = screenCenter + wcy*scale_
+
+    // Canvas coordinate system: screenPos = worldPos * scale_ + pan_
+    // Both X and Y use the same positive scale_ (no Y flip in transform).
+    // worldToScreen simply multiplies by scale_ and offsets by pan_.
+    //
+    // To fit content: we want the world bbox to map into the widget rect.
+    //   screenX_min = mnx * scale_ + panX = margin
+    //   screenX_max = mxx * scale_ + panX = w - margin
+    //   screenY_min = mny * scale_ + panY = margin  (mny is smaller, maps to top)
+    //   screenY_max = mxy * scale_ + panY = h - margin (mxy is larger, maps to bottom)
+    //
+    // scale_ = min((w - 2*margin) / dw, (h - 2*margin) / dh)
+    // panX = margin - mnx * scale_
+    // panY = margin - mny * scale_
+
+    double margin = std::min(w, h) * 0.03;
+    double sx = (w - 2*margin) / dw;
+    double sy = (h - 2*margin) / dh;
+    scale_ = std::min(sx, sy);
+
+    // Center the content
+    double usedW = dw * scale_;
+    double usedH = dh * scale_;
+    double offsetX = (w - usedW) / 2.0;
+    double offsetY = (h - usedH) / 2.0;
+
+    double wcx = (mnx + mxx) / 2.0;
+    double wcy = (mny + mxy) / 2.0;
+    pan_.setX(w / 2.0 - wcx * scale_);
+    pan_.setY(h / 2.0 + wcy * scale_);
+
+    fprintf(stderr, "zoomToFit: widget=%dx%d world=[%.0f,%.0f]-[%.0f,%.0f] scale=%.4f pan=(%.0f,%.0f)\n",
+        w, h, mnx, mny, mxx, mxy, scale_, pan_.x(), pan_.y());
+    update();
+}
+
+void CanvasWidget::zoomToExtents(double mnx, double mny, double mxx, double mxy) {
+    int w = width(), h = height();
+    if (w < 10 || h < 10) return;
+    double dw = mxx - mnx, dh = mxy - mny;
+    if (dw < 1 || dh < 1) return;
+    // 5% margin
+    mnx -= dw * 0.05; mxx += dw * 0.05;
+    mny -= dh * 0.05; mxy += dh * 0.05;
+    dw = mxx - mnx; dh = mxy - mny;
+
+    // Transform: screenX = worldX * scale_ + panX
+    //            screenY = worldY * (-scale_) + panY  (Y flipped)
+    // So: worldMinX → screenLeft, worldMaxX → screenRight
+    //     worldMaxY → screenTop (small Y), worldMinY → screenBottom (large Y)
+    double sx = (double)w / dw;
+    double sy = (double)h / dh;
+    scale_ = std::min(sx, sy) * 0.9;
+
+    double wcx = (mnx + mxx) / 2.0;
+    double wcy = (mny + mxy) / 2.0;
+
+    // screenCenter.x = wcx * scale_ + panX → panX = w/2 - wcx*scale_
+    // screenCenter.y = wcy * (-scale_) + panY → panY = h/2 + wcy*scale_
+    pan_.setX(w / 2.0 - wcx * scale_);
+    pan_.setY(h / 2.0 + wcy * scale_);
+
+    fprintf(stderr, "zoomToExtents: [%.0f,%.0f]-[%.0f,%.0f] scale=%.4f pan=(%.0f,%.0f)\n",
+        mnx, mny, mxx, mxy, scale_, pan_.x(), pan_.y());
+    update();
 }
 
 void CanvasWidget::reloadFromDocument() {
