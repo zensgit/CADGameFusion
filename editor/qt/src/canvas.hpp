@@ -58,6 +58,8 @@ public:
     void setPivotMode(int mode, const QPointF& custom = {});
     QPointF computePivot() const; // computes based on pivot mode + selection
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
+    void zoomToFit(); // Zoom to show all entities
+    void zoomToExtents(double minX, double minY, double maxX, double maxY); // Zoom to specific rect
     QPointF snapWorldPosition(const QPointF& worldPos, bool* snapped = nullptr);
 
     void clear();
