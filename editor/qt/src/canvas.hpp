@@ -60,6 +60,10 @@ public:
     void reloadFromDocument(); // PR5: rebuild Canvas from Document (single source of truth)
     void zoomToFit(); // Zoom to show all entities
     void zoomToExtents(double minX, double minY, double maxX, double maxY); // Zoom to specific rect
+    void setClipExtents(double minX, double minY, double maxX, double maxY) {
+        m_clipMinX = minX; m_clipMinY = minY;
+        m_clipMaxX = maxX; m_clipMaxY = maxY; m_hasClip = true;
+    }
     QPointF snapWorldPosition(const QPointF& worldPos, bool* snapped = nullptr);
 
     void clear();
@@ -132,6 +136,8 @@ private:
 
     double scale_ { 1.0 }; // pixels per world unit
     QPointF pan_ { 0.0, 0.0 }; // in pixels
+    bool m_hasClip{false};
+    double m_clipMinX{0}, m_clipMinY{0}, m_clipMaxX{0}, m_clipMaxY{0};
     QPoint lastPos_ {};
     SnapManager snap_manager_;
     SnapManager::SnapResult m_currentSnap;

@@ -1761,10 +1761,11 @@ void MainWindow::importFileFromPath(const QString& path) {
     }
     cadgf_document_destroy(tmpDoc);
     markDirty();
-    // Zoom to extents using EXTMIN/EXTMAX if available, else zoomToFit
+    // Zoom to extents and clip to EXTMIN/EXTMAX
     if (auto* cv = qobject_cast<CanvasWidget*>(centralWidget())) {
         double emx, emy, eMx, eMy;
         if (adapter.getExtents(emx, emy, eMx, eMy)) {
+            cv->setClipExtents(emx, emy, eMx, eMy);
             QTimer::singleShot(200, cv, [cv, emx, emy, eMx, eMy]{
                 cv->zoomToExtents(emx, emy, eMx, eMy);
             });

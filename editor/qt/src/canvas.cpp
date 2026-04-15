@@ -633,7 +633,16 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
     
     pr.save();
     pr.setTransform(transform);
-    
+
+    // Clip to EXTMIN/EXTMAX if set (hides entities outside drawing border)
+    if (m_hasClip) {
+        double margin = 10.0; // small margin in world units
+        QRectF clipRect(m_clipMinX - margin, m_clipMinY - margin,
+                        m_clipMaxX - m_clipMinX + 2*margin,
+                        m_clipMaxY - m_clipMinY + 2*margin);
+        pr.setClipRect(clipRect);
+    }
+
     QPen gridPen(QColor(60,60,70)); 
     gridPen.setCosmetic(true); 
     gridPen.setWidthF(1.0);
