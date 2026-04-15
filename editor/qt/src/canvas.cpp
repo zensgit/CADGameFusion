@@ -82,6 +82,7 @@ std::string lookup_entity_meta(const core::Document* doc, EntityId id, const cha
 CanvasWidget::CanvasWidget(QWidget* parent) : QWidget(parent) {
     setMouseTracking(true);
     setAutoFillBackground(true);
+    setFocusPolicy(Qt::StrongFocus); // Accept keyboard events (zoom +/-, F key)
 }
 
 CanvasWidget::~CanvasWidget() {
@@ -1259,6 +1260,18 @@ void CanvasWidget::keyPressEvent(QKeyEvent* e) {
                 update();
             }
         }
+    } else if ((e->key() == Qt::Key_Plus || e->key() == Qt::Key_Equal ||
+                e->key() == Qt::Key_Minus) && selected_entities_.isEmpty()) {
+        // Viewport zoom (no selection): +/= zoom in, - zoom out
+        double factor = (e->key() == Qt::Key_Minus) ? 0.8 : 1.25;
+        QPointF center(width()/2.0, height()/2.0);
+        QPointF wBefore = screenToWorld(center);
+        scale_ *= factor;
+        if (scale_ < 0.001) scale_ = 0.001;
+        if (scale_ > 10000.0) scale_ = 10000.0;
+        pan_.setX(center.x() - wBefore.x() * scale_);
+        pan_.setY(center.y() - wBefore.y() * (-scale_));
+        update();
     } else if ((e->key() == Qt::Key_Plus || e->key() == Qt::Key_Equal ||
                 e->key() == Qt::Key_Minus) && !selected_entities_.isEmpty()) {
         // Block scale if any selected entity is on a locked layer
