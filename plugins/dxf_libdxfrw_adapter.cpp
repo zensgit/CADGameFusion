@@ -1274,12 +1274,12 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
     // Pattern hatch fill: generate parallel lines clipped to actual boundary polygon.
     // Skip for SOLID hatches (already rendered as filled polygons above).
     if (!data->looplist.empty() && !m_inBlock && data->solid == 0) {
-        // Build combined boundary polygon from ALL loops for clipping
-        // (first loop = outer boundary, subsequent loops = holes, but for line
-        // clipping we treat all edges uniformly via even-odd intersection rule)
-        std::vector<std::pair<double,double>> boundary;
+        // Build boundary polygons — one per loop. Each loop is a closed polygon.
+        // For even-odd fill line clipping, we test intersections against ALL loops.
+        std::vector<std::vector<std::pair<double,double>>> loops;
         double hMinX=1e18, hMinY=1e18, hMaxX=-1e18, hMaxY=-1e18;
         for (const auto* loop : data->looplist) {
+            std::vector<std::pair<double,double>> boundary;
             for (const auto* obj : loop->objlist) {
                 if (obj->eType == DRW::LINE) {
                     auto* ln = static_cast<const DRW_Line*>(obj);
@@ -1314,52 +1314,57 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                     for (const auto& v : lw->vertlist) boundary.push_back({v->x, v->y});
                 }
             }
+            // Close this loop
+            if (boundary.size() >= 3 &&
+                (std::abs(boundary.front().first - boundary.back().first) > 1e-6 ||
+                 std::abs(boundary.front().second - boundary.back().second) > 1e-6))
+                boundary.push_back(boundary.front());
+            if (boundary.size() >= 3) {
+                for (auto& [bx, by] : boundary) {
+                    hMinX = std::min(hMinX, bx); hMinY = std::min(hMinY, by);
+                    hMaxX = std::max(hMaxX, bx); hMaxY = std::max(hMaxY, by);
+                }
+                loops.push_back(std::move(boundary));
+            }
         }
-        // Compute bbox from boundary
-        for (auto& [bx, by] : boundary) {
-            hMinX = std::min(hMinX, bx); hMinY = std::min(hMinY, by);
-            hMaxX = std::max(hMaxX, bx); hMaxY = std::max(hMaxY, by);
-        }
-        // Close boundary
-        if (boundary.size() >= 3 &&
-            (std::abs(boundary.front().first - boundary.back().first) > 1e-6 ||
-             std::abs(boundary.front().second - boundary.back().second) > 1e-6))
-            boundary.push_back(boundary.front());
 
         double hW = hMaxX - hMinX, hH = hMaxY - hMinY;
-        if (hW > 0.1 && hH > 0.1 && boundary.size() >= 3) {
-            double baseSpacing = (data->scale > 0.01) ? data->scale * 3.0 : 5.0;
+        if (hW > 0.1 && hH > 0.1 && !loops.empty()) {
+            // ANSI31 standard line spacing = 3.175mm * hatch_scale
+            double baseSpacing = (data->scale > 0.01) ? data->scale * 3.175 : 3.175;
             double diag = hW + hH;
-            double spacing = std::max(baseSpacing, diag / 25.0);
+            // Cap at 200 lines max per hatch (performance), but don't over-space
+            double spacing = std::max(baseSpacing, diag / 200.0);
             double ang = data->angle * M_PI / 180.0;
             double cosA = std::cos(ang), sinA = std::sin(ang);
             uint32_t hcol = drw_entity_color(*data);
 
-            // Sweep range: project boundary onto perpendicular axis
+            // Sweep range: project all loop points onto perpendicular axis
             double pmin = 1e18, pmax = -1e18;
-            for (auto& [bx, by] : boundary) {
-                double p = -bx * sinA + by * cosA;
-                pmin = std::min(pmin, p); pmax = std::max(pmax, p);
-            }
+            for (auto& loop : loops)
+                for (auto& [bx, by] : loop) {
+                    double p = -bx * sinA + by * cosA;
+                    pmin = std::min(pmin, p); pmax = std::max(pmax, p);
+                }
 
             for (double p = pmin; p <= pmax; p += spacing) {
-                // Line origin at perpendicular offset p
                 double ox = p * (-sinA), oy = p * cosA;
-                // Find all intersections of this line with boundary edges
+                // Find intersections with ALL loop edges (even-odd across all loops)
                 std::vector<double> tHits;
-                for (size_t i = 0; i + 1 < boundary.size(); ++i) {
-                    double ex1 = boundary[i].first, ey1 = boundary[i].second;
-                    double ex2 = boundary[i+1].first, ey2 = boundary[i+1].second;
-                    double edx = ex2 - ex1, edy = ey2 - ey1;
-                    double denom = cosA * edy - sinA * edx;
-                    if (std::abs(denom) < 1e-10) continue;
-                    double u = ((ex1 - ox) * sinA - (ey1 - oy) * cosA) / (-denom);
-                    if (u < -1e-10 || u > 1.0 + 1e-10) continue;
-                    double t = ((ex1 - ox) * edy - (ey1 - oy) * edx) / (-denom);
-                    tHits.push_back(t);
+                for (auto& loop : loops) {
+                    for (size_t i = 0; i + 1 < loop.size(); ++i) {
+                        double ex1 = loop[i].first, ey1 = loop[i].second;
+                        double ex2 = loop[i+1].first, ey2 = loop[i+1].second;
+                        double edx = ex2 - ex1, edy = ey2 - ey1;
+                        double denom = cosA * edy - sinA * edx;
+                        if (std::abs(denom) < 1e-10) continue;
+                        double u = ((ex1 - ox) * sinA - (ey1 - oy) * cosA) / (-denom);
+                        if (u < -1e-10 || u > 1.0 + 1e-10) continue;
+                        double t = ((ex1 - ox) * edy - (ey1 - oy) * edx) / (-denom);
+                        tHits.push_back(t);
+                    }
                 }
                 std::sort(tHits.begin(), tHits.end());
-                // Even-odd rule: take consecutive pairs as inside segments
                 for (size_t j = 0; j + 1 < tHits.size(); j += 2) {
                     double t1 = tHits[j], t2 = tHits[j + 1];
                     if (t2 - t1 < 0.01) continue;
