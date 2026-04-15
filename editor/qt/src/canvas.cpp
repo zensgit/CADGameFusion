@@ -896,7 +896,10 @@ void CanvasWidget::wheelEvent(QWheelEvent* e) {
     scale_ *= factor;
     if (scale_ < 0.05) scale_ = 0.05;
     if (scale_ > 5000.0) scale_ = 5000.0;
-    pan_ = mousePos - QPointF(wBefore.x()*scale_, wBefore.y()*scale_);
+    // Recalculate pan so mouse stays on same world point
+    // worldToScreen: screenX = wx*scale_ + panX, screenY = wy*(-scale_) + panY
+    pan_.setX(mousePos.x() - wBefore.x() * scale_);
+    pan_.setY(mousePos.y() - wBefore.y() * (-scale_));
     update();
 }
 
