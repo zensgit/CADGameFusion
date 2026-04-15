@@ -186,6 +186,12 @@ QColor CanvasWidget::resolveEntityColor(const core::Entity& entity) const {
     const auto* layer = layerFor(entity.layerId);
     const uint32_t layer_color = layer ? layer->color : 0xDCDCE6u;
 
+    // For DXF/DWG imported entities: color is already RGB (set by adapter).
+    // If color is 0, fall back to layer color. No need for metadata lookup.
+    if (color == 0) color = layer_color;
+    if (color != 0 && color != 0xDCDCE6u)
+        return QColor((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
+
     const std::string source = lookup_entity_meta(m_doc, entity.id, "color_source");
     if (!source.empty()) {
         if (source == "BYLAYER") {
