@@ -1338,8 +1338,9 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
             double diag = hW + hH;
             // Cap at 200 lines max per hatch (performance), but don't over-space
             double spacing = std::max(baseSpacing, diag / 200.0);
-            // ANSI31 pattern base angle is 45°; DXF angle is additional rotation
-            double baseAngle = 45.0; // ANSI31/ANSI32 etc. all have 45° base
+            // ANSI31 pattern base angle is 45°. DXF angle field is additional rotation.
+            // So angle=0 → 45° lines, angle=90 → 135° lines.
+            double baseAngle = 45.0; // ANSI31 default
             double ang = (baseAngle + data->angle) * M_PI / 180.0;
             double cosA = std::cos(ang), sinA = std::sin(ang);
             uint32_t hcol = drw_entity_color(*data);
