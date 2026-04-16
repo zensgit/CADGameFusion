@@ -1312,6 +1312,9 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                 } else if (obj->eType == DRW::LWPOLYLINE) {
                     auto* lw = static_cast<const DRW_LWPolyline*>(obj);
                     for (const auto& v : lw->vertlist) boundary.push_back({v->x, v->y});
+                    // Auto-close if LWPOLYLINE has closed flag
+                    if ((lw->flags & 1) && lw->vertlist.size() >= 2)
+                        boundary.push_back({lw->vertlist[0]->x, lw->vertlist[0]->y});
                 }
             }
             // Close this loop
@@ -1335,7 +1338,9 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
             double diag = hW + hH;
             // Cap at 200 lines max per hatch (performance), but don't over-space
             double spacing = std::max(baseSpacing, diag / 200.0);
-            double ang = data->angle * M_PI / 180.0;
+            // ANSI31 pattern base angle is 45°; DXF angle is additional rotation
+            double baseAngle = 45.0; // ANSI31/ANSI32 etc. all have 45° base
+            double ang = (baseAngle + data->angle) * M_PI / 180.0;
             double cosA = std::cos(ang), sinA = std::sin(ang);
             uint32_t hcol = drw_entity_color(*data);
 
@@ -1370,7 +1375,12 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                     if (t2 - t1 < 0.01) continue;
                     double x1 = ox + t1*cosA, y1 = oy + t1*sinA;
                     double x2 = ox + t2*cosA, y2 = oy + t2*sinA;
-                    addPolylineToDoc({{x1,y1},{x2,y2}}, lid, hcol);
+                    // Use a slightly dimmed color for hatch fill lines
+                    // so they're visually distinct from geometry outlines
+                    uint32_t fillCol = hcol;
+                    if (fillCol == 0 || fillCol == 0xFFFFFF || fillCol == 0xDCDCE6)
+                        fillCol = 0x808080; // gray for bylayer/white hatches
+                    addPolylineToDoc({{x1,y1},{x2,y2}}, lid, fillCol);
                 }
             }
         }
