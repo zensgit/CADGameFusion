@@ -390,6 +390,9 @@ void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double
     ++m_entityCount;
 }
 
+// Defined below (after fontFamilyForStyle); used here in expandBlock.
+static std::string encodeTextName(const std::string& family, double widthFactor);
+
 void CadgfDrwAdapter::expandBlock(const std::string& blockName,
     double insX, double insY, double xscale, double yscale, double angle, int lid,
     uint32_t insColor) {
@@ -472,10 +475,13 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 auto [px, py] = transformPoint(ent.pts[0].first, ent.pts[0].second,
                                                insX, insY, xscale, yscale, angle);
                 cadgf_vec2 pos = {px, py};
+                std::string tname = encodeTextName(
+                    ent.fontFam.empty() ? std::string("STFangsong") : ent.fontFam,
+                    ent.widthFactor);
                 cadgf_entity_id tid = cadgf_document_add_text(m_doc, &pos,
                     ent.height * std::abs(yscale),
                     ent.rotation + angle, ent.text.c_str(),
-                    "STFangsong", elid);
+                    tname.c_str(), elid);
                 if (tid && effectiveColor != 0 && effectiveColor != BYBLOCK_COLOR)
                     cadgf_document_set_entity_color(m_doc, tid, effectiveColor);
                 ++m_entityCount;
@@ -898,6 +904,25 @@ std::string CadgfDrwAdapter::fontFamilyForStyle(const std::string& styleName) co
     return resolveFontFamily(""); // unknown style → engineering 仿宋 default
 }
 
+// DXF text-style width factor for a style name (entity widthscale applied by caller).
+double CadgfDrwAdapter::widthFactorForStyle(const std::string& styleName) const {
+    auto sit = m_textStyles.find(styleName);
+    if (sit != m_textStyles.end() && sit->second.widthFactor > 0.01)
+        return sit->second.widthFactor;
+    return 1.0;
+}
+
+// Encode font family + width factor into the Entity::name carrier channel.
+// "family"            (width == 1)   or   "family\x1f<width>"   (width != 1).
+// Canvas splits on \x1f and applies a horizontal glyph scale.
+static std::string encodeTextName(const std::string& family, double widthFactor) {
+    if (widthFactor <= 0.0) widthFactor = 1.0;
+    if (std::abs(widthFactor - 1.0) < 0.01) return family;
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%.4g", widthFactor);
+    return family + '\x1f' + buf;
+}
+
 void CadgfDrwAdapter::addText(const DRW_Text& data) {
     if (!m_inBlock && shouldSkipEntity(data)) return;
     std::string txt = stripDxfFormatting(data.text);
@@ -949,14 +974,17 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
         be.pts.push_back({px, py});
         be.height = data.height; be.rotation = rotRad;
         be.text = txt;
+        be.widthFactor = widthFactorForStyle(data.style) * data.widthscale;
+        be.fontFam = fontFamilyForStyle(data.style);
         be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
     cadgf_vec2 pos = {px, py};
     int lid = resolveLayer(data.layer);
-    // Carry resolved Qt font family on the entity name (read back by canvas).
-    std::string fam = fontFamilyForStyle(data.style);
+    // Carry resolved Qt font family (+ width factor) on the entity name.
+    std::string fam = encodeTextName(fontFamilyForStyle(data.style),
+                                     widthFactorForStyle(data.style) * data.widthscale);
     cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(), fam.c_str(), lid);
     // Set explicit entity color (BYLAYER entities keep color=0)
     uint32_t col = drw_entity_color(data);
@@ -1020,14 +1048,17 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         be.pts.push_back({px, py});
         be.height = data.height; be.rotation = rotRad;
         be.text = txt;
+        be.widthFactor = widthFactorForStyle(data.style) * data.widthscale;
+        be.fontFam = fontFamilyForStyle(data.style);
         be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
     cadgf_vec2 pos = {px, py};
     int lid = resolveLayer(data.layer);
-    // Carry resolved Qt font family on the entity name (read back by canvas).
-    std::string fam = fontFamilyForStyle(data.style);
+    // Carry resolved Qt font family (+ width factor) on the entity name.
+    std::string fam = encodeTextName(fontFamilyForStyle(data.style),
+                                     widthFactorForStyle(data.style) * data.widthscale);
     cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(), fam.c_str(), lid);
     uint32_t col = drw_entity_color(data);
     if (eid && col != 0 && col != BYBLOCK_COLOR)

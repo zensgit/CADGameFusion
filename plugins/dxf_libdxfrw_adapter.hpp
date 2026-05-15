@@ -20,6 +20,8 @@ struct BlockEntity {
     // Text
     double height{0}, rotation{0};
     std::string text;
+    double widthFactor{1.0};  // DXF text-style width × entity widthscale
+    std::string fontFam;      // resolved Qt family (empty → engineering 仿宋)
     bool isAttDef{false}; // ATTDEF tag text: hidden during INSERT expansion
     // Ellipse
     double rx{0}, ry{0}, ellRot{0}, ellStart{0}, ellEnd{0};
@@ -45,6 +47,8 @@ public:
 
     // Resolve a DXF text-style name to a macOS Qt font family (engineering convention).
     std::string fontFamilyForStyle(const std::string& styleName) const;
+    // DXF text-style horizontal width factor for a style name (1.0 if unknown).
+    double widthFactorForStyle(const std::string& styleName) const;
 
     // Drawing extents from DXF/DWG header ($EXTMIN/$EXTMAX).
     // Returns true if header provided valid extents.
