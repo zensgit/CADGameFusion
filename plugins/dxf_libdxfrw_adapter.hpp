@@ -20,6 +20,7 @@ struct BlockEntity {
     // Text
     double height{0}, rotation{0};
     std::string text;
+    bool isAttDef{false}; // ATTDEF tag text: hidden during INSERT expansion
     // Ellipse
     double rx{0}, ry{0}, ellRot{0}, ellStart{0}, ellEnd{0};
     std::string layerName;
@@ -37,6 +38,13 @@ public:
 
     int entityCount() const { return m_entityCount; }
     int layerCount() const { return m_layerCount; }
+
+    // Real DXF linetype patterns: name → dash/gap vector (positive=dash, negative=gap, 0=dot)
+    const std::map<std::string, std::vector<double>>& linetypes() const { return m_linetypes; }
+    double ltScale() const { return m_ltScale; }
+
+    // Resolve a DXF text-style name to a macOS Qt font family (engineering convention).
+    std::string fontFamilyForStyle(const std::string& styleName) const;
 
     // Drawing extents from DXF/DWG header ($EXTMIN/$EXTMAX).
     // Returns true if header provided valid extents.

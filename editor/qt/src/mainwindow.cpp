@@ -1727,6 +1727,10 @@ void MainWindow::importFileFromPath(const QString& path) {
         if (!layer) continue;
         int newLid = 0;
         cadgf_document_add_layer(dstDoc, layer->name.c_str(), layer->color, &newLid);
+        // Copy layer line weight
+        if (layer->line_weight > 0.0)
+            if (auto* dstLayer = m_document.get_layer(newLid))
+                dstLayer->line_weight = layer->line_weight;
         layerMap[lid] = newLid;
     }
 
@@ -1765,6 +1769,10 @@ void MainWindow::importFileFromPath(const QString& path) {
     }
     cadgf_document_destroy(tmpDoc);
     markDirty();
+    // Pass real DXF linetype patterns to canvas for accurate dash rendering
+    if (auto* cv = qobject_cast<CanvasWidget*>(centralWidget()))
+        cv->setLinetypePatterns(adapter.linetypes(), adapter.ltScale());
+
     // Zoom to extents and clip to EXTMIN/EXTMAX
     if (auto* cv = qobject_cast<CanvasWidget*>(centralWidget())) {
         double emx, emy, eMx, eMy;

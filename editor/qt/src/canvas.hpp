@@ -9,6 +9,9 @@
 #include <QPainterPath>
 #include <QRectF>
 #include <cstdint>
+#include <map>
+#include <string>
+#include <vector>
 
 #include "snap_manager.hpp"
 #include "core/document.hpp"
@@ -65,6 +68,10 @@ public:
         m_clipMaxX = maxX; m_clipMaxY = maxY; m_hasClip = true;
     }
     QPointF snapWorldPosition(const QPointF& worldPos, bool* snapped = nullptr);
+    // DXF linetype patterns from adapter (real dash/gap values in drawing units)
+    void setLinetypePatterns(const std::map<std::string, std::vector<double>>& patterns, double ltScale) {
+        m_linetypePatterns = patterns; m_ltScale = ltScale;
+    }
 
     void clear();
     void addTriMesh(const QVector<QPointF>& vertices, const QVector<unsigned int>& indices);
@@ -176,6 +183,9 @@ private:
     GuideManager* m_guideManager{nullptr};
     int m_pivotMode{0}; // PivotMode cast to int
     QPointF m_customPivot;
+    // Real DXF linetype patterns (from adapter)
+    std::map<std::string, std::vector<double>> m_linetypePatterns;
+    double m_ltScale{1.0};
 };
 
 #ifdef CADGF_QT_TEST_ACCESS

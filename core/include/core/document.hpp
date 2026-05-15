@@ -78,6 +78,7 @@ struct Layer {
     int id{0};
     std::string name;
     uint32_t color{0xFFFFFF}; // 0xRRGGBB
+    double line_weight{0.0};  // mm; 0 = default/thin
     bool visible{true};
     bool locked{false};
     bool printable{true};
