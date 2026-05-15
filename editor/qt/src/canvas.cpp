@@ -711,11 +711,22 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             QColor col = resolveEntityColor(e);
             pr.setPen(col);
             QPointF screenPos = worldToScreen(QPointF(txt->pos.x, txt->pos.y));
-            // Font family resolved by the DXF importer from the text style's
-            // font file (carried on Entity::name; empty → engineering 仿宋).
-            QString fam = e.name.empty()
-                ? QStringLiteral("STFangsong") // 华文仿宋 (non-localized name)
-                : QString::fromStdString(e.name);
+            // Importer carries "family" or "family\x1f<widthFactor>" on
+            // Entity::name (no core::Text change). Split it out.
+            QString fam; double widthFactor = 1.0;
+            {
+                QString nm = QString::fromStdString(e.name);
+                int sep = nm.indexOf(QChar(0x1f));
+                if (sep >= 0) {
+                    fam = nm.left(sep);
+                    bool ok = false; double w = nm.mid(sep + 1).toDouble(&ok);
+                    if (ok && w > 0.05 && w < 20.0) widthFactor = w;
+                } else {
+                    fam = nm;
+                }
+                if (fam.isEmpty())
+                    fam = QStringLiteral("STFangsong"); // 华文仿宋 (non-localized)
+            }
             // AutoCAD model: a DXF text of world-height H is drawn so the
             // glyphs are H units tall → on screen H*scale px. Size the font so
             // the ACTUAL string's tight bounding box height == H*scale (works
@@ -747,6 +758,10 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             pr.translate(screenPos);
             if (std::abs(txt->rotation) > 0.01)
                 pr.rotate(-txt->rotation * 180.0 / M_PI);
+            // DXF text-style width factor: horizontal-only glyph scaling about
+            // the insertion point (drawText origin x=0, so unaffected).
+            if (std::abs(widthFactor - 1.0) > 0.01)
+                pr.scale(widthFactor, 1.0);
             double lineH = fontSize * 1.4;
             for (int li = 0; li < lines.size(); ++li)
                 if (!lines[li].isEmpty())
