@@ -734,7 +734,10 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             // unreliable for CJK fonts). Cache the glyph-px-per-pixelSize ratio
             // per (family, line) class to keep paintEvent cheap.
             double targetPx = txt->height * scale_;
-            if (targetPx < 1.0) continue;
+            // Do NOT skip sub-pixel text: AutoCAD/ezdxf still draw it (clamped
+            // to ~1px). Skipping made dense annotation vanish when a large
+            // drawing is zoomed to extents. Only bail on degenerate sizes.
+            if (!(targetPx > 0.0) || txt->height <= 0.0) continue;
             QString qtext = QString::fromStdString(txt->text);
             QStringList lines = qtext.split('\n');
             QString sample;
