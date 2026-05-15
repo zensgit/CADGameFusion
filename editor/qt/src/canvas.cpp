@@ -7,6 +7,8 @@
 
 #include <QPainter>
 #include <QPainterPath>
+#include <QFontMetricsF>
+#include <QHash>
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QKeyEvent>
@@ -709,20 +711,35 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             QColor col = resolveEntityColor(e);
             pr.setPen(col);
             QPointF screenPos = worldToScreen(QPointF(txt->pos.x, txt->pos.y));
-            // DXF text `height` is the nominal character height; Qt pixelSize
-            // ≈ glyph height for CJK, so the factor should be ~1.0 (not 0.7,
-            // which rendered text ~1.7× too small vs AutoCAD).
-            constexpr double kTextHeightFactor = 1.0;
-            double fontSize = std::max(1.0, txt->height * scale_ * kTextHeightFactor);
-            if (fontSize < 1.0) continue;
-            if (fontSize < 6.0) fontSize = 6.0;
-            if (fontSize > 1000.0) fontSize = 1000.0; // Allow large text when zoomed in
-            QFont font;
             // Font family resolved by the DXF importer from the text style's
             // font file (carried on Entity::name; empty → engineering 仿宋).
             QString fam = e.name.empty()
                 ? QStringLiteral("STFangsong") // 华文仿宋 (non-localized name)
                 : QString::fromStdString(e.name);
+            // AutoCAD model: a DXF text of world-height H is drawn so the
+            // glyphs are H units tall → on screen H*scale px. Size the font so
+            // the ACTUAL string's tight bounding box height == H*scale (works
+            // for any font/script: Latin digits, CJK — capHeight() is
+            // unreliable for CJK fonts). Cache the glyph-px-per-pixelSize ratio
+            // per (family, line) class to keep paintEvent cheap.
+            double targetPx = txt->height * scale_;
+            if (targetPx < 1.0) continue;
+            QString qtext = QString::fromStdString(txt->text);
+            QStringList lines = qtext.split('\n');
+            QString sample;
+            for (const QString& ln : lines) if (!ln.isEmpty()) { sample = ln; break; }
+            if (sample.isEmpty()) continue;
+            constexpr double kProbe = 256.0;
+            QFont mfont; mfont.setFamily(fam); mfont.setPixelSize(static_cast<int>(kProbe));
+            double gh = QFontMetricsF(mfont).tightBoundingRect(sample).height();
+            double ratio = (gh > 1.0) ? gh / kProbe : 0.72; // glyph px per pixelSize
+            double fontSize = targetPx / ratio;
+            // No fixed minimum: text must scale with zoom like AutoCAD (a px
+            // floor makes zoomed-out text oversized vs geometry). Only guard
+            // against zero/degenerate sizes.
+            if (fontSize < 1.0) fontSize = 1.0;
+            if (fontSize > 4000.0) fontSize = 4000.0;
+            QFont font;
             font.setFamily(fam);
             font.setPixelSize(static_cast<int>(fontSize));
             pr.setFont(font);
@@ -730,8 +747,6 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             pr.translate(screenPos);
             if (std::abs(txt->rotation) > 0.01)
                 pr.rotate(-txt->rotation * 180.0 / M_PI);
-            QString qtext = QString::fromStdString(txt->text);
-            QStringList lines = qtext.split('\n');
             double lineH = fontSize * 1.4;
             for (int li = 0; li < lines.size(); ++li)
                 if (!lines[li].isEmpty())
