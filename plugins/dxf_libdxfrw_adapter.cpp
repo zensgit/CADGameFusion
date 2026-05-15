@@ -1,4 +1,5 @@
 #include "dxf_libdxfrw_adapter.hpp"
+#include "core/document.hpp"
 #include <vector>
 #include <cmath>
 #if !defined(_WIN32)
@@ -453,13 +454,28 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             break;
         }
         case BlockEntity::Text: {
+            // Skip ATTDEF tag texts (internal block labels, not visible in drawing).
+            // ATTDEF tags are uppercase identifiers like "HC_SUPERPART", "粗糙度".
+            // Heuristic: if every ASCII char is uppercase/underscore/digit, it's likely a tag.
+            {
+                bool looksLikeTag = !ent.text.empty();
+                bool hasAsciiLetter = false;
+                for (unsigned char c : ent.text) {
+                    if (c >= 'a' && c <= 'z') { looksLikeTag = false; break; }
+                    if (c >= 'A' && c <= 'Z') hasAsciiLetter = true;
+                }
+                // Must have at least one ASCII letter and contain underscore
+                if (looksLikeTag && hasAsciiLetter && ent.text.find('_') != std::string::npos)
+                    break;
+            }
             if (!ent.pts.empty()) {
                 auto [px, py] = transformPoint(ent.pts[0].first, ent.pts[0].second,
                                                insX, insY, xscale, yscale, angle);
                 cadgf_vec2 pos = {px, py};
                 cadgf_entity_id tid = cadgf_document_add_text(m_doc, &pos,
                     ent.height * std::abs(yscale),
-                    ent.rotation + angle, ent.text.c_str(), "", elid);
+                    ent.rotation + angle, ent.text.c_str(),
+                    "STFangsong", elid);
                 if (tid && effectiveColor != 0 && effectiveColor != BYBLOCK_COLOR)
                     cadgf_document_set_entity_color(m_doc, tid, effectiveColor);
                 ++m_entityCount;
@@ -540,7 +556,7 @@ void CadgfDrwAdapter::addHeader(const DRW_Header* data) {
     int dimdec = 0;
     readInt("$DIMDEC",  dimdec);
     if (dimscale <= 0.0) dimscale = 1.0;
-    if (dimasz   > 0.0) m_dimArrowSize  = dimasz  * dimscale;
+    if (dimasz   > 0.0) m_dimArrowSize  = dimasz;  // Don't multiply by DIMSCALE; entities already scaled
     if (dimtxt   > 0.0) m_dimTextHeight = dimtxt  * dimscale;
     if (dimexo   > 0.0) m_dimExo        = dimexo  * dimscale;
     if (dimexe   > 0.0) m_dimExe        = dimexe  * dimscale;
@@ -576,7 +592,7 @@ void CadgfDrwAdapter::addDimStyle(const DRW_Dimstyle& data) {
     // Only override if this is the standard style, or if we haven't set a value yet
     // (m_dimArrowSize default 3.5 means "not set from header").
     double sc = std::max(0.01, data.dimscale);
-    double eff_arrow = data.dimasz  * sc;
+    double eff_arrow = data.dimasz; // Don't multiply by dimscale; dimension entities are already scaled
     double eff_text  = data.dimtxt  * sc;
     double eff_exo   = data.dimexo  * sc;
     double eff_exe   = data.dimexe  * sc;
@@ -631,9 +647,15 @@ void CadgfDrwAdapter::addLayer(const DRW_Layer& data) {
     // Store linetype association for later entity resolution
     if (!data.lineType.empty() && data.lineType != "Continuous")
         m_layerLineType[data.name] = data.lineType;
-    // Store layer line weight
+    // Store layer line weight and set on document layer
     double lw = drw_lweight_mm(data.lWeight);
-    if (lw > 0.0) m_layerLineWeight[data.name] = lw;
+    if (lw > 0.0) {
+        m_layerLineWeight[data.name] = lw;
+        // Set directly on document layer struct
+        auto* doc = reinterpret_cast<core::Document*>(m_doc);
+        if (auto* layer = doc->get_layer(id))
+            layer->line_weight = lw;
+    }
 }
 
 // ─── Entity callbacks ───
@@ -846,6 +868,36 @@ static double estimateTextWidth(const std::string& txt, double height,
     return w * widthFactor;
 }
 
+// Map a DXF text-style font file (SHX or TrueType) to a macOS Qt font family
+// following Chinese engineering-drawing convention. The resolved family is
+// carried on the entity's `name` field (empty for text otherwise) and read
+// back by the canvas renderer — no core data-model change required.
+static std::string resolveFontFamily(std::string f) {
+    for (char& c : f) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    // Use non-localized macOS family names (avoids Qt font-alias population cost).
+    // TrueType / SHX 宋体 (SimSun) → STSong
+    if (f.find("simsun") != std::string::npos || f.find("nsimsun") != std::string::npos ||
+        f.find("song")   != std::string::npos || f.find("\xe5\xae\x8b") != std::string::npos)
+        return "STSong";
+    // 楷体 (KaiTi)
+    if (f.find("kai") != std::string::npos || f.find("\xe6\xa5\xb7") != std::string::npos)
+        return "STKaiti";
+    // 黑体 (SimHei) / generic sans
+    if (f.find("hei")  != std::string::npos || f.find("\xe9\xbb\x91") != std::string::npos ||
+        f.find("arial")!= std::string::npos || f.find("sans") != std::string::npos)
+        return "STHeiti";
+    // SHX single-stroke (romans/isocp/txt/simplex/gbenor) + CJK bigfont
+    // (gbcbig/hzfs/hzdx/hgcad) → 仿宋, the standard technical-lettering look.
+    return "STFangsong"; // default
+}
+
+// Resolve the Qt font family for a DXF text style name via m_textStyles.
+std::string CadgfDrwAdapter::fontFamilyForStyle(const std::string& styleName) const {
+    auto sit = m_textStyles.find(styleName);
+    if (sit != m_textStyles.end()) return resolveFontFamily(sit->second.fontFile);
+    return resolveFontFamily(""); // unknown style → engineering 仿宋 default
+}
+
 void CadgfDrwAdapter::addText(const DRW_Text& data) {
     if (!m_inBlock && shouldSkipEntity(data)) return;
     std::string txt = stripDxfFormatting(data.text);
@@ -903,7 +955,9 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
     }
     cadgf_vec2 pos = {px, py};
     int lid = resolveLayer(data.layer);
-    cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(), "", lid);
+    // Carry resolved Qt font family on the entity name (read back by canvas).
+    std::string fam = fontFamilyForStyle(data.style);
+    cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(), fam.c_str(), lid);
     // Set explicit entity color (BYLAYER entities keep color=0)
     uint32_t col = drw_entity_color(data);
     if (eid && col != 0 && col != BYBLOCK_COLOR)
@@ -972,7 +1026,9 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
     }
     cadgf_vec2 pos = {px, py};
     int lid = resolveLayer(data.layer);
-    cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(), "", lid);
+    // Carry resolved Qt font family on the entity name (read back by canvas).
+    std::string fam = fontFamilyForStyle(data.style);
+    cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(), fam.c_str(), lid);
     uint32_t col = drw_entity_color(data);
     if (eid && col != 0 && col != BYBLOCK_COLOR)
         cadgf_document_set_entity_color(m_doc, eid, col);
@@ -1333,11 +1389,18 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
 
         double hW = hMaxX - hMinX, hH = hMaxY - hMinY;
         if (hW > 0.1 && hH > 0.1 && !loops.empty()) {
-            // ANSI31 standard line spacing = 3.175mm * hatch_scale
+            // ANSI31 hatch pattern: base spacing = 3.175mm (1/8 inch).
+            // DXF scale multiplies spacing.  For AutoCAD-matching density we use
+            // the pattern spacing directly but cap to ensure enough visible lines.
             double baseSpacing = (data->scale > 0.01) ? data->scale * 3.175 : 3.175;
-            double diag = hW + hH;
-            // Cap at 200 lines max per hatch (performance), but don't over-space
-            double spacing = std::max(baseSpacing, diag / 200.0);
+            double diag = std::sqrt(hW*hW + hH*hH);
+            // Use pattern-based spacing, but guarantee at least ~300 lines across
+            // the diagonal for visual density matching AutoCAD cross-sections.
+            double maxSpacing = diag / 300.0;
+            double spacing = std::min(baseSpacing, maxSpacing);
+            // Clamp: minimum 0.1 units (prevent infinite loops), max 2000 lines
+            if (spacing < 0.1) spacing = 0.1;
+            if (diag / spacing > 2000) spacing = diag / 2000.0;
             // ANSI31 pattern base angle is 45°. DXF angle field is additional rotation.
             // So angle=0 → 45° lines, angle=90 → 135° lines.
             double baseAngle = 45.0; // ANSI31 default
@@ -1376,11 +1439,15 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                     if (t2 - t1 < 0.01) continue;
                     double x1 = ox + t1*cosA, y1 = oy + t1*sinA;
                     double x2 = ox + t2*cosA, y2 = oy + t2*sinA;
-                    // Use a slightly dimmed color for hatch fill lines
-                    // so they're visually distinct from geometry outlines
+                    // Sanity: clip to hatch bounding box (reject lines that escape boundary)
+                    double margin = spacing;
+                    if (x1 < hMinX - margin || x1 > hMaxX + margin ||
+                        y1 < hMinY - margin || y1 > hMaxY + margin ||
+                        x2 < hMinX - margin || x2 > hMaxX + margin ||
+                        y2 < hMinY - margin || y2 > hMaxY + margin) continue;
+                    // BYLAYER: pass 0 so entity inherits layer color (matches AutoCAD).
+                    // Only override white/near-white colors on dark backgrounds.
                     uint32_t fillCol = hcol;
-                    if (fillCol == 0 || fillCol == 0xFFFFFF || fillCol == 0xDCDCE6)
-                        fillCol = 0x808080; // gray for bylayer/white hatches
                     addPolylineToDoc({{x1,y1},{x2,y2}}, lid, fillCol);
                 }
             }
@@ -1398,6 +1465,9 @@ static void addArrowhead(cadgf_document* doc,
     double dx = px - fromX, dy = py - fromY;
     double len = std::sqrt(dx*dx + dy*dy);
     if (len < 1e-10) return;
+    // Cap arrow to 1/4 of dimension line length to avoid oversized arrows
+    if (arrowLen > len * 0.25) arrowLen = len * 0.25;
+    if (arrowLen > 8.0) arrowLen = 8.0; // absolute max 8 units
     double nx = dx / len, ny = dy / len;      // unit along dim line
     double px2 = -ny, py2 = nx;               // perpendicular
     double arrowWidth = arrowLen * 0.28;       // ~1/3.5 of arrow length
@@ -1454,7 +1524,8 @@ void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
     // DXF code 53 (dim text rotation) is in degrees; convert to radians
     double textRot = dim->getDir() * M_PI / 180.0;
     cadgf_vec2 pos = {tx, ty};
-    cadgf_entity_id eid = cadgf_document_add_text(doc, &pos, textHeight, textRot, txt.c_str(), "", lid);
+    cadgf_entity_id eid = cadgf_document_add_text(doc, &pos, textHeight, textRot, txt.c_str(),
+        "STFangsong", lid);
     // Set dimension text color from the dimension entity
     uint32_t col = drw_entity_color(*dim);
     if (eid && col != 0 && col != BYBLOCK_COLOR)
@@ -1709,7 +1780,8 @@ void CadgfDrwAdapter::addDimAngular(const DRW_DimAngular* data) {
         if (!finalText.empty()) {
             cadgf_vec2 tp = {dpx, dpy};
             cadgf_document_add_text(m_doc, &tp, m_dimTextHeight, 0.0,
-                                    finalText.c_str(), "", lid);
+                                    finalText.c_str(),
+                                    "STFangsong", lid);
         }
     }
 }
@@ -1767,7 +1839,8 @@ void CadgfDrwAdapter::addDimOrdinate(const DRW_DimOrdinate* data) {
     double measured = (isYType ? (fy - oy) : (fx - ox)) * m_dimLFac;
     char buf[32]; snprintf(buf, sizeof(buf), "%.*f", m_dimDecPrecision, measured);
     cadgf_vec2 tp = {lx, ly};
-    cadgf_document_add_text(m_doc, &tp, m_dimTextHeight, 0.0, buf, "", lid);
+    cadgf_document_add_text(m_doc, &tp, m_dimTextHeight, 0.0, buf,
+                            "STFangsong", lid);
 }
 
 // ─── Expand unreferenced XRef blocks ───

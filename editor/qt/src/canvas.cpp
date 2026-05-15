@@ -593,45 +593,62 @@ void CanvasWidget::selectAtPoint(const QPointF& mouseWorld) {
 
 // Standard DXF linetype patterns: {dash_mm, gap_mm, dash_mm, gap_mm, ...}
 // Dot is represented as very short dash (0.5mm).
-static QVector<qreal> linetypeDashPattern(const std::string& lt, double scalePixPerMm) {
+// Build QPen dash pattern from real DXF linetype data.
+// patterns: real DXF linetype map (from adapter), ltScale: global LTSCALE.
+// scale: current pixels-per-world-unit.
+static QVector<qreal> linetypeDashPatternReal(
+    const std::string& lt, double scale, double ltScale,
+    const std::map<std::string, std::vector<double>>& patterns)
+{
     // Normalise to uppercase
     std::string name = lt;
     for (char& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
 
-    static const struct { const char* name; std::initializer_list<double> pat; } table[] = {
-        {"DASHED",    {12.7,  6.35}},
-        {"DASHED2",   { 6.35, 3.175}},
-        {"DASHEDX2",  {25.4, 12.7}},
-        {"HIDDEN",    { 6.35, 3.175}},
-        {"HIDDEN2",   { 3.175, 1.587}},
-        {"CENTER",    {31.75, 6.35, 6.35, 6.35}},
-        {"CENTER2",   {15.875, 3.175, 3.175, 3.175}},
-        {"DASHDOT",   {12.7,  3.175, 0.5, 3.175}},
-        {"DASHDOT2",  { 6.35, 1.587, 0.5, 1.587}},
-        {"PHANTOM",   {31.75, 6.35, 6.35, 6.35, 6.35, 6.35}},
-        {"PHANTOM2",  {15.875, 3.175, 3.175, 3.175, 3.175, 3.175}},
-        {"DIVIDE",    {31.75, 3.175, 0.5, 3.175, 0.5, 3.175}},
-        {"DOT",       { 0.5,  3.175}},
-        {"_U",        {12.7,  6.35}},   // user-defined fallback
+    // Look up real DXF pattern first
+    auto it = patterns.find(name);
+    if (it == patterns.end()) {
+        // Try substring match (e.g., ACAD_ISO04W100 contains DASHED)
+        for (auto& [key, _] : patterns)
+            if (name.find(key) != std::string::npos || key.find(name) != std::string::npos)
+                { it = patterns.find(key); break; }
+    }
+
+    // Fallback table for common patterns if DXF didn't define them
+    static const struct { const char* name; std::initializer_list<double> pat; } fallback[] = {
+        {"DASHED",  {12.7, -6.35}},
+        {"HIDDEN",  {6.35, -3.175}},
+        {"CENTER",  {31.75, -6.35, 6.35, -6.35}},
+        {"DASHDOT", {12.7, -3.175, 0.0, -3.175}},
+        {"PHANTOM", {31.75, -6.35, 6.35, -6.35, 6.35, -6.35}},
+        {"DOT",     {0.0, -3.175}},
     };
 
-    // Match by exact name or substring (e.g., ACAD_ISO04W100 → DASHED)
-    for (const auto& row : table) {
-        if (name == row.name || name.find(row.name) != std::string::npos) {
-            QVector<qreal> q;
-            bool isDash = true;
-            for (double v : row.pat) {
-                double px = v * scalePixPerMm;
-                // Enforce minimum visibility: 10px dash, 6px gap
-                if (isDash) { if (px < 10.0) px = 10.0; }
-                else        { if (px < 6.0) px = 6.0; }
-                isDash = !isDash;
-                q.append(px);
-            }
-            return q;
-        }
+    std::vector<double> rawPat;
+    if (it != patterns.end() && !it->second.empty()) {
+        rawPat = it->second;
+    } else {
+        for (auto& fb : fallback)
+            if (name == fb.name || name.find(fb.name) != std::string::npos)
+                { rawPat.assign(fb.pat.begin(), fb.pat.end()); break; }
     }
-    return {};
+    if (rawPat.empty()) return {};
+
+    // Convert DXF pattern (positive=dash, negative=gap, 0=dot) to QPen dash pattern
+    // QPen expects alternating dash/gap lengths in pen-width units (for cosmetic: pixels)
+    QVector<qreal> q;
+    for (double v : rawPat) {
+        double worldLen = std::abs(v) * ltScale;
+        double px = worldLen * scale;
+        if (v == 0.0) px = 1.0; // dot: 1 pixel
+        // Minimal visibility: dash >= 2px, gap >= 1px
+        bool isDash = (v >= 0.0);
+        if (isDash) { if (px < 2.0) px = 2.0; }
+        else        { if (px < 1.0) px = 1.0; }
+        q.append(px);
+    }
+    // QPen dash pattern must alternate dash/gap — ensure even count
+    if (q.size() % 2 != 0) q.append(1.0);
+    return q;
 }
 
 void CanvasWidget::paintEvent(QPaintEvent*) {
@@ -692,13 +709,21 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             QColor col = resolveEntityColor(e);
             pr.setPen(col);
             QPointF screenPos = worldToScreen(QPointF(txt->pos.x, txt->pos.y));
-            double fontSize = std::max(1.0, txt->height * scale_ * 0.7);
+            // DXF text `height` is the nominal character height; Qt pixelSize
+            // ≈ glyph height for CJK, so the factor should be ~1.0 (not 0.7,
+            // which rendered text ~1.7× too small vs AutoCAD).
+            constexpr double kTextHeightFactor = 1.0;
+            double fontSize = std::max(1.0, txt->height * scale_ * kTextHeightFactor);
             if (fontSize < 1.0) continue;
             if (fontSize < 6.0) fontSize = 6.0;
-            if (fontSize > 200.0) fontSize = 200.0;
+            if (fontSize > 1000.0) fontSize = 1000.0; // Allow large text when zoomed in
             QFont font;
-            font.setStyleHint(QFont::SansSerif);
-            font.setFamily("Heiti SC");
+            // Font family resolved by the DXF importer from the text style's
+            // font file (carried on Entity::name; empty → engineering 仿宋).
+            QString fam = e.name.empty()
+                ? QStringLiteral("STFangsong") // 华文仿宋 (non-localized name)
+                : QString::fromStdString(e.name);
+            font.setFamily(fam);
             font.setPixelSize(static_cast<int>(fontSize));
             pr.setFont(font);
             pr.save();
@@ -723,10 +748,35 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
         const auto* ell = std::get_if<core::Ellipse>(&e.payload);
         if (!ell) continue;
         QPen pen(resolveEntityColor(e), 1); pen.setCosmetic(true);
+        // Apply line width and line type (same logic as polylines)
+        {
+            double lwPx = 0.0;
+            auto* layer = layerFor(e.layerId);
+            std::string ln = layer ? layer->name : "";
+            if (e.line_weight > 0.0) {
+                lwPx = std::max(1.5, e.line_weight * scale_);
+            } else if (ln.find("中心线") != std::string::npos || ln.find("点划线") != std::string::npos ||
+                       ln.find("点画线") != std::string::npos) {
+                lwPx = 2.0;
+            } else if (ln.find("虚线") != std::string::npos) {
+                lwPx = 1.5;
+            } else if (ln.find("粗") != std::string::npos) {
+                lwPx = 3.0;
+            }
+            if (!e.line_type.empty()) {
+                auto dashPat = linetypeDashPatternReal(e.line_type, scale_, m_ltScale, m_linetypePatterns);
+                if (!dashPat.isEmpty()) {
+                    pen.setStyle(Qt::CustomDashLine);
+                    pen.setDashPattern(dashPat);
+                }
+            }
+            pen.setWidthF(lwPx > 0.0 ? lwPx : 1.0);
+        }
         pr.setPen(pen);
         double sa = ell->start_angle, ea = ell->end_angle;
         if (std::abs(ea - sa) < 1e-10) { sa = 0; ea = 2.0 * M_PI; }
-        QPointF prev;
+        // Build path so dash pattern works across the whole arc
+        QPainterPath arcPath;
         for (int s = 0; s <= 64; ++s) {
             double a = sa + (ea - sa) * s / 64;
             double lx = ell->rx * std::cos(a), ly = ell->ry * std::sin(a);
@@ -734,9 +784,10 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             QPointF cur = worldToScreen(QPointF(
                 ell->center.x + lx*cosR - ly*sinR,
                 ell->center.y + lx*sinR + ly*cosR));
-            if (s > 0) pr.drawLine(prev, cur);
-            prev = cur;
+            if (s == 0) arcPath.moveTo(cur);
+            else arcPath.lineTo(cur);
         }
+        pr.drawPath(arcPath);
     }
 
     // 2b. Draw Polylines
@@ -750,34 +801,48 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
         QPen pen(resolveEntityColor(*entity), 1);
         pen.setCosmetic(true);
 
-        // Line weight: entity value in mm → pixels; infer from layer if not set
+        // Line weight: entity → layer → layer-name fallback
         double lwPx = 0.0;
-        if (entity->line_weight > 0.0) {
-            lwPx = std::max(1.5, entity->line_weight * scale_);
+        auto* layer = layerFor(entity->layerId);
+        std::string ln = layer ? layer->name : "";
+
+        // Hatch fill lines: 2-point line segments on hatch-related layers
+        bool isHatchFill = (pv.pts.size() == 2 &&
+                            (ln.find("剖面") != std::string::npos ||
+                             ln.find("标注线") != std::string::npos));
+        if (isHatchFill) {
+            pen.setWidthF(3.0);
+            lwPx = -1.0; // signal: already set, skip below
+        } else if (entity->line_weight > 0.0) {
+            // 1. Entity explicit lineweight (mm → pixels, min 1px)
+            lwPx = std::max(1.0, entity->line_weight * scale_);
+        } else if (layer && layer->line_weight > 0.0) {
+            // 2. Layer lineweight (stored by adapter from DXF layer table)
+            lwPx = std::max(1.0, layer->line_weight * scale_);
         } else {
-            auto* layer = layerFor(entity->layerId);
-            std::string ln = layer ? layer->name : "";
+            // 3. Layer-name fallback (last resort)
             if (ln.find("粗实线") != std::string::npos || ln.find("YGJ粗") != std::string::npos)
                 lwPx = 2.5;
-            else if (ln.find("细实线") != std::string::npos || ln.find("标注") != std::string::npos ||
-                     ln.find("尺寸") != std::string::npos)
-                lwPx = 1.0;
-            else if (ln.find("虚线") != std::string::npos || ln.find("中心线") != std::string::npos)
-                lwPx = 1.0;
+            else if (ln == "0")
+                lwPx = 1.5;
+            else
+                lwPx = 1.0; // default thin
         }
 
         // Apply linetype dash pattern if not continuous
-        if (!entity->line_type.empty()) {
-            auto dashPat = linetypeDashPattern(entity->line_type, scale_);
-            if (!dashPat.isEmpty()) {
-                pen.setStyle(Qt::CustomDashLine);
-                pen.setDashPattern(dashPat);
-                pen.setWidthF(lwPx > 0.0 ? lwPx : 1.0);
+        if (lwPx >= 0.0) { // lwPx < 0 means pen width already set (e.g. hatch)
+            if (!entity->line_type.empty()) {
+                auto dashPat = linetypeDashPatternReal(entity->line_type, scale_, m_ltScale, m_linetypePatterns);
+                if (!dashPat.isEmpty()) {
+                    pen.setStyle(Qt::CustomDashLine);
+                    pen.setDashPattern(dashPat);
+                    pen.setWidthF(lwPx > 0.0 ? lwPx : 1.0);
+                } else {
+                    pen.setWidthF(lwPx > 0.0 ? lwPx : 1.5);
+                }
             } else {
                 pen.setWidthF(lwPx > 0.0 ? lwPx : 1.5);
             }
-        } else {
-            pen.setWidthF(lwPx > 0.0 ? lwPx : 1.5);
         }
 
         if (selected_entities_.contains(pv.entityId)) {
