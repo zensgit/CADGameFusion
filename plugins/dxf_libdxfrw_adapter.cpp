@@ -997,13 +997,32 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
     if (!m_inBlock && shouldSkipEntity(data)) return;
     std::string txt = stripDxfFormatting(data.text);
     if (txt.empty()) return;
-    // DRW_MText::angle is in degrees; cadgf_document_add_text expects radians
-    double rotRad = data.angle * M_PI / 180.0;
 
-    double px = data.basePoint.x, py = data.basePoint.y;
+    // Recover column/embedded MTEXT that libdxfrw mis-parses: the real
+    // insertion lands in secPoint, basePoint gets the (1,0)-ish X-axis
+    // vector, code-41 reference-rect width is read into `height`, and
+    // updateAngle() fabricates a bogus angle = atan2(sec.y,sec.x). Detect
+    // that unambiguous signature and recover position/angle; the true char
+    // height is lost in libdxfrw's output, so fall back to the drawing's
+    // dimension text height (DIMTXT*DIMSCALE — a drawing-appropriate size).
+    double mBaseX = data.basePoint.x, mBaseY = data.basePoint.y;
+    double mHeight = data.height, mAngle = data.angle;
+    {
+        double baseMag = std::hypot(data.basePoint.x, data.basePoint.y);
+        double secMag  = std::hypot(data.secPoint.x,  data.secPoint.y);
+        if (baseMag < 2.0 && secMag > 1000.0 && data.height > 500.0) {
+            mBaseX = data.secPoint.x; mBaseY = data.secPoint.y;
+            mAngle = 0.0;
+            mHeight = (m_dimTextHeight > 0.0) ? m_dimTextHeight : 50.0;
+        }
+    }
+    // DRW_MText::angle is in degrees; cadgf_document_add_text expects radians
+    double rotRad = mAngle * M_PI / 180.0;
+
+    double px = mBaseX, py = mBaseY;
     // Apply MTEXT attachment point offset (1=TopLeft … 9=BottomRight)
     // Since core::Text has no alignment fields, shift position at import time.
-    if (data.height > 0.0) {
+    if (mHeight > 0.0) {
         // Count lines for multi-line height
         int nLines = 1;
         for (char c : txt) if (c == '\n') ++nLines;
@@ -1022,8 +1041,8 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         // rectangle WIDTH, not a glyph width factor like for TEXT. Multiplying
         // it exploded the width estimate and corrupted the attachment offset
         // (px -> huge negative). Use the text-style width factor only.
-        double tw = estimateTextWidth(firstLine, data.height, latinR, wFac, fontName);
-        double th = data.height * 1.4 * nLines;
+        double tw = estimateTextWidth(firstLine, mHeight, latinR, wFac, fontName);
+        double th = mHeight * 1.4 * nLines;
 
         int ap = data.textgen; // code 71: attachment point 1-9
         if (ap < 1 || ap > 9) ap = 1;  // default TopLeft
@@ -1039,7 +1058,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         int vmod = ((ap - 1) / 3);
         if (vmod == 1) dy = th * 0.5;  // Middle → top
         else if (vmod == 2) dy = th;   // Bottom → top
-        dy -= data.height; // top → baseline of first line
+        dy -= mHeight; // top → baseline of first line
         // Rotate offset by text angle
         double cosR = std::cos(rotRad), sinR = std::sin(rotRad);
         px += dx * cosR - dy * sinR;
@@ -1049,7 +1068,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
     if (m_inBlock) {
         BlockEntity be; be.type = BlockEntity::Text;
         be.pts.push_back({px, py});
-        be.height = data.height; be.rotation = rotRad;
+        be.height = mHeight; be.rotation = rotRad;
         be.text = txt;
         be.widthFactor = widthFactorForStyle(data.style); // MTEXT: code-41 = box width, not glyph factor
         be.fontFam = fontFamilyForStyle(data.style);
@@ -1062,7 +1081,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
     // Carry resolved Qt font family (+ width factor) on the entity name.
     std::string fam = encodeTextName(fontFamilyForStyle(data.style),
                                      widthFactorForStyle(data.style)); // MTEXT: not * data.widthscale
-    cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(), fam.c_str(), lid);
+    cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, mHeight, rotRad, txt.c_str(), fam.c_str(), lid);
     uint32_t col = drw_entity_color(data);
     if (eid && col != 0 && col != BYBLOCK_COLOR)
         cadgf_document_set_entity_color(m_doc, eid, col);
