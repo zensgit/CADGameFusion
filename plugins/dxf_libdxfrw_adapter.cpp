@@ -1018,7 +1018,10 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
             fontName = sit->second.fontFile;
             for (char& c : fontName) c = (char)std::tolower((unsigned char)c);
         }
-        wFac *= data.widthscale;
+        // MTEXT: DXF code 41 (libdxfrw DRW_Text::widthscale) is the reference
+        // rectangle WIDTH, not a glyph width factor like for TEXT. Multiplying
+        // it exploded the width estimate and corrupted the attachment offset
+        // (px -> huge negative). Use the text-style width factor only.
         double tw = estimateTextWidth(firstLine, data.height, latinR, wFac, fontName);
         double th = data.height * 1.4 * nLines;
 
@@ -1048,7 +1051,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         be.pts.push_back({px, py});
         be.height = data.height; be.rotation = rotRad;
         be.text = txt;
-        be.widthFactor = widthFactorForStyle(data.style) * data.widthscale;
+        be.widthFactor = widthFactorForStyle(data.style); // MTEXT: code-41 = box width, not glyph factor
         be.fontFam = fontFamilyForStyle(data.style);
         be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
@@ -1058,7 +1061,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
     int lid = resolveLayer(data.layer);
     // Carry resolved Qt font family (+ width factor) on the entity name.
     std::string fam = encodeTextName(fontFamilyForStyle(data.style),
-                                     widthFactorForStyle(data.style) * data.widthscale);
+                                     widthFactorForStyle(data.style)); // MTEXT: not * data.widthscale
     cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(), fam.c_str(), lid);
     uint32_t col = drw_entity_color(data);
     if (eid && col != 0 && col != BYBLOCK_COLOR)
