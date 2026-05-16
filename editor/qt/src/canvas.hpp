@@ -143,6 +143,13 @@ private:
 
     double scale_ { 1.0 }; // pixels per world unit
     QPointF pan_ { 0.0, 0.0 }; // in pixels
+    // Pending fit-to-view: zoomToExtents/zoomToFit may be called before the
+    // widget has a real size (silently dropped otherwise). Record the request
+    // and re-apply it from resize/showEvent once the widget is laid out.
+    bool m_fitPending{false};
+    bool m_fitUseExtents{false};
+    double m_fitMnx{0}, m_fitMny{0}, m_fitMxx{0}, m_fitMxy{0};
+    void applyPendingFit();
     bool m_hasClip{false};
     double m_clipMinX{0}, m_clipMinY{0}, m_clipMaxX{0}, m_clipMaxY{0};
     QPoint lastPos_ {};

@@ -1776,13 +1776,15 @@ void MainWindow::importFileFromPath(const QString& path) {
     // Zoom to extents and clip to EXTMIN/EXTMAX
     if (auto* cv = qobject_cast<CanvasWidget*>(centralWidget())) {
         double emx, emy, eMx, eMy;
+        // Apply the fit directly. If the canvas isn't laid out yet the request
+        // is recorded as pending and re-applied from resize/showEvent, so the
+        // view is correct as soon as the widget is sized — no arbitrary delay,
+        // and never stuck at the default zoom on slow/heavy opens.
         if (adapter.getExtents(emx, emy, eMx, eMy)) {
             cv->setClipExtents(emx, emy, eMx, eMy);
-            QTimer::singleShot(200, cv, [cv, emx, emy, eMx, eMy]{
-                cv->zoomToExtents(emx, emy, eMx, eMy);
-            });
+            cv->zoomToExtents(emx, emy, eMx, eMy);
         } else {
-            QTimer::singleShot(200, cv, &CanvasWidget::zoomToFit);
+            cv->zoomToFit();
         }
     }
     statusBar()->showMessage(QString("Imported %1 entities from %2")

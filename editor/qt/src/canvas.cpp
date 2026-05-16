@@ -96,6 +96,7 @@ void CanvasWidget::showEvent(QShowEvent* event) {
     if (pan_ == QPointF(0, 0)) {
         pan_ = QPointF(width() / 2.0, height() / 2.0);
     }
+    applyPendingFit(); // fit now that the widget has a real size
 }
 
 void CanvasWidget::resizeEvent(QResizeEvent* event) {
@@ -105,6 +106,7 @@ void CanvasWidget::resizeEvent(QResizeEvent* event) {
         QPointF newCenter(width() / 2.0, height() / 2.0);
         pan_ += (newCenter - oldCenter);
     }
+    applyPendingFit(); // a fit requested before layout takes effect here
 }
 
 void CanvasWidget::setDocument(core::Document* doc) {
@@ -1489,8 +1491,9 @@ void CanvasWidget::selectGroupAtWorld(const QPointF& mouseWorld) {
 
 void CanvasWidget::zoomToFit() {
     if (!m_doc) return;
+    m_fitPending = true; m_fitUseExtents = false; // survive pre-layout calls
     int w = width(), h = height();
-    if (w < 10 || h < 10) return; // widget not laid out yet
+    if (w < 10 || h < 10) return; // not laid out yet — stays pending
 
     // Compute bounding box of all entities
     double mnx = 1e18, mny = 1e18, mxx = -1e18, mxy = -1e18;
@@ -1506,7 +1509,7 @@ void CanvasWidget::zoomToFit() {
         }
     }
     double dw = mxx - mnx, dh = mxy - mny;
-    if (dw < 1 || dh < 1) return;
+    if (dw < 1 || dh < 1) { m_fitPending = false; return; }
     // 5% margin
     mnx -= dw * 0.05; mxx += dw * 0.05;
     mny -= dh * 0.05; mxy += dh * 0.05;
@@ -1561,16 +1564,26 @@ void CanvasWidget::zoomToFit() {
     pan_.setX(w / 2.0 - wcx * scale_);
     pan_.setY(h / 2.0 + wcy * scale_);
 
-    fprintf(stderr, "zoomToFit: widget=%dx%d world=[%.0f,%.0f]-[%.0f,%.0f] scale=%.4f pan=(%.0f,%.0f)\n",
-        w, h, mnx, mny, mxx, mxy, scale_, pan_.x(), pan_.y());
+    m_fitPending = false; // applied successfully
     update();
 }
 
+// Re-apply a fit request that was made before the widget had a real size.
+void CanvasWidget::applyPendingFit() {
+    if (!m_fitPending || width() < 10 || height() < 10) return;
+    if (m_fitUseExtents) zoomToExtents(m_fitMnx, m_fitMny, m_fitMxx, m_fitMxy);
+    else                 zoomToFit();
+}
+
 void CanvasWidget::zoomToExtents(double mnx, double mny, double mxx, double mxy) {
+    // Record as pending so the request survives being called before the widget
+    // is laid out (re-applied from resize/showEvent). Cleared once applied.
+    m_fitPending = true; m_fitUseExtents = true;
+    m_fitMnx = mnx; m_fitMny = mny; m_fitMxx = mxx; m_fitMxy = mxy;
     int w = width(), h = height();
-    if (w < 10 || h < 10) return;
+    if (w < 10 || h < 10) return;        // not laid out yet — stays pending
     double dw = mxx - mnx, dh = mxy - mny;
-    if (dw < 1 || dh < 1) return;
+    if (dw < 1 || dh < 1) { m_fitPending = false; return; }
     // 5% margin
     mnx -= dw * 0.05; mxx += dw * 0.05;
     mny -= dh * 0.05; mxy += dh * 0.05;
@@ -1592,8 +1605,7 @@ void CanvasWidget::zoomToExtents(double mnx, double mny, double mxx, double mxy)
     pan_.setX(w / 2.0 - wcx * scale_);
     pan_.setY(h / 2.0 + wcy * scale_);
 
-    fprintf(stderr, "zoomToExtents: [%.0f,%.0f]-[%.0f,%.0f] scale=%.4f pan=(%.0f,%.0f)\n",
-        mnx, mny, mxx, mxy, scale_, pan_.x(), pan_.y());
+    m_fitPending = false; // applied successfully
     update();
 }
 
