@@ -1495,16 +1495,18 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
 
         double hW = hMaxX - hMinX, hH = hMaxY - hMinY;
         if (hW > 0.1 && hH > 0.1 && !loops.empty()) {
-            // ANSI31 hatch pattern: base spacing = 3.175mm (1/8 inch).
-            // DXF scale multiplies spacing.  For AutoCAD-matching density we use
-            // the pattern spacing directly but cap to ensure enough visible lines.
-            double baseSpacing = (data->scale > 0.01) ? data->scale * 3.175 : 3.175;
+            // True AutoCAD hatch spacing: ANSI pattern base perpendicular
+            // offset = 0.125in = 3.175mm, multiplied by the hatch pattern
+            // scale (code 41). Verified against ezdxf pattern data: stored
+            // offset == data->scale * 3.175 (短轴承座 ANSI31 scale4 → 12.7,
+            // 汽水 scale1 → 3.17). Earlier a `min(.., diag/300)` "guarantee
+            // ≥300 lines" cap overrode this — that was a band-aid for the
+            // gate/sign bugs (fixed) and made hatches ~27× too dense (looked
+            // like solid gray). Use the true spacing; AutoCAD does.
+            double spacing = (data->scale > 0.01) ? data->scale * 3.175 : 3.175;
             double diag = std::sqrt(hW*hW + hH*hH);
-            // Use pattern-based spacing, but guarantee at least ~300 lines across
-            // the diagonal for visual density matching AutoCAD cross-sections.
-            double maxSpacing = diag / 300.0;
-            double spacing = std::min(baseSpacing, maxSpacing);
-            // Clamp: minimum 0.1 units (prevent infinite loops), max 2000 lines
+            // Safety rails only: anti-infinite-loop floor + a hard cap on
+            // total lines so a tiny scale or huge region can't hang import.
             if (spacing < 0.1) spacing = 0.1;
             if (diag / spacing > 2000) spacing = diag / 2000.0;
             uint32_t hcol = drw_entity_color(*data);
