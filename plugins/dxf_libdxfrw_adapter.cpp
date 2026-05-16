@@ -1432,7 +1432,10 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
 
     // Pattern hatch fill: generate parallel lines clipped to actual boundary polygon.
     // Skip for SOLID hatches (already rendered as filled polygons above).
-    if (!data->looplist.empty() && !m_inBlock && data->solid == 0) {
+    // Works for block-nested hatches too: lines are generated in block-local
+    // coords and stored as BlockEntity::Line so expandBlock transforms them
+    // per-INSERT (section/detail hatching lives in detail blocks).
+    if (!data->looplist.empty() && data->solid == 0) {
         // Build boundary polygons — one per loop. Each loop is a closed polygon.
         // For even-odd fill line clipping, we test intersections against ALL loops.
         std::vector<std::vector<std::pair<double,double>>> loops;
@@ -1530,9 +1533,14 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                         double edx = ex2 - ex1, edy = ey2 - ey1;
                         double denom = cosA * edy - sinA * edx;
                         if (std::abs(denom) < 1e-10) continue;
-                        double u = ((ex1 - ox) * sinA - (ey1 - oy) * cosA) / (-denom);
+                        // Sweep line P(s)=O+s·(cosA,sinA); edge E1+u·(edx,edy).
+                        // Cramer on [[cosA,-edx],[sinA,-edy]] (det=-denom): the
+                        // numerators below divide by denom (NOT -denom — that
+                        // sign error mirrored every hit through O, so only
+                        // near-origin polygons rendered by coincidence).
+                        double u = ((ex1 - ox) * sinA - (ey1 - oy) * cosA) / denom;
                         if (u < -1e-10 || u > 1.0 + 1e-10) continue;
-                        double t = ((ex1 - ox) * edy - (ey1 - oy) * edx) / (-denom);
+                        double t = ((ex1 - ox) * edy - (ey1 - oy) * edx) / denom;
                         tHits.push_back(t);
                     }
                 }
@@ -1551,7 +1559,14 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                     // BYLAYER: pass 0 so entity inherits layer color (matches AutoCAD).
                     // Only override white/near-white colors on dark backgrounds.
                     uint32_t fillCol = hcol;
-                    addPolylineToDoc({{x1,y1},{x2,y2}}, lid, fillCol);
+                    if (m_inBlock) {
+                        BlockEntity be; be.type = BlockEntity::Line;
+                        be.pts = {{x1,y1},{x2,y2}};
+                        be.layerName = data->layer; be.color = fillCol;
+                        m_blocks[m_currentBlockName].push_back(be);
+                    } else {
+                        addPolylineToDoc({{x1,y1},{x2,y2}}, lid, fillCol);
+                    }
                 }
             }
         }
