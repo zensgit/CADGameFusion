@@ -437,7 +437,11 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             double r = ent.radius * std::abs(xscale);
             auto [cx, cy] = transformPoint(ent.cx, ent.cy, insX, insY, xscale, yscale, angle);
             double sa = ent.startAngle + angle, ea = ent.endAngle + angle;
-            int segs = 32;
+            // DXF arcs sweep CCW start→end; if end < start it crosses 0°/360°.
+            // Without this, a 357°→0° arc sweeps ~357° the wrong way → a near-
+            // full circle (e.g. angular-dimension tick arcs drew giant rings).
+            if (ea < sa) ea += 2.0 * M_PI;
+            int segs = std::max(8, static_cast<int>((ea - sa) / (M_PI / 32)));
             for (int s = 0; s <= segs; ++s) {
                 double a = sa + (ea - sa) * s / segs;
                 arc.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
