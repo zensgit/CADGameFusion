@@ -878,6 +878,48 @@ static double estimateTextWidth(const std::string& txt, double height,
     return w * widthFactor;
 }
 
+// Word-wrap MTEXT to its reference-rectangle width (DXF code 41). AutoCAD/ezdxf
+// flow MTEXT into that box; without this, multi-line notes render as long
+// unwrapped lines that sprawl over the drawing. Existing '\n' (from \P) are
+// hard breaks; within a paragraph we wrap greedily, preferring an ASCII space
+// for Latin runs and any codepoint boundary for CJK.
+static std::string wrapMText(const std::string& s, double refWidth, double height,
+                             double latinRatio, double widthFactor,
+                             const std::string& fontName) {
+    if (refWidth <= height || s.empty()) return s;
+    std::string out;
+    size_t lineStart = 0;          // byte index where current visual line began
+    double lineW = 0.0;
+    long lastSpaceOut = -1;        // index in `out` just after last ASCII space
+    double wAtLastSpace = 0.0;
+    for (size_t i = 0; i < s.size();) {
+        unsigned char c = static_cast<unsigned char>(s[i]);
+        size_t clen = (c < 0x80) ? 1 : (c < 0xE0) ? 2 : (c < 0xF0) ? 3 : 4;
+        if (clen > s.size() - i) clen = 1;
+        std::string ch = s.substr(i, clen);
+        if (ch == "\n") {                       // hard break: reset line state
+            out += ch; i += clen; lineStart = out.size();
+            lineW = 0.0; lastSpaceOut = -1; continue;
+        }
+        double cw = estimateTextWidth(ch, height, latinRatio, widthFactor, fontName);
+        if (lineW + cw > refWidth && out.size() > lineStart) {
+            if (lastSpaceOut > static_cast<long>(lineStart)) {
+                out.insert(static_cast<size_t>(lastSpaceOut), "\n");
+                lineStart = static_cast<size_t>(lastSpaceOut) + 1;
+                lineW = lineW - wAtLastSpace + cw;
+                lastSpaceOut = -1;
+            } else {
+                out += '\n'; lineStart = out.size(); lineW = cw; lastSpaceOut = -1;
+            }
+            out += ch; i += clen; continue;
+        }
+        out += ch; lineW += cw;
+        if (ch == " ") { lastSpaceOut = static_cast<long>(out.size()); wAtLastSpace = lineW; }
+        i += clen;
+    }
+    return out;
+}
+
 // Map a DXF text-style font file (SHX or TrueType) to a macOS Qt font family
 // following Chinese engineering-drawing convention. The resolved family is
 // carried on the entity's `name` field (empty for text otherwise) and read
@@ -1024,6 +1066,23 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
     double rotRad = mAngle * M_PI / 180.0;
 
     double px = mBaseX, py = mBaseY;
+    // Text-style metrics (used for both wrapping and the attachment offset).
+    double latinR = 0.6, wFac = 1.0;
+    std::string fontName;
+    {
+        auto sit = m_textStyles.find(data.style);
+        if (sit != m_textStyles.end()) {
+            latinR = sit->second.charRatio;
+            wFac = sit->second.widthFactor;
+            fontName = sit->second.fontFile;
+            for (char& c : fontName) c = (char)std::tolower((unsigned char)c);
+        }
+    }
+    // MTEXT: DXF code 41 (libdxfrw DRW_Text::widthscale) is the reference
+    // rectangle WIDTH (not a glyph width factor like for TEXT). AutoCAD/ezdxf
+    // flow the text into it; word-wrap to it so notes/tables don't sprawl.
+    if (mHeight > 0.0 && data.widthscale > mHeight)
+        txt = wrapMText(txt, data.widthscale, mHeight, latinR, wFac, fontName);
     // Apply MTEXT attachment point offset (1=TopLeft … 9=BottomRight)
     // Since core::Text has no alignment fields, shift position at import time.
     if (mHeight > 0.0) {
@@ -1032,19 +1091,6 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         for (char c : txt) if (c == '\n') ++nLines;
         // Estimate first-line width for horizontal alignment
         std::string firstLine = txt.substr(0, txt.find('\n'));
-        double latinR = 0.6, wFac = 1.0;
-        std::string fontName;
-        auto sit = m_textStyles.find(data.style);
-        if (sit != m_textStyles.end()) {
-            latinR = sit->second.charRatio;
-            wFac = sit->second.widthFactor;
-            fontName = sit->second.fontFile;
-            for (char& c : fontName) c = (char)std::tolower((unsigned char)c);
-        }
-        // MTEXT: DXF code 41 (libdxfrw DRW_Text::widthscale) is the reference
-        // rectangle WIDTH, not a glyph width factor like for TEXT. Multiplying
-        // it exploded the width estimate and corrupted the attachment offset
-        // (px -> huge negative). Use the text-style width factor only.
         double tw = estimateTextWidth(firstLine, mHeight, latinR, wFac, fontName);
         double th = mHeight * 1.4 * nLines;
 
