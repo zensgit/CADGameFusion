@@ -1507,12 +1507,27 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
             // Clamp: minimum 0.1 units (prevent infinite loops), max 2000 lines
             if (spacing < 0.1) spacing = 0.1;
             if (diag / spacing > 2000) spacing = diag / 2000.0;
-            // ANSI31 pattern base angle is 45°. DXF angle field is additional rotation.
-            // So angle=0 → 45° lines, angle=90 → 135° lines.
-            double baseAngle = 45.0; // ANSI31 default
+            uint32_t hcol = drw_entity_color(*data);
+            // Pattern base angle(s), one per line-family. libdxfrw exposes only
+            // the pattern NAME (code 2) and rotation (code 52) — NOT the
+            // per-family definition lines — so map the standard ACAD patterns
+            // by name. ANSI31/32/33/34: single family @45°. ANSI37 is a
+            // crosshatch: two families @45° and @135° (previously only the
+            // first was drawn, so every ANSI37 section rendered as single
+            // hatch). code-77 doubleflag (user "double" hatch) adds a +90°
+            // family. data->angle (code 52) rotates all families.
+            std::vector<double> famBases;
+            {
+                std::string pn = data->name;
+                for (char& c : pn) if (c >= 'a' && c <= 'z') c -= 32;
+                if (pn == "ANSI37") famBases = {45.0, 135.0};
+                else famBases = {45.0};
+                if (data->doubleflag && famBases.size() == 1)
+                    famBases.push_back(famBases[0] + 90.0);
+            }
+            for (double baseAngle : famBases) {
             double ang = (baseAngle + data->angle) * M_PI / 180.0;
             double cosA = std::cos(ang), sinA = std::sin(ang);
-            uint32_t hcol = drw_entity_color(*data);
 
             // Sweep range: project all loop points onto perpendicular axis
             double pmin = 1e18, pmax = -1e18;
@@ -1569,6 +1584,7 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                     }
                 }
             }
+            } // for each pattern line-family
         }
     }
 }
