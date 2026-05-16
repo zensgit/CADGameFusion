@@ -1092,7 +1092,12 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         // Estimate first-line width for horizontal alignment
         std::string firstLine = txt.substr(0, txt.find('\n'));
         double tw = estimateTextWidth(firstLine, mHeight, latinR, wFac, fontName);
-        double th = mHeight * 1.4 * nLines;
+        // Total text-block height for vertical anchoring: (N-1) line strides
+        // + one glyph height. The canvas draws successive lines 1.4*h apart
+        // (lineH = fontSize*1.4), so stride = 1.4*mHeight. Using 1.4*h*N here
+        // (the old value) over-counted by ~0.4*h per line — single-line
+        // Middle-anchored dim text (attach=5) ended up 0.2*h too high.
+        double th = (nLines - 1) * (mHeight * 1.4) + mHeight;
 
         int ap = data.textgen; // code 71: attachment point 1-9
         if (ap < 1 || ap > 9) ap = 1;  // default TopLeft
