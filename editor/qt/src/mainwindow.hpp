@@ -94,6 +94,7 @@ private:
     QMenu* m_pluginsMenu{nullptr};
     QMenu* m_pluginExportMenu{nullptr};
     QAction* m_loadPluginAct{nullptr};
+    QAction* m_actImportDxf{nullptr};
     std::unique_ptr<cadgf::PluginRegistry> m_pluginRegistry;
 
     TransformPanel* m_transformPanel{nullptr};

@@ -45,6 +45,9 @@
 #include "libdxfrw.h"
 #include "libdwgr.h"
 #include "dxf_libdxfrw_adapter.hpp"
+#include <QtConcurrent>
+#include <QFutureWatcher>
+#include <memory>
 #endif
 #include "viewport3d.hpp"
 #include "panels/feature_tree_panel.hpp"
@@ -692,8 +695,8 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     actOpen->setShortcut(QKeySequence::Open);
     connect(actOpen, &QAction::triggered, this, &MainWindow::openFile);
 #ifdef CADGF_HAS_LIBDXFRW
-    auto* actImportDxf = fileMenu->addAction("Import DXF/DWG...");
-    connect(actImportDxf, &QAction::triggered, this, [this]{
+    m_actImportDxf = fileMenu->addAction("Import DXF/DWG...");
+    connect(m_actImportDxf, &QAction::triggered, this, [this]{
         QString path = QFileDialog::getOpenFileName(this, "Import DXF/DWG", QString(),
             "DXF/DWG Files (*.dxf *.dwg);;All Files (*)");
         if (path.isEmpty()) return;
@@ -1672,22 +1675,36 @@ void MainWindow::exportViaPlugin(const cadgf_exporter_api_v1* exporter) {
 }
 
 #ifdef CADGF_HAS_LIBDXFRW
-void MainWindow::importFileFromPath(const QString& path) {
-    cadgf_document* tmpDoc = cadgf_document_create();
-    CadgfDrwAdapter adapter(tmpDoc);
+namespace {
+struct DxfImportResult {
+    cadgf_document* tmpDoc = nullptr;
+    std::shared_ptr<CadgfDrwAdapter> adapter;
     bool ok = false;
-    bool isDwg = path.toLower().endsWith(".dwg");
+    QString sourcePath;
+    QString errMsg;
+};
+
+// Worker: parses DXF/DWG into a freshly-created cadgf_document. Runs off the
+// UI thread; touches only locals + libdxfrw. The DWG fallback launches
+// dwg2dxf via QProcess::waitForFinished, which pumps its own event loop and
+// is documented as safe outside the GUI thread (no signal connections).
+DxfImportResult parseDxfDwg(QString path) {
+    DxfImportResult r;
+    r.sourcePath = path;
+    r.tmpDoc = cadgf_document_create();
+    r.adapter = std::make_shared<CadgfDrwAdapter>(r.tmpDoc);
+    const bool isDwg = path.toLower().endsWith(".dwg");
 
     if (isDwg) {
         try {
             dwgR dwgReader(path.toStdString().c_str());
-            ok = dwgReader.read(&adapter, false);
-            if (!ok) statusBar()->showMessage(QString("DWG error: %1").arg((int)dwgReader.getError()), 3000);
+            r.ok = dwgReader.read(r.adapter.get(), false);
+            if (!r.ok) r.errMsg = QString("DWG error: %1").arg((int)dwgReader.getError());
         } catch (const std::exception& e) {
-            ok = false;
-            statusBar()->showMessage(QString("DWG exception: %1").arg(e.what()), 3000);
-        } catch (...) { ok = false; }
-        if (!ok) {
+            r.ok = false;
+            r.errMsg = QString("DWG exception: %1").arg(e.what());
+        } catch (...) { r.ok = false; }
+        if (!r.ok) {
             QString tempDxf = QDir::tempPath() + "/cadgf_dwg_" +
                 QString::number(QDateTime::currentMSecsSinceEpoch()) + ".dxf";
             QStringList tools = {"dwg2dxf", "/usr/local/bin/dwg2dxf", "/opt/homebrew/bin/dwg2dxf"};
@@ -1695,11 +1712,11 @@ void MainWindow::importFileFromPath(const QString& path) {
                 QProcess proc;
                 proc.start(tool, {path, "-o", tempDxf});
                 if (proc.waitForFinished(30000) && proc.exitCode() == 0 && QFile::exists(tempDxf)) {
-                    cadgf_document_destroy(tmpDoc);
-                    tmpDoc = cadgf_document_create();
-                    adapter = CadgfDrwAdapter(tmpDoc);
+                    cadgf_document_destroy(r.tmpDoc);
+                    r.tmpDoc = cadgf_document_create();
+                    r.adapter = std::make_shared<CadgfDrwAdapter>(r.tmpDoc);
                     dxfRW dxfReader(tempDxf.toStdString().c_str());
-                    ok = dxfReader.read(&adapter, false);
+                    r.ok = dxfReader.read(r.adapter.get(), false);
                     QFile::remove(tempDxf);
                     break;
                 }
@@ -1707,88 +1724,98 @@ void MainWindow::importFileFromPath(const QString& path) {
         }
     } else {
         dxfRW reader(path.toStdString().c_str());
-        ok = reader.read(&adapter, false);
+        r.ok = reader.read(r.adapter.get(), false);
     }
-    if (ok) adapter.expandUnreferencedBlocks();
-    if (!ok) {
-        cadgf_document_destroy(tmpDoc);
-        QMessageBox::warning(this, "Import", "Failed to read " + path);
-        return;
-    }
-    // Transfer ALL entities with full metadata (color, layer, linetype, text)
-    // The cadgf_document is actually a core::Document — copy entities directly
-    core::Document* srcDoc = reinterpret_cast<core::Document*>(tmpDoc);
+    if (r.ok) r.adapter->expandUnreferencedBlocks();
+    return r;
+}
+} // namespace
 
-    // Copy layers and build ID mapping (src layerId → dst layerId)
-    std::map<int, int> layerMap;
-    cadgf_document* dstDoc = reinterpret_cast<cadgf_document*>(&m_document);
-    for (int lid = 0; lid < 1000; ++lid) {
-        auto* layer = srcDoc->get_layer(lid);
-        if (!layer) continue;
-        int newLid = 0;
-        cadgf_document_add_layer(dstDoc, layer->name.c_str(), layer->color, &newLid);
-        // Copy layer line weight
-        if (layer->line_weight > 0.0)
-            if (auto* dstLayer = m_document.get_layer(newLid))
-                dstLayer->line_weight = layer->line_weight;
-        layerMap[lid] = newLid;
-    }
+void MainWindow::importFileFromPath(const QString& path) {
+    // Dispatch parsing to a worker thread so the UI stays interactive on
+    // multi-MB files. Entity copy / zoom / status updates run on the UI
+    // thread in the finished handler — same logic as before, just relocated.
+    if (m_actImportDxf) m_actImportDxf->setEnabled(false);
+    statusBar()->showMessage(QString("Importing %1...").arg(QFileInfo(path).fileName()));
 
-    // Copy all entities with their full properties
-    for (const auto& e : srcDoc->entities()) {
-        int dstLayer = layerMap.count(e.layerId) ? layerMap[e.layerId] : 0;
-        core::EntityId newId = 0;
+    auto* watcher = new QFutureWatcher<DxfImportResult>(this);
+    connect(watcher, &QFutureWatcher<DxfImportResult>::finished, this, [this, watcher]{
+        DxfImportResult r = watcher->result();
+        watcher->deleteLater();
+        if (m_actImportDxf) m_actImportDxf->setEnabled(true);
 
-        if (auto* pl = std::get_if<core::Polyline>(&e.payload)) {
-            std::vector<cadgf_vec2> pts;
-            pts.reserve(pl->points.size());
-            for (auto& p : pl->points) pts.push_back({p.x, p.y});
-            newId = cadgf_document_add_polyline_ex(dstDoc, pts.data(),
-                static_cast<int>(pts.size()), e.name.c_str(), dstLayer);
-        } else if (auto* t = std::get_if<core::Text>(&e.payload)) {
-            cadgf_vec2 pos = {t->pos.x, t->pos.y};
-            newId = cadgf_document_add_text(dstDoc, &pos, t->height,
-                t->rotation, t->text.c_str(), e.name.c_str(), dstLayer);
-        } else if (auto* ell = std::get_if<core::Ellipse>(&e.payload)) {
-            cadgf_ellipse ce;
-            ce.center = {ell->center.x, ell->center.y};
-            ce.rx = ell->rx; ce.ry = ell->ry;
-            ce.rotation = ell->rotation;
-            ce.start_angle = ell->start_angle; ce.end_angle = ell->end_angle;
-            newId = cadgf_document_add_ellipse(dstDoc, &ce, e.name.c_str(), dstLayer);
+        if (!r.errMsg.isEmpty()) statusBar()->showMessage(r.errMsg, 3000);
+        if (!r.ok) {
+            if (r.tmpDoc) cadgf_document_destroy(r.tmpDoc);
+            QMessageBox::warning(this, "Import", "Failed to read " + r.sourcePath);
+            return;
         }
 
-        if (newId > 0) {
-            if (e.color != 0)
-                cadgf_document_set_entity_color(dstDoc, newId, e.color);
-            if (!e.line_type.empty())
-                cadgf_document_set_entity_line_type(dstDoc, newId, e.line_type.c_str());
-            if (e.line_weight > 0)
-                cadgf_document_set_entity_line_weight(dstDoc, newId, e.line_weight);
+        core::Document* srcDoc = reinterpret_cast<core::Document*>(r.tmpDoc);
+        std::map<int, int> layerMap;
+        cadgf_document* dstDoc = reinterpret_cast<cadgf_document*>(&m_document);
+        for (int lid = 0; lid < 1000; ++lid) {
+            auto* layer = srcDoc->get_layer(lid);
+            if (!layer) continue;
+            int newLid = 0;
+            cadgf_document_add_layer(dstDoc, layer->name.c_str(), layer->color, &newLid);
+            if (layer->line_weight > 0.0)
+                if (auto* dstLayer = m_document.get_layer(newLid))
+                    dstLayer->line_weight = layer->line_weight;
+            layerMap[lid] = newLid;
         }
-    }
-    cadgf_document_destroy(tmpDoc);
-    markDirty();
-    // Pass real DXF linetype patterns to canvas for accurate dash rendering
-    if (auto* cv = qobject_cast<CanvasWidget*>(centralWidget()))
-        cv->setLinetypePatterns(adapter.linetypes(), adapter.ltScale());
 
-    // Zoom to extents and clip to EXTMIN/EXTMAX
-    if (auto* cv = qobject_cast<CanvasWidget*>(centralWidget())) {
-        double emx, emy, eMx, eMy;
-        // Apply the fit directly. If the canvas isn't laid out yet the request
-        // is recorded as pending and re-applied from resize/showEvent, so the
-        // view is correct as soon as the widget is sized — no arbitrary delay,
-        // and never stuck at the default zoom on slow/heavy opens.
-        if (adapter.getExtents(emx, emy, eMx, eMy)) {
-            cv->setClipExtents(emx, emy, eMx, eMy);
-            cv->zoomToExtents(emx, emy, eMx, eMy);
-        } else {
-            cv->zoomToFit();
+        for (const auto& e : srcDoc->entities()) {
+            int dstLayer = layerMap.count(e.layerId) ? layerMap[e.layerId] : 0;
+            core::EntityId newId = 0;
+
+            if (auto* pl = std::get_if<core::Polyline>(&e.payload)) {
+                std::vector<cadgf_vec2> pts;
+                pts.reserve(pl->points.size());
+                for (auto& p : pl->points) pts.push_back({p.x, p.y});
+                newId = cadgf_document_add_polyline_ex(dstDoc, pts.data(),
+                    static_cast<int>(pts.size()), e.name.c_str(), dstLayer);
+            } else if (auto* t = std::get_if<core::Text>(&e.payload)) {
+                cadgf_vec2 pos = {t->pos.x, t->pos.y};
+                newId = cadgf_document_add_text(dstDoc, &pos, t->height,
+                    t->rotation, t->text.c_str(), e.name.c_str(), dstLayer);
+            } else if (auto* ell = std::get_if<core::Ellipse>(&e.payload)) {
+                cadgf_ellipse ce;
+                ce.center = {ell->center.x, ell->center.y};
+                ce.rx = ell->rx; ce.ry = ell->ry;
+                ce.rotation = ell->rotation;
+                ce.start_angle = ell->start_angle; ce.end_angle = ell->end_angle;
+                newId = cadgf_document_add_ellipse(dstDoc, &ce, e.name.c_str(), dstLayer);
+            }
+
+            if (newId > 0) {
+                if (e.color != 0)
+                    cadgf_document_set_entity_color(dstDoc, newId, e.color);
+                if (!e.line_type.empty())
+                    cadgf_document_set_entity_line_type(dstDoc, newId, e.line_type.c_str());
+                if (e.line_weight > 0)
+                    cadgf_document_set_entity_line_weight(dstDoc, newId, e.line_weight);
+            }
         }
-    }
-    statusBar()->showMessage(QString("Imported %1 entities from %2")
-        .arg(adapter.entityCount()).arg(QFileInfo(path).fileName()), 3000);
+        cadgf_document_destroy(r.tmpDoc);
+        markDirty();
+
+        if (auto* cv = qobject_cast<CanvasWidget*>(centralWidget()))
+            cv->setLinetypePatterns(r.adapter->linetypes(), r.adapter->ltScale());
+
+        if (auto* cv = qobject_cast<CanvasWidget*>(centralWidget())) {
+            double emx, emy, eMx, eMy;
+            if (r.adapter->getExtents(emx, emy, eMx, eMy)) {
+                cv->setClipExtents(emx, emy, eMx, eMy);
+                cv->zoomToExtents(emx, emy, eMx, eMy);
+            } else {
+                cv->zoomToFit();
+            }
+        }
+        statusBar()->showMessage(QString("Imported %1 entities from %2")
+            .arg(r.adapter->entityCount()).arg(QFileInfo(r.sourcePath).fileName()), 3000);
+    });
+    watcher->setFuture(QtConcurrent::run(parseDxfDwg, path));
 }
 #else
 void MainWindow::importFileFromPath(const QString&) {}
