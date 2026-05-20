@@ -841,12 +841,14 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
         auto* layer = layerFor(entity->layerId);
         std::string ln = layer ? layer->name : "";
 
-        // Hatch fill lines: 2-point line segments on hatch-related layers
-        bool isHatchFill = (pv.pts.size() == 2 &&
-                            (ln.find("剖面") != std::string::npos ||
-                             ln.find("标注线") != std::string::npos));
+        // Pattern-fill hatch lines: marked by the importer with linetype
+        // "__HATCH_FILL__". Always render as 1-device-px hairlines — pattern
+        // spacing is often sub-pixel at fit-to-extents, and any wider pen
+        // makes adjacent strokes overlap into a solid color blob (the
+        // "yellow filled section" symptom in the reboiler before this fix).
+        bool isHatchFill = (entity->line_type == "__HATCH_FILL__");
         if (isHatchFill) {
-            pen.setWidthF(3.0);
+            pen.setWidthF(1.0); // pen is already cosmetic → 1 device px
             lwPx = -1.0; // signal: already set, skip below
         } else if (entity->line_weight > 0.0) {
             // 1. Entity explicit lineweight (mm → pixels, min 1px)

@@ -1609,9 +1609,17 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                         BlockEntity be; be.type = BlockEntity::Line;
                         be.pts = {{x1,y1},{x2,y2}};
                         be.layerName = data->layer; be.color = fillCol;
+                        be.linetype = "__HATCH_FILL__";
                         m_blocks[m_currentBlockName].push_back(be);
                     } else {
-                        addPolylineToDoc({{x1,y1},{x2,y2}}, lid, fillCol);
+                        // Tag pattern-fill lines so the canvas can render them
+                        // as 1-device-px hairlines. With pattern spacing often
+                        // sub-pixel after fit-to-extents, 1.5–3 px lines
+                        // overlap into a solid-color blob; AutoCAD draws them
+                        // as hairlines and the cross-hatch pattern stays
+                        // visible as distinct strokes.
+                        addPolylineToDoc({{x1,y1},{x2,y2}}, lid, fillCol,
+                                         "__HATCH_FILL__", data->layer);
                     }
                 }
             }
