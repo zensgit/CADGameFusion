@@ -1,6 +1,7 @@
 #include "dxf_libdxfrw_adapter.hpp"
 #include "core/document.hpp"
 #include <vector>
+#include <algorithm>
 #include <cmath>
 #if !defined(_WIN32)
 #include <iconv.h>
@@ -1375,21 +1376,28 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                 pts.push_back({ln->secPoint.x, ln->secPoint.y});
             } else if (obj->eType == DRW::ARC) {
                 auto* arc = static_cast<const DRW_Arc*>(obj);
+                // Hatch boundary arc: sa/ea are the geometric arc endpoints
+                // on the circle. CCW=1 means sweep sa→ea CCW (short arc when
+                // sa<ea<sa+2π); CCW=0 means we'd ordinarily go CW. But in
+                // AutoCAD's boundary-arc convention, sa/ea always frame the
+                // SAME geometric arc subset — CCW=0 just flags that this edge
+                // is traversed in the boundary's CW direction (for polygon
+                // orientation, immaterial to even-odd fill). Earlier code
+                // subtracted 2π when CCW=0 with ea>=sa, sweeping 356° of the
+                // wrong direction — boundary blew up to the full circle and
+                // the scanline fill painted the entire bbox.
                 double sa = arc->staangle, ea = arc->endangle;
-                // Respect CW/CCW direction for correct boundary winding
-                if (arc->isccw == 1) {
-                    // CCW: ensure ea > sa
-                    if (ea <= sa) ea += 2.0 * M_PI;
-                } else {
-                    // CW: ensure ea < sa (go backwards)
-                    if (ea >= sa) ea -= 2.0 * M_PI;
-                }
+                if (ea < sa) ea += 2.0 * M_PI;
                 int segs = 32;
+                std::vector<std::pair<double,double>> arcPts;
+                arcPts.reserve(segs + 1);
                 for (int s = 0; s <= segs; ++s) {
                     double a = sa + (ea - sa) * s / segs;
-                    pts.push_back({arc->basePoint.x + arc->radious * std::cos(a),
-                                   arc->basePoint.y + arc->radious * std::sin(a)});
+                    arcPts.push_back({arc->basePoint.x + arc->radious * std::cos(a),
+                                      arc->basePoint.y + arc->radious * std::sin(a)});
                 }
+                if (arc->isccw == 0) std::reverse(arcPts.begin(), arcPts.end());
+                for (auto& p : arcPts) pts.push_back(p);
             } else if (obj->eType == DRW::ELLIPSE) {
                 auto* ell = static_cast<const DRW_Ellipse*>(obj);
                 double cx = ell->basePoint.x, cy = ell->basePoint.y;
@@ -1411,6 +1419,14 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                 auto* lw = static_cast<const DRW_LWPolyline*>(obj);
                 for (const auto& v : lw->vertlist)
                     pts.push_back({v->x, v->y});
+            } else if (obj->eType == DRW::SPLINE) {
+                // Boundary spline: linearize via fit points (curve passes
+                // through them) when present, else control polygon. Skipping
+                // a spline edge would leave the loop open and the scanline
+                // fill would escape, painting the hatch's bbox as solid.
+                auto* sp = static_cast<const DRW_Spline*>(obj);
+                const auto& src = !sp->fitlist.empty() ? sp->fitlist : sp->controllist;
+                for (const auto* pp : src) pts.push_back({pp->x, pp->y});
             }
         }
         if (pts.size() >= 2) {
@@ -1453,15 +1469,19 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                     if (boundary.empty()) boundary.push_back({ln->basePoint.x, ln->basePoint.y});
                     boundary.push_back({ln->secPoint.x, ln->secPoint.y});
                 } else if (obj->eType == DRW::ARC) {
+                    // Same short-arc convention as the outline path above.
                     auto* arc = static_cast<const DRW_Arc*>(obj);
                     double sa = arc->staangle, ea = arc->endangle;
-                    if (arc->isccw == 1) { if (ea <= sa) ea += 2.0*M_PI; }
-                    else { if (ea >= sa) ea -= 2.0*M_PI; }
+                    if (ea < sa) ea += 2.0 * M_PI;
+                    std::vector<std::pair<double,double>> arcPts;
+                    arcPts.reserve(33);
                     for (int s = 0; s <= 32; ++s) {
                         double a = sa + (ea - sa) * s / 32;
-                        boundary.push_back({arc->basePoint.x + arc->radious * std::cos(a),
-                                            arc->basePoint.y + arc->radious * std::sin(a)});
+                        arcPts.push_back({arc->basePoint.x + arc->radious * std::cos(a),
+                                          arc->basePoint.y + arc->radious * std::sin(a)});
                     }
+                    if (arc->isccw == 0) std::reverse(arcPts.begin(), arcPts.end());
+                    for (auto& p : arcPts) boundary.push_back(p);
                 } else if (obj->eType == DRW::ELLIPSE) {
                     auto* ell = static_cast<const DRW_Ellipse*>(obj);
                     double cx = ell->basePoint.x, cy = ell->basePoint.y;
@@ -1482,6 +1502,10 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                     // Auto-close if LWPOLYLINE has closed flag
                     if ((lw->flags & 1) && lw->vertlist.size() >= 2)
                         boundary.push_back({lw->vertlist[0]->x, lw->vertlist[0]->y});
+                } else if (obj->eType == DRW::SPLINE) {
+                    auto* sp = static_cast<const DRW_Spline*>(obj);
+                    const auto& src = !sp->fitlist.empty() ? sp->fitlist : sp->controllist;
+                    for (const auto* pp : src) boundary.push_back({pp->x, pp->y});
                 }
             }
             // Close this loop
