@@ -533,6 +533,7 @@ void CadgfDrwAdapter::addBlock(const DRW_Block& data) {
     m_inBlock = true;
     m_currentBlockName = data.name;
     m_blocks[m_currentBlockName].clear(); // reset if redefined
+    m_blockFlags[m_currentBlockName] = data.flags;
 }
 
 void CadgfDrwAdapter::endBlock() {
@@ -2023,16 +2024,26 @@ void CadgfDrwAdapter::expandUnreferencedBlocks() {
         if (m_referencedBlocks.count(name)) continue;
         if (name.empty()) continue;
         if (entities.empty()) continue;
-        // Allow *D blocks (dimension geometry from AutoCAD) to be expanded.
-        // Skip other system blocks: *Model_Space, *Paper_Space, *T#, *U#, *X#
+        // Allow *D blocks (AutoCAD-generated dimension geometry) to be expanded.
         if (name[0] == '*') {
             if (name.size() > 1 && name[1] == 'D' &&
                 (name.size() == 2 || std::isdigit(static_cast<unsigned char>(name[2])))) {
-                // *D# dimension block — expand it (contains AutoCAD-generated geometry)
-            } else {
-                continue; // skip other system blocks
+                // *D# dimension block — expand it
+                expandBlock(name, 0, 0, 1, 1, 0, 0);
             }
+            continue; // skip other system blocks (*T#, *U#, *X#, *MODEL_SPACE, …)
         }
+        // For non-system blocks, only auto-expand external references (XRef).
+        // DXF group-70 flag bits: 1=anonymous, 4=xref, 8=xref-overlay.
+        // Previously we expanded every unreferenced non-system block, which
+        // pulled in title-block templates, scratch annotations, and AutoCAD
+        // copy/paste anonymous blocks (`A$<hex>`) — none of which AutoCAD
+        // renders. That spilled large stray text (e.g. 汽水分离器 had an
+        // orphan A$ block with a 52.5-unit-tall 技术要求 MTEXT that ended
+        // up landing on the drawing as giant yellow text).
+        auto fit = m_blockFlags.find(name);
+        int flags = (fit != m_blockFlags.end()) ? fit->second : 0;
+        if (!(flags & (4 | 8))) continue; // not an XRef → don't auto-expand
         expandBlock(name, 0, 0, 1, 1, 0, 0);
     }
 }

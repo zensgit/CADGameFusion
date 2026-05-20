@@ -185,5 +185,6 @@ private:
     bool m_inBlock{false};
     std::string m_currentBlockName;
     std::map<std::string, std::vector<BlockEntity>> m_blocks;
+    std::map<std::string, int> m_blockFlags;     // DXF code 70 per block name
     std::set<std::string> m_referencedBlocks; // blocks referenced by INSERT
 };
