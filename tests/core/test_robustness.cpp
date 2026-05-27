@@ -7,6 +7,8 @@
 #include "core/ops2d.hpp"
 
 static constexpr double EPS = 1e-6;
+// M_PI is not defined by MSVC without _USE_MATH_DEFINES; use a portable constant.
+static constexpr double kPi = 3.14159265358979323846;
 static bool near(double a, double b) { return std::abs(a - b) < EPS; }
 
 int main() {
@@ -83,7 +85,7 @@ int main() {
     {
         Polyline big;
         for (int i = 0; i < 100; ++i) {
-            double angle = 2.0 * M_PI * i / 100;
+            double angle = 2.0 * kPi * i / 100;
             big.points.push_back({std::cos(angle) * 100, std::sin(angle) * 100});
         }
         big.points.push_back(big.points.front()); // close

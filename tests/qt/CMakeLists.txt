@@ -77,6 +77,8 @@ if(BUILD_EDITOR_QT)
     test_qt_project_roundtrip.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/include/project/project.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/project/project.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/guide_manager.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/guide_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
@@ -101,6 +103,8 @@ if(BUILD_EDITOR_QT)
     test_qt_project_legacy_load.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/include/project/project.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/project/project.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/include/guide_manager.hpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/guide_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
