@@ -4,10 +4,6 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [ main ]
-    paths:
-      - 'schemas/**'
-      - 'samples/**'
-      - 'tools/validate_project.py'
 
 jobs:
   validate-samples:
