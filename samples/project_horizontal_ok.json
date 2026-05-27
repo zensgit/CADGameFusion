@@ -8,7 +8,7 @@
       { "id": "l1", "type": "line", "params": {"p0": "p1", "p1": "p2"} }
     ],
     "constraints": [
-      { "id": "c1", "type": "horizontal", "refs": ["l1"], "value": null }
+      { "id": "c1", "type": "horizontal", "refs": ["p1.y", "p2.y"], "value": null }
     ],
     "parameters": {}
   },
