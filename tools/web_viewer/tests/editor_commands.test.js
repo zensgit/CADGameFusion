@@ -5,8 +5,12 @@ import { DocumentState } from '../state/documentState.js';
 import { SelectionState } from '../state/selectionState.js';
 import { SnapState } from '../state/snapState.js';
 import { ViewState } from '../state/viewState.js';
-import { CommandBus } from '../commands/command_bus.js';
-import { registerCadCommands } from '../commands/command_registry.js';
+import { CommandBus, commandResult } from '../commands/command_bus.js';
+import {
+  registerCadCommands,
+  computeRotatePayload,
+  computeScalePayload,
+} from '../commands/command_registry.js';
 import { importCadgfDocument, exportCadgfDocument, isCadgfDocument } from '../adapters/cadgf_document_adapter.js';
 import { collectSnapCandidates, findNearestPoint } from '../tools/geometry.js';
 import { createToolContext } from '../tools/tool_context.js';
@@ -13328,4 +13332,141 @@ test('selection-derived refs solve correctly with multiple constraint types', as
   } finally {
     try { unlinkSync(tmpPath); } catch { /* ignore */ }
   }
+});
+
+// ---------------------------------------------------------------------------
+// Golden / characterization: command_registry.js compatibility surface.
+// Pins the FROZEN contracts (command-id set, command interface, commandResult
+// envelope, computeRotate/ScalePayload results) BEFORE the planned workbench-split
+// decomposition of command_registry.js, so a refactor cannot silently regress them.
+// Lives here (not a separate file) because the CI gates run exactly this file
+// (tools/ci_editor_light.sh, editor_gate.sh, editor_parallel_cycle.sh). Pins CONTRACTS,
+// not geometry internals / message wording / helper signatures.
+// ---------------------------------------------------------------------------
+
+// The exact set of command ids registerCadCommands wires up — a load-bearing compat
+// surface (ui/workspace.js, tools/rotate_tool.js, tools/scale_tool.js + smoke scripts
+// dispatch these ids). A decomposition that drops/renames/adds an id must update this
+// list consciously; the diff is the review signal.
+const GOLDEN_COMMAND_IDS = [
+  'entity.create',
+  'entity.createMany',
+  'selection.delete',
+  'selection.move',
+  'selection.copy',
+  'selection.offset',
+  'selection.break',
+  'selection.join',
+  'selection.fillet',
+  'selection.filletByPick',
+  'selection.chamfer',
+  'selection.chamferByPick',
+  'selection.rotate',
+  'selection.scale',
+  'selection.trim',
+  'selection.extend',
+  'selection.propertyPatch',
+  'selection.insertGroup',
+  'selection.releasedInsertGroup',
+  'selection.sourceGroup',
+  'selection.insertEditableGroup',
+  'selection.insertSelectText',
+  'selection.insertSelectEditableText',
+  'selection.insertReleaseGroup',
+  'selection.insertEditText',
+  'selection.sourceReleaseGroup',
+  'selection.sourceEditGroupText',
+  'selection.sourceResetTextPlacement',
+  'selection.dimensionFlipTextSide',
+  'selection.leaderFlipLandingSide',
+  'selection.sourceSelectText',
+  'selection.sourceSelectAnchorDriver',
+  'selection.box',
+  'history.undo',
+  'history.redo',
+  'solver.export-project',
+  'solver.import-diagnostics',
+].sort();
+
+function goldenSetup() {
+  const document = new DocumentState();
+  const selection = new SelectionState();
+  const snap = new SnapState();
+  const viewport = new ViewState();
+  const ctx = { document, selection, snap, viewport, commandBus: null };
+  const bus = new CommandBus(ctx);
+  const commands = registerCadCommands(bus, ctx);
+  return { bus, commands, ctx };
+}
+
+test('golden: registerCadCommands registers exactly the frozen command-id set', () => {
+  const { bus, commands } = goldenSetup();
+  assert.equal(commands.length, GOLDEN_COMMAND_IDS.length);
+  assert.equal(bus.listCommands().length, GOLDEN_COMMAND_IDS.length);
+  assert.deepEqual(bus.listCommands().map((command) => command.id).sort(), GOLDEN_COMMAND_IDS);
+});
+
+test('golden: registered command ids are unique', () => {
+  const { bus } = goldenSetup();
+  const ids = bus.listCommands().map((command) => command.id);
+  assert.equal(new Set(ids).size, ids.length);
+});
+
+test('golden: every command exposes the {id,label,canExecute,execute} interface', () => {
+  const { commands } = goldenSetup();
+  for (const command of commands) {
+    assert.equal(typeof command.id, 'string');
+    assert.ok(command.id.length > 0, 'command id is non-empty');
+    assert.equal(typeof command.label, 'string', `label for ${command.id}`);
+    assert.ok(command.label.length > 0, `label non-empty for ${command.id}`);
+    assert.equal(typeof command.canExecute, 'function', `canExecute for ${command.id}`);
+    assert.equal(typeof command.execute, 'function', `execute for ${command.id}`);
+  }
+});
+
+test('golden: commandResult envelope always carries {ok,changed,message,error_code}', () => {
+  const result = commandResult(true, false);
+  for (const key of ['ok', 'changed', 'message', 'error_code']) {
+    assert.ok(key in result, `commandResult missing ${key}`);
+  }
+  assert.equal(result.ok, true);
+  assert.equal(result.changed, false);
+  assert.equal(result.message, '');
+  assert.equal(result.error_code, '');
+});
+
+test('golden: bus.execute returns {ok:false, COMMAND_NOT_FOUND} for an unknown id', () => {
+  const { bus } = goldenSetup();
+  const missing = bus.execute('does.not.exist');
+  assert.equal(missing.ok, false);
+  assert.equal(missing.changed, false);
+  assert.equal(missing.error_code, 'COMMAND_NOT_FOUND');
+});
+
+test('golden: canExecute reflects always-true vs selection-gated predicates (empty selection)', () => {
+  const { bus } = goldenSetup();
+  assert.equal(bus.canExecute('entity.create'), true);
+  assert.equal(bus.canExecute('selection.move'), false);
+  assert.equal(bus.canExecute('selection.fillet'), false);
+  assert.equal(bus.canExecute('does.not.exist'), false);
+});
+
+test('golden: computeRotatePayload returns {center, signed angle}; identical ref/target => 0', () => {
+  const center = { x: 0, y: 0 };
+  const quarterTurn = computeRotatePayload(center, { x: 10, y: 0 }, { x: 0, y: 10 });
+  assert.deepEqual(quarterTurn.center, center);
+  approxEqual(quarterTurn.angle, Math.PI / 2);
+  const noTurn = computeRotatePayload(center, { x: 10, y: 0 }, { x: 10, y: 0 });
+  approxEqual(noTurn.angle, 0);
+});
+
+test('golden: computeScalePayload returns {center, factor}; degenerate distance => null', () => {
+  const center = { x: 0, y: 0 };
+  const doubled = computeScalePayload(center, { x: 10, y: 0 }, { x: 20, y: 0 });
+  assert.deepEqual(doubled.center, center);
+  approxEqual(doubled.factor, 2);
+  const halved = computeScalePayload(center, { x: 10, y: 0 }, { x: 5, y: 0 });
+  approxEqual(halved.factor, 0.5);
+  assert.equal(computeScalePayload(center, { x: 0, y: 0 }, { x: 5, y: 0 }), null);
+  assert.equal(computeScalePayload(center, { x: 10, y: 0 }, { x: 0, y: 0 }), null);
 });
