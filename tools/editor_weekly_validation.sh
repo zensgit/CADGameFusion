@@ -430,7 +430,7 @@ echo "[WEEKLY] legacy_preview_artifact_prep=$RUN_WEEKLY_LEGACY_PREVIEW_ARTIFACT_
 echo "[WEEKLY] legacy_preview_artifact_smoke=$RUN_WEEKLY_LEGACY_PREVIEW_ARTIFACT_SMOKE cases=$WEEKLY_LEGACY_PREVIEW_ARTIFACT_SMOKE_CASES outdir=$WEEKLY_LEGACY_PREVIEW_ARTIFACT_SMOKE_OUTDIR"
 
 echo "[WEEKLY] 1) Web editor command tests"
-node --test tools/web_viewer/tests/editor_commands.test.js
+node --test tools/web_viewer/tests/*.test.js
 
 UI_FLOW_STATUS="skipped"
 UI_FLOW_RUN_ID=""

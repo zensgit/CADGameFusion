@@ -63,7 +63,7 @@ run_ui_flow_smoke() {
 }
 
 echo "[CI-EDITOR-LIGHT] 1) Editor command tests"
-node --test tools/web_viewer/tests/editor_commands.test.js
+node --test tools/web_viewer/tests/*.test.js
 
 echo "[CI-EDITOR-LIGHT] 2) Ensure python jsonschema is available"
 python3 - <<'PY'

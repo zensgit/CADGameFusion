@@ -685,7 +685,7 @@ if [[ "$PRUNE_BUILDS" != "off" ]]; then
 fi
 
 echo "[EDITOR-GATE] 1) Web editor command tests"
-node --test tools/web_viewer/tests/editor_commands.test.js
+node --test tools/web_viewer/tests/*.test.js
 
 UI_FLOW_MODE="skipped"
 UI_FLOW_RUN_ID=""
