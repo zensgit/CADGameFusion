@@ -14,7 +14,7 @@ import {
   pickKnownDesktopSettings,
   serializeDesktopDiagnostics,
 } from "./desktop_settings.js";
-import { buildCadgfDocumentFocusRegion, buildCadgfDocumentLinePreview } from "./document_preview_fallback.js";
+import { buildCadgfDocumentFocusRegion, buildCadgfDocumentLinePreview, classifyDocumentFallback } from "./document_preview_fallback.js";
 import { resolveLinePattern, resolveScaledLineWidth } from "./line_style.js";
 
 const THREE_MODULE_URL = new URL("./vendor/three/build/three.module.js", import.meta.url).toString();
@@ -2361,8 +2361,7 @@ async function applyDocumentFallbackPreview(manifest = null) {
       rebuildSelectableObjects();
       updateCounts();
       return {
-        kind: "document-fallback",
-        isError: false,
+        ...classifyDocumentFallback({ hasRenderableGeometry: true, lineGroupRendered: true, hasTextEntries: textEntries.length > 0 }),
         outputs,
         renderableEntityCount: preview.renderableEntityCount,
         segmentCount: preview.segmentCount,
@@ -2378,8 +2377,11 @@ async function applyDocumentFallbackPreview(manifest = null) {
   if (textEntries.length > 0) {
     frameTextEntries();
     return {
-      kind: "text-only",
-      isError: false,
+      ...classifyDocumentFallback({
+        hasRenderableGeometry: preview.renderableEntityCount > 0 && preview.positions.length > 0 && preview.indices.length > 0,
+        lineGroupRendered: Boolean(lineGroup?.children?.length),
+        hasTextEntries: true,
+      }),
       outputs,
       renderableEntityCount: preview.renderableEntityCount,
       segmentCount: preview.segmentCount,
@@ -2388,8 +2390,11 @@ async function applyDocumentFallbackPreview(manifest = null) {
     };
   }
   return {
-    kind: "metadata-only",
-    isError: true,
+    ...classifyDocumentFallback({
+      hasRenderableGeometry: preview.renderableEntityCount > 0 && preview.positions.length > 0 && preview.indices.length > 0,
+      lineGroupRendered: Boolean(lineGroup?.children?.length),
+      hasTextEntries: false,
+    }),
     outputs,
     renderableEntityCount: preview.renderableEntityCount,
     segmentCount: preview.segmentCount,

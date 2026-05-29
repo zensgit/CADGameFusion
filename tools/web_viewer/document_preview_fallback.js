@@ -659,4 +659,20 @@ export function buildCadgfDocumentLinePreview(doc = {}) {
   };
 }
 
+// Pure classification of a document-fallback preview outcome, extracted from
+// preview_app.js applyDocumentFallbackPreview so the kind/isError decision can be pinned
+// by a golden test ahead of the preview_app decomposition (the rendering side-effects stay
+// in preview_app.js). Contract: a rendered line-geometry preview ("document-fallback") and
+// a text-only preview are non-error outcomes; "metadata-only" (nothing renderable) is the
+// sole error outcome.
+export function classifyDocumentFallback({ hasRenderableGeometry, lineGroupRendered, hasTextEntries } = {}) {
+  if (hasRenderableGeometry && lineGroupRendered) {
+    return { kind: "document-fallback", isError: false };
+  }
+  if (hasTextEntries) {
+    return { kind: "text-only", isError: false };
+  }
+  return { kind: "metadata-only", isError: true };
+}
+
 export { CADGF_ENTITY_TYPES };
