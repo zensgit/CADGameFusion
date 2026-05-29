@@ -112,7 +112,7 @@ function createImporter(onLoad, { id = '', accept = '.json,application/json', on
   };
 }
 
-function computeDocumentExtents(documentState) {
+export function computeDocumentExtents(documentState) {
   const entities = documentState.listVisibleEntities();
   let minX = Infinity;
   let minY = Infinity;
@@ -175,7 +175,7 @@ function computeDocumentExtents(documentState) {
   return { minX, minY, maxX, maxY };
 }
 
-function fitViewToExtents({ viewState, canvas, extents, paddingPx = 56 }) {
+export function fitViewToExtents({ viewState, canvas, extents, paddingPx = 56 }) {
   if (!extents) return false;
   const width = Math.max(1, canvas.clientWidth);
   const height = Math.max(1, canvas.clientHeight);
@@ -197,7 +197,7 @@ function fitViewToExtents({ viewState, canvas, extents, paddingPx = 56 }) {
   return true;
 }
 
-function resolveSourceTextGuideForSelection(documentState, selectionState) {
+export function resolveSourceTextGuideForSelection(documentState, selectionState) {
   const primary = documentState.getEntity(selectionState.primaryId)
     || documentState.getEntity((selectionState.entityIds || [])[0]);
   if (!primary || !isSourceGroupEntity(primary) || isInsertGroupEntity(primary)) {
@@ -209,7 +209,7 @@ function resolveSourceTextGuideForSelection(documentState, selectionState) {
   };
 }
 
-function fitViewToDocument({ documentState, viewState, canvas, paddingPx = 56 }) {
+export function fitViewToDocument({ documentState, viewState, canvas, paddingPx = 56 }) {
   const extents = computeDocumentExtents(documentState);
   fitViewToExtents({ viewState, canvas, extents, paddingPx });
 }
