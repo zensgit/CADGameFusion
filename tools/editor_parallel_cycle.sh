@@ -207,7 +207,7 @@ fi
 if [[ "$RUN_LANE_B" == "1" ]]; then
   lane_b_start="$(date +%s)"
   lane_b_node_start="$(date +%s)"
-  if run_cmd "$LANE_B_TEST_LOG" node --test tools/web_viewer/tests/editor_commands.test.js; then
+  if run_cmd "$LANE_B_TEST_LOG" node --test tools/web_viewer/tests/*.test.js; then
     LANE_B_STATUS="pass"
   else
     LANE_B_RC=$?
