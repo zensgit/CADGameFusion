@@ -5,6 +5,7 @@ import {
   CADGF_ENTITY_TYPES,
   buildCadgfDocumentFocusRegion,
   buildCadgfDocumentLinePreview,
+  classifyDocumentFallback,
 } from "../document_preview_fallback.js";
 
 test("buildCadgfDocumentLinePreview converts common 2D entities into line segments", () => {
@@ -87,4 +88,55 @@ test("buildCadgfDocumentFocusRegion prefers dense interior geometry over a spars
   assert.ok(focusRegion.bounds.maxX < 180);
   assert.ok(focusRegion.bounds.minY < 30);
   assert.ok(focusRegion.bounds.maxY < 110);
+});
+
+// Golden / characterization for the document-fallback kind/isError decision table,
+// extracted from preview_app.js applyDocumentFallbackPreview. Pins the 3-way outcome
+// (document-fallback / text-only / metadata-only) + the isError contract before the
+// preview_app decomposition moves it. Routing and rendering side-effects stay browser-level
+// (covered by the Playwright preview smokes); this pins only the pure decision.
+
+test("classifyDocumentFallback: rendered line geometry => document-fallback (non-error)", () => {
+  assert.deepEqual(
+    classifyDocumentFallback({ hasRenderableGeometry: true, lineGroupRendered: true, hasTextEntries: false }),
+    { kind: "document-fallback", isError: false },
+  );
+  // geometry+render wins regardless of text presence
+  assert.deepEqual(
+    classifyDocumentFallback({ hasRenderableGeometry: true, lineGroupRendered: true, hasTextEntries: true }),
+    { kind: "document-fallback", isError: false },
+  );
+});
+
+test("classifyDocumentFallback: no rendered geometry but text => text-only (non-error)", () => {
+  assert.deepEqual(
+    classifyDocumentFallback({ hasRenderableGeometry: false, lineGroupRendered: false, hasTextEntries: true }),
+    { kind: "text-only", isError: false },
+  );
+  // renderable geometry that did NOT produce a line group falls back to text-only
+  assert.deepEqual(
+    classifyDocumentFallback({ hasRenderableGeometry: true, lineGroupRendered: false, hasTextEntries: true }),
+    { kind: "text-only", isError: false },
+  );
+});
+
+test("classifyDocumentFallback: nothing renderable and no text => metadata-only (error)", () => {
+  for (const inputs of [
+    { hasRenderableGeometry: false, lineGroupRendered: false, hasTextEntries: false },
+    { hasRenderableGeometry: true, lineGroupRendered: false, hasTextEntries: false },
+    { hasRenderableGeometry: false, lineGroupRendered: true, hasTextEntries: false },
+  ]) {
+    assert.deepEqual(classifyDocumentFallback(inputs), { kind: "metadata-only", isError: true });
+  }
+});
+
+test("classifyDocumentFallback: metadata-only is the sole error outcome", () => {
+  const kinds = [
+    classifyDocumentFallback({ hasRenderableGeometry: true, lineGroupRendered: true, hasTextEntries: false }),
+    classifyDocumentFallback({ hasRenderableGeometry: false, lineGroupRendered: false, hasTextEntries: true }),
+    classifyDocumentFallback({ hasRenderableGeometry: false, lineGroupRendered: false, hasTextEntries: false }),
+  ];
+  for (const result of kinds) {
+    assert.equal(result.isError, result.kind === "metadata-only");
+  }
 });
