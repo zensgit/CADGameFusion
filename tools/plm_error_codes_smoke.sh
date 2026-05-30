@@ -222,6 +222,11 @@ status_response=$(curl -s --max-time 10 \
   "$ROUTER_URL/status/not-a-task")
 check_error_code "missing task" "TASK_NOT_FOUND" "$status_response"
 
+manifest_response=$(curl -s --max-time 10 \
+  -H "Authorization: Bearer $AUTH_TOKEN" \
+  "$ROUTER_URL/manifest/not-a-task")
+check_error_code "missing manifest task" "TASK_NOT_FOUND" "$manifest_response"
+
 convert_response=$(curl -s --max-time 20 -X POST "$ROUTER_URL/convert" \
   -H "Authorization: Bearer $AUTH_TOKEN" \
   -F "file=@$README_PATH")

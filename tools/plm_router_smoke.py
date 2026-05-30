@@ -154,6 +154,18 @@ def main() -> int:
     state = payload.get("state")
     if viewer_url:
         print(f"viewer_url: {viewer_url}")
+        task_id = payload.get("task_id")
+        if task_id:
+            auth_headers = {"Authorization": f"Bearer {args.token}"} if args.token else {}
+            mstatus, manifest = get_json(f"{base_url}/manifest/{task_id}", auth_headers)
+            if mstatus != 200:
+                print(f"GET /manifest/{task_id} expected 200, got {mstatus}: {json.dumps(manifest)}")
+                return 1
+            missing = [field for field in ("schema_version", "artifacts") if field not in manifest]
+            if missing:
+                print(f"GET /manifest/{task_id} body missing required fields: {missing}")
+                return 1
+            print(f"GET /manifest/{task_id} -> 200 (raw manifest, schema_version={manifest.get('schema_version')})")
         return 0
 
     if args.async_mode and status_url:
