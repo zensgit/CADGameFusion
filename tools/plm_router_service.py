@@ -1535,6 +1535,34 @@ def make_handler(
                 )
                 respond_json(self, 200, {"status": "ok", "count": len(entries), "items": entries})
                 return
+            if parsed.path.startswith("/manifest/"):
+                if not self._authorized():
+                    respond_error(
+                        self,
+                        401,
+                        "unauthorized",
+                        "AUTH_REQUIRED",
+                        {"WWW-Authenticate": "Bearer"},
+                    )
+                    return
+                task_id = parsed.path.split("/manifest/", 1)[1]
+                task = manager.get(task_id)
+                if not task:
+                    respond_error(self, 404, "task not found", "TASK_NOT_FOUND")
+                    return
+                if task.status != "done":
+                    respond_error(self, 409, "task not ready", "TASK_NOT_READY")
+                    return
+                manifest = (task.result or {}).get("manifest")
+                if not manifest:
+                    respond_error(self, 500, "manifest missing or unreadable", "MANIFEST_MISSING")
+                    return
+                # Per VEMCAD_ROUTER_CONTRACT 3.4 the success body is the RAW manifest JSON,
+                # not the common {"status": "ok", ...} envelope; the manifest's own "status"
+                # field is manifest metadata.
+                respond_json(self, 200, manifest)
+                self.log_message("GET /manifest/%s -> 200", task_id)
+                return
             if parsed.path.startswith("/status/"):
                 if not self._authorized():
                     respond_error(
