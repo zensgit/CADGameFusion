@@ -5089,6 +5089,32 @@ function runCreateEntities(ctx, payload) {
   return { ok: true, changed: created.length > 0, message: `Created ${created.length} entities` };
 }
 
+// Apply caller-provided geometry patches to existing entities, by id. Generic + format-
+// agnostic (the patch is editor-native geometry, e.g. {start,end} for a line); used by the
+// product layer to write solved sketch geometry back into the editor. Undo/redo come from the
+// withSnapshot wrapper at the command site, so this is one native, Ctrl-Z-reversible step.
+function runApplyGeometry(ctx, payload) {
+  const updates = Array.isArray(payload?.updates) ? payload.updates : [];
+  if (updates.length === 0) {
+    return { ok: false, changed: false, error_code: 'INVALID_GEOMETRY_UPDATES', message: 'No geometry updates provided' };
+  }
+  let applied = 0;
+  let skipped = 0;
+  for (const update of updates) {
+    if (!update || !Number.isFinite(update.id) || !update.patch || typeof update.patch !== 'object') {
+      skipped += 1;
+      continue;
+    }
+    if (ctx.document.updateEntity(update.id, update.patch)) applied += 1;
+    else skipped += 1;
+  }
+  return {
+    ok: true,
+    changed: applied > 0,
+    message: `Applied geometry to ${applied} ${applied === 1 ? 'entity' : 'entities'}${skipped ? ` (${skipped} skipped)` : ''}`,
+  };
+}
+
 function runSelectByBox(ctx, payload) {
   const rect = payload?.rect;
   if (!rect) {
@@ -5170,6 +5196,12 @@ export function registerCadCommands(commandBus, context) {
       label: 'Create Entities',
       canExecute: () => true,
       execute: (ctx, payload) => withSnapshot(ctx, 'entity.createMany', () => runCreateEntities(ctx, payload)),
+    },
+    {
+      id: 'entity.applyGeometry',
+      label: 'Apply Geometry',
+      canExecute: (ctx, payload) => Array.isArray(payload?.updates) && payload.updates.length > 0,
+      execute: (ctx, payload) => withSnapshot(ctx, 'entity.applyGeometry', () => runApplyGeometry(ctx, payload)),
     },
     {
       id: 'selection.delete',

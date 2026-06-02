@@ -13351,6 +13351,7 @@ test('selection-derived refs solve correctly with multiple constraint types', as
 const GOLDEN_COMMAND_IDS = [
   'entity.create',
   'entity.createMany',
+  'entity.applyGeometry',
   'selection.delete',
   'selection.move',
   'selection.copy',
@@ -13469,4 +13470,32 @@ test('golden: computeScalePayload returns {center, factor}; degenerate distance 
   approxEqual(halved.factor, 0.5);
   assert.equal(computeScalePayload(center, { x: 0, y: 0 }, { x: 5, y: 0 }), null);
   assert.equal(computeScalePayload(center, { x: 10, y: 0 }, { x: 0, y: 0 }), null);
+});
+
+test('entity.applyGeometry: applies geometry patches by id and is natively undoable', () => {
+  const { document, bus } = setup();
+  const created = bus.execute('entity.create', { entity: { type: 'line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, layerId: 0 } });
+  assert.equal(created.ok, true);
+  const id = document.listEntities()[0].id;
+
+  const result = bus.execute('entity.applyGeometry', { updates: [{ id, patch: { start: { x: 1, y: 2 }, end: { x: 9, y: 8 } } }] });
+  assert.equal(result.ok, true);
+  assert.equal(result.changed, true);
+  const moved = document.getEntity(id);
+  assert.deepEqual(moved.start, { x: 1, y: 2 });
+  assert.deepEqual(moved.end, { x: 9, y: 8 });
+
+  // native undo (withSnapshot) restores the prior geometry
+  assert.equal(typeof result.undo, 'function');
+  result.undo();
+  const restored = document.getEntity(id);
+  assert.deepEqual(restored.start, { x: 0, y: 0 });
+  assert.deepEqual(restored.end, { x: 10, y: 0 });
+});
+
+test('entity.applyGeometry: requires non-empty updates (guarded no-op)', () => {
+  const { bus } = setup();
+  assert.equal(bus.canExecute('entity.applyGeometry', { updates: [] }), false);
+  assert.equal(bus.canExecute('entity.applyGeometry', {}), false);
+  assert.equal(bus.canExecute('entity.applyGeometry', { updates: [{ id: 1, patch: { start: { x: 0, y: 0 } } }] }), true);
 });
