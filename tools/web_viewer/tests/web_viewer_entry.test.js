@@ -122,3 +122,44 @@ test('product selected but throws mid-boot falls back to legacy (no half-booted 
     cleanupDomStubs();
   }
 });
+
+const LEGACY_URL = new URL('../legacy_app_bootstrap.js', import.meta.url).href;
+
+test('bootstrapLegacyWebViewerApp boots preview by default and wires the editor handoff bridge', async () => {
+  installDomStubs({ search: '' });
+  try {
+    const m = await import(`${LEGACY_URL}?preview-test`);
+    let previewLoads = 0;
+    let workspaceImports = 0;
+    const workspace = { importPayload() { workspaceImports += 1; } };
+    const result = await m.bootstrapLegacyWebViewerApp({
+      params: new URLSearchParams(''),
+      loadPreviewModule: async () => { previewLoads += 1; return {}; },
+      loadWorkspaceModule: async () => ({ bootstrapCadWorkspace() { return workspace; } }),
+    });
+    assert.deepEqual(result, { mode: 'preview' });
+    assert.equal(previewLoads, 1);
+    assert.equal(typeof globalThis.window.__vemcadApp.switchToEditor, 'function');
+    await globalThis.window.__vemcadApp.switchToEditor({ entities: [] });
+    assert.equal(workspaceImports, 1);
+  } finally {
+    cleanupDomStubs();
+  }
+});
+
+test('bootstrapLegacyWebViewerApp boots the workspace directly in editor mode', async () => {
+  installDomStubs({ search: '?mode=editor' });
+  try {
+    const m = await import(`${LEGACY_URL}?editor-test`);
+    let workspaceBootstraps = 0;
+    const result = await m.bootstrapLegacyWebViewerApp({
+      params: new URLSearchParams('mode=editor'),
+      loadPreviewModule: async () => { throw new Error('preview should not load in editor mode'); },
+      loadWorkspaceModule: async () => { workspaceBootstraps += 1; return { bootstrapCadWorkspace() { return { importPayload() {} }; } }; },
+    });
+    assert.deepEqual(result, { mode: 'editor' });
+    assert.equal(workspaceBootstraps, 1);
+  } finally {
+    cleanupDomStubs();
+  }
+});

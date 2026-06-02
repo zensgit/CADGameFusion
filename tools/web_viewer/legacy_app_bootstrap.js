@@ -7,6 +7,8 @@
 // window.__vemcadApp.switchToEditor bridge (used by preview_app.js for the DXF/DWG handoff).
 export async function bootstrapLegacyWebViewerApp({
   params = new URLSearchParams(globalThis.window?.location?.search ?? ''),
+  loadWorkspaceModule = () => import('./ui/workspace.js'),
+  loadPreviewModule = () => import('./preview_app.js'),
 } = {}) {
   const mode = (params.get('mode') || '').trim().toLowerCase();
   const previewRoot = document.getElementById('preview-root');
@@ -42,7 +44,7 @@ export async function bootstrapLegacyWebViewerApp({
     if (workspaceInstance) return workspaceInstance;
     if (workspaceBootstrapPromise) return workspaceBootstrapPromise;
     workspaceBootstrapPromise = (async () => {
-      const editor = await import('./ui/workspace.js');
+      const editor = await loadWorkspaceModule();
       workspaceInstance = editor.bootstrapCadWorkspace({ params });
       return workspaceInstance;
     })();
@@ -68,6 +70,6 @@ export async function bootstrapLegacyWebViewerApp({
   }
 
   setPreviewMode();
-  await import('./preview_app.js');
+  await loadPreviewModule();
   return { mode: 'preview' };
 }
