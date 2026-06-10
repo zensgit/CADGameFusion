@@ -1,0 +1,214 @@
+// render_cli — headless DXF/DWG → PNG/SVG renderer.
+//
+// Runs the exact same import pipeline as the editor (libdxfrw →
+// CadgfDrwAdapter → expandUnreferencedBlocks) and the exact same drawing
+// code (scene_render::renderScene), so its output matches the editor canvas
+// pixel-for-pixel at the same view. Intended as the building block for
+// server-side rendering (thumbnails / previews for PLM integration) and for
+// the screenshot-regression harness over the training-drawing corpus.
+
+#include "scene_renderer.hpp"
+#include "dxf_libdxfrw_adapter.hpp"
+#include "core/core_c_api.h"
+#include "libdxfrw.h"
+#include "libdwgr.h"
+
+#include <QCommandLineParser>
+#include <QColor>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QGuiApplication>
+#include <QImage>
+#include <QPainter>
+#include <QProcess>
+#include <QSvgGenerator>
+
+#include <cstdio>
+#include <memory>
+#include <string>
+
+namespace {
+
+struct ImportResult {
+    cadgf_document* doc = nullptr;
+    std::unique_ptr<CadgfDrwAdapter> adapter;
+    bool ok = false;
+    QString errMsg;
+};
+
+// Same parse path as the editor's import (mainwindow parseDxfDwg), minus the
+// UI-thread plumbing: DWG via dwgR with a dwg2dxf fallback, DXF via dxfRW,
+// then orphan-XRef block expansion.
+ImportResult importDxfDwg(const QString& path) {
+    ImportResult r;
+    r.doc = cadgf_document_create();
+    r.adapter = std::make_unique<CadgfDrwAdapter>(r.doc);
+    const bool isDwg = path.toLower().endsWith(".dwg");
+
+    if (isDwg) {
+        try {
+            dwgR dwgReader(path.toStdString().c_str());
+            r.ok = dwgReader.read(r.adapter.get(), false);
+            if (!r.ok) r.errMsg = QString("DWG error: %1").arg((int)dwgReader.getError());
+        } catch (const std::exception& e) {
+            r.ok = false;
+            r.errMsg = QString("DWG exception: %1").arg(e.what());
+        } catch (...) { r.ok = false; }
+        if (!r.ok) {
+            QString tempDxf = QDir::tempPath() + "/cadgf_dwg_" +
+                QString::number(QDateTime::currentMSecsSinceEpoch()) + ".dxf";
+            QStringList tools = {"dwg2dxf", "/usr/local/bin/dwg2dxf", "/opt/homebrew/bin/dwg2dxf"};
+            for (const auto& tool : tools) {
+                QProcess proc;
+                proc.start(tool, {path, "-o", tempDxf});
+                if (proc.waitForFinished(30000) && proc.exitCode() == 0 && QFile::exists(tempDxf)) {
+                    cadgf_document_destroy(r.doc);
+                    r.doc = cadgf_document_create();
+                    r.adapter = std::make_unique<CadgfDrwAdapter>(r.doc);
+                    dxfRW dxfReader(tempDxf.toStdString().c_str());
+                    r.ok = dxfReader.read(r.adapter.get(), false);
+                    QFile::remove(tempDxf);
+                    break;
+                }
+            }
+        }
+    } else {
+        dxfRW reader(path.toStdString().c_str());
+        r.ok = reader.read(r.adapter.get(), false);
+    }
+    if (r.ok) r.adapter->expandUnreferencedBlocks();
+    return r;
+}
+
+bool parseBackground(const QString& spec, QColor* out) {
+    if (spec == "dark")  { *out = QColor(30, 30, 35); return true; }   // editor canvas color
+    if (spec == "white") { *out = QColor(255, 255, 255); return true; }
+    QColor c(spec);
+    if (!c.isValid()) return false;
+    *out = c;
+    return true;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    // Headless by default; QT_QPA_PLATFORM in the environment still wins so a
+    // caller can force a specific platform plugin.
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM"))
+        qputenv("QT_QPA_PLATFORM", "offscreen");
+    QGuiApplication app(argc, argv);
+    QGuiApplication::setApplicationName("render_cli");
+
+    QCommandLineParser parser;
+    parser.setApplicationDescription(
+        "Render a DXF/DWG drawing to PNG or SVG using the editor's scene renderer.");
+    parser.addHelpOption();
+    parser.addOption({"input",  "Input DXF/DWG file.", "file"});
+    parser.addOption({"out",    "Output image file (.png or .svg).", "file"});
+    parser.addOption({"width",  "Output width in pixels (default 2400).", "px", "2400"});
+    parser.addOption({"height", "Output height in pixels (default 1697).", "px", "1697"});
+    parser.addOption({"bg",     "Background: dark | white | #RRGGBB (default dark).", "color", "dark"});
+    parser.addOption({"no-clip", "Do not clip to the drawing extents (EXTMIN/EXTMAX)."});
+    parser.process(app);
+
+    const QString inPath = parser.value("input");
+    const QString outPath = parser.value("out");
+    if (inPath.isEmpty() || outPath.isEmpty()) {
+        std::fprintf(stderr, "error: --input and --out are required (see --help)\n");
+        return 2;
+    }
+    if (!QFile::exists(inPath)) {
+        std::fprintf(stderr, "error: input not found: %s\n", qPrintable(inPath));
+        return 2;
+    }
+    const QString outSuffix = QFileInfo(outPath).suffix().toLower();
+    if (outSuffix != "png" && outSuffix != "svg") {
+        std::fprintf(stderr, "error: unsupported output format .%s (use .png or .svg)\n",
+                     qPrintable(outSuffix));
+        return 2;
+    }
+    bool wOk = false, hOk = false;
+    const int width = parser.value("width").toInt(&wOk);
+    const int height = parser.value("height").toInt(&hOk);
+    if (!wOk || !hOk || width < 16 || height < 16 || width > 32768 || height > 32768) {
+        std::fprintf(stderr, "error: bad --width/--height\n");
+        return 2;
+    }
+    QColor bg;
+    if (!parseBackground(parser.value("bg"), &bg)) {
+        std::fprintf(stderr, "error: bad --bg value: %s\n", qPrintable(parser.value("bg")));
+        return 2;
+    }
+
+    ImportResult imp = importDxfDwg(inPath);
+    if (!imp.ok) {
+        std::fprintf(stderr, "error: failed to read %s%s%s\n", qPrintable(inPath),
+                     imp.errMsg.isEmpty() ? "" : ": ", qPrintable(imp.errMsg));
+        if (imp.doc) cadgf_document_destroy(imp.doc);
+        return 3;
+    }
+    const core::Document* doc = reinterpret_cast<core::Document*>(imp.doc);
+
+    // View: drawing extents (like the editor's import) with content-fit fallback.
+    const QSize viewport(width, height);
+    scene_render::View view;
+    double emx = 0, emy = 0, eMx = 0, eMy = 0;
+    const bool hasExtents = imp.adapter->getExtents(emx, emy, eMx, eMy);
+    bool fitted = false;
+    if (hasExtents)
+        fitted = scene_render::fitToExtents(viewport, emx, emy, eMx, eMy, &view);
+    if (!fitted)
+        fitted = scene_render::fitToContent(*doc, viewport, &view);
+    if (!fitted) {
+        std::fprintf(stderr, "error: drawing has degenerate extents, nothing to render\n");
+        cadgf_document_destroy(imp.doc);
+        return 4;
+    }
+    if (hasExtents && !parser.isSet("no-clip")) {
+        view.hasClip = true;
+        view.clipMinX = emx; view.clipMinY = emy;
+        view.clipMaxX = eMx; view.clipMaxY = eMy;
+    }
+
+    scene_render::LinetypeTable linetypes;
+    linetypes.patterns = imp.adapter->linetypes();
+    linetypes.ltScale = imp.adapter->ltScale();
+
+    const QVector<scene_render::PolyVis> polylines = scene_render::buildPolyCache(*doc);
+
+    bool written = false;
+    if (outSuffix == "svg") {
+        QSvgGenerator svg;
+        svg.setFileName(outPath);
+        svg.setSize(viewport);
+        svg.setViewBox(QRect(0, 0, width, height));
+        svg.setTitle(QFileInfo(inPath).fileName());
+        QPainter pr(&svg);
+        pr.fillRect(QRect(0, 0, width, height), bg);
+        scene_render::renderScene(pr, doc, polylines, view, linetypes);
+        pr.end();
+        written = QFile::exists(outPath);
+    } else {
+        QImage img(viewport, QImage::Format_ARGB32_Premultiplied);
+        img.fill(bg);
+        QPainter pr(&img);
+        scene_render::renderScene(pr, doc, polylines, view, linetypes);
+        pr.end();
+        written = img.save(outPath);
+    }
+
+    const int entityCount = imp.adapter->entityCount();
+    cadgf_document_destroy(imp.doc);
+
+    if (!written) {
+        std::fprintf(stderr, "error: failed to write %s\n", qPrintable(outPath));
+        return 5;
+    }
+    std::printf("rendered %s -> %s (%dx%d, %d entities%s)\n",
+                qPrintable(QFileInfo(inPath).fileName()), qPrintable(outPath),
+                width, height, entityCount,
+                hasExtents ? ", extents clip" : ", content fit");
+    return 0;
+}

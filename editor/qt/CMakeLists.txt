@@ -107,6 +107,28 @@ if(TARGET dxfrw)
     target_compile_definitions(editor_qt PRIVATE CADGF_HAS_LIBDXFRW)
 endif()
 
+# render_cli — headless DXF/DWG → PNG/SVG via the shared scene renderer.
+# Needs the libdxfrw import path and Qt SVG output; skipped if either is absent.
+find_package(Qt6 COMPONENTS Svg QUIET)
+if(TARGET dxfrw AND Qt6Svg_FOUND)
+    add_executable(render_cli
+        src/render_cli_main.cpp
+        src/scene_renderer.cpp
+        src/scene_renderer.hpp
+        ${CMAKE_SOURCE_DIR}/plugins/dxf_libdxfrw_adapter.cpp
+    )
+    target_include_directories(render_cli PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../..
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/deps/libdxfrw/src
+        ${CMAKE_SOURCE_DIR}/plugins
+    )
+    target_link_libraries(render_cli PRIVATE Qt6::Gui Qt6::Svg core_c dxfrw)
+    target_compile_definitions(render_cli PRIVATE CADGF_HAS_LIBDXFRW)
+else()
+    message(STATUS "render_cli skipped (needs libdxfrw + Qt6 Svg)")
+endif()
+
 if (WIN32)
   set_target_properties(editor_qt PROPERTIES WIN32_EXECUTABLE YES)
 endif()
