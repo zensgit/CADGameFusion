@@ -444,15 +444,16 @@ void renderScene(QPainter& pr, const core::Document* doc,
         pr.setPen(pen);
         double sa = ell->start_angle, ea = ell->end_angle;
         if (std::abs(ea - sa) < 1e-10) { sa = 0; ea = 2.0 * M_PI; }
-        // Build path so dash pattern works across the whole arc
+        // Build path so dash pattern works across the whole arc. Path is in
+        // world coordinates — the active world transform maps it to screen
+        // (the cosmetic pen still strokes dashes/width in device pixels).
         QPainterPath arcPath;
         for (int s = 0; s <= 64; ++s) {
             double a = sa + (ea - sa) * s / 64;
             double lx = ell->rx * std::cos(a), ly = ell->ry * std::sin(a);
             double cosR = std::cos(ell->rotation), sinR = std::sin(ell->rotation);
-            QPointF cur = worldToScreen(view, QPointF(
-                ell->center.x + lx*cosR - ly*sinR,
-                ell->center.y + lx*sinR + ly*cosR));
+            QPointF cur(ell->center.x + lx*cosR - ly*sinR,
+                        ell->center.y + lx*sinR + ly*cosR);
             if (s == 0) arcPath.moveTo(cur);
             else arcPath.lineTo(cur);
         }
