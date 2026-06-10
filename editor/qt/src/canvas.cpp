@@ -18,69 +18,6 @@
 #include <cstdlib>
 #include <string>
 
-namespace {
-
-uint32_t aci_to_rgb(int aci) {
-    if (aci <= 0 || aci > 255) return 0xFFFFFFu;
-    // ACI 1-9: standard primary colors
-    static const uint32_t std9[9] = {
-        0xFF0000u, 0xFFFF00u, 0x00FF00u, 0x00FFFFu, 0x0000FFu,
-        0xFF00FFu, 0xFFFFFFu, 0x808080u, 0xC0C0C0u
-    };
-    if (aci <= 9) return std9[aci - 1];
-    // ACI 250-255: specific grays
-    if (aci >= 250) {
-        static const uint32_t grays[6] = {
-            0x333333u, 0x5B5B5Bu, 0x828282u, 0xAAAAAAu, 0xD2D2D2u, 0xFFFFFFu
-        };
-        return grays[aci - 250];
-    }
-    // ACI 10-249: 24 hue groups × 10 shades (HSV-based)
-    int idx       = aci - 10;
-    int hue_group = idx / 10;
-    int shade     = idx % 10;
-    static const float V_levels[5] = {1.0f, 0.74f, 0.51f, 0.41f, 0.31f};
-    float V = V_levels[shade / 2];
-    float S = (shade % 2 == 0) ? 1.0f : 0.33f;
-    float hue = static_cast<float>(hue_group) * 15.0f;
-    float h6  = hue / 60.0f;
-    float C   = V * S;
-    float X   = C * (1.0f - std::fabs(std::fmod(h6, 2.0f) - 1.0f));
-    float m_v = V - C;
-    float r, g, b;
-    switch (static_cast<int>(h6) % 6) {
-        case 0: r=C; g=X; b=0; break;
-        case 1: r=X; g=C; b=0; break;
-        case 2: r=0; g=C; b=X; break;
-        case 3: r=0; g=X; b=C; break;
-        case 4: r=X; g=0; b=C; break;
-        default: r=C; g=0; b=X; break;
-    }
-    auto u8 = [](float v) { return static_cast<uint32_t>(std::min(255.0f, (v + 0.002f) * 255.0f)); };
-    return (u8(r+m_v) << 16) | (u8(g+m_v) << 8) | u8(b+m_v);
-}
-
-bool parse_int(const std::string& s, int* out) {
-    if (!out) return false;
-    char* end = nullptr;
-    long v = std::strtol(s.c_str(), &end, 10);
-    if (!end || *end != '\0') return false;
-    *out = static_cast<int>(v);
-    return true;
-}
-
-std::string lookup_entity_meta(const core::Document* doc, EntityId id, const char* suffix) {
-    if (!doc || id == 0 || !suffix || !*suffix) return {};
-    const auto& meta = doc->metadata().meta;
-    const std::string key = "dxf.entity." +
-        std::to_string(static_cast<unsigned long long>(id)) + "." + suffix;
-    const auto it = meta.find(key);
-    if (it == meta.end()) return {};
-    return it->second;
-}
-
-} // namespace
-
 CanvasWidget::CanvasWidget(QWidget* parent) : QWidget(parent) {
     setMouseTracking(true);
     setAutoFillBackground(true);
@@ -175,10 +112,7 @@ const core::Layer* CanvasWidget::layerFor(int layerId) const {
 }
 
 bool CanvasWidget::isEntityVisible(const core::Entity& entity) const {
-    if (!entity.visible) return false;
-    const auto* layer = layerFor(entity.layerId);
-    if (layer && !layer->visible) return false;
-    return true;
+    return scene_render::isEntityVisible(m_doc, entity);
 }
 
 bool CanvasWidget::isEntityLocked(const core::Entity& entity) const {
@@ -187,76 +121,11 @@ bool CanvasWidget::isEntityLocked(const core::Entity& entity) const {
 }
 
 QColor CanvasWidget::resolveEntityColor(const core::Entity& entity) const {
-    uint32_t color = entity.color;
-    const auto* layer = layerFor(entity.layerId);
-    const uint32_t layer_color = layer ? layer->color : 0xDCDCE6u;
-
-    // For DXF/DWG imported entities: color is already RGB (set by adapter).
-    // If color is 0, fall back to layer color. No need for metadata lookup.
-    if (color == 0) color = layer_color;
-    if (color != 0 && color != 0xDCDCE6u)
-        return QColor((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
-
-    const std::string source = lookup_entity_meta(m_doc, entity.id, "color_source");
-    if (!source.empty()) {
-        if (source == "BYLAYER") {
-            color = layer_color;
-        } else if (source == "BYBLOCK") {
-            if (color == 0) {
-                int aci = 0;
-                const std::string aci_text = lookup_entity_meta(m_doc, entity.id, "color_aci");
-                if (parse_int(aci_text, &aci) && aci > 0) {
-                    color = aci_to_rgb(aci);
-                } else {
-                    color = layer_color;
-                }
-            }
-        } else if (source == "INDEX") {
-            if (color == 0) {
-                int aci = 0;
-                const std::string aci_text = lookup_entity_meta(m_doc, entity.id, "color_aci");
-                if (parse_int(aci_text, &aci) && aci > 0) {
-                    color = aci_to_rgb(aci);
-                } else {
-                    color = layer_color;
-                }
-            }
-        } else if (source == "TRUECOLOR") {
-            if (color == 0) {
-                int aci = 0;
-                const std::string aci_text = lookup_entity_meta(m_doc, entity.id, "color_aci");
-                if (parse_int(aci_text, &aci) && aci > 0) {
-                    color = aci_to_rgb(aci);
-                } else {
-                    color = layer_color;
-                }
-            }
-        }
-    }
-
-    if (color == 0) color = layer_color ? layer_color : 0xDCDCE6u;
-    return QColor((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
+    return scene_render::resolveEntityColor(m_doc, entity);
 }
 
 void CanvasWidget::updatePolyCache(PolyVis& pv) {
-    pv.cachePath = QPainterPath();
-    if (pv.pts.size() < 2) {
-        pv.aabb = QRectF();
-        return;
-    }
-    pv.cachePath.moveTo(pv.pts[0]);
-    for (int i = 1; i < pv.pts.size(); ++i) {
-        pv.cachePath.lineTo(pv.pts[i]);
-    }
-    qreal minX = pv.pts[0].x(), maxX = minX;
-    qreal minY = pv.pts[0].y(), maxY = minY;
-    for (const auto& p : pv.pts) {
-        if (p.x() < minX) minX = p.x();
-        if (p.x() > maxX) maxX = p.x();
-        if (p.y() < minY) minY = p.y();
-        if (p.y() > maxY) maxY = p.y();
-    }
-    pv.aabb = QRectF(QPointF(minX, minY), QPointF(maxX, maxY));
+    scene_render::updatePolyCache(pv);
 }
 
 void CanvasWidget::clear() {
@@ -595,66 +464,6 @@ void CanvasWidget::selectAtPoint(const QPointF& mouseWorld) {
     emit selectionChanged({});
 }
 
-// Standard DXF linetype patterns: {dash_mm, gap_mm, dash_mm, gap_mm, ...}
-// Dot is represented as very short dash (0.5mm).
-// Build QPen dash pattern from real DXF linetype data.
-// patterns: real DXF linetype map (from adapter), ltScale: global LTSCALE.
-// scale: current pixels-per-world-unit.
-static QVector<qreal> linetypeDashPatternReal(
-    const std::string& lt, double scale, double ltScale,
-    const std::map<std::string, std::vector<double>>& patterns)
-{
-    // Normalise to uppercase
-    std::string name = lt;
-    for (char& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-
-    // Look up real DXF pattern first
-    auto it = patterns.find(name);
-    if (it == patterns.end()) {
-        // Try substring match (e.g., ACAD_ISO04W100 contains DASHED)
-        for (auto& [key, _] : patterns)
-            if (name.find(key) != std::string::npos || key.find(name) != std::string::npos)
-                { it = patterns.find(key); break; }
-    }
-
-    // Fallback table for common patterns if DXF didn't define them
-    static const struct { const char* name; std::initializer_list<double> pat; } fallback[] = {
-        {"DASHED",  {12.7, -6.35}},
-        {"HIDDEN",  {6.35, -3.175}},
-        {"CENTER",  {31.75, -6.35, 6.35, -6.35}},
-        {"DASHDOT", {12.7, -3.175, 0.0, -3.175}},
-        {"PHANTOM", {31.75, -6.35, 6.35, -6.35, 6.35, -6.35}},
-        {"DOT",     {0.0, -3.175}},
-    };
-
-    std::vector<double> rawPat;
-    if (it != patterns.end() && !it->second.empty()) {
-        rawPat = it->second;
-    } else {
-        for (auto& fb : fallback)
-            if (name == fb.name || name.find(fb.name) != std::string::npos)
-                { rawPat.assign(fb.pat.begin(), fb.pat.end()); break; }
-    }
-    if (rawPat.empty()) return {};
-
-    // Convert DXF pattern (positive=dash, negative=gap, 0=dot) to QPen dash pattern
-    // QPen expects alternating dash/gap lengths in pen-width units (for cosmetic: pixels)
-    QVector<qreal> q;
-    for (double v : rawPat) {
-        double worldLen = std::abs(v) * ltScale;
-        double px = worldLen * scale;
-        if (v == 0.0) px = 1.0; // dot: 1 pixel
-        // Minimal visibility: dash >= 2px, gap >= 1px
-        bool isDash = (v >= 0.0);
-        if (isDash) { if (px < 2.0) px = 2.0; }
-        else        { if (px < 1.0) px = 1.0; }
-        q.append(px);
-    }
-    // QPen dash pattern must alternate dash/gap — ensure even count
-    if (q.size() % 2 != 0) q.append(1.0);
-    return q;
-}
-
 void CanvasWidget::paintEvent(QPaintEvent*) {
     QPainter pr(this);
     pr.fillRect(rect(), QColor(30,30,35));
@@ -699,209 +508,31 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
     QPen yPen(QColor(255,120,120), 1); yPen.setCosmetic(true); pr.setPen(yPen);
     pr.drawLine(QPointF(0, -100000), QPointF(0, 100000));
 
-    // 2a. Draw Text entities — in screen coordinates (outside world transform)
-    // Save and reset transform since text should not be Y-flipped
-    if (m_doc) {
-        pr.save();
-        pr.resetTransform(); // draw in screen pixel coordinates
-        pr.setRenderHint(QPainter::Antialiasing, true);
-        for (const auto& e : m_doc->entities()) {
-            if (e.type != core::EntityType::Text) continue;
-            if (!isEntityVisible(e)) continue;
-            const auto* txt = std::get_if<core::Text>(&e.payload);
-            if (!txt || txt->text.empty()) continue;
-            QColor col = resolveEntityColor(e);
-            pr.setPen(col);
-            QPointF screenPos = worldToScreen(QPointF(txt->pos.x, txt->pos.y));
-            // Importer carries "family" or "family\x1f<widthFactor>" on
-            // Entity::name (no core::Text change). Split it out.
-            QString fam; double widthFactor = 1.0;
-            {
-                QString nm = QString::fromStdString(e.name);
-                int sep = nm.indexOf(QChar(0x1f));
-                if (sep >= 0) {
-                    fam = nm.left(sep);
-                    bool ok = false; double w = nm.mid(sep + 1).toDouble(&ok);
-                    if (ok && w > 0.05 && w < 20.0) widthFactor = w;
-                } else {
-                    fam = nm;
-                }
-                if (fam.isEmpty())
-                    fam = QStringLiteral("STFangsong"); // 华文仿宋 (non-localized)
-            }
-            // AutoCAD model: a DXF text of world-height H is drawn so the
-            // glyphs are H units tall → on screen H*scale px. Size the font so
-            // the ACTUAL string's tight bounding box height == H*scale (works
-            // for any font/script: Latin digits, CJK — capHeight() is
-            // unreliable for CJK fonts). Cache the glyph-px-per-pixelSize ratio
-            // per (family, line) class to keep paintEvent cheap.
-            double targetPx = txt->height * scale_;
-            // Do NOT skip sub-pixel text: AutoCAD/ezdxf still draw it (clamped
-            // to ~1px). Skipping made dense annotation vanish when a large
-            // drawing is zoomed to extents. Only bail on degenerate sizes.
-            if (!(targetPx > 0.0) || txt->height <= 0.0) continue;
-            QString qtext = QString::fromStdString(txt->text);
-            QStringList lines = qtext.split('\n');
-            QString sample;
-            for (const QString& ln : lines) if (!ln.isEmpty()) { sample = ln; break; }
-            if (sample.isEmpty()) continue;
-            constexpr double kProbe = 256.0;
-            QFont mfont; mfont.setFamily(fam); mfont.setPixelSize(static_cast<int>(kProbe));
-            double gh = QFontMetricsF(mfont).tightBoundingRect(sample).height();
-            double ratio = (gh > 1.0) ? gh / kProbe : 0.72; // glyph px per pixelSize
-            double fontSize = targetPx / ratio;
-            // No fixed minimum: text must scale with zoom like AutoCAD (a px
-            // floor makes zoomed-out text oversized vs geometry). Only guard
-            // against zero/degenerate sizes.
-            if (fontSize < 1.0) fontSize = 1.0;
-            if (fontSize > 4000.0) fontSize = 4000.0;
-            QFont font;
-            font.setFamily(fam);
-            font.setPixelSize(static_cast<int>(fontSize));
-            pr.setFont(font);
-            pr.save();
-            pr.translate(screenPos);
-            if (std::abs(txt->rotation) > 0.01)
-                pr.rotate(-txt->rotation * 180.0 / M_PI);
-            // DXF text-style width factor: horizontal-only glyph scaling about
-            // the insertion point (drawText origin x=0, so unaffected).
-            if (std::abs(widthFactor - 1.0) > 0.01)
-                pr.scale(widthFactor, 1.0);
-            double lineH = fontSize * 1.4;
-            for (int li = 0; li < lines.size(); ++li)
-                if (!lines[li].isEmpty())
-                    pr.drawText(QPointF(0, li * lineH), lines[li]);
-            pr.restore();
-        }
-        pr.restore(); // restore world transform for subsequent drawing
-    }
+    pr.restore();
 
-    // 2b-pre. Draw Ellipses (from block expansion — stored as native Ellipse type)
-    for (const auto& e : m_doc->entities()) {
-        if (e.type != core::EntityType::Ellipse) continue;
-        if (!isEntityVisible(e)) continue;
-        const auto* ell = std::get_if<core::Ellipse>(&e.payload);
-        if (!ell) continue;
-        QPen pen(resolveEntityColor(e), 1); pen.setCosmetic(true);
-        // Apply line width and line type (same logic as polylines)
-        {
-            double lwPx = 0.0;
-            auto* layer = layerFor(e.layerId);
-            std::string ln = layer ? layer->name : "";
-            if (e.line_weight > 0.0) {
-                lwPx = std::max(1.5, e.line_weight * scale_);
-            } else if (ln.find("中心线") != std::string::npos || ln.find("点划线") != std::string::npos ||
-                       ln.find("点画线") != std::string::npos) {
-                lwPx = 2.0;
-            } else if (ln.find("虚线") != std::string::npos) {
-                lwPx = 1.5;
-            } else if (ln.find("粗") != std::string::npos) {
-                lwPx = 3.0;
-            }
-            if (!e.line_type.empty()) {
-                auto dashPat = linetypeDashPatternReal(e.line_type, scale_, m_ltScale, m_linetypePatterns);
-                if (!dashPat.isEmpty()) {
-                    pen.setStyle(Qt::CustomDashLine);
-                    pen.setDashPattern(dashPat);
-                }
-            }
-            pen.setWidthF(lwPx > 0.0 ? lwPx : 1.0);
-        }
-        pr.setPen(pen);
-        double sa = ell->start_angle, ea = ell->end_angle;
-        if (std::abs(ea - sa) < 1e-10) { sa = 0; ea = 2.0 * M_PI; }
-        // Build path so dash pattern works across the whole arc
-        QPainterPath arcPath;
-        for (int s = 0; s <= 64; ++s) {
-            double a = sa + (ea - sa) * s / 64;
-            double lx = ell->rx * std::cos(a), ly = ell->ry * std::sin(a);
-            double cosR = std::cos(ell->rotation), sinR = std::sin(ell->rotation);
-            QPointF cur = worldToScreen(QPointF(
-                ell->center.x + lx*cosR - ly*sinR,
-                ell->center.y + lx*sinR + ly*cosR));
-            if (s == 0) arcPath.moveTo(cur);
-            else arcPath.lineTo(cur);
-        }
-        pr.drawPath(arcPath);
-    }
-
-    // 2b. Draw Polylines
-    pr.setRenderHint(QPainter::Antialiasing, true);
-    for (int i=0; i<polylines_.size(); ++i) {
-        const auto& pv = polylines_[i];
-        const auto* entity = entityFor(pv.entityId);
-        if (!entity) continue;
-        if (!isEntityVisible(*entity)) continue;
-
-        QPen pen(resolveEntityColor(*entity), 1);
-        pen.setCosmetic(true);
-
-        // Line weight: entity → layer → layer-name fallback
-        double lwPx = 0.0;
-        auto* layer = layerFor(entity->layerId);
-        std::string ln = layer ? layer->name : "";
-
-        // Pattern-fill hatch lines: marked by the importer with linetype
-        // "__HATCH_FILL__". Always render as 1-device-px hairlines — pattern
-        // spacing is often sub-pixel at fit-to-extents, and any wider pen
-        // makes adjacent strokes overlap into a solid color blob (the
-        // "yellow filled section" symptom in the reboiler before this fix).
-        bool isHatchFill = (entity->line_type == "__HATCH_FILL__");
-        if (isHatchFill) {
-            pen.setWidthF(1.0); // pen is already cosmetic → 1 device px
-            lwPx = -1.0; // signal: already set, skip below
-        } else if (entity->line_weight > 0.0) {
-            // 1. Entity explicit lineweight (mm → pixels, min 1px)
-            lwPx = std::max(1.0, entity->line_weight * scale_);
-        } else if (layer && layer->line_weight > 0.0) {
-            // 2. Layer lineweight (stored by adapter from DXF layer table)
-            lwPx = std::max(1.0, layer->line_weight * scale_);
-        } else {
-            // 3. Layer-name fallback (last resort)
-            if (ln.find("粗实线") != std::string::npos || ln.find("YGJ粗") != std::string::npos)
-                lwPx = 2.5;
-            else if (ln == "0")
-                lwPx = 1.5;
-            else
-                lwPx = 1.0; // default thin
-        }
-
-        // Apply linetype dash pattern if not continuous
-        if (lwPx >= 0.0) { // lwPx < 0 means pen width already set (e.g. hatch)
-            if (!entity->line_type.empty()) {
-                auto dashPat = linetypeDashPatternReal(entity->line_type, scale_, m_ltScale, m_linetypePatterns);
-                if (!dashPat.isEmpty()) {
-                    pen.setStyle(Qt::CustomDashLine);
-                    pen.setDashPattern(dashPat);
-                    pen.setWidthF(lwPx > 0.0 ? lwPx : 1.0);
-                } else {
-                    pen.setWidthF(lwPx > 0.0 ? lwPx : 1.5);
-                }
-            } else {
-                pen.setWidthF(lwPx > 0.0 ? lwPx : 1.5);
-            }
-        }
-
-        if (selected_entities_.contains(pv.entityId)) {
-            pen.setColor(QColor(255,220,100));
-            pen.setStyle(Qt::SolidLine);
-            pen.setWidthF(2.5);
-        }
-        pr.setPen(pen);
-        // SOLID/TRACE entities: filled polygon (drawn in world coords via transform)
-        if (entity->name == "__SOLID__" && pv.pts.size() >= 3) {
-            pr.setPen(Qt::NoPen);
-            pr.setBrush(pen.color());
-            pr.drawPath(pv.cachePath); // cachePath is in world coords, transform handles it
-            pr.setBrush(Qt::NoBrush);
-            continue;
-        }
-        pr.drawPath(pv.cachePath);
-    }
+    // 2. Document content (texts, ellipses, polylines) — shared scene renderer,
+    // also used headless by render_cli. Keep drawing changes in scene_renderer.
+    scene_render::View view;
+    view.scale = scale_;
+    view.pan = pan_;
+    view.hasClip = m_hasClip;
+    view.clipMinX = m_clipMinX; view.clipMinY = m_clipMinY;
+    view.clipMaxX = m_clipMaxX; view.clipMaxY = m_clipMaxY;
+    scene_render::renderScene(pr, m_doc, polylines_, view, m_linetypes, &selected_entities_);
 
     // 3. Draw Triangle Wireframe
     if (!triVerts_.isEmpty() && !triIndices_.isEmpty()) {
-        QPen tpen(QColor(120,200,120), 1); 
+        pr.save();
+        pr.setTransform(transform);
+        if (m_hasClip) {
+            double margin = 10.0; // small margin in world units
+            QRectF clipRect(m_clipMinX - margin, m_clipMinY - margin,
+                            m_clipMaxX - m_clipMinX + 2*margin,
+                            m_clipMaxY - m_clipMinY + 2*margin);
+            pr.setClipRect(clipRect);
+        }
+        pr.setRenderHint(QPainter::Antialiasing, true);
+        QPen tpen(QColor(120,200,120), 1);
         tpen.setCosmetic(true);
         if (triSelected_) tpen.setColor(QColor(255,180,60));
         pr.setPen(tpen);
@@ -916,9 +547,8 @@ void CanvasWidget::paintEvent(QPaintEvent*) {
             lines.append(QLineF(c, a));
         }
         pr.drawLines(lines);
+        pr.restore();
     }
-    
-    pr.restore();
 
     // 4. Draw Selection Rectangle (screen space)
     if (selection_dragging_) {
@@ -1497,74 +1127,13 @@ void CanvasWidget::zoomToFit() {
     int w = width(), h = height();
     if (w < 10 || h < 10) return; // not laid out yet — stays pending
 
-    // Compute bounding box of all entities
-    double mnx = 1e18, mny = 1e18, mxx = -1e18, mxy = -1e18;
-    for (const auto& e : m_doc->entities()) {
-        if (auto* pl = std::get_if<core::Polyline>(&e.payload)) {
-            for (auto& p : pl->points) {
-                if (p.x < mnx) mnx = p.x; if (p.x > mxx) mxx = p.x;
-                if (p.y < mny) mny = p.y; if (p.y > mxy) mxy = p.y;
-            }
-        } else if (auto* t = std::get_if<core::Text>(&e.payload)) {
-            if (t->pos.x < mnx) mnx = t->pos.x; if (t->pos.x > mxx) mxx = t->pos.x;
-            if (t->pos.y < mny) mny = t->pos.y; if (t->pos.y > mxy) mxy = t->pos.y;
-        }
+    scene_render::View fit;
+    if (!scene_render::fitToContent(*m_doc, QSize(w, h), &fit)) {
+        m_fitPending = false; // degenerate extents — give up
+        return;
     }
-    double dw = mxx - mnx, dh = mxy - mny;
-    if (dw < 1 || dh < 1) { m_fitPending = false; return; }
-    // 5% margin
-    mnx -= dw * 0.05; mxx += dw * 0.05;
-    mny -= dh * 0.05; mxy += dh * 0.05;
-    dw = mxx - mnx; dh = mxy - mny;
-
-    // Canvas transform: screen = world * scale_ + pan_
-    // screen Y increases downward, world Y increases upward.
-    // The canvas transform does NOT flip Y — so worldY=0 is at screenY=panY,
-    // and higher worldY goes further DOWN on screen.
-    //
-    // For correct CAD display, worldMaxY should be at screen top (small Y)
-    // and worldMinY at screen bottom (large Y).
-    //
-    // Solution: set panY so that mxy maps to screen top margin and
-    // mny maps to screen bottom margin.
-    //   screen_top    = mxy * scale_ + panY → panY = margin - mxy*scale_
-    //   screen_bottom = mny * scale_ + panY
-    //   scale_ = (h - 2*margin) / (mny - mxy)  [NOTE: mny < mxy so this is negative!]
-    //
-    // Since canvas uses positive scale_ uniformly, we can't use negative scale.
-    // Instead: negate the world Y coordinates in pan calculation.
-    // Treat it as: screenY = (-worldY) * scale_ + panY
-    //   → panY = screenCenter - (-wcy) * scale_ = screenCenter + wcy*scale_
-
-    // Canvas coordinate system: screenPos = worldPos * scale_ + pan_
-    // Both X and Y use the same positive scale_ (no Y flip in transform).
-    // worldToScreen simply multiplies by scale_ and offsets by pan_.
-    //
-    // To fit content: we want the world bbox to map into the widget rect.
-    //   screenX_min = mnx * scale_ + panX = margin
-    //   screenX_max = mxx * scale_ + panX = w - margin
-    //   screenY_min = mny * scale_ + panY = margin  (mny is smaller, maps to top)
-    //   screenY_max = mxy * scale_ + panY = h - margin (mxy is larger, maps to bottom)
-    //
-    // scale_ = min((w - 2*margin) / dw, (h - 2*margin) / dh)
-    // panX = margin - mnx * scale_
-    // panY = margin - mny * scale_
-
-    double margin = std::min(w, h) * 0.03;
-    double sx = (w - 2*margin) / dw;
-    double sy = (h - 2*margin) / dh;
-    scale_ = std::min(sx, sy);
-
-    // Center the content
-    double usedW = dw * scale_;
-    double usedH = dh * scale_;
-    double offsetX = (w - usedW) / 2.0;
-    double offsetY = (h - usedH) / 2.0;
-
-    double wcx = (mnx + mxx) / 2.0;
-    double wcy = (mny + mxy) / 2.0;
-    pan_.setX(w / 2.0 - wcx * scale_);
-    pan_.setY(h / 2.0 + wcy * scale_);
+    scale_ = fit.scale;
+    pan_ = fit.pan;
 
     m_fitPending = false; // applied successfully
     update();
@@ -1584,28 +1153,14 @@ void CanvasWidget::zoomToExtents(double mnx, double mny, double mxx, double mxy)
     m_fitMnx = mnx; m_fitMny = mny; m_fitMxx = mxx; m_fitMxy = mxy;
     int w = width(), h = height();
     if (w < 10 || h < 10) return;        // not laid out yet — stays pending
-    double dw = mxx - mnx, dh = mxy - mny;
-    if (dw < 1 || dh < 1) { m_fitPending = false; return; }
-    // 5% margin
-    mnx -= dw * 0.05; mxx += dw * 0.05;
-    mny -= dh * 0.05; mxy += dh * 0.05;
-    dw = mxx - mnx; dh = mxy - mny;
 
-    // Transform: screenX = worldX * scale_ + panX
-    //            screenY = worldY * (-scale_) + panY  (Y flipped)
-    // So: worldMinX → screenLeft, worldMaxX → screenRight
-    //     worldMaxY → screenTop (small Y), worldMinY → screenBottom (large Y)
-    double sx = (double)w / dw;
-    double sy = (double)h / dh;
-    scale_ = std::min(sx, sy) * 0.9;
-
-    double wcx = (mnx + mxx) / 2.0;
-    double wcy = (mny + mxy) / 2.0;
-
-    // screenCenter.x = wcx * scale_ + panX → panX = w/2 - wcx*scale_
-    // screenCenter.y = wcy * (-scale_) + panY → panY = h/2 + wcy*scale_
-    pan_.setX(w / 2.0 - wcx * scale_);
-    pan_.setY(h / 2.0 + wcy * scale_);
+    scene_render::View fit;
+    if (!scene_render::fitToExtents(QSize(w, h), mnx, mny, mxx, mxy, &fit)) {
+        m_fitPending = false; // degenerate extents — give up
+        return;
+    }
+    scale_ = fit.scale;
+    pan_ = fit.pan;
 
     m_fitPending = false; // applied successfully
     update();

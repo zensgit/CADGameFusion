@@ -19,6 +19,7 @@ if(BUILD_EDITOR_QT)
     test_qt_document_commands.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/scene_renderer.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/include/command/command_manager.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/command/command_manager.cpp
@@ -81,6 +82,7 @@ if(BUILD_EDITOR_QT)
     ${CMAKE_SOURCE_DIR}/editor/qt/src/guide_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/scene_renderer.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap/snap_settings.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/include/snap/snap_settings.hpp
@@ -107,6 +109,7 @@ if(BUILD_EDITOR_QT)
     ${CMAKE_SOURCE_DIR}/editor/qt/src/guide_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/scene_renderer.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap/snap_settings.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/include/snap/snap_settings.hpp
@@ -147,6 +150,7 @@ if(BUILD_EDITOR_QT)
     test_qt_canvas_box_select.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/scene_renderer.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap/snap_settings.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/include/snap/snap_settings.hpp
@@ -168,6 +172,7 @@ if(BUILD_EDITOR_QT)
     test_qt_canvas_color_metadata.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/scene_renderer.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
   )
   target_include_directories(test_qt_canvas_color_metadata PRIVATE
@@ -219,6 +224,7 @@ if(BUILD_EDITOR_QT)
     test_qt_m1_transforms.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/scene_renderer.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/include/command/command_manager.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/command/command_manager.cpp
@@ -241,6 +247,7 @@ if(BUILD_EDITOR_QT)
     test_qt_m1_e2e.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/scene_renderer.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/include/command/command_manager.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/command/command_manager.cpp
@@ -303,6 +310,7 @@ if(BUILD_EDITOR_QT)
     test_qt_layer_lock.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/scene_renderer.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
   )
   target_include_directories(test_qt_layer_lock PRIVATE
@@ -374,6 +382,7 @@ if(BUILD_EDITOR_QT)
     test_qt_pivot.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/scene_renderer.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
   )
   target_include_directories(test_qt_pivot PRIVATE
@@ -410,6 +419,7 @@ if(BUILD_EDITOR_QT)
     test_qt_guide_persistence.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.hpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/canvas.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/scene_renderer.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap/snap_settings.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/include/snap/snap_settings.hpp
