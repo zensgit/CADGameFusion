@@ -24,6 +24,8 @@ add_executable(editor_qt
     src/mainwindow.hpp
     src/canvas.cpp
     src/canvas.hpp
+    src/scene_renderer.cpp
+    src/scene_renderer.hpp
     src/snap_manager.cpp
     src/snap_manager.hpp
     src/exporter.cpp

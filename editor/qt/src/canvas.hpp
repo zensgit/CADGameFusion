@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "snap_manager.hpp"
+#include "scene_renderer.hpp"
 #include "core/document.hpp"
 
 class Tool;
@@ -33,13 +34,8 @@ struct CanvasTestAccess;
 class CanvasWidget : public QWidget, public core::DocumentObserver {
     Q_OBJECT
 public:
-    struct PolyVis {
-        QVector<QPointF> pts;
-        EntityId entityId{0}; // PR5: 0 = not bound to Document entity
-        // Cache
-        QPainterPath cachePath;
-        QRectF aabb;
-    };
+    // Drawable cache entry; shared with the headless renderer (render_cli).
+    using PolyVis = scene_render::PolyVis;
 
     struct PolylineState {
         EntityId entityId{0};
@@ -70,7 +66,7 @@ public:
     QPointF snapWorldPosition(const QPointF& worldPos, bool* snapped = nullptr);
     // DXF linetype patterns from adapter (real dash/gap values in drawing units)
     void setLinetypePatterns(const std::map<std::string, std::vector<double>>& patterns, double ltScale) {
-        m_linetypePatterns = patterns; m_ltScale = ltScale;
+        m_linetypes.patterns = patterns; m_linetypes.ltScale = ltScale;
     }
 
     void clear();
@@ -191,8 +187,7 @@ private:
     int m_pivotMode{0}; // PivotMode cast to int
     QPointF m_customPivot;
     // Real DXF linetype patterns (from adapter)
-    std::map<std::string, std::vector<double>> m_linetypePatterns;
-    double m_ltScale{1.0};
+    scene_render::LinetypeTable m_linetypes;
 };
 
 #ifdef CADGF_QT_TEST_ACCESS
