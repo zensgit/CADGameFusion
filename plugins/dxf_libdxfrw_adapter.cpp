@@ -502,7 +502,12 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             ell.rotation = ent.ellRot + angle;
             ell.start_angle = ent.ellStart;
             ell.end_angle = ent.ellEnd;
-            cadgf_document_add_ellipse(m_doc, &ell, "", elid);
+            cadgf_entity_id eeid = cadgf_document_add_ellipse(m_doc, &ell, "", elid);
+            if (eeid != 0) {
+                if (effectiveColor != 0 && effectiveColor != BYBLOCK_COLOR)
+                    cadgf_document_set_entity_color(m_doc, eeid, effectiveColor);
+                applyLinetype(eeid, ent.linetype, ent.layerName);
+            }
             ++m_entityCount;
             break;
         }
