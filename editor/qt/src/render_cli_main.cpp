@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
     parser.addOption({"height", "Output height in pixels (default 1697).", "px", "1697"});
     parser.addOption({"bg",     "Background: dark | white | #RRGGBB (default dark).", "color", "dark"});
     parser.addOption({"no-clip", "Do not clip to the drawing extents (EXTMIN/EXTMAX)."});
-    parser.addOption({"window", "Render a specific world rect 'x1,y1,x2,y2' instead of the drawing extents (e.g. frame extents for a garbage-extents drawing).", "rect"});
+    parser.addOption({"window", "Frame a specific world rect 'x1,y1,x2,y2' (with the standard margin) instead of the drawing extents — e.g. the sheet frame for a garbage-extents drawing.", "rect"});
     parser.addOption({"font-dir", "Directory of font files (ttf/ttc/otf) to load before rendering.", "dir"});
     parser.addOption({"report",  "Write a render report JSON (params, view, counts, font records) to this path.", "file"});
     parser.process(app);
@@ -390,6 +390,6 @@ int main(int argc, char** argv) {
     std::printf("rendered %s -> %s (%dx%d, %d entities%s)\n",
                 qPrintable(QFileInfo(inPath).fileName()), qPrintable(outPath),
                 width, height, entityCount,
-                hasExtents ? ", extents clip" : ", content fit");
+                haveWindow ? ", window" : (hasExtents ? ", extents clip" : ", content fit"));
     return 0;
 }
