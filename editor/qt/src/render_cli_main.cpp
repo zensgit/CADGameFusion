@@ -257,6 +257,12 @@ int main(int argc, char** argv) {
         view.clipMaxX = eMx; view.clipMaxY = eMy;
     }
 
+    // B4: on a light background, flip near-white entity colors to black so
+    // ACI-7 / near-white-default strokes are not invisible (AutoCAD's
+    // color-7 convention). Decide by background luminance.
+    view.lightBackground =
+        (0.299 * bg.red() + 0.587 * bg.green() + 0.114 * bg.blue()) / 255.0 > 0.5;
+
     scene_render::LinetypeTable linetypes;
     linetypes.patterns = imp.adapter->linetypes();
     linetypes.ltScale = imp.adapter->ltScale();

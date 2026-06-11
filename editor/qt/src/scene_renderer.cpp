@@ -131,7 +131,21 @@ bool isEntityVisible(const core::Document* doc, const core::Entity& entity) {
     return true;
 }
 
-QColor resolveEntityColor(const core::Document* doc, const core::Entity& entity) {
+// B4: on a light background, near-white colors (ACI 7 white, the near-white
+// default 0xDCDCE6, light ACI grays) are invisible — AutoCAD draws color-7 and
+// such entities black on a light canvas. Flip by luminance so pure white AND
+// the near-white default both go black; everything darker is unchanged.
+static QColor finalize_color(uint32_t color, bool flipWhiteOnLight) {
+    int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
+    if (flipWhiteOnLight) {
+        const double lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+        if (lum > 0.85) return QColor(0, 0, 0);
+    }
+    return QColor(r, g, b);
+}
+
+QColor resolveEntityColor(const core::Document* doc, const core::Entity& entity,
+                          bool flipWhiteOnLight) {
     uint32_t color = entity.color;
     const auto* layer = layer_for(doc, entity.layerId);
     const uint32_t layer_color = layer ? layer->color : 0xDCDCE6u;
@@ -140,7 +154,7 @@ QColor resolveEntityColor(const core::Document* doc, const core::Entity& entity)
     // If color is 0, fall back to layer color. No need for metadata lookup.
     if (color == 0) color = layer_color;
     if (color != 0 && color != 0xDCDCE6u)
-        return QColor((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
+        return finalize_color(color, flipWhiteOnLight);
 
     const std::string source = lookup_entity_meta(doc, entity.id, "color_source");
     if (!source.empty()) {
@@ -180,7 +194,7 @@ QColor resolveEntityColor(const core::Document* doc, const core::Entity& entity)
     }
 
     if (color == 0) color = layer_color ? layer_color : 0xDCDCE6u;
-    return QColor((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF);
+    return finalize_color(color, flipWhiteOnLight);
 }
 
 // Standard DXF linetype patterns: {dash_mm, gap_mm, dash_mm, gap_mm, ...}
@@ -344,7 +358,7 @@ void renderScene(QPainter& pr, const core::Document* doc,
             if (!isEntityVisible(doc, e)) continue;
             const auto* txt = std::get_if<core::Text>(&e.payload);
             if (!txt || txt->text.empty()) continue;
-            QColor col = resolveEntityColor(doc, e);
+            QColor col = resolveEntityColor(doc, e, view.lightBackground);
             pr.setPen(col);
             QPointF screenPos = worldToScreen(view, QPointF(txt->pos.x, txt->pos.y));
             // Importer carries "family" or "family\x1f<widthFactor>" on
@@ -416,7 +430,7 @@ void renderScene(QPainter& pr, const core::Document* doc,
         if (!isEntityVisible(doc, e)) continue;
         const auto* ell = std::get_if<core::Ellipse>(&e.payload);
         if (!ell) continue;
-        QPen pen(resolveEntityColor(doc, e), 1); pen.setCosmetic(true);
+        QPen pen(resolveEntityColor(doc, e, view.lightBackground), 1); pen.setCosmetic(true);
         // Apply line width and line type (same logic as polylines)
         {
             double lwPx = 0.0;
@@ -468,7 +482,7 @@ void renderScene(QPainter& pr, const core::Document* doc,
         if (!entity) continue;
         if (!isEntityVisible(doc, *entity)) continue;
 
-        QPen pen(resolveEntityColor(doc, *entity), 1);
+        QPen pen(resolveEntityColor(doc, *entity, view.lightBackground), 1);
         pen.setCosmetic(true);
 
         // Line weight: entity → layer → layer-name fallback
