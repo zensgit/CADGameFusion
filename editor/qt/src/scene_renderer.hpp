@@ -43,6 +43,11 @@ struct View {
     QPointF pan{0.0, 0.0};  // pixels
     bool hasClip{false};    // clip content to drawing extents (DXF EXTMIN/EXTMAX)
     double clipMinX{0}, clipMinY{0}, clipMaxX{0}, clipMaxY{0};
+    // Light-background mode (B4): on a white/light canvas, near-white entity
+    // colors (ACI 7, the near-white default) are drawn black — AutoCAD's
+    // color-7 / background-relative convention. Editor (dark canvas) leaves
+    // this false; render_cli sets it when --bg is light.
+    bool lightBackground{false};
 };
 
 // Real DXF linetype patterns from the importer (dash/gap lengths in drawing
@@ -60,7 +65,8 @@ void updatePolyCache(PolyVis& pv);
 QVector<PolyVis> buildPolyCache(const core::Document& doc);
 
 bool isEntityVisible(const core::Document* doc, const core::Entity& entity);
-QColor resolveEntityColor(const core::Document* doc, const core::Entity& entity);
+QColor resolveEntityColor(const core::Document* doc, const core::Entity& entity,
+                          bool flipWhiteOnLight = false);
 QVector<qreal> linetypeDashPattern(const std::string& lt, double scale,
                                    const LinetypeTable& linetypes);
 
