@@ -19,15 +19,25 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QFont>
+#include <QFontDatabase>
+#include <QFontInfo>
 #include <QGuiApplication>
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QPainter>
 #include <QProcess>
+#include <QSet>
 #include <QSvgGenerator>
 
 #include <cstdio>
 #include <memory>
 #include <string>
+#include <variant>
+
+#include "core/document.hpp"
 
 namespace {
 
@@ -91,6 +101,65 @@ bool parseBackground(const QString& spec, QColor* out) {
     return true;
 }
 
+// Load every font file under dir into the application font DB so QFont family
+// matching resolves drawing fonts that the host OS lacks (B1; unblocks the
+// per-tenant font store in the render service A5). Returns the families added.
+QStringList loadFontDir(const QString& dir) {
+    QStringList families;
+    QDir d(dir);
+    if (!d.exists()) return families;
+    const QStringList filters = {"*.ttf", "*.ttc", "*.otf", "*.otc"};
+    for (const QFileInfo& fi : d.entryInfoList(filters, QDir::Files, QDir::Name)) {
+        int id = QFontDatabase::addApplicationFont(fi.absoluteFilePath());
+        if (id >= 0) families += QFontDatabase::applicationFontFamilies(id);
+    }
+    families.removeDuplicates();
+    return families;
+}
+
+// The renderer carries the resolved family on Entity::name as
+// "family\x1f<widthFactor>" (see scene_renderer). Recover the family the same
+// way so the report records exactly what renderScene will request.
+QString familyOf(const core::Entity& e) {
+    QString nm = QString::fromStdString(e.name);
+    int sep = nm.indexOf(QChar(0x1f));
+    QString fam = (sep >= 0) ? nm.left(sep) : nm;
+    return fam.isEmpty() ? QStringLiteral("STFangsong") : fam;
+}
+
+// Two-layer font resolution record (B1): the adapter-mapped requested family
+// (layer 1) vs. what Qt actually resolves it to (layer 2, silent OS fallback).
+QJsonArray fontRecords(const core::Document& doc) {
+    QSet<QString> requested;
+    for (const auto& e : doc.entities()) {
+        if (e.type != core::EntityType::Text) continue;
+        const auto* t = std::get_if<core::Text>(&e.payload);
+        if (!t || t->text.empty()) continue;
+        requested.insert(familyOf(e));
+    }
+    QJsonArray arr;
+    QStringList sorted(requested.begin(), requested.end());
+    sorted.sort();
+    for (const QString& fam : sorted) {
+        QFont f; f.setFamily(fam);
+        QFontInfo fi(f);
+        QJsonObject rec;
+        rec["requested"] = fam;
+        rec["resolved"] = fi.family();
+        rec["exact_match"] = fi.exactMatch();
+        rec["substituted"] = !fi.exactMatch();
+        arr.append(rec);
+    }
+    return arr;
+}
+
+int textEntityCount(const core::Document& doc) {
+    int n = 0;
+    for (const auto& e : doc.entities())
+        if (e.type == core::EntityType::Text) ++n;
+    return n;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -111,7 +180,13 @@ int main(int argc, char** argv) {
     parser.addOption({"height", "Output height in pixels (default 1697).", "px", "1697"});
     parser.addOption({"bg",     "Background: dark | white | #RRGGBB (default dark).", "color", "dark"});
     parser.addOption({"no-clip", "Do not clip to the drawing extents (EXTMIN/EXTMAX)."});
+    parser.addOption({"font-dir", "Directory of font files (ttf/ttc/otf) to load before rendering.", "dir"});
+    parser.addOption({"report",  "Write a render report JSON (params, view, counts, font records) to this path.", "file"});
     parser.process(app);
+
+    QStringList loadedFamilies;
+    if (parser.isSet("font-dir"))
+        loadedFamilies = loadFontDir(parser.value("font-dir"));
 
     const QString inPath = parser.value("input");
     const QString outPath = parser.value("out");
@@ -200,6 +275,54 @@ int main(int argc, char** argv) {
     }
 
     const int entityCount = imp.adapter->entityCount();
+
+    // Render report (B1): consumed by the regression harness (view rect/scale
+    // for alignment) and the render service (font resolution audit). Emitted
+    // before the document is destroyed so it can read text/font data.
+    if (parser.isSet("report")) {
+        QJsonObject rep;
+        rep["schema"] = "vemcad.render_report";
+        rep["schema_version"] = "0.1";
+        QJsonObject params;
+        params["width"] = width;
+        params["height"] = height;
+        params["bg"] = parser.value("bg");
+        params["format"] = outSuffix;
+        params["view"] = "extents";
+        rep["params"] = params;
+        QJsonObject v;
+        v["scale"] = view.scale;
+        v["pan_x"] = view.pan.x();
+        v["pan_y"] = view.pan.y();
+        v["has_clip"] = view.hasClip;
+        if (view.hasClip) {
+            QJsonObject clip;
+            clip["min_x"] = view.clipMinX; clip["min_y"] = view.clipMinY;
+            clip["max_x"] = view.clipMaxX; clip["max_y"] = view.clipMaxY;
+            v["clip"] = clip;
+        }
+        rep["view"] = v;
+        QJsonObject counts;
+        counts["entities"] = entityCount;
+        counts["polylines"] = polylines.size();
+        counts["text_entities"] = textEntityCount(*doc);
+        rep["counts"] = counts;
+        QJsonObject fonts;
+        fonts["loaded_dir"] = parser.isSet("font-dir") ? parser.value("font-dir") : QString();
+        fonts["loaded_families"] = QJsonArray::fromStringList(loadedFamilies);
+        fonts["records"] = fontRecords(*doc);
+        rep["fonts"] = fonts;
+        rep["source"] = QFileInfo(inPath).fileName();
+        QFile rf(parser.value("report"));
+        if (rf.open(QIODevice::WriteOnly)) {
+            rf.write(QJsonDocument(rep).toJson(QJsonDocument::Indented));
+            rf.close();
+        } else {
+            std::fprintf(stderr, "warning: could not write report %s\n",
+                         qPrintable(parser.value("report")));
+        }
+    }
+
     cadgf_document_destroy(imp.doc);
 
     if (!written) {
