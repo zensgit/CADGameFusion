@@ -131,16 +131,17 @@ bool isEntityVisible(const core::Document* doc, const core::Entity& entity) {
     return true;
 }
 
-// B4: on a light background, near-white colors (ACI 7 white, the near-white
-// default 0xDCDCE6, light ACI grays) are invisible — AutoCAD draws color-7 and
-// such entities black on a light canvas. Flip by luminance so pure white AND
-// the near-white default both go black; everything darker is unchanged.
+// B4: on a light background, near-white colors are invisible — AutoCAD draws
+// color-7 black on a light canvas. Flip only NEAR-WHITE ACHROMATIC colors
+// (all channels high): pure white 0xFFFFFF and the near-white default
+// 0xDCDCE6 flip to black; chromatic colors stay (a luminance test would
+// wrongly flip saturated yellow 0xFFFF00, common in mechanical drawings).
+static constexpr int kNearWhiteChannelMin = 0xDC; // 220 — 0xDCDCE6 just clears
 static QColor finalize_color(uint32_t color, bool flipWhiteOnLight) {
     int r = (color >> 16) & 0xFF, g = (color >> 8) & 0xFF, b = color & 0xFF;
-    if (flipWhiteOnLight) {
-        const double lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
-        if (lum > 0.85) return QColor(0, 0, 0);
-    }
+    if (flipWhiteOnLight && r >= kNearWhiteChannelMin
+            && g >= kNearWhiteChannelMin && b >= kNearWhiteChannelMin)
+        return QColor(0, 0, 0);
     return QColor(r, g, b);
 }
 
