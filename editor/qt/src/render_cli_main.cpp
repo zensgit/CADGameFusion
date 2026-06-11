@@ -127,14 +127,24 @@ QString familyOf(const core::Entity& e) {
     return fam.isEmpty() ? QStringLiteral("STFangsong") : fam;
 }
 
+// Counts only the text entities renderScene will actually draw — same
+// visibility + degenerate-height gates as scene_renderer, so the report
+// reflects the render path rather than the raw entity list.
+bool willDrawText(const core::Document& doc, const core::Entity& e) {
+    if (e.type != core::EntityType::Text) return false;
+    if (!scene_render::isEntityVisible(&doc, e)) return false;
+    const auto* t = std::get_if<core::Text>(&e.payload);
+    return t && !t->text.empty() && t->height > 0.0;
+}
+
 // Two-layer font resolution record (B1): the adapter-mapped requested family
 // (layer 1) vs. what Qt actually resolves it to (layer 2, silent OS fallback).
+// Resolution reflects this render host's font environment (offscreen + the
+// loaded --font-dir), which is what the regression/preview will use.
 QJsonArray fontRecords(const core::Document& doc) {
     QSet<QString> requested;
     for (const auto& e : doc.entities()) {
-        if (e.type != core::EntityType::Text) continue;
-        const auto* t = std::get_if<core::Text>(&e.payload);
-        if (!t || t->text.empty()) continue;
+        if (!willDrawText(doc, e)) continue;
         requested.insert(familyOf(e));
     }
     QJsonArray arr;
@@ -156,7 +166,7 @@ QJsonArray fontRecords(const core::Document& doc) {
 int textEntityCount(const core::Document& doc) {
     int n = 0;
     for (const auto& e : doc.entities())
-        if (e.type == core::EntityType::Text) ++n;
+        if (willDrawText(doc, e)) ++n;
     return n;
 }
 
@@ -288,12 +298,17 @@ int main(int argc, char** argv) {
         params["height"] = height;
         params["bg"] = parser.value("bg");
         params["format"] = outSuffix;
-        params["view"] = "extents";
+        params["view"] = hasExtents ? "extents" : "content";
         rep["params"] = params;
         QJsonObject v;
         v["scale"] = view.scale;
         v["pan_x"] = view.pan.x();
         v["pan_y"] = view.pan.y();
+        // World→pixel: screenX = worldX*scale + pan_x; screenY = worldY*(-scale)
+        // + pan_y (single uniform scale, Y negated — scene_renderer convention).
+        v["y_axis"] = "down";
+        v["viewport_w"] = width;
+        v["viewport_h"] = height;
         v["has_clip"] = view.hasClip;
         if (view.hasClip) {
             QJsonObject clip;
