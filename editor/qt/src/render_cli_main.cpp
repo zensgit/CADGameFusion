@@ -190,6 +190,7 @@ int main(int argc, char** argv) {
     parser.addOption({"height", "Output height in pixels (default 1697).", "px", "1697"});
     parser.addOption({"bg",     "Background: dark | white | #RRGGBB (default dark).", "color", "dark"});
     parser.addOption({"no-clip", "Do not clip to the drawing extents (EXTMIN/EXTMAX)."});
+    parser.addOption({"window", "Render a specific world rect 'x1,y1,x2,y2' instead of the drawing extents (e.g. frame extents for a garbage-extents drawing).", "rect"});
     parser.addOption({"font-dir", "Directory of font files (ttf/ttc/otf) to load before rendering.", "dir"});
     parser.addOption({"report",  "Write a render report JSON (params, view, counts, font records) to this path.", "file"});
     parser.process(app);
@@ -237,24 +238,60 @@ int main(int argc, char** argv) {
     const core::Document* doc = reinterpret_cast<core::Document*>(imp.doc);
 
     // View: drawing extents (like the editor's import) with content-fit fallback.
+    // Explicit world window (B5) overrides extents/content fit — e.g. the
+    // producer frames to the detected sheet rect when raw extents are garbage.
+    double winX1 = 0, winY1 = 0, winX2 = 0, winY2 = 0;
+    bool haveWindow = false;
+    if (parser.isSet("window")) {
+        const QStringList parts = parser.value("window").split(',');
+        bool ok = parts.size() == 4;
+        if (ok) {
+            winX1 = parts[0].toDouble(&ok);
+            if (ok) winY1 = parts[1].toDouble(&ok);
+            if (ok) winX2 = parts[2].toDouble(&ok);
+            if (ok) winY2 = parts[3].toDouble(&ok);
+        }
+        if (!ok || winX2 <= winX1 || winY2 <= winY1) {
+            std::fprintf(stderr, "error: --window expects 'x1,y1,x2,y2' with x2>x1, y2>y1\n");
+            cadgf_document_destroy(imp.doc);
+            return 2;
+        }
+        haveWindow = true;
+    }
+
     const QSize viewport(width, height);
     scene_render::View view;
     double emx = 0, emy = 0, eMx = 0, eMy = 0;
     const bool hasExtents = imp.adapter->getExtents(emx, emy, eMx, eMy);
     bool fitted = false;
-    if (hasExtents)
-        fitted = scene_render::fitToExtents(viewport, emx, emy, eMx, eMy, &view);
-    if (!fitted)
-        fitted = scene_render::fitToContent(*doc, viewport, &view);
+    if (haveWindow) {
+        fitted = scene_render::fitToExtents(viewport, winX1, winY1, winX2, winY2, &view);
+        if (!fitted) {
+            std::fprintf(stderr, "error: --window rect is degenerate\n");
+            cadgf_document_destroy(imp.doc);
+            return 2;
+        }
+    } else {
+        if (hasExtents)
+            fitted = scene_render::fitToExtents(viewport, emx, emy, eMx, eMy, &view);
+        if (!fitted)
+            fitted = scene_render::fitToContent(*doc, viewport, &view);
+    }
     if (!fitted) {
         std::fprintf(stderr, "error: drawing has degenerate extents, nothing to render\n");
         cadgf_document_destroy(imp.doc);
         return 4;
     }
-    if (hasExtents && !parser.isSet("no-clip")) {
-        view.hasClip = true;
-        view.clipMinX = emx; view.clipMinY = emy;
-        view.clipMaxX = eMx; view.clipMaxY = eMy;
+    if (!parser.isSet("no-clip")) {
+        if (haveWindow) {
+            view.hasClip = true;
+            view.clipMinX = winX1; view.clipMinY = winY1;
+            view.clipMaxX = winX2; view.clipMaxY = winY2;
+        } else if (hasExtents) {
+            view.hasClip = true;
+            view.clipMinX = emx; view.clipMinY = emy;
+            view.clipMaxX = eMx; view.clipMaxY = eMy;
+        }
     }
 
     // B4: on a light background, flip near-white entity colors to black so
@@ -304,7 +341,7 @@ int main(int argc, char** argv) {
         params["height"] = height;
         params["bg"] = parser.value("bg");
         params["format"] = outSuffix;
-        params["view"] = hasExtents ? "extents" : "content";
+        params["view"] = haveWindow ? "window" : (hasExtents ? "extents" : "content");
         rep["params"] = params;
         QJsonObject v;
         v["scale"] = view.scale;
