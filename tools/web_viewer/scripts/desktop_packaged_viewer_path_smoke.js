@@ -4,13 +4,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-
-import { _electron as electron } from 'playwright';
+import { createRequire } from 'node:module';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..', '..');
 const desktopDir = path.join(repoRoot, 'tools', 'web_viewer_desktop');
+// Resolve Playwright from the desktop package environment (where it is a dependency), matching the
+// sibling desktop_packaged_*_smoke.js scripts. A bare `import ... from 'playwright'` fails at load
+// when the repo root has no Playwright install — even for --help.
+const requireFromDesktop = createRequire(path.join(desktopDir, 'package.json'));
+const { _electron: electron } = requireFromDesktop('playwright');
 
 const DEFAULT_OUTDIR = path.join(repoRoot, 'build', 'desktop_packaged_viewer_path_smoke');
 
@@ -150,7 +154,10 @@ async function main() {
       status: String(document.querySelector('#status')?.textContent || '').trim(),
     })));
 
-    assert(summary.location.includes('/Resources/cad_resources/tools/web_viewer/index.html'), `Expected cad_resources viewer URL, got ${summary.location}`);
+    // Platform-independent: assert the cad_resources viewer suffix only. The macOS .app bundle nests
+    // it under /Contents/Resources, but Linux/Windows Electron use a lowercase resources/ dir — so we
+    // do NOT hardcode /Resources. (location.href is a file:// URL → forward slashes on all platforms.)
+    assert(summary.location.includes('/cad_resources/tools/web_viewer/index.html'), `Expected cad_resources viewer URL, got ${summary.location}`);
     assert(summary.has_desktop_bridge, 'Expected desktop bridge to be exposed');
     assert(summary.bootstrap?.source === 'legacy-fallback', `Expected legacy fallback bootstrap in packaged desktop, got ${JSON.stringify(summary.bootstrap)}`);
     assert(
