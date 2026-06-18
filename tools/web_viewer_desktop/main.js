@@ -1847,13 +1847,24 @@ function resolveLocalViewerPath() {
   return "";
 }
 
+function resolvePackagedViewerPath() {
+  const cadRuntime = detectCadRuntime();
+  const stagedViewer = cadRuntime.viewerRoot
+    ? path.join(cadRuntime.viewerRoot, "index.html")
+    : "";
+  return pickFirstExistingPath([
+    stagedViewer,
+    path.join(process.resourcesPath, "web_viewer", "index.html"),
+  ]);
+}
+
 function buildStartUrl() {
   const urlOverride =
     getArg("--url") || process.env.VEMCAD_VIEWER_URL || process.env.CADGF_VIEWER_URL;
   let baseUrl = urlOverride;
   if (!baseUrl) {
     const localPath = app.isPackaged
-      ? path.join(process.resourcesPath, "web_viewer", "index.html")
+      ? resolvePackagedViewerPath()
       : resolveLocalViewerPath();
     if (localPath && fs.existsSync(localPath)) {
       baseUrl = `file://${localPath}`;

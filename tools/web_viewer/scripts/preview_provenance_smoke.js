@@ -30,6 +30,8 @@ function parseArgs(argv) {
     serveRoot: repoRoot,
     noServe: false,
     casesPath: DEFAULT_CASES_PATH,
+    urlPrefix: '',
+    assetPrefix: '',
   };
   for (let i = 2; i < argv.length; i += 1) {
     const token = argv[i];
@@ -46,6 +48,16 @@ function parseArgs(argv) {
     }
     if (token === '--cases' && i + 1 < argv.length) {
       args.casesPath = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (token === '--url-prefix' && i + 1 < argv.length) {
+      args.urlPrefix = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (token === '--asset-prefix' && i + 1 < argv.length) {
+      args.assetPrefix = argv[i + 1];
       i += 1;
       continue;
     }
@@ -79,9 +91,11 @@ function parseArgs(argv) {
 
 function usage() {
   return [
-    'Usage: node tools/web_viewer/scripts/preview_provenance_smoke.js [--cases <json>] [--outdir <dir>] [--base-url <http://127.0.0.1:8080/> | --serve-root <dir> --port <0>]',
+    'Usage: node tools/web_viewer/scripts/preview_provenance_smoke.js [--cases <json>] [--outdir <dir>] [--base-url <http://127.0.0.1:8080/> | --serve-root <dir> --port <0>] [--url-prefix <path>] [--asset-prefix <path>]',
     '',
     'Defaults to starting a temporary static file server rooted at deps/cadgamefusion.',
+    '--url-prefix rewrites case page paths, e.g. tools/web_viewer/index.html -> deps/cadgamefusion/tools/web_viewer/index.html.',
+    '--asset-prefix rewrites relative manifest/gltf params, e.g. build/foo/manifest.json -> deps/cadgamefusion/build/foo/manifest.json.',
   ].join('\n');
 }
 
@@ -195,8 +209,59 @@ function startStaticServer(root, host, port) {
   });
 }
 
-function buildCaseUrl(baseUrl, query) {
-  return new URL(query, baseUrl).toString();
+function isAbsoluteUrl(value) {
+  return /^[a-z][a-z0-9+.-]*:/i.test(String(value || ''));
+}
+
+function trimSlashes(value) {
+  return String(value || '').trim().replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
+function prefixRelativePath(value, prefix) {
+  const normalizedValue = String(value || '').trim();
+  const normalizedPrefix = trimSlashes(prefix);
+  if (!normalizedValue || !normalizedPrefix || isAbsoluteUrl(normalizedValue)) {
+    return normalizedValue;
+  }
+  const hadLeadingSlash = normalizedValue.startsWith('/');
+  const pathPart = normalizedValue.replace(/^\/+/, '');
+  if (!pathPart || pathPart.startsWith(`${normalizedPrefix}/`) || pathPart === normalizedPrefix) {
+    return normalizedValue;
+  }
+  const next = `${normalizedPrefix}/${pathPart}`;
+  return hadLeadingSlash ? `/${next}` : next;
+}
+
+function inferViewerRootPrefix(pathname) {
+  const marker = '/tools/web_viewer/index.html';
+  const value = String(pathname || '');
+  if (!value.endsWith(marker)) return '';
+  return value.slice(0, -marker.length).replace(/\/+$/, '');
+}
+
+function rewriteCaseQuery(query, {
+  urlPrefix = '',
+} = {}) {
+  if (!urlPrefix) return query;
+  const rawQuery = String(query || '').trim();
+  if (!rawQuery || isAbsoluteUrl(rawQuery)) return rawQuery;
+  const parsed = new URL(rawQuery, 'http://case.local/');
+  const nextPath = prefixRelativePath(parsed.pathname, urlPrefix);
+  parsed.pathname = nextPath.startsWith('/') ? nextPath : `/${nextPath}`;
+  return `${parsed.pathname.replace(/^\/+/, '')}${parsed.search}${parsed.hash}`;
+}
+
+function buildCaseUrl(baseUrl, query, options = {}) {
+  const url = new URL(rewriteCaseQuery(query, options), baseUrl);
+  const inferredAssetPrefix = inferViewerRootPrefix(url.pathname);
+  const assetPrefix = options.assetPrefix || inferredAssetPrefix;
+  for (const key of ['manifest', 'gltf']) {
+    const value = url.searchParams.get(key);
+    if (value) {
+      url.searchParams.set(key, prefixRelativePath(value, assetPrefix));
+    }
+  }
+  return url.toString();
 }
 
 function resolveCasesPath(casesPath) {
@@ -528,10 +593,11 @@ async function runFocusCheck(page, focusCheck) {
   };
 }
 
-async function runCase(page, baseUrl, outdir, testCase) {
-  const url = buildCaseUrl(baseUrl, testCase.query);
+async function runCase(page, baseUrl, outdir, testCase, urlOptions = {}) {
+  const url = buildCaseUrl(baseUrl, testCase.query, urlOptions);
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await waitForLoaded(page, testCase.expectStatus);
+  const bootstrap = await page.evaluate(() => window.__vemcadBootstrap || null);
   const statusText = await getStatusText(page);
   let hit = null;
   const focusResults = [];
@@ -562,6 +628,7 @@ async function runCase(page, baseUrl, outdir, testCase) {
     status: ok ? 'ok' : 'failed',
     expectError: testCase.expectError,
     statusText,
+    bootstrap,
     click: hit
       ? (Number.isFinite(hit.x) && Number.isFinite(hit.y)
         ? { x: Number(hit.x.toFixed(1)), y: Number(hit.y.toFixed(1)) }
@@ -590,6 +657,10 @@ async function main() {
   const outdir = args.outdir && String(args.outdir).trim() ? path.resolve(args.outdir) : DEFAULT_OUTDIR;
   const casesPath = args.casesPath && String(args.casesPath).trim() ? args.casesPath : DEFAULT_CASES_PATH;
   const serveRoot = args.serveRoot && String(args.serveRoot).trim() ? args.serveRoot : repoRoot;
+  const urlOptions = {
+    urlPrefix: args.urlPrefix,
+    assetPrefix: args.assetPrefix,
+  };
   const runDir = path.join(outdir, nowStamp());
   ensureDir(runDir);
   const loadedCases = loadCases(casesPath);
@@ -609,7 +680,7 @@ async function main() {
   const results = [];
   try {
     for (const testCase of loadedCases.cases) {
-      results.push(await runCase(page, baseUrl, runDir, testCase));
+      results.push(await runCase(page, baseUrl, runDir, testCase, urlOptions));
     }
   } finally {
     await browser.close();
@@ -629,6 +700,8 @@ async function main() {
     host: args.host,
     port: serverHandle?.port || null,
     serve_root: serverHandle?.serveRoot || null,
+    url_prefix: args.urlPrefix || '',
+    asset_prefix: args.assetPrefix || '',
     cases_path: loadedCases.path,
     outdir: runDir,
     run_id: path.basename(runDir),
@@ -640,6 +713,10 @@ async function main() {
     }, {}),
     nav_kind_counts: results.reduce((acc, result) => {
       incrementCounter(acc, result.click?.navKind || 'none');
+      return acc;
+    }, {}),
+    bootstrap_source_counts: results.reduce((acc, result) => {
+      incrementCounter(acc, result.bootstrap?.source || 'unknown');
       return acc;
     }, {}),
     initial_entry_case_count: results.filter((result) => result.click?.kind === 'initial').length,

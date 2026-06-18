@@ -1,0 +1,21 @@
+[
+  {
+    "id": "repo_root_insert_attribute_provenance",
+    "query": "tools/web_viewer/index.html?manifest=build/step239_insert_attributes_preview_a/manifest.json&mesh=0&space=0",
+    "expectStatus": "Loaded document with fallback line preview",
+    "initialEntityId": 1,
+    "initialNavKind": "initial-entity",
+    "expectSelection": [
+      "Value\nATTRIB_INSERT_OVERRIDE",
+      "Kind\nattrib",
+      "Highlighted Sibling IDs\n4",
+      "Group ID\n1",
+      "Color Source\nBYLAYER",
+      "Origin\nINSERT/insert | exploded",
+      "Exploded source fragment; provenance retained in metadata.",
+      "Block Name\nAttribBlock",
+      "Text Kind\nattrib",
+      "Space\n0"
+    ]
+  }
+]
