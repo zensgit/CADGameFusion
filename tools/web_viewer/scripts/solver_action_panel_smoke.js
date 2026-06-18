@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { chromium } from 'playwright';
+import { prefixRelativePath, trimSlashes } from './smoke_url_utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +22,7 @@ function parseArgs(argv) {
     host: DEFAULT_HOST,
     port: 0,
     solverJson: DEFAULT_SOLVER_JSON,
+    urlPrefix: '',
     noServe: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
@@ -38,6 +40,11 @@ function parseArgs(argv) {
     }
     if (token === '--solver-json' && i + 1 < argv.length) {
       args.solverJson = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (token === '--url-prefix' && i + 1 < argv.length) {
+      args.urlPrefix = argv[i + 1];
       i += 1;
       continue;
     }
@@ -66,7 +73,7 @@ function parseArgs(argv) {
 
 function usage() {
   return [
-    'Usage: node tools/web_viewer/scripts/solver_action_panel_smoke.js [--solver-json /build/file.json] [--outdir <dir>] [--base-url http://127.0.0.1:8080/]',
+    'Usage: node tools/web_viewer/scripts/solver_action_panel_smoke.js [--solver-json /build/file.json] [--outdir <dir>] [--base-url http://127.0.0.1:8080/] [--url-prefix deps/cadgamefusion]',
     '',
     'Defaults to starting a temporary static server rooted at deps/cadgamefusion.',
   ].join('\n');
@@ -203,11 +210,15 @@ async function run() {
   const solverJsonPath = resolveInputPath(repoRoot, solverJson);
   const uploadSolverJsonPath = path.join(runDir, path.basename(solverJsonPath));
   fs.copyFileSync(solverJsonPath, uploadSolverJsonPath);
-  const url = new URL('tools/web_viewer/index.html?mode=editor&debug=1', baseUrl).toString();
+  const urlPrefix = trimSlashes(args.urlPrefix);
+  const url = new URL(prefixRelativePath('tools/web_viewer/index.html', urlPrefix), baseUrl);
+  url.searchParams.set('mode', 'editor');
+  url.searchParams.set('debug', '1');
 
   const summary = {
     ok: false,
-    url,
+    url: url.toString(),
+    url_prefix: urlPrefix,
     solver_json: solverJson,
     panel_count: 0,
     flow_check_count: 0,
@@ -295,7 +306,7 @@ async function run() {
   };
 
   try {
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 25000 });
+    await page.goto(summary.url, { waitUntil: 'networkidle', timeout: 25000 });
     await page.waitForFunction(
       () => {
         return !!window.__cadDebug?.getSolverActionPanels?.() &&

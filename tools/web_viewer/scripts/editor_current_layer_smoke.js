@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { chromium } from 'playwright';
+import { prefixAbsolutePath, prefixRelativePath } from './smoke_url_utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +22,7 @@ function parseArgs(argv) {
     host: DEFAULT_HOST,
     port: 0,
     fixture: DEFAULT_FIXTURE,
+    urlPrefix: '',
     noServe: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
@@ -38,6 +40,11 @@ function parseArgs(argv) {
     }
     if (token === '--fixture' && i + 1 < argv.length) {
       args.fixture = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (token === '--url-prefix' && i + 1 < argv.length) {
+      args.urlPrefix = argv[i + 1];
       i += 1;
       continue;
     }
@@ -66,7 +73,7 @@ function parseArgs(argv) {
 
 function usage() {
   return [
-    'Usage: node tools/web_viewer/scripts/editor_current_layer_smoke.js [--fixture /tools/web_viewer/tests/fixtures/editor_selection_summary_fixture.json] [--outdir <dir>] [--base-url http://127.0.0.1:8080/]',
+    'Usage: node tools/web_viewer/scripts/editor_current_layer_smoke.js [--fixture /tools/web_viewer/tests/fixtures/editor_selection_summary_fixture.json] [--outdir <dir>] [--base-url http://127.0.0.1:8080/] [--url-prefix deps/cadgamefusion]',
     '',
     'Defaults to starting a temporary static server rooted at deps/cadgamefusion.',
   ].join('\n');
@@ -421,11 +428,13 @@ async function run() {
   let browser = null;
   const consoleMessages = [];
   const pageErrors = [];
+  const fixturePath = prefixAbsolutePath(args.fixture, args.urlPrefix);
 
   const summary = {
     ok: false,
     outdir,
-    fixture: args.fixture,
+    fixture: fixturePath,
+    url_prefix: args.urlPrefix,
     baseUrl: args.baseUrl || '',
     console_messages: consoleMessages,
     page_errors: pageErrors,
@@ -438,11 +447,11 @@ async function run() {
     ensure(serverInfo.baseUrl, 'Missing base URL');
     summary.baseUrl = serverInfo.baseUrl;
 
-    const editorUrl = new URL('tools/web_viewer/index.html', serverInfo.baseUrl);
+    const editorUrl = new URL(prefixRelativePath('tools/web_viewer/index.html', args.urlPrefix), serverInfo.baseUrl);
     editorUrl.searchParams.set('mode', 'editor');
     editorUrl.searchParams.set('debug', '1');
     editorUrl.searchParams.set('seed', '0');
-    editorUrl.searchParams.set('cadgf', args.fixture);
+    editorUrl.searchParams.set('cadgf', fixturePath);
     summary.url = editorUrl.toString();
 
     browser = await chromium.launch({ headless: true });

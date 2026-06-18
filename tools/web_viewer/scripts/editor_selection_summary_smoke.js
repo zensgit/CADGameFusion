@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { chromium } from 'playwright';
+import { prefixAbsolutePath, prefixRelativePath, trimSlashes } from './smoke_url_utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,6 +22,7 @@ function parseArgs(argv) {
     host: DEFAULT_HOST,
     port: 0,
     fixture: DEFAULT_FIXTURE,
+    urlPrefix: '',
     noServe: false,
   };
   for (let i = 2; i < argv.length; i += 1) {
@@ -38,6 +40,11 @@ function parseArgs(argv) {
     }
     if (token === '--fixture' && i + 1 < argv.length) {
       args.fixture = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (token === '--url-prefix' && i + 1 < argv.length) {
+      args.urlPrefix = argv[i + 1];
       i += 1;
       continue;
     }
@@ -66,7 +73,7 @@ function parseArgs(argv) {
 
 function usage() {
   return [
-    'Usage: node tools/web_viewer/scripts/editor_selection_summary_smoke.js [--fixture /tools/web_viewer/tests/fixtures/editor_selection_summary_fixture.json] [--outdir <dir>] [--base-url http://127.0.0.1:8080/]',
+    'Usage: node tools/web_viewer/scripts/editor_selection_summary_smoke.js [--fixture /tools/web_viewer/tests/fixtures/editor_selection_summary_fixture.json] [--outdir <dir>] [--base-url http://127.0.0.1:8080/] [--url-prefix deps/cadgamefusion]',
     '',
     'Defaults to starting a temporary static server rooted at deps/cadgamefusion.',
   ].join('\n');
@@ -363,7 +370,8 @@ async function run() {
     throw new Error('base URL not available');
   }
 
-  const fixturePath = String(args.fixture || DEFAULT_FIXTURE).trim();
+  const urlPrefix = trimSlashes(args.urlPrefix);
+  const fixturePath = prefixAbsolutePath(String(args.fixture || DEFAULT_FIXTURE).trim(), urlPrefix);
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
   const consoleMessages = [];
@@ -384,6 +392,7 @@ async function run() {
   const summary = {
     ok: false,
     fixture: fixturePath,
+    url_prefix: urlPrefix,
     url: '',
     before: null,
     after: null,
@@ -404,10 +413,11 @@ async function run() {
     console_messages: [],
     page_errors: [],
     screenshot: path.join(runDir, 'selection_summary.png'),
+    bootstrap: null,
   };
 
   try {
-    const url = new URL('tools/web_viewer/index.html', baseUrl);
+    const url = new URL(prefixRelativePath('tools/web_viewer/index.html', urlPrefix), baseUrl);
     url.searchParams.set('mode', 'editor');
     url.searchParams.set('debug', '1');
     url.searchParams.set('cadgf', fixturePath);
@@ -419,6 +429,7 @@ async function run() {
       if (!d || typeof d.getEntity !== 'function') return false;
       return !!d.getEntity(7);
     }, null, { timeout: 15000 });
+    summary.bootstrap = await page.evaluate(() => window.__vemcadBootstrap || null);
 
     await selectEntityById(page, 7);
     await page.waitForSelector('#cad-selection-details[data-mode="single"]', { timeout: 10000 });
