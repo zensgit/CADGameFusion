@@ -62,6 +62,23 @@ run_ui_flow_smoke() {
     --timeout-ms "${EDITOR_UI_FLOW_SMOKE_TIMEOUT_MS:-25000}"
 }
 
+# Product-offline / provenance smokes import Playwright directly (import { chromium } from 'playwright').
+# Skip cleanly where playwright is not installed (e.g. default GitHub runners) — same posture as the
+# editor UI flow smoke above — so wiring them here never breaks the light gate.
+playwright_available() {
+  node -e "require.resolve('playwright')" >/dev/null 2>&1
+}
+
+run_pw_smoke() {
+  local label="$1"; shift
+  if ! playwright_available; then
+    echo "[CI-EDITOR-LIGHT] SKIP ${label}: playwright not installed (smoke-unverified here; runs where playwright+chromium are present)"
+    return 0
+  fi
+  echo "[CI-EDITOR-LIGHT] ${label}"
+  "$@"
+}
+
 echo "[CI-EDITOR-LIGHT] 1) Editor command tests"
 node --test tools/web_viewer/tests/*.test.js
 
@@ -93,6 +110,9 @@ if [[ -n "$EDITOR_SMOKE_TAG_ANY" ]]; then
 fi
 "${ROUNDTRIP_CMD[@]}"
 
+echo "[CI-EDITOR-LIGHT] 3b) Product offline import-graph (first-party completeness; tolerates gitignored vendored three)"
+node tools/web_viewer/scripts/product_bootstrap_import_graph.js --ignore-vendor-missing
+
 if [[ "${RUN_EDITOR_UI_SMOKE:-0}" == "1" || "${RUN_EDITOR_UI_SMOKE_GATE:-0}" == "1" ]]; then
   MODE="observe"
   if [[ "${RUN_EDITOR_UI_SMOKE_GATE:-0}" == "1" ]]; then
@@ -116,6 +136,29 @@ if [[ "${SKIP_EDITOR_UI_FLOW_SMOKE:-0}" != "1" ]]; then
   if [[ -z "${RUN_EDITOR_UI_FLOW_SMOKE+x}" && -z "${RUN_EDITOR_UI_FLOW_SMOKE_GATE+x}" ]]; then
     run_ui_flow_smoke "gate" "0"
   fi
+fi
+
+# Service-worker product-offline smokes (Playwright). Default-on but playwright-gated: they run in a
+# Playwright-capable environment and skip cleanly on default GitHub runners. SKIP_PRODUCT_OFFLINE_SMOKES=1 forces off.
+if [[ "${SKIP_PRODUCT_OFFLINE_SMOKES:-0}" != "1" ]]; then
+  run_pw_smoke "6) Service-worker product-offline smoke" \
+    node tools/web_viewer/scripts/service_worker_product_offline_smoke.js
+  run_pw_smoke "7) Service-worker cache-version smoke" \
+    node tools/web_viewer/scripts/service_worker_cache_version_smoke.js
+fi
+
+# Provenance + desktop packaged-path smokes (Playwright; also need build/ manifests or a packaged app
+# that this light gate does not produce). Opt-in so the default gate stays green without those artifacts.
+if [[ "${RUN_PREVIEW_PROVENANCE_SMOKE:-0}" == "1" ]]; then
+  run_pw_smoke "8) Preview provenance smoke (default cases)" \
+    node tools/web_viewer/scripts/preview_provenance_smoke.js
+  run_pw_smoke "8b) Preview provenance smoke (product cases)" \
+    node tools/web_viewer/scripts/preview_provenance_smoke.js \
+      --cases tools/web_viewer/tests/fixtures/preview_provenance_product_smoke_cases.json
+fi
+if [[ "${RUN_DESKTOP_PACKAGED_PATH_SMOKE:-0}" == "1" ]]; then
+  run_pw_smoke "9) Desktop packaged viewer-path smoke" \
+    node tools/web_viewer/scripts/desktop_packaged_viewer_path_smoke.js
 fi
 
 echo "[CI-EDITOR-LIGHT] DONE"

@@ -45,6 +45,10 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (token === '--ignore-vendor-missing') {
+      args.ignoreVendorMissing = true;
+      continue;
+    }
     if (token === '--help' || token === '-h') {
       args.help = true;
       continue;
@@ -59,9 +63,11 @@ function parseArgs(argv) {
 
 function usage() {
   return [
-    'Usage: node tools/web_viewer/scripts/product_bootstrap_import_graph.js [--repo-root <path>] [--outdir <dir>] [--entry <relative-file> ...]',
+    'Usage: node tools/web_viewer/scripts/product_bootstrap_import_graph.js [--repo-root <path>] [--outdir <dir>] [--entry <relative-file> ...] [--ignore-vendor-missing]',
     '',
     'Walks literal relative import/export edges from product bootstrap entries and writes an import graph summary.',
+    '--ignore-vendor-missing: exit 0 when the only missing assets are vendored (path under .../vendor/), e.g. the',
+    '  gitignored three.module.js absent in a clean checkout; still exit 1 on any missing FIRST-PARTY asset.',
   ].join('\n');
 }
 
@@ -337,15 +343,25 @@ function main() {
   console.log(`summary_json=${summaryPath}`);
   console.log(`graph_json=${graphPath}`);
   console.log(`assets_js=${assetsModulePath}`);
+  const firstPartyMissing = summary.missing.filter((m) => !/(^|\/)vendor\//.test(m.resolved));
+  const vendorMissingCount = summary.missing.length - firstPartyMissing.length;
+  const gateOk = args.ignoreVendorMissing ? firstPartyMissing.length === 0 : summary.missing.length === 0;
   console.log(JSON.stringify({
     ok: summary.ok,
+    gate_ok: gateOk,
+    ignore_vendor_missing: Boolean(args.ignoreVendorMissing),
     file_count: summary.file_count,
     asset_count: summary.asset_count,
     asset_manifest_hash: summary.asset_manifest_hash,
     file_counts: summary.file_counts,
     missing_count: summary.missing.length,
+    first_party_missing_count: firstPartyMissing.length,
+    vendor_missing_count: vendorMissingCount,
   }, null, 2));
-  return summary.ok ? 0 : 1;
+  if (args.ignoreVendorMissing && vendorMissingCount > 0 && firstPartyMissing.length === 0) {
+    console.log(`[import-graph] tolerated ${vendorMissingCount} vendored-missing asset(s) (e.g. gitignored three.module.js); first-party graph complete.`);
+  }
+  return gateOk ? 0 : 1;
 }
 
 try {
