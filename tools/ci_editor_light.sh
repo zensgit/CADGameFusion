@@ -143,6 +143,8 @@ fi
 if [[ "${SKIP_PRODUCT_OFFLINE_SMOKES:-0}" != "1" ]]; then
   run_pw_smoke "6) Service-worker product-offline smoke" \
     node tools/web_viewer/scripts/service_worker_product_offline_smoke.js
+  run_pw_smoke "6b) Service-worker product-offline REAL-PATH smoke (committed manifest -> bootstrap -> SW cache)" \
+    node tools/web_viewer/scripts/service_worker_product_offline_realpath_smoke.js
   run_pw_smoke "7) Service-worker cache-version smoke" \
     node tools/web_viewer/scripts/service_worker_cache_version_smoke.js
 fi

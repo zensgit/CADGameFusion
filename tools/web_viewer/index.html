@@ -426,6 +426,14 @@
       </div>
     </div>
 
+    <!--
+      Product offline manifest. Generated (committed) by:
+        node tools/web_viewer/scripts/product_bootstrap_import_graph.js --assets-out tools/web_viewer/product-offline-assets.js
+      A classic (non-module) script so it runs and sets self.__VEMCAD_PRODUCT_OFFLINE_* BEFORE the app.js
+      module bootstrap reads them via product_offline_cache.js. If absent, the globals stay unset and product
+      offline caching cleanly no-ops (graceful). Regenerate when product/web_viewer asset graph changes.
+    -->
+    <script src="product-offline-assets.js"></script>
     <script type="module" src="app.js"></script>
     <script>
       if ("serviceWorker" in navigator) {

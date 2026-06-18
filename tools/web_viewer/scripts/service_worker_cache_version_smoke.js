@@ -282,8 +282,6 @@ async function main() {
     first_snapshot: null,
     second_snapshot: null,
     offline_shell_fetch_ok: false,
-    offline_product_fetch_failed: false,
-    default_product_cache_not_installed: false,
     error: '',
   };
 
@@ -306,8 +304,11 @@ async function main() {
     summary.second_snapshot = await readCacheSnapshot(page);
     assert(!summary.second_snapshot.keys.includes(previousCacheName), `${previousCacheName} cache was not deleted`);
     assert(summary.second_snapshot.keys.includes(currentCacheName), `${currentCacheName} cache was not installed`);
-    summary.default_product_cache_not_installed = !summary.second_snapshot.keys.includes(productOfflineCacheName);
-    assert(summary.default_product_cache_not_installed, `${productOfflineCacheName} should not be installed by default`);
+    // NOTE: since the offline-runtime integration, the product-offline cache (productOfflineCacheName) is
+    // populated by the REAL bootstrap on load (committed product-offline-assets.js -> product_offline_cache.js),
+    // so it is no longer asserted absent here. This smoke stays focused on the SHELL cache version upgrade; the
+    // shell cache is still kept product-free (asserted just below), and the product-offline cache lifecycle is
+    // owned by service_worker_product_offline_realpath_smoke.js.
 
     const v2Entries = summary.second_snapshot.entries[currentCacheName] || [];
     for (const suffix of [
@@ -329,15 +330,11 @@ async function main() {
     });
     assert(summary.offline_shell_fetch_ok, 'offline fetch for ./app.js failed');
 
-    summary.offline_product_fetch_failed = await page.evaluate(async () => {
-      try {
-        await fetch(new URL('/apps/web/app.js', location.origin).toString(), { cache: 'no-store' });
-        return false;
-      } catch {
-        return true;
-      }
-    });
-    assert(summary.offline_product_fetch_failed, 'offline product app fetch unexpectedly succeeded');
+    // (Offline product-app fetch is intentionally NOT asserted to fail here. Once the real bootstrap
+    // populates the product-offline cache, the shell SW -- which controls this in-scope client -- serves
+    // /apps/web/* from that cache offline. service_worker_product_offline_realpath_smoke.js verifies that
+    // positive behavior directly; asserting the pre-integration "offline product fetch fails" here would
+    // contradict the shipped feature.)
 
     summary.ok = true;
   } catch (error) {
