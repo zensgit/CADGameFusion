@@ -45,6 +45,11 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (token === '--assets-out' && i + 1 < argv.length) {
+      args.assetsOut = argv[i + 1];
+      i += 1;
+      continue;
+    }
     if (token === '--ignore-vendor-missing') {
       args.ignoreVendorMissing = true;
       continue;
@@ -63,9 +68,11 @@ function parseArgs(argv) {
 
 function usage() {
   return [
-    'Usage: node tools/web_viewer/scripts/product_bootstrap_import_graph.js [--repo-root <path>] [--outdir <dir>] [--entry <relative-file> ...] [--ignore-vendor-missing]',
+    'Usage: node tools/web_viewer/scripts/product_bootstrap_import_graph.js [--repo-root <path>] [--outdir <dir>] [--entry <relative-file> ...] [--assets-out <file>] [--ignore-vendor-missing]',
     '',
     'Walks literal relative import/export edges from product bootstrap entries and writes an import graph summary.',
+    '--assets-out <file>: also write the generated product-offline-assets.js module to this stable path',
+    '  (the committed, served manifest that index.html loads before app.js).',
     '--ignore-vendor-missing: exit 0 when the only missing assets are vendored (path under .../vendor/), e.g. the',
     '  gitignored three.module.js absent in a clean checkout; still exit 1 on any missing FIRST-PARTY asset.',
   ].join('\n');
@@ -338,11 +345,20 @@ function main() {
   const assetsModulePath = path.join(runDir, 'product-offline-assets.js');
   fs.writeFileSync(summaryPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
   fs.writeFileSync(graphPath, `${JSON.stringify(summary, null, 2)}\n`, 'utf8');
-  fs.writeFileSync(assetsModulePath, formatAssetsModule(summary), 'utf8');
+  const assetsModuleContent = formatAssetsModule(summary);
+  fs.writeFileSync(assetsModulePath, assetsModuleContent, 'utf8');
   console.log(`run_dir=${runDir}`);
   console.log(`summary_json=${summaryPath}`);
   console.log(`graph_json=${graphPath}`);
   console.log(`assets_js=${assetsModulePath}`);
+  if (args.assetsOut) {
+    // Also write the manifest module to a STABLE path (the committed, served product-offline-assets.js).
+    // index.html loads this before app.js so the __VEMCAD_PRODUCT_OFFLINE_* globals are set at bootstrap.
+    const stableOut = path.resolve(args.assetsOut);
+    ensureDir(path.dirname(stableOut));
+    fs.writeFileSync(stableOut, assetsModuleContent, 'utf8');
+    console.log(`assets_stable=${stableOut}`);
+  }
   const firstPartyMissing = summary.missing.filter((m) => !/(^|\/)vendor\//.test(m.resolved));
   const vendorMissingCount = summary.missing.length - firstPartyMissing.length;
   const gateOk = args.ignoreVendorMissing ? firstPartyMissing.length === 0 : summary.missing.length === 0;
