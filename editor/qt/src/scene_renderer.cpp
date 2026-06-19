@@ -1,5 +1,7 @@
 #include "scene_renderer.hpp"
 
+#include "core/bounds.hpp"
+
 #include <QFont>
 #include <QFontMetricsF>
 #include <QPainter>
@@ -293,19 +295,12 @@ bool fitToContent(const core::Document& doc, const QSize& viewport, View* out) {
     int w = viewport.width(), h = viewport.height();
     if (w < 10 || h < 10) return false;
 
-    // Compute bounding box of all entities
-    double mnx = 1e18, mny = 1e18, mxx = -1e18, mxy = -1e18;
-    for (const auto& e : doc.entities()) {
-        if (auto* pl = std::get_if<core::Polyline>(&e.payload)) {
-            for (auto& p : pl->points) {
-                if (p.x < mnx) mnx = p.x; if (p.x > mxx) mxx = p.x;
-                if (p.y < mny) mny = p.y; if (p.y > mxy) mxy = p.y;
-            }
-        } else if (auto* t = std::get_if<core::Text>(&e.payload)) {
-            if (t->pos.x < mnx) mnx = t->pos.x; if (t->pos.x > mxx) mxx = t->pos.x;
-            if (t->pos.y < mny) mny = t->pos.y; if (t->pos.y > mxy) mxy = t->pos.y;
-        }
-    }
+    // Bounding box of all geometry via the shared core::contentBounds — the one
+    // geometry truth, also emitted in the render report as content_bbox. Covers
+    // all payload types (Polyline/Line/Arc/Circle/Ellipse/Spline/Text), unlike
+    // the previous inline loop which only saw Polyline points + Text positions.
+    double mnx, mny, mxx, mxy;
+    if (!core::contentBounds(doc, mnx, mny, mxx, mxy)) return false;
     double dw = mxx - mnx, dh = mxy - mny;
     if (dw < 1 || dh < 1) return false;
     // 5% margin

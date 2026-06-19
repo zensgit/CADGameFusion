@@ -85,6 +85,11 @@ if(TARGET core)
     target_include_directories(core_tests_document_entities PRIVATE ../../core/include)
     target_link_libraries(core_tests_document_entities PRIVATE core)
 
+    # Real geometry content bounds (contentBounds) — fitToContent + common-window
+    add_executable(core_tests_content_bounds test_content_bounds.cpp)
+    target_include_directories(core_tests_content_bounds PRIVATE ../../core/include)
+    target_link_libraries(core_tests_content_bounds PRIVATE core)
+
     # Document layer behavior smoke test
     add_executable(core_tests_document_layers test_document_layers.cpp)
     target_include_directories(core_tests_document_layers PRIVATE ../../core/include)
@@ -113,6 +118,7 @@ if(TARGET core)
     cadgf_register_core_test(core_tests_c_api_document_query)
     cadgf_register_core_test(core_tests_document_group_id)
     cadgf_register_core_test(core_tests_document_entities)
+    cadgf_register_core_test(core_tests_content_bounds)
     cadgf_register_core_test(core_tests_document_layers)
     cadgf_register_core_test(core_tests_document_notifications)
     cadgf_register_core_test(core_tests_document_change_batch)

@@ -11,6 +11,7 @@ target_compile_features(core_headers INTERFACE cxx_std_17)
 # Core library
 add_library(core SHARED
     src/geometry2d.cpp
+    src/bounds.cpp
     src/document.cpp
     src/commands.cpp
     src/ops2d.cpp

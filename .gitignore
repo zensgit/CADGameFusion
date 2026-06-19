@@ -82,3 +82,4 @@ tools/web_viewer/document.json
 tools/web_viewer/mesh.bin
 tools/web_viewer/mesh.gltf
 tools/web_viewer/mesh_metadata.json
+build_core/

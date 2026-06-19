@@ -9,6 +9,7 @@
 
 #include "scene_renderer.hpp"
 #include "dxf_libdxfrw_adapter.hpp"
+#include "core/bounds.hpp"
 #include "core/core_c_api.h"
 #include "libdxfrw.h"
 #include "libdwgr.h"
@@ -358,6 +359,18 @@ int main(int argc, char** argv) {
             clip["min_x"] = view.clipMinX; clip["min_y"] = view.clipMinY;
             clip["max_x"] = view.clipMaxX; clip["max_y"] = view.clipMaxY;
             v["clip"] = clip;
+        }
+        // Real geometry content bbox — the extent of the ACTUAL geometry,
+        // distinct from the header-derived clip (clip comes from getExtents() =
+        // DXF $EXTMIN/$EXTMAX, which can be stale-small). Emitted unconditionally
+        // (independent of has_clip) so the version-diff common-window upgrade can
+        // frame a window that won't clip stale-header drawings.
+        double cbx0, cby0, cbx1, cby1;
+        if (doc && core::contentBounds(*doc, cbx0, cby0, cbx1, cby1)) {
+            QJsonObject cb;
+            cb["min_x"] = cbx0; cb["min_y"] = cby0;
+            cb["max_x"] = cbx1; cb["max_y"] = cby1;
+            v["content_bbox"] = cb;
         }
         rep["view"] = v;
         QJsonObject counts;
