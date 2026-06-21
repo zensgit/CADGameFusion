@@ -1,0 +1,60 @@
+name: Editor Solve CI
+
+# Gates the editor native solve loop (run+show, router /solve-cadgf transport, writeback,
+# conflict-UX) that previously was only locally verified. Two jobs:
+#   1) solve-unit  — the web_viewer solve unit tests (node, no build).
+#   2) solve-cadgf-smoke — builds the Qt-free solve_from_project and drives the REAL
+#      POST /solve-cadgf endpoint via the router (plm_solve_cadgf_smoke.py).
+# Focused on the solve loop (low-risk); the broader ci_editor_light suite + Playwright
+# smokes are intentionally not wired here.
+
+on:
+  pull_request:
+    paths:
+      - 'tools/web_viewer/solve_run.js'
+      - 'tools/web_viewer/solve_transport.js'
+      - 'tools/web_viewer/solve_writeback.js'
+      - 'tools/web_viewer/tests/solve_*.test.js'
+      - 'tools/web_viewer/ui/workspace.js'
+      - 'tools/plm_router_service.py'
+      - 'tools/plm_solve_cadgf_smoke.py'
+      - 'tools/solve_from_project.cpp'
+      - 'core/**'
+      - '.github/workflows/editor-solve-ci.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  solve-unit:
+    name: solve unit tests (web_viewer, node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run editor native solve unit tests
+        run: node --test tools/web_viewer/tests/solve_*.test.js
+
+  solve-cadgf-smoke:
+    name: /solve-cadgf smoke (real solve_from_project)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install build deps (Eigen3 only; Clipper2 optional, libdxfrw skipped under Qt-off)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libeigen3-dev
+      - name: Build solve_from_project (Qt-free, core only)
+        run: |
+          cmake -S . -B build_solve -G Ninja \
+            -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build_solve --target solve_from_project --parallel 2
+      - name: Run /solve-cadgf smoke (router shells the real binary)
+        run: |
+          python3 tools/plm_solve_cadgf_smoke.py \
+            --solve-cli "$PWD/build_solve/tools/solve_from_project" --port 9099
