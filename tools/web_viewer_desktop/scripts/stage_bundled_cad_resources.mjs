@@ -18,6 +18,7 @@ const dwgPluginNames = process.platform === "win32"
   : [`libcadgf_dwg_importer_plugin${pluginExt}`];
 const convertCliNames = process.platform === "win32" ? ["convert_cli.exe"] : ["convert_cli"];
 const dwg2dxfNames = process.platform === "win32" ? ["dwg2dxf.exe"] : ["dwg2dxf"];
+const solveFromProjectNames = process.platform === "win32" ? ["solve_from_project.exe"] : ["solve_from_project"];
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -99,6 +100,7 @@ function main() {
   const dxfPlugin = findBuildArtifact(dxfPluginNames, "plugins");
   const dwgPlugin = findBuildArtifact(dwgPluginNames, "plugins");
   const convertCli = findBuildArtifact(convertCliNames, "tools");
+  const solveFromProject = findBuildArtifact(solveFromProjectNames, "tools");
   const dwg2dxfBinary = firstExisting([
     process.env.VEMCAD_DWG2DXF_BIN || "",
     process.env.CADGF_DWG2DXF_BIN || "",
@@ -168,6 +170,11 @@ function main() {
     convert_cli_target: copyIfPresent(
       convertCli,
       path.join(bundledRoot, "router", "tools", path.basename(convertCli || ""))
+    ),
+    solve_from_project_source: solveFromProject,
+    solve_from_project_target: copyIfPresent(
+      solveFromProject,
+      path.join(bundledRoot, "router", "tools", path.basename(solveFromProject || ""))
     ),
     dwg2dxf_source: dwg2dxfBinary,
     dwg2dxf_target: copyIfPresent(
