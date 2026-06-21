@@ -20,6 +20,7 @@ import { createSolverActionFlowBanner } from './solver_action_flow_banner.js';
 import { createSolverActionFlowConsole } from './solver_action_flow_console.js';
 import { runSolveAndShow } from '../solve_run.js';
 import { createRouterSolveTransport, resolveSolveRouterUrl, formatSolveStatus } from '../solve_transport.js';
+import { applySolvedGeometry } from '../solve_writeback.js';
 import {
   activateLayerOff,
   activateLayerFreeze,
@@ -1507,9 +1508,19 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
       try {
         const routerUrl = await resolveSolveRouterUrl();
         const solve = createRouterSolveTransport({ routerUrl });
-        // Slice 1: run the real solver + show diagnostics in the panels. NO geometry writeback.
+        // Run the real solver + show diagnostics in the panels, then (Slice 2) write the solved
+        // geometry back undoably — but ONLY on a clean solve; a blocked/failed result never mutates.
         const result = await runSolveAndShow({ commandBus, solve, setSolverDiagnostics });
-        statusApi?.setMessage(formatSolveStatus(result));
+        if (result.status === 'solved') {
+          const writeback = applySolvedGeometry(commandBus, result.envelope);
+          statusApi?.setMessage(
+            writeback.applied > 0
+              ? `Solved — adjusted ${writeback.applied} ${writeback.applied === 1 ? 'entity' : 'entities'} (Ctrl-Z to undo)`
+              : 'Solved (no geometry change)',
+          );
+        } else {
+          statusApi?.setMessage(formatSolveStatus(result));
+        }
       } catch (err) {
         statusApi?.setMessage(`Solve failed: ${err?.message ?? err}`);
       } finally {
