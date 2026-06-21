@@ -9,6 +9,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -49,6 +50,9 @@ ERROR_CODES = tuple(
             "PLUGIN_NOT_ALLOWED",
             "PLUGIN_NOT_FOUND",
             "QUEUE_FULL",
+            "SOLVE_BAD_OUTPUT",
+            "SOLVE_CLI_NOT_FOUND",
+            "SOLVE_EXCEPTION",
             "TASK_NOT_FOUND",
             "UNKNOWN_ENDPOINT",
         }
@@ -63,6 +67,7 @@ class ServerConfig:
     default_plugin: str
     plugin_map: Dict[str, str]
     default_convert_cli: str
+    default_solve_cli: str
     base_url: str
     auth_token: str
     cors_origins: List[str]
@@ -697,6 +702,11 @@ def parse_args() -> argparse.Namespace:
         help="Default convert_cli path (used when request omits convert_cli)",
     )
     parser.add_argument(
+        "--default-solve-cli",
+        default="",
+        help="Path to solve_from_project; enables synchronous POST /solve-cadgf",
+    )
+    parser.add_argument(
         "--public-host",
         default="",
         help="Public host for viewer URL (defaults to bind host/localhost)",
@@ -1129,6 +1139,39 @@ def respond_text(
     handler.wfile.write(payload)
 
 
+def run_solve_cadgf(solve_cli: str, project: dict):
+    """Synchronously solve a CADGF-PROJ by shelling the (Qt-free) solve_from_project tool.
+
+    Returns (http_status, envelope). solve_from_project exits non-zero on an UNSATISFIABLE system
+    but still prints a valid {ok:false, analysis} envelope, so the parsed JSON is the source of truth
+    and is returned with HTTP 200 regardless of exit code (the web client classifies solved vs
+    blocked from the envelope). Only a missing binary / no-or-non-JSON output / spawn failure is a
+    transport error (SOLVE_CLI_NOT_FOUND / SOLVE_BAD_OUTPUT / SOLVE_EXCEPTION). The binary is
+    server-configured (--default-solve-cli), never client-provided, so no path allowlist is needed.
+    """
+    if not solve_cli or not Path(solve_cli).is_file():
+        return 503, {"ok": False, "error": "solver not configured", "error_code": "SOLVE_CLI_NOT_FOUND"}
+    try:
+        with tempfile.TemporaryDirectory(prefix="cadgf-solve-") as tmp:
+            project_file = Path(tmp) / "project.json"
+            project_file.write_text(json.dumps(project), encoding="utf-8")
+            result = subprocess.run(
+                [str(solve_cli), "--json", str(project_file)],
+                capture_output=True,
+                text=True,
+            )
+    except Exception as exc:  # noqa: BLE001 - any spawn failure becomes a transport-error envelope
+        return 500, {"ok": False, "error": str(exc), "error_code": "SOLVE_EXCEPTION"}
+    out = (result.stdout or "").strip()
+    if not out:
+        detail = (result.stderr or "solver produced no output").strip()
+        return 502, {"ok": False, "error": detail[:500], "error_code": "SOLVE_BAD_OUTPUT"}
+    try:
+        return 200, json.loads(out)
+    except json.JSONDecodeError as exc:
+        return 502, {"ok": False, "error": f"solver did not emit JSON: {exc}", "error_code": "SOLVE_BAD_OUTPUT"}
+
+
 def prom_escape_label(value: str) -> str:
     return value.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
 
@@ -1356,6 +1399,8 @@ def make_handler(
                     payload["default_plugin"] = Path(config.default_plugin).name
                 if config.default_convert_cli:
                     payload["default_convert_cli"] = Path(config.default_convert_cli).name
+                if config.default_solve_cli:
+                    payload["default_solve_cli"] = Path(config.default_solve_cli).name
                 respond_json(self, 200, payload)
                 return
             if parsed.path == "/metrics":
@@ -1599,7 +1644,7 @@ def make_handler(
 
         def do_POST(self):
             parsed = urlparse(self.path)
-            if parsed.path not in {"/convert", "/annotate"}:
+            if parsed.path not in {"/convert", "/annotate", "/solve-cadgf"}:
                 respond_error(self, 404, "unknown endpoint", "UNKNOWN_ENDPOINT")
                 return
 
@@ -1627,6 +1672,14 @@ def make_handler(
 
             content_type = self.headers.get("Content-Type", "")
             body = self.rfile.read(length)
+            if parsed.path == "/solve-cadgf":
+                project = parse_simple_body(body, content_type)
+                if not isinstance(project, dict) or not project:
+                    respond_error(self, 400, "invalid request body", "INVALID_BODY")
+                    return
+                status_code, payload = run_solve_cadgf(config.default_solve_cli, project)
+                respond_json(self, status_code, payload)
+                return
             if parsed.path == "/annotate":
                 fields = parse_simple_body(body, content_type)
                 if not isinstance(fields, dict) or not fields:
@@ -1957,6 +2010,7 @@ def main() -> int:
         default_plugin=args.default_plugin,
         plugin_map=plugin_map,
         default_convert_cli=args.default_convert_cli,
+        default_solve_cli=args.default_solve_cli,
         base_url=base_url,
         auth_token=auth_token,
         cors_origins=cors_origins,

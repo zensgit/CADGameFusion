@@ -4,7 +4,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runSolveAndShow, solveEnvelopeToDiagnostics } from '../solve_run.js';
+import { runSolveAndShow, solveEnvelopeToDiagnostics, solveVerdict } from '../solve_run.js';
+
+// The RAW solve_from_project envelope (via the router /solve-cadgf): a conflict is { ok:false,
+// analysis:{...} } with NO error_code — must classify as 'blocked', not 'failed'.
+const RAW_CONFLICT_ENVELOPE = {
+  ok: false, vars: {}, iterations: 12, final_error: 4.2,
+  analysis: { constraint_count: 3, conflict_group_count: 1, action_panels: [] },
+};
+const RAW_SOLVED_ENVELOPE = {
+  ok: true, vars: { 'p1.x': 0, 'p1.y': 0 }, iterations: 5, final_error: 1e-10,
+  analysis: { constraint_count: 2, dof_estimate: 0 },
+};
 
 // A command bus stub that records every command id it executed (to prove NO writeback).
 function makeBus({ project = { header: { format: 'CADGF-PROJ' }, scene: {} }, exportOk = true } = {}) {
@@ -70,6 +81,33 @@ test('runSolveAndShow: unsatisfied -> status blocked, conflict diagnostics shown
   assert.equal(shown?.ok, false);
   assert.equal(shown?.error_code, 'SOLVE_UNSATISFIED');
   assert.deepEqual(bus.calls, ['solver.export-project']);
+});
+
+test('solveVerdict: classifies both envelope shapes (solve_cadgf_cli AND raw solve_from_project)', () => {
+  assert.equal(solveVerdict(SOLVED_ENVELOPE), 'solved');         // cli-wrapped, ok
+  assert.equal(solveVerdict(RAW_SOLVED_ENVELOPE), 'solved');     // raw binary, ok
+  assert.equal(solveVerdict(UNSAT_ENVELOPE), 'blocked');         // cli, error_code SOLVE_UNSATISFIED
+  assert.equal(solveVerdict(RAW_CONFLICT_ENVELOPE), 'blocked');  // raw binary: ok:false + analysis, NO error_code
+  assert.equal(solveVerdict({ ok: false, error_code: 'SOLVE_CLI_NOT_FOUND' }), 'failed'); // router transport error
+  assert.equal(solveVerdict({ ok: false, error_code: 'INVALID_INPUT' }), 'failed');
+  assert.equal(solveVerdict(null), 'failed');
+});
+
+test('runSolveAndShow: RAW solve_from_project conflict -> status blocked (not failed)', async () => {
+  const bus = makeBus();
+  let shown = null;
+  const res = await runSolveAndShow({
+    commandBus: bus,
+    solve: async () => RAW_CONFLICT_ENVELOPE,
+    setSolverDiagnostics: (payload) => { shown = payload; },
+  });
+  assert.equal(res.ok, true);
+  assert.equal(res.status, 'blocked');
+  assert.equal(shown?.ok, false);
+  assert.equal(shown?.iterations, 12);             // root-level iterations mapped
+  assert.equal(shown?.final_error, 4.2);           // root-level final_error mapped
+  assert.equal(shown?.analysis?.conflict_group_count, 1);
+  assert.deepEqual(bus.calls, ['solver.export-project']); // still no writeback
 });
 
 test('runSolveAndShow: no constraints -> ok:false no-constraints, nothing shown, no solve called', async () => {
