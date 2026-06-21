@@ -350,6 +350,38 @@ function resolveDwg2DxfBinary(overrides = {}) {
   return "";
 }
 
+// Resolve the Qt-free solve_from_project binary for the router's POST /solve-cadgf (--default-solve-cli).
+// Order: explicit env override -> bundled under cad_resources (staged to router/tools by
+// stage_bundled_cad_resources.mjs) -> a locally-built binary for `npm start` dev runs. Returns "" when
+// none is found, in which case the router is started WITHOUT --default-solve-cli and /solve-cadgf
+// reports SOLVE_CLI_NOT_FOUND (graceful: Solve shows a clear failure rather than crashing).
+function resolveSolveFromProjectBinary() {
+  const explicit =
+    process.env.VEMCAD_SOLVE_FROM_PROJECT ||
+    process.env.CADGF_SOLVE_FROM_PROJECT ||
+    "";
+  if (explicit) {
+    return explicit;
+  }
+  const names = process.platform === "win32" ? ["solve_from_project.exe"] : ["solve_from_project"];
+  const bundledCandidates = getBundledCadResourceRoots().flatMap((root) =>
+    names.flatMap((name) => [
+      path.join(root, "router", "tools", name),
+      path.join(root, "tools", name),
+      path.join(root, "bin", name),
+    ])
+  );
+  const bundledBinary = pickFirstExistingPath(bundledCandidates);
+  if (bundledBinary) {
+    return bundledBinary;
+  }
+  const repoRoot = path.resolve(__dirname, "..", "..");
+  const devCandidates = ["build_solve", "build", "build_vcpkg", "build_novcpkg"].flatMap((dir) =>
+    names.map((name) => path.join(repoRoot, dir, "tools", name))
+  );
+  return pickFirstExistingPath(devCandidates) || "";
+}
+
 function resolveDwgPluginPath(overrides = {}) {
   const opts = normalizeSettings(overrides);
   const explicitOverride = getExplicitStringSetting(opts, "dwgPluginPath");
@@ -938,11 +970,15 @@ function resolveStartCommand(config, routerUrl, overrides = {}) {
   const convertCliPath = routerConvertCli
     ? (path.isAbsolute(routerConvertCli) ? routerConvertCli : path.join(repoRoot, routerConvertCli))
     : "";
+  const solveCliPath = resolveSolveFromProjectBinary();
   if (pluginPath) {
     cmd.push("--default-plugin", pluginPath);
   }
   if (convertCliPath) {
     cmd.push("--default-convert-cli", convertCliPath);
+  }
+  if (solveCliPath) {
+    cmd.push("--default-solve-cli", solveCliPath);
   }
   if (config.authToken) {
     cmd.push("--auth-token", config.authToken);
@@ -980,6 +1016,10 @@ function buildRouterStartCmdSuggestion(routerUrl, pluginPath, convertCliPath, re
   }
   if (convertCliPath) {
     args.push("--default-convert-cli", convertCliPath);
+  }
+  const solveCliPath = resolveSolveFromProjectBinary();
+  if (solveCliPath) {
+    args.push("--default-solve-cli", solveCliPath);
   }
   return args.map(quoteArg).join(" ");
 }
