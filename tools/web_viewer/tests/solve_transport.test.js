@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createRouterSolveTransport } from '../solve_transport.js';
+import { createRouterSolveTransport, resolveSolveRouterUrl, formatSolveStatus } from '../solve_transport.js';
 
 function fakeFetch(envelope, { status = 200, jsonThrows = false } = {}) {
   const f = async (url, opts) => {
@@ -46,4 +46,26 @@ test('createRouterSolveTransport: non-JSON response -> SOLVE_BAD_OUTPUT (no thro
   const out = await solve({});
   assert.equal(out.ok, false);
   assert.equal(out.error_code, 'SOLVE_BAD_OUTPUT');
+});
+
+test('formatSolveStatus: maps verdicts to status-bar messages', () => {
+  assert.equal(formatSolveStatus({ status: 'solved' }), 'Solved');
+  assert.match(formatSolveStatus({ status: 'blocked' }), /conflicts|unsatisfied/);
+  assert.equal(formatSolveStatus({ status: 'no-constraints' }), 'No constraints to solve');
+  assert.match(formatSolveStatus({ status: 'failed', error: 'boom' }), /Solve failed: boom/);
+  assert.equal(formatSolveStatus(null), 'Solve failed');
+});
+
+test('resolveSolveRouterUrl: live global > bridge default > loopback default', async () => {
+  const prev = globalThis.window;
+  try {
+    globalThis.window = { __vemcadRouterUrl: 'http://custom:1234' };
+    assert.equal(await resolveSolveRouterUrl(), 'http://custom:1234');
+    globalThis.window = { vemcadDesktop: { getDefaultSettings: async () => ({ routerUrl: 'http://bridge:9000' }) } };
+    assert.equal(await resolveSolveRouterUrl(), 'http://bridge:9000');
+    globalThis.window = {}; // no live global, no bridge
+    assert.equal(await resolveSolveRouterUrl(), 'http://127.0.0.1:9000');
+  } finally {
+    if (prev === undefined) delete globalThis.window; else globalThis.window = prev;
+  }
 });

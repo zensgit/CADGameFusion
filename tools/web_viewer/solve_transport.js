@@ -34,3 +34,31 @@ export function createRouterSolveTransport({ routerUrl, fetchImpl = globalThis.f
     }
   };
 }
+
+// Resolve the local router URL for the native Solve button. Prefers a live setting
+// (window.__vemcadRouterUrl, which the desktop/product layer may publish from its current settings),
+// then the desktop bridge defaults, then the loopback default. Async because the bridge lookup is async.
+export async function resolveSolveRouterUrl() {
+  if (typeof window !== 'undefined' && window) {
+    if (window.__vemcadRouterUrl) return window.__vemcadRouterUrl;
+    const bridge = window.vemcadDesktop;
+    if (bridge && typeof bridge.getDefaultSettings === 'function') {
+      try {
+        const settings = await bridge.getDefaultSettings();
+        if (settings && settings.routerUrl) return settings.routerUrl;
+      } catch { /* fall through to the loopback default */ }
+    }
+  }
+  return 'http://127.0.0.1:9000';
+}
+
+// Map a runSolveAndShow result to a concise status-bar message.
+export function formatSolveStatus(result) {
+  if (!result) return 'Solve failed';
+  switch (result.status) {
+    case 'solved': return 'Solved';
+    case 'blocked': return 'Solver: conflicts / unsatisfied — see panel';
+    case 'no-constraints': return 'No constraints to solve';
+    default: return `Solve failed${result.error ? ': ' + result.error : ''}`;
+  }
+}

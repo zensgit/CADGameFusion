@@ -18,6 +18,8 @@ import { createSnapPanel } from './snap_panel.js';
 import { createSolverActionPanel } from './solver_action_panel.js';
 import { createSolverActionFlowBanner } from './solver_action_flow_banner.js';
 import { createSolverActionFlowConsole } from './solver_action_flow_console.js';
+import { runSolveAndShow } from '../solve_run.js';
+import { createRouterSolveTransport, resolveSolveRouterUrl, formatSolveStatus } from '../solve_transport.js';
 import {
   activateLayerOff,
   activateLayerFreeze,
@@ -1494,6 +1496,25 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
       }
       downloadJson('solver_project.json', result.project);
       statusApi?.setMessage('Solver project exported');
+    });
+  }
+
+  const runSolveButton = document.getElementById('cad-run-solve');
+  if (runSolveButton) {
+    runSolveButton.addEventListener('click', async () => {
+      runSolveButton.disabled = true;
+      statusApi?.setMessage('Solving…');
+      try {
+        const routerUrl = await resolveSolveRouterUrl();
+        const solve = createRouterSolveTransport({ routerUrl });
+        // Slice 1: run the real solver + show diagnostics in the panels. NO geometry writeback.
+        const result = await runSolveAndShow({ commandBus, solve, setSolverDiagnostics });
+        statusApi?.setMessage(formatSolveStatus(result));
+      } catch (err) {
+        statusApi?.setMessage(`Solve failed: ${err?.message ?? err}`);
+      } finally {
+        runSolveButton.disabled = false;
+      }
     });
   }
 
