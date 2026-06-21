@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createRouterSolveTransport, resolveSolveRouterUrl, formatSolveStatus } from '../solve_transport.js';
+import { createRouterSolveTransport, resolveSolveRouterUrl, formatSolveStatus, solveBackendStatus } from '../solve_transport.js';
 
 function fakeFetch(envelope, { status = 200, jsonThrows = false } = {}) {
   const f = async (url, opts) => {
@@ -48,12 +48,36 @@ test('createRouterSolveTransport: non-JSON response -> SOLVE_BAD_OUTPUT (no thro
   assert.equal(out.error_code, 'SOLVE_BAD_OUTPUT');
 });
 
-test('formatSolveStatus: maps verdicts to status-bar messages', () => {
+test('formatSolveStatus: verdict messages + backend hints', () => {
   assert.equal(formatSolveStatus({ status: 'solved' }), 'Solved');
   assert.match(formatSolveStatus({ status: 'blocked' }), /conflicts|unsatisfied/);
   assert.equal(formatSolveStatus({ status: 'no-constraints' }), 'No constraints to solve');
-  assert.match(formatSolveStatus({ status: 'failed', error: 'boom' }), /Solve failed: boom/);
+  // backend-unavailable now reads clearly + actionably (not a cryptic "Solve failed")
+  assert.match(
+    formatSolveStatus({ status: 'failed', envelope: { error_code: 'SOLVE_CLI_NOT_FOUND' } }),
+    /not available.*default-solve-cli/,
+  );
+  // network throw -> unreachable
+  assert.match(formatSolveStatus({ status: 'failed', error: 'ECONNREFUSED' }), /unreachable.*ECONNREFUSED/);
   assert.equal(formatSolveStatus(null), 'Solve failed');
+});
+
+test('solveBackendStatus: distinguishes backend conditions from the solve verdict', () => {
+  // backend worked -> verdict states
+  assert.equal(solveBackendStatus({ status: 'solved' }).state, 'solved');
+  assert.equal(solveBackendStatus({ status: 'blocked' }).state, 'blocked');
+  assert.equal(solveBackendStatus({ status: 'no-constraints' }).state, 'no-constraints');
+  // not configured -> 'unavailable' (router has no --default-solve-cli / no router URL / no fetch)
+  assert.equal(solveBackendStatus({ status: 'failed', envelope: { error_code: 'SOLVE_CLI_NOT_FOUND' } }).state, 'unavailable');
+  assert.equal(solveBackendStatus({ status: 'failed', envelope: { error_code: 'SOLVE_NO_ROUTER' } }).state, 'unavailable');
+  assert.equal(solveBackendStatus({ status: 'failed', envelope: { error_code: 'SOLVE_NO_FETCH' } }).state, 'unavailable');
+  // reached but errored -> 'error'
+  assert.equal(solveBackendStatus({ status: 'failed', envelope: { error_code: 'SOLVE_BAD_OUTPUT', error: 'x' } }).state, 'error');
+  assert.equal(solveBackendStatus({ status: 'failed', envelope: { error_code: 'SOLVE_EXCEPTION', error: 'x' } }).state, 'error');
+  // couldn't reach the backend (transport threw) -> 'unreachable'
+  assert.equal(solveBackendStatus({ status: 'failed', error: 'ECONNREFUSED' }).state, 'unreachable');
+  // CLI_NOT_FOUND carries an actionable hint
+  assert.match(solveBackendStatus({ status: 'failed', envelope: { error_code: 'SOLVE_CLI_NOT_FOUND' } }).hint, /default-solve-cli/);
 });
 
 test('resolveSolveRouterUrl: live global > bridge default > loopback default', async () => {
