@@ -1,0 +1,62 @@
+name: Desktop Packaging Smoke
+
+# Release-pipeline completeness (not #400 code correctness): proves a desktop pack actually BUNDLES
+# the solver. Builds the Qt-free solve_from_project, packs the Electron app (electron-builder --dir),
+# and asserts the binary lands in the packed app under cad_resources/router/tools/solve_from_project
+# (electron-builder ships bundled_resources -> cad_resources). Linux-only: no vcpkg, fully gateable.
+#
+# This is the "A" slice; wiring the real Windows release npm run dist (Eigen via vcpkg) to build the
+# binaries before packaging is the separate, heavier "B" follow-on.
+
+on:
+  pull_request:
+    paths:
+      - 'tools/web_viewer_desktop/**'
+      - 'tools/solve_from_project.cpp'
+      - 'core/**'
+      - '.github/workflows/desktop-packaging-smoke.yml'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pack-and-assert:
+    name: pack desktop + assert solve_from_project bundled
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install build deps (Eigen only; Qt off, libdxfrw skipped via EXISTS guard)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build libeigen3-dev
+      - name: Build solve_from_project (Qt-free) into ./build/tools
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --target solve_from_project --parallel 2
+          test -x build/tools/solve_from_project
+      - name: Install desktop deps
+        working-directory: tools/web_viewer_desktop
+        run: npm install
+      - name: Pack the Electron app (stage + electron-builder --dir)
+        working-directory: tools/web_viewer_desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run pack
+      - name: Assert solve_from_project is bundled in the packed app
+        working-directory: tools/web_viewer_desktop
+        run: |
+          FOUND="$(find dist -path '*cad_resources/router/tools/solve_from_project*' 2>/dev/null | head -1)"
+          if [ -z "$FOUND" ]; then
+            echo "FAIL: solve_from_project is NOT bundled under cad_resources/router/tools in the packed app."
+            echo "Packed solve_from_project candidates (if any):"
+            find dist -name 'solve_from_project*' 2>/dev/null || true
+            exit 1
+          fi
+          echo "OK: packed app bundles the solver -> $FOUND"
