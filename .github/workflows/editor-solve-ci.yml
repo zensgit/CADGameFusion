@@ -1,29 +1,27 @@
 name: Editor Solve CI
 
 # Gates the editor native solve loop (run+show, router /solve-cadgf transport, writeback,
-# conflict-UX) that previously was only locally verified. Two jobs:
-#   1) solve-unit  — the web_viewer solve unit tests (node, no build).
-#   2) solve-cadgf-smoke — builds the Qt-free solve_from_project and drives the REAL
-#      POST /solve-cadgf endpoint via the router (plm_solve_cadgf_smoke.py).
-# Focused on the solve loop (low-risk); the broader ci_editor_light suite + Playwright
-# smokes are intentionally not wired here.
+# conflict-UX). This workflow is ALWAYS-RUN (no top-level paths: filter) so its jobs report a
+# conclusion on EVERY pull request — a required status check must always be able to report, which a
+# path-filtered workflow cannot (non-matching PRs would wait forever on a check that never runs).
+#
+# Each job self-detects whether solve-loop files changed (no cross-job `needs`, so a job can never be
+# skipped-and-never-report): on a solve-loop change it runs the real validation; otherwise it exits
+# success trivially. Fail-safe: if change detection can't run, it defaults to running the real work.
+#
+# Jobs (safe to add to branch protection required checks once each has reported on both a solve and a
+# non-solve PR):
+#   - solve unit tests (web_viewer, node)
+#   - /solve-cadgf smoke (real solve_from_project)
 
 on:
   pull_request:
-    paths:
-      - 'tools/web_viewer/solve_run.js'
-      - 'tools/web_viewer/solve_transport.js'
-      - 'tools/web_viewer/solve_writeback.js'
-      - 'tools/web_viewer/tests/solve_*.test.js'
-      - 'tools/web_viewer/ui/workspace.js'
-      - 'tools/plm_router_service.py'
-      - 'tools/plm_solve_cadgf_smoke.py'
-      - 'tools/solve_from_project.cpp'
-      - 'core/**'
-      - '.github/workflows/editor-solve-ci.yml'
   push:
     branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   solve-unit:
@@ -31,30 +29,53 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect solve-loop changes
+        id: detect
+        run: bash .github/scripts/detect_solve_changes.sh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
       - uses: actions/setup-node@v4
+        if: steps.detect.outputs.solve == 'true'
         with:
           node-version: '20'
-      - name: Run editor native solve unit tests
-        run: node --test tools/web_viewer/tests/solve_*.test.js
+      - name: Run solve unit tests (or trivial pass)
+        run: |
+          if [ "${{ steps.detect.outputs.solve }}" = "true" ]; then
+            node --test tools/web_viewer/tests/solve_*.test.js
+          else
+            echo "No solve-loop changes; solve unit tests not needed — gate reports pass."
+          fi
 
   solve-cadgf-smoke:
     name: /solve-cadgf smoke (real solve_from_project)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect solve-loop changes
+        id: detect
+        run: bash .github/scripts/detect_solve_changes.sh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
       - uses: actions/setup-python@v5
+        if: steps.detect.outputs.solve == 'true'
         with:
           python-version: '3.x'
-      - name: Install build deps (Eigen3 only; Clipper2 optional, libdxfrw skipped under Qt-off)
+      - name: Build solve_from_project + run /solve-cadgf smoke (or trivial pass)
         run: |
+          if [ "${{ steps.detect.outputs.solve }}" != "true" ]; then
+            echo "No solve-loop changes; /solve-cadgf smoke not needed — gate reports pass."
+            exit 0
+          fi
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build libeigen3-dev
-      - name: Build solve_from_project (Qt-free, core only)
-        run: |
           cmake -S . -B build_solve -G Ninja \
             -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DCMAKE_BUILD_TYPE=Release
           cmake --build build_solve --target solve_from_project --parallel 2
-      - name: Run /solve-cadgf smoke (router shells the real binary)
-        run: |
           python3 tools/plm_solve_cadgf_smoke.py \
             --solve-cli "$PWD/build_solve/tools/solve_from_project" --port 9099
