@@ -23,7 +23,7 @@ export function solveEnvelopeToDiagnostics(envelope) {
   const diagnostics = {
     ok: e.ok === true,
     iterations: solve.iterations ?? e.iterations ?? null,
-    final_error: solve.finalError ?? e.final_error ?? null,
+    final_error: solve.finalError ?? solve.final_error ?? e.final_error ?? null,
     analysis: e.analysis ?? null,
   };
   if (e.error_code) diagnostics.error_code = e.error_code;
@@ -67,8 +67,19 @@ export async function runSolveAndShow({ commandBus, solve, setSolverDiagnostics 
     setSolverDiagnostics(diagnostics, 'Native solve');
   }
 
-  const status = envelope?.ok === true
-    ? 'solved'
-    : (envelope?.error_code === 'SOLVE_UNSATISFIED' ? 'blocked' : 'failed');
-  return { ok: true, status, diagnostics, envelope };
+  return { ok: true, status: solveVerdict(envelope), diagnostics, envelope };
+}
+
+// Classify the solve verdict robustly across BOTH envelope shapes:
+//   - solve_cadgf_cli  : { ok, error_code:'SOLVE_UNSATISFIED', value, analysis }
+//   - solve_from_project (raw, via the router POST /solve-cadgf): { ok, vars, analysis, ... } (NO error_code)
+// ok -> 'solved'. Ran-but-unsatisfied (the unsatisfied error_code, OR the solver produced an analysis —
+// it evaluated the system but could not satisfy it) -> 'blocked'. Otherwise the solver could not run at
+// all (bad input, router/transport error envelope with no analysis) -> 'failed'.
+export function solveVerdict(envelope) {
+  if (!envelope || typeof envelope !== 'object') return 'failed';
+  if (envelope.ok === true) return 'solved';
+  if (envelope.error_code === 'SOLVE_UNSATISFIED') return 'blocked';
+  if (envelope.analysis && typeof envelope.analysis === 'object') return 'blocked';
+  return 'failed';
 }
