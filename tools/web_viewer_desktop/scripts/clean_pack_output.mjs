@@ -2,8 +2,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const desktopDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+// fileURLToPath handles the Windows drive letter; new URL(import.meta.url).pathname
+// yields "/D:/..." which path.resolve(..., "..") mangles to "D:\D:\..." (ENOENT on mkdir).
+const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const distDir = path.join(desktopDir, "dist");
 
 fs.rmSync(distDir, { recursive: true, force: true });

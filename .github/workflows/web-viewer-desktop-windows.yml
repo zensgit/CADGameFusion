@@ -15,6 +15,64 @@ jobs:
         with:
           node-version: 20
 
+      # --- Release packaging B: build + bundle the Qt-free CLIs the desktop ships ---
+      # Previously `npm run dist` only staged binaries that happened to be in build*/tools/
+      # (none in CI), so packaged desktops had no solver/converter. Build them here, before dist.
+      # solve_from_project (links core) and convert_cli (links core_c) are Qt-free; only Eigen/Clipper2
+      # (via the vcpkg manifest) are needed. dwg2dxf is an external (non-cadgf) binary and is out of
+      # scope for this build step.
+      - name: Cache vcpkg (Windows)
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:/Users/runneradmin/AppData/Local/vcpkg/archives
+            vcpkg/installed
+            build/vcpkg_installed
+          key: windows-vcpkg-desktopbin-a20d95d3-${{ hashFiles('vcpkg.json') }}
+          restore-keys: |
+            windows-vcpkg-desktopbin-a20d95d3-
+            windows-vcpkg-desktopbin-
+
+      - name: Install cmake (Windows)
+        shell: pwsh
+        run: choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+
+      - name: Setup vcpkg (Windows)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $cacheDir = Join-Path $env:LOCALAPPDATA "vcpkg\archives"
+          New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$cacheDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "VCPKG_BINARY_SOURCES=clear;files,$cacheDir,readwrite" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $vcpkgDir = Join-Path $PWD "vcpkg"
+          if (-Not (Test-Path (Join-Path $vcpkgDir ".git"))) {
+            if (Test-Path $vcpkgDir) { Remove-Item $vcpkgDir -Recurse -Force }
+            git clone https://github.com/microsoft/vcpkg.git $vcpkgDir
+          }
+          Push-Location $vcpkgDir
+          git fetch --tags --force
+          git checkout a20d95d3c76906363896754eb1cc93db2a694f16
+          cmd /c bootstrap-vcpkg.bat -disableMetrics
+          Pop-Location
+          "VCPKG_ROOT=vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build solve_from_project + convert_cli (Qt-free)
+        shell: bash
+        run: |
+          cmake -S . -B build -DBUILD_EDITOR_QT=OFF -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake"
+          cmake --build build --config Release --parallel 2 --target solve_from_project convert_cli
+          # Visual Studio (multi-config) emits to build/tools/Release/; stage_bundled_cad_resources.mjs
+          # looks in build*/tools/. Copy the exes there so staging finds them regardless of layout.
+          mkdir -p build/tools
+          for b in solve_from_project convert_cli; do
+            src="$(find build -name "$b.exe" -type f | head -1)"
+            if [ -z "$src" ]; then echo "FAIL: $b.exe not produced by the build"; exit 1; fi
+            cp "$src" "build/tools/$b.exe"
+            echo "for-staging: build/tools/$b.exe (from $src)"
+          done
+
       - name: Install dependencies
         run: npm install
         working-directory: tools/web_viewer_desktop
@@ -24,6 +82,17 @@ jobs:
         working-directory: tools/web_viewer_desktop
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Assert CLIs are bundled in the packed app
+        shell: bash
+        run: |
+          fail=0
+          for b in solve_from_project.exe convert_cli.exe; do
+            f="$(find tools/web_viewer_desktop/dist -path "*cad_resources/router/tools/$b" -type f | head -1)"
+            if [ -n "$f" ]; then echo "bundled: $f"; else echo "MISSING from packed app: $b"; fail=1; fi
+          done
+          if [ "$fail" != "0" ]; then echo "Desktop package is missing required CLIs"; exit 1; fi
+          echo "OK: desktop package bundles solve_from_project.exe + convert_cli.exe"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
