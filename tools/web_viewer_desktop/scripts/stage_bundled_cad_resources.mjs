@@ -2,8 +2,13 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const desktopDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+// fileURLToPath handles the Windows drive letter correctly. The previous
+// `new URL(import.meta.url).pathname` yields "/D:/..." on Windows, which
+// path.resolve(..., "..") mangles into "D:\D:\..." -> ENOENT on mkdir (the
+// desktop pack failed at the staging step). Correct + cross-platform here.
+const desktopDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(desktopDir, "..", "..");
 const bundledRoot = path.join(desktopDir, "bundled_resources");
 const summaryPath = path.join(bundledRoot, "stage_summary.json");
