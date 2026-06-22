@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createRouterSolveTransport, resolveSolveRouterUrl, formatSolveStatus, solveBackendStatus } from '../solve_transport.js';
+import { createRouterSolveTransport, resolveSolveRouterUrl, formatSolveStatus, solveBackendStatus, solveButtonView } from '../solve_transport.js';
 
 function fakeFetch(envelope, { status = 200, jsonThrows = false } = {}) {
   const f = async (url, opts) => {
@@ -78,6 +78,42 @@ test('solveBackendStatus: distinguishes backend conditions from the solve verdic
   assert.equal(solveBackendStatus({ status: 'failed', error: 'ECONNREFUSED' }).state, 'unreachable');
   // CLI_NOT_FOUND carries an actionable hint
   assert.match(solveBackendStatus({ status: 'failed', envelope: { error_code: 'SOLVE_CLI_NOT_FOUND' } }).hint, /default-solve-cli/);
+});
+
+test('solveButtonView: lifecycle -> button state + message + conflict focus', () => {
+  // loading: disabled + busy while solving
+  const solving = solveButtonView({ phase: 'solving' });
+  assert.equal(solving.disabled, true);
+  assert.equal(solving.busy, true);
+  assert.equal(solving.label, 'Solving…');
+  assert.equal(solving.state, 'solving');
+
+  // solved with a write-back count -> enabled, ok state, count in the message
+  const solved = solveButtonView({ phase: 'done', result: { status: 'solved' }, appliedCount: 3 });
+  assert.equal(solved.disabled, false);
+  assert.equal(solved.busy, false);
+  assert.equal(solved.state, 'solved');
+  assert.match(solved.message, /adjusted 3 entities/);
+  assert.equal(solved.focusConflicts, false);
+  // solved, no geometry change
+  assert.match(solveButtonView({ phase: 'done', result: { status: 'solved' }, appliedCount: 0 }).message, /no geometry change/);
+  // singular entity
+  assert.match(solveButtonView({ phase: 'done', result: { status: 'solved' }, appliedCount: 1 }).message, /1 entity \(/);
+
+  // blocked -> warn state + focus the conflict panel
+  const blocked = solveButtonView({ phase: 'done', result: { status: 'blocked' } });
+  assert.equal(blocked.state, 'blocked');
+  assert.equal(blocked.focusConflicts, true);
+  assert.equal(blocked.disabled, false);
+
+  // backend unavailable -> actionable message, re-enabled (no conflict focus)
+  const unavail = solveButtonView({ phase: 'done', result: { status: 'failed', envelope: { error_code: 'SOLVE_CLI_NOT_FOUND' } } });
+  assert.equal(unavail.state, 'unavailable');
+  assert.match(unavail.message, /not available.*default-solve-cli/);
+  assert.equal(unavail.focusConflicts, false);
+
+  // unreachable (transport threw)
+  assert.equal(solveButtonView({ phase: 'done', result: { status: 'failed', error: 'ECONNREFUSED' } }).state, 'unreachable');
 });
 
 test('resolveSolveRouterUrl: live global > bridge default > loopback default', async () => {

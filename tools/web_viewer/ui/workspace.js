@@ -19,7 +19,7 @@ import { createSolverActionPanel } from './solver_action_panel.js';
 import { createSolverActionFlowBanner } from './solver_action_flow_banner.js';
 import { createSolverActionFlowConsole } from './solver_action_flow_console.js';
 import { runSolveAndShow } from '../solve_run.js';
-import { createRouterSolveTransport, resolveSolveRouterUrl, formatSolveStatus } from '../solve_transport.js';
+import { createRouterSolveTransport, resolveSolveRouterUrl, solveButtonView } from '../solve_transport.js';
 import { applySolvedGeometry } from '../solve_writeback.js';
 import {
   activateLayerOff,
@@ -1502,29 +1502,42 @@ export function bootstrapCadWorkspace({ params = new URLSearchParams(window.loca
 
   const runSolveButton = document.getElementById('cad-run-solve');
   if (runSolveButton) {
+    const solveButtonLabel = runSolveButton.textContent;
+    // Apply a solveButtonView to the button + status bar in one place: disabled + aria-busy for
+    // the loading state, the busy label, the status message, and data-solve-state — a CSS hook for
+    // failure-state / loading styling. data-solve-state PERSISTS after a solve so the last outcome
+    // (unavailable/error/blocked/solved) stays visible until the next click resets it.
+    const applySolveView = (view) => {
+      runSolveButton.disabled = view.disabled;
+      runSolveButton.setAttribute('aria-busy', view.busy ? 'true' : 'false');
+      runSolveButton.dataset.solveState = view.state;
+      runSolveButton.textContent = view.busy ? view.label : solveButtonLabel;
+      if (view.message) statusApi?.setMessage(view.message);
+    };
     runSolveButton.addEventListener('click', async () => {
-      runSolveButton.disabled = true;
-      statusApi?.setMessage('Solving…');
+      applySolveView(solveButtonView({ phase: 'solving' }));
       try {
         const routerUrl = await resolveSolveRouterUrl();
         const solve = createRouterSolveTransport({ routerUrl });
-        // Run the real solver + show diagnostics in the panels, then (Slice 2) write the solved
-        // geometry back undoably — but ONLY on a clean solve; a blocked/failed result never mutates.
+        // Run the real solver + show diagnostics in the panels, then write the solved geometry
+        // back undoably — but ONLY on a clean solve; a blocked/failed result never mutates.
         const result = await runSolveAndShow({ commandBus, solve, setSolverDiagnostics });
-        if (result.status === 'solved') {
-          const writeback = applySolvedGeometry(commandBus, result.envelope);
-          statusApi?.setMessage(
-            writeback.applied > 0
-              ? `Solved — adjusted ${writeback.applied} ${writeback.applied === 1 ? 'entity' : 'entities'} (Ctrl-Z to undo)`
-              : 'Solved (no geometry change)',
-          );
-        } else {
-          statusApi?.setMessage(formatSolveStatus(result));
-        }
+        const appliedCount = result.status === 'solved'
+          ? applySolvedGeometry(commandBus, result.envelope).applied
+          : 0;
+        const view = solveButtonView({ phase: 'done', result, appliedCount });
+        applySolveView(view);
+        // Blocked (conflicts / unsatisfied): surface the solver panel so the suggestions are seen.
+        if (view.focusConflicts) activateSolverStatusFlow();
       } catch (err) {
-        statusApi?.setMessage(`Solve failed: ${err?.message ?? err}`);
+        applySolveView(solveButtonView({
+          phase: 'done', result: { status: 'failed', error: err?.message ?? String(err) },
+        }));
       } finally {
+        // Safety: never leave the button stuck busy/disabled even on an unexpected throw.
         runSolveButton.disabled = false;
+        runSolveButton.setAttribute('aria-busy', 'false');
+        runSolveButton.textContent = solveButtonLabel;
       }
     });
   }

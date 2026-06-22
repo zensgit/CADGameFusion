@@ -94,3 +94,29 @@ export function formatSolveStatus(result) {
   const s = solveBackendStatus(result);
   return s.hint ? `${s.label} — ${s.hint}` : s.label;
 }
+
+// Map the Solve button's lifecycle (a phase + the result) to a complete view the click handler
+// applies verbatim — keeping it declarative and unit-testable. Returns:
+//   disabled / busy : loading state (true while solving) for the button + aria-busy.
+//   label           : button text ('Solving…' while busy, else 'Solve').
+//   message         : status-bar text (solved write-back summary, or the backend status).
+//   state           : the backend state ('solving'|'solved'|'blocked'|'unavailable'|'unreachable'
+//                     |'error'|'no-constraints') — drive CSS / failure-state styling off this.
+//   focusConflicts  : true on a blocked result, so the handler can surface the conflict panel.
+// appliedCount fills the solved write-back message (the handler knows how many entities moved).
+export function solveButtonView({ phase, result, appliedCount } = {}) {
+  if (phase === 'solving') {
+    return { disabled: true, busy: true, label: 'Solving…', state: 'solving', message: 'Solving…', focusConflicts: false };
+  }
+  const s = solveBackendStatus(result);
+  const view = { disabled: false, busy: false, label: 'Solve', state: s.state, focusConflicts: s.state === 'blocked' };
+  if (s.state === 'solved') {
+    const n = Number(appliedCount) || 0;
+    view.message = n > 0
+      ? `Solved — adjusted ${n} ${n === 1 ? 'entity' : 'entities'} (Ctrl-Z to undo)`
+      : 'Solved (no geometry change)';
+  } else {
+    view.message = formatSolveStatus(result);
+  }
+  return view;
+}
