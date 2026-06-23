@@ -13,6 +13,7 @@
 #include <QRectF>
 #include <QSet>
 #include <QSize>
+#include <QString>
 #include <QVector>
 
 #include <cstdint>
@@ -69,6 +70,13 @@ QColor resolveEntityColor(const core::Document* doc, const core::Entity& entity,
                           bool flipWhiteOnLight = false);
 QVector<qreal> linetypeDashPattern(const std::string& lt, double scale,
                                    const LinetypeTable& linetypes);
+
+// Best-available FangSong/song-style CJK family for empty-style (SHX) text.
+// AutoCAD draws such Chinese mechanical text in a 仿宋 style; the macOS family
+// (STFangsong) is absent on the Linux render host, so pick the closest installed
+// song family (e.g. Noto Serif CJK SC) rather than letting Qt fall back to a sans
+// (DejaVu Sans → Noto Sans CJK). Resolved once against the live font DB.
+QString defaultTextFamily();
 
 // Fit the world rect [mnx..mxx]×[mny..mxy] into the viewport. Same formula as
 // the editor's zoom-to-extents (5% margin, 0.9 factor). False on degenerate

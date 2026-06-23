@@ -125,7 +125,7 @@ QString familyOf(const core::Entity& e) {
     QString nm = QString::fromStdString(e.name);
     int sep = nm.indexOf(QChar(0x1f));
     QString fam = (sep >= 0) ? nm.left(sep) : nm;
-    return fam.isEmpty() ? QStringLiteral("STFangsong") : fam;
+    return fam.isEmpty() ? scene_render::defaultTextFamily() : fam;
 }
 
 // Counts only the text entities renderScene will actually draw — same

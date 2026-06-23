@@ -3,6 +3,7 @@
 #include "core/bounds.hpp"
 
 #include <QFont>
+#include <QFontDatabase>
 #include <QFontMetricsF>
 #include <QPainter>
 #include <QPen>
@@ -13,6 +14,31 @@
 #include <cstdlib>
 
 namespace scene_render {
+
+// Best-available FangSong/song-style CJK family for empty-style text (see header).
+// Ordered by closeness to AutoCAD's 仿宋; the first family present in the live font
+// DB wins. On the Linux render host this picks Noto Serif CJK SC (song) instead of
+// the silent DejaVu Sans → Noto Sans CJK fallback. Resolved once — the DB is
+// populated by first-text-draw (render_cli loads --font-dir at startup).
+QString defaultTextFamily() {
+    static const QString fam = [] {
+        const QStringList prefer = {
+            QStringLiteral("STFangsong"),          // macOS 华文仿宋 (editor parity)
+            QStringLiteral("FangSong"),            // Windows / generic
+            QStringLiteral("仿宋"),        // 仿宋
+            QStringLiteral("Zhuque Fangsong"),     // 朱雀仿宋 (bundled OFL, if present)
+            QStringLiteral("Noto Serif CJK SC"),   // song/serif — closest to 仿宋 on Linux
+            QStringLiteral("Source Han Serif SC"),
+            QStringLiteral("Noto Serif CJK TC"),
+            QStringLiteral("LXGW WenKai"),         // 霞鹜文楷 (kai; song-ish, still > sans)
+        };
+        const QStringList have = QFontDatabase::families();
+        for (const QString& f : prefer)
+            if (have.contains(f, Qt::CaseInsensitive)) return f;
+        return QStringLiteral("STFangsong");       // unchanged behaviour if none installed
+    }();
+    return fam;
+}
 
 namespace {
 
@@ -371,7 +397,7 @@ void renderScene(QPainter& pr, const core::Document* doc,
                     fam = nm;
                 }
                 if (fam.isEmpty())
-                    fam = QStringLiteral("STFangsong"); // 华文仿宋 (non-localized)
+                    fam = defaultTextFamily(); // best-available 仿宋/song family (was STFangsong)
             }
             // AutoCAD model: a DXF text of world-height H is drawn so the
             // glyphs are H units tall → on screen H*scale px. Size the font so
