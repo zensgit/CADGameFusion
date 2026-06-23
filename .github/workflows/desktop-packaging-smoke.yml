@@ -13,6 +13,7 @@ on:
     paths:
       - 'tools/web_viewer_desktop/**'
       - 'tools/solve_from_project.cpp'
+      - 'tools/convert_cli.cpp'
       - 'core/**'
       - '.github/workflows/desktop-packaging-smoke.yml'
   push:
@@ -24,7 +25,7 @@ permissions:
 
 jobs:
   pack-and-assert:
-    name: pack desktop + assert solve_from_project bundled
+    name: pack desktop + assert solver/converter bundled
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,12 +36,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build libeigen3-dev
-      - name: Build solve_from_project (Qt-free) into ./build/tools
+      - name: Build solve_from_project + convert_cli (Qt-free) into ./build/tools
         run: |
           cmake -S . -B build -G Ninja \
             -DBUILD_EDITOR_QT=OFF -DCADGF_USE_NLOHMANN_JSON=ON -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --target solve_from_project --parallel 2
+          cmake --build build --target solve_from_project convert_cli --parallel 2
           test -x build/tools/solve_from_project
+          test -x build/tools/convert_cli
       - name: Install desktop deps
         working-directory: tools/web_viewer_desktop
         run: npm install
@@ -49,14 +51,18 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run pack
-      - name: Assert solve_from_project is bundled in the packed app
+      - name: Assert solve_from_project + convert_cli are bundled in the packed app
         working-directory: tools/web_viewer_desktop
         run: |
-          FOUND="$(find dist -path '*cad_resources/router/tools/solve_from_project*' 2>/dev/null | head -1)"
-          if [ -z "$FOUND" ]; then
-            echo "FAIL: solve_from_project is NOT bundled under cad_resources/router/tools in the packed app."
-            echo "Packed solve_from_project candidates (if any):"
-            find dist -name 'solve_from_project*' 2>/dev/null || true
-            exit 1
-          fi
-          echo "OK: packed app bundles the solver -> $FOUND"
+          fail=0
+          for b in solve_from_project convert_cli; do
+            FOUND="$(find dist -path "*cad_resources/router/tools/$b*" 2>/dev/null | head -1)"
+            if [ -z "$FOUND" ]; then
+              echo "FAIL: $b is NOT bundled under cad_resources/router/tools in the packed app."
+              find dist -name "$b*" 2>/dev/null || true
+              fail=1
+            else
+              echo "OK: packed app bundles $b -> $FOUND"
+            fi
+          done
+          [ "$fail" = "0" ] || exit 1
