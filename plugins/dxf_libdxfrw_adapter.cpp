@@ -480,9 +480,10 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 auto [px, py] = transformPoint(ent.pts[0].first, ent.pts[0].second,
                                                insX, insY, xscale, yscale, angle);
                 cadgf_vec2 pos = {px, py};
-                std::string tname = encodeTextName(
-                    ent.fontFam.empty() ? std::string("STFangsong") : ent.fontFam,
-                    ent.widthFactor);
+                // Keep an empty family empty (previously substituted with the
+                // macOS-only "STFangsong") so the render layer resolves a
+                // portable default via defaultTextFamily().
+                std::string tname = encodeTextName(ent.fontFam, ent.widthFactor);
                 cadgf_entity_id tid = cadgf_document_add_text(m_doc, &pos,
                     ent.height * std::abs(yscale),
                     ent.rotation + angle, ent.text.c_str(),
@@ -946,15 +947,21 @@ static std::string resolveFontFamily(std::string f) {
         f.find("arial")!= std::string::npos || f.find("sans") != std::string::npos)
         return "STHeiti";
     // SHX single-stroke (romans/isocp/txt/simplex/gbenor) + CJK bigfont
-    // (gbcbig/hzfs/hzdx/hgcad) → 仿宋, the standard technical-lettering look.
-    return "STFangsong"; // default
+    // (gbcbig/hzfs/hzdx/hgcad) and empty/unknown styles → the engineering 仿宋
+    // default. Leave the family EMPTY so the render layer's defaultTextFamily()
+    // resolves a portable 仿宋/song family per render host — NOT the macOS-only
+    // "STFangsong", which has no Linux equivalent and silently fell back to
+    // DejaVu Sans on headless render hosts (the regression the VemCAD render
+    // golden gate caught). Known CJK families above (STSong/STKaiti/STHeiti)
+    // are explicit user choices and intentionally left unchanged here.
+    return ""; // default → empty → render-layer defaultTextFamily()
 }
 
 // Resolve the Qt font family for a DXF text style name via m_textStyles.
 std::string CadgfDrwAdapter::fontFamilyForStyle(const std::string& styleName) const {
     auto sit = m_textStyles.find(styleName);
     if (sit != m_textStyles.end()) return resolveFontFamily(sit->second.fontFile);
-    return resolveFontFamily(""); // unknown style → engineering 仿宋 default
+    return resolveFontFamily(""); // unknown style → empty family → render-layer 仿宋 default
 }
 
 // DXF text-style width factor for a style name (entity widthscale applied by caller).
