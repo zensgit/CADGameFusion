@@ -3,12 +3,13 @@
 #include "core/bounds.hpp"
 
 #include <QFont>
-#include <QFontDatabase>
+#include <QFontInfo>
 #include <QFontMetricsF>
 #include <QPainter>
 #include <QPen>
 #include <QStringList>
 #include <QTransform>
+#include <QtGlobal>
 
 #include <cmath>
 #include <cstdlib>
@@ -16,26 +17,67 @@
 namespace scene_render {
 
 // Best-available FangSong/song-style CJK family for empty-style text (see header).
-// Ordered by closeness to AutoCAD's 仿宋; the first family present in the live font
-// DB wins. On the Linux render host this picks Noto Serif CJK SC (song) instead of
-// the silent DejaVu Sans → Noto Sans CJK fallback. Resolved once — the DB is
-// populated by first-text-draw (render_cli loads --font-dir at startup).
+// Ordered by closeness to AutoCAD's 仿宋. Trust Qt's actual QFontInfo resolution,
+// not just QFontDatabase::families(): headless fontconfig can omit a family from
+// the list while still resolving it, and aliases can also resolve to a generic
+// UI/sans fallback. On the Linux render host this should pick Noto Serif CJK SC
+// (song) instead of the silent DejaVu Sans → Noto Sans CJK fallback. Resolved
+// once — render_cli loads --font-dir before first use.
 QString defaultTextFamily() {
     static const QString fam = [] {
         const QStringList prefer = {
+#if defined(Q_OS_MACOS)
             QStringLiteral("STFangsong"),          // macOS 华文仿宋 (editor parity)
+            QStringLiteral("Zhuque Fangsong"),     // 朱雀仿宋 (bundled OFL, if present)
+            QStringLiteral("Noto Serif CJK SC"),
+#elif defined(Q_OS_WIN)
             QStringLiteral("FangSong"),            // Windows / generic
             QStringLiteral("仿宋"),        // 仿宋
-            QStringLiteral("Zhuque Fangsong"),     // 朱雀仿宋 (bundled OFL, if present)
-            QStringLiteral("Noto Serif CJK SC"),   // song/serif — closest to 仿宋 on Linux
+            QStringLiteral("Noto Serif CJK SC"),
+            QStringLiteral("Zhuque Fangsong"),
+#else
+            QStringLiteral("Noto Serif CJK SC"),   // render-image Linux host (fonts-noto-cjk)
             QStringLiteral("Source Han Serif SC"),
             QStringLiteral("Noto Serif CJK TC"),
+            QStringLiteral("Zhuque Fangsong"),
+            QStringLiteral("FangSong"),
+            QStringLiteral("仿宋"),
+            QStringLiteral("STFangsong"),
+#endif
             QStringLiteral("LXGW WenKai"),         // 霞鹜文楷 (kai; song-ish, still > sans)
         };
-        const QStringList have = QFontDatabase::families();
-        for (const QString& f : prefer)
-            if (have.contains(f, Qt::CaseInsensitive)) return f;
-        return QStringLiteral("STFangsong");       // unchanged behaviour if none installed
+
+        const QStringList acceptableResolvedTokens = {
+            QStringLiteral("serif"),
+            QStringLiteral("song"),
+            QStringLiteral("fang"),
+            QStringLiteral("仿宋"),
+            QStringLiteral("stfang"),
+            QStringLiteral("zhuque"),
+            QStringLiteral("lxgw")
+        };
+        for (const QString& f : prefer) {
+            QFont probe(f);
+            probe.setStyleHint(QFont::Serif);
+            const QString resolved = QFontInfo(probe).family();
+            const QString folded = resolved.toCaseFolded();
+            if (folded.isEmpty()) continue;
+            if (folded.contains(QStringLiteral("dejavu sans")) ||
+                folded.contains(QStringLiteral("noto sans")) ||
+                folded.contains(QStringLiteral("helvetica")) ||
+                folded.contains(QStringLiteral("applesystem")) ||
+                folded == QStringLiteral("sans serif")) {
+                continue;
+            }
+            for (const QString& tok : acceptableResolvedTokens) {
+                if (folded.contains(tok.toCaseFolded())) return f;
+            }
+        }
+        // Last resort for headless render hosts: the VemCAD render image
+        // installs fonts-noto-cjk, and the VemCAD golden gate now fails if
+        // this still resolves to a sans fallback. Real macOS STFangsong (when
+        // installed) has already been selected by the QFontInfo probe above.
+        return QStringLiteral("Noto Serif CJK SC");
     }();
     return fam;
 }
