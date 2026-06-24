@@ -77,6 +77,10 @@ QVector<qreal> linetypeDashPattern(const std::string& lt, double scale,
 // song family (e.g. Noto Serif CJK SC) rather than letting Qt fall back to a sans
 // (DejaVu Sans → Noto Sans CJK). Resolved once against the live font DB.
 QString defaultTextFamily();
+// Normalize an importer/style-provided family into the family renderScene will
+// actually request. Empty/default SHX text and platform-specific missing
+// defaults (notably STFangsong outside macOS) resolve to defaultTextFamily().
+QString resolveTextFamily(const QString& family);
 
 // Fit the world rect [mnx..mxx]×[mny..mxy] into the viewport. Same formula as
 // the editor's zoom-to-extents (5% margin, 0.9 factor). False on degenerate

@@ -126,7 +126,7 @@ QString familyOf(const core::Entity& e) {
     QString nm = QString::fromStdString(e.name);
     int sep = nm.indexOf(QChar(0x1f));
     QString fam = (sep >= 0) ? nm.left(sep) : nm;
-    return fam.isEmpty() ? scene_render::defaultTextFamily() : fam;
+    return scene_render::resolveTextFamily(fam);
 }
 
 // Counts only the text entities renderScene will actually draw — same
@@ -158,12 +158,13 @@ bool isSansFallbackFamily(const QString& family) {
 }
 
 bool isRequestedCjkSerifFamily(const QString& family) {
+    const QString folded = family.toCaseFolded();
+    if (folded == QStringLiteral("stfangsong")) return false;
     return containsFoldedToken(family, {
         QStringLiteral("serif"),
         QStringLiteral("song"),
         QStringLiteral("fang"),
         QStringLiteral("仿宋"),
-        QStringLiteral("stfang"),
         QStringLiteral("zhuque")
     });
 }
