@@ -82,6 +82,28 @@ QString defaultTextFamily() {
     return fam;
 }
 
+QString resolveTextFamily(const QString& family) {
+    const QString fam = family.trimmed();
+    if (fam.isEmpty()) return defaultTextFamily();
+
+    const QString folded = fam.toCaseFolded();
+#if !defined(Q_OS_MACOS)
+    // STFangsong is the macOS 华文仿宋 family. On Linux/Windows render hosts it
+    // is usually absent; requesting it lets Qt pick a Latin sans primary face
+    // (reported as DejaVu Sans on Linux) and then merge CJK glyphs. Treat it as
+    // the platform-independent "AutoCAD-like CJK default" and resolve to the
+    // live defaultTextFamily() instead.
+    if (folded == QStringLiteral("stfangsong")) return defaultTextFamily();
+#endif
+    if (folded == QStringLiteral("sans serif") ||
+        folded.contains(QStringLiteral("dejavu sans")) ||
+        folded.contains(QStringLiteral("helvetica")) ||
+        folded.contains(QStringLiteral("applesystem"))) {
+        return defaultTextFamily();
+    }
+    return fam;
+}
+
 namespace {
 
 uint32_t aci_to_rgb(int aci) {
@@ -438,8 +460,7 @@ void renderScene(QPainter& pr, const core::Document* doc,
                 } else {
                     fam = nm;
                 }
-                if (fam.isEmpty())
-                    fam = defaultTextFamily(); // best-available 仿宋/song family (was STFangsong)
+                fam = resolveTextFamily(fam); // best-available 仿宋/song family (was STFangsong)
             }
             // AutoCAD model: a DXF text of world-height H is drawn so the
             // glyphs are H units tall → on screen H*scale px. Size the font so
