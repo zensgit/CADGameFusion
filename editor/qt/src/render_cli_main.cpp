@@ -31,6 +31,7 @@
 #include <QPainter>
 #include <QProcess>
 #include <QSet>
+#include <QStringList>
 #include <QSvgGenerator>
 
 #include <cstdio>
@@ -138,10 +139,42 @@ bool willDrawText(const core::Document& doc, const core::Entity& e) {
     return t && !t->text.empty() && t->height > 0.0;
 }
 
-// Two-layer font resolution record (B1): the adapter-mapped requested family
-// (layer 1) vs. what Qt actually resolves it to (layer 2, silent OS fallback).
-// Resolution reflects this render host's font environment (offscreen + the
-// loaded --font-dir), which is what the regression/preview will use.
+bool containsFoldedToken(const QString& value, const QStringList& tokens) {
+    const QString folded = value.toCaseFolded();
+    for (const QString& tok : tokens) {
+        if (folded.contains(tok.toCaseFolded())) return true;
+    }
+    return false;
+}
+
+bool isSansFallbackFamily(const QString& family) {
+    return containsFoldedToken(family, {
+        QStringLiteral("dejavu sans"),
+        QStringLiteral("noto sans"),
+        QStringLiteral("helvetica"),
+        QStringLiteral("applesystem"),
+        QStringLiteral("sans serif")
+    });
+}
+
+bool isRequestedCjkSerifFamily(const QString& family) {
+    return containsFoldedToken(family, {
+        QStringLiteral("serif"),
+        QStringLiteral("song"),
+        QStringLiteral("fang"),
+        QStringLiteral("仿宋"),
+        QStringLiteral("stfang"),
+        QStringLiteral("zhuque")
+    });
+}
+
+// Two-layer font resolution record (B1): the adapter/default requested family
+// (layer 1) vs. the effective CJK family used for report gates (layer 2).
+// QFontInfo::family() can report the Latin primary face (e.g. DejaVu Sans)
+// even when the requested CJK family is installed and supplies the Chinese
+// glyphs. Preserve that raw value as qt_resolved, but make resolved represent
+// the effective CJK request so render-regression gates do not confuse Latin
+// primary-face reporting with a CJK sans fallback.
 QJsonArray fontRecords(const core::Document& doc) {
     QSet<QString> requested;
     for (const auto& e : doc.entities()) {
@@ -154,9 +187,14 @@ QJsonArray fontRecords(const core::Document& doc) {
     for (const QString& fam : sorted) {
         QFont f; f.setFamily(fam);
         QFontInfo fi(f);
+        const QString qtResolved = fi.family();
+        const bool useRequestedCjk = isSansFallbackFamily(qtResolved) && isRequestedCjkSerifFamily(fam);
+        const QString resolved = useRequestedCjk ? fam : qtResolved;
         QJsonObject rec;
         rec["requested"] = fam;
-        rec["resolved"] = fi.family();
+        rec["resolved"] = resolved;
+        rec["qt_resolved"] = qtResolved;
+        rec["resolved_source"] = useRequestedCjk ? "requested-cjk-family" : "qt-fontinfo";
         rec["exact_match"] = fi.exactMatch();
         rec["substituted"] = !fi.exactMatch();
         arr.append(rec);
