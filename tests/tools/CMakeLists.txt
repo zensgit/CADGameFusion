@@ -263,6 +263,22 @@ add_test(NAME test_dxf_nonfinite_numbers_run
         $<TARGET_FILE:cadgf_dxf_importer_plugin>
         ${CMAKE_SOURCE_DIR}/tests/plugin_data/nonfinite_numbers_sample.dxf)
 
+if(TARGET dxfrw)
+    add_executable(test_dxf_libdxfrw_orphan_dimension_blocks
+        test_dxf_libdxfrw_orphan_dimension_blocks.cpp
+        ${CMAKE_SOURCE_DIR}/plugins/dxf_libdxfrw_adapter.cpp)
+    target_link_libraries(test_dxf_libdxfrw_orphan_dimension_blocks PRIVATE core_c dxfrw)
+    target_include_directories(test_dxf_libdxfrw_orphan_dimension_blocks PRIVATE
+        ${CMAKE_SOURCE_DIR}/core/include
+        ${CMAKE_SOURCE_DIR}/plugins
+        ${CMAKE_SOURCE_DIR}/deps/libdxfrw/src)
+    set_target_properties(test_dxf_libdxfrw_orphan_dimension_blocks PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+
+    add_test(NAME test_dxf_libdxfrw_orphan_dimension_blocks_run
+        COMMAND test_dxf_libdxfrw_orphan_dimension_blocks
+            ${CMAKE_SOURCE_DIR}/tests/plugin_data/libdxfrw_orphan_dimension_block.dxf)
+endif()
+
 add_executable(test_dxf_roundtrip test_dxf_roundtrip.cpp)
 target_link_libraries(test_dxf_roundtrip PRIVATE core_c ${CMAKE_DL_LIBS})
 target_include_directories(test_dxf_roundtrip PRIVATE ${CMAKE_SOURCE_DIR}/core/include ${CMAKE_SOURCE_DIR}/tools)
@@ -373,6 +389,9 @@ set_tests_properties(test_dxf_hatch_dash_run PROPERTIES ENVIRONMENT "${_plugin_e
 set_tests_properties(test_dxf_hatch_dense_cap_run PROPERTIES ENVIRONMENT "${_plugin_env}")
 set_tests_properties(test_dxf_hatch_large_boundary_budget_run PROPERTIES ENVIRONMENT "${_plugin_env}")
 set_tests_properties(test_dxf_nonfinite_numbers_run PROPERTIES ENVIRONMENT "${_plugin_env}")
+if(TARGET dxfrw)
+    set_tests_properties(test_dxf_libdxfrw_orphan_dimension_blocks_run PROPERTIES ENVIRONMENT "${_plugin_env}")
+endif()
 set_tests_properties(test_dxf_roundtrip_run PROPERTIES ENVIRONMENT "${_plugin_env}")
 set_tests_properties(test_dxf_roundtrip_styles_run PROPERTIES ENVIRONMENT "${_plugin_env}")
 set_tests_properties(test_dxf_exporter_plugin_smoke_run PROPERTIES ENVIRONMENT "${_plugin_env}")

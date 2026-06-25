@@ -126,6 +126,7 @@ public:
 
 private:
     bool shouldSkipEntity(const DRW_Entity& ent) const;
+    bool useDimBlock(const DRW_Dimension* dim);
     int resolveLayer(const std::string& name);
     void addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid,
                           uint32_t color = 0, const std::string& linetype = "",
@@ -187,4 +188,5 @@ private:
     std::map<std::string, std::vector<BlockEntity>> m_blocks;
     std::map<std::string, int> m_blockFlags;     // DXF code 70 per block name
     std::set<std::string> m_referencedBlocks; // blocks referenced by INSERT
+    std::set<std::string> m_referencedDimensionBlocks;  // *D blocks referenced by DIMENSION
 };
