@@ -82,23 +82,121 @@ QString defaultTextFamily() {
     return fam;
 }
 
+// Best-available 楷体 (kai) family for explicit STKaiti text (importer-baked,
+// macOS-only). Prefers the bundled LXGW WenKai (霞鹜文楷); falls back to a CJK
+// serif (kai is closer to serif than to sans) so a kai request never lands on
+// DejaVu Sans on a Linux render host. Mirrors defaultTextFamily()'s host-probe.
+QString defaultKaiFamily() {
+    static const QString fam = [] {
+        const QStringList prefer = {
+#if defined(Q_OS_MACOS)
+            QStringLiteral("STKaiti"),
+            QStringLiteral("Kaiti SC"),
+            QStringLiteral("LXGW WenKai"),
+#elif defined(Q_OS_WIN)
+            QStringLiteral("KaiTi"),
+            QStringLiteral("楷体"),
+            QStringLiteral("LXGW WenKai"),
+            QStringLiteral("Noto Serif CJK SC"),
+#else
+            QStringLiteral("LXGW WenKai"),         // 霞鹜文楷 (bundled OFL kai)
+            QStringLiteral("Noto Serif CJK SC"),   // CJK serif fallback (no Noto kai)
+            QStringLiteral("Source Han Serif SC"),
+#endif
+        };
+        const QStringList acceptable = {
+            QStringLiteral("lxgw"), QStringLiteral("wenkai"), QStringLiteral("kai"),
+            QStringLiteral("楷"), QStringLiteral("serif"), QStringLiteral("song"),
+        };
+        for (const QString& f : prefer) {
+            QFont probe(f);
+            probe.setStyleHint(QFont::Serif);
+            const QString folded = QFontInfo(probe).family().toCaseFolded();
+            if (folded.isEmpty()) continue;
+            if (folded.contains(QStringLiteral("dejavu sans")) ||
+                folded.contains(QStringLiteral("noto sans")) ||
+                folded.contains(QStringLiteral("helvetica")) ||
+                folded.contains(QStringLiteral("applesystem")) ||
+                folded == QStringLiteral("sans serif")) {
+                continue;
+            }
+            for (const QString& tok : acceptable) {
+                if (folded.contains(tok.toCaseFolded())) return f;
+            }
+        }
+        return QStringLiteral("Noto Serif CJK SC");
+    }();
+    return fam;
+}
+
+// Best-available 黑体 (hei / CJK sans) family for explicit STHeiti text. Prefers
+// Noto Sans CJK SC (always present in the render image via fonts-noto-cjk); a hei
+// request must land on a CJK sans — never DejaVu Sans (Latin) or a serif.
+QString defaultSansFamily() {
+    static const QString fam = [] {
+        const QStringList prefer = {
+#if defined(Q_OS_MACOS)
+            QStringLiteral("STHeiti"),
+            QStringLiteral("PingFang SC"),
+            QStringLiteral("Noto Sans CJK SC"),
+#elif defined(Q_OS_WIN)
+            QStringLiteral("SimHei"),
+            QStringLiteral("黑体"),
+            QStringLiteral("Microsoft YaHei"),
+            QStringLiteral("Noto Sans CJK SC"),
+#else
+            QStringLiteral("Noto Sans CJK SC"),    // render-image Linux (fonts-noto-cjk)
+            QStringLiteral("Source Han Sans SC"),
+            QStringLiteral("Noto Sans CJK TC"),
+#endif
+        };
+        // Must be a CJK sans: require a CJK marker; reject Latin sans (DejaVu/Helvetica).
+        const QStringList acceptable = {
+            QStringLiteral("cjk"), QStringLiteral("source han sans"),
+            QStringLiteral("pingfang"), QStringLiteral("yahei"),
+            QStringLiteral("黑"), QStringLiteral("heiti"),
+        };
+        for (const QString& f : prefer) {
+            QFont probe(f);
+            probe.setStyleHint(QFont::SansSerif);
+            const QString folded = QFontInfo(probe).family().toCaseFolded();
+            if (folded.isEmpty()) continue;
+            if (folded.contains(QStringLiteral("dejavu")) ||
+                folded.contains(QStringLiteral("helvetica")) ||
+                folded.contains(QStringLiteral("applesystem")) ||
+                folded == QStringLiteral("sans serif")) {
+                continue;
+            }
+            for (const QString& tok : acceptable) {
+                if (folded.contains(tok.toCaseFolded())) return f;
+            }
+        }
+        return QStringLiteral("Noto Sans CJK SC");
+    }();
+    return fam;
+}
+
 QString resolveTextFamily(const QString& family) {
     const QString fam = family.trimmed();
     if (fam.isEmpty()) return defaultTextFamily();
 
     const QString folded = fam.toCaseFolded();
 #if !defined(Q_OS_MACOS)
-    // STFangsong / STSong are the macOS 华文仿宋 / 华文宋体 families the DXF
-    // importer bakes (resolveFontFamily): STFangsong for empty/SHX-default styles,
-    // STSong for explicit 宋体/SimSun styles. On Linux/Windows render hosts they
-    // are usually absent; requesting them lets Qt pick a Latin sans primary face
-    // (reported as DejaVu Sans on Linux) and then merge CJK glyphs. Treat them as
-    // the platform-independent "AutoCAD-like CJK serif default" and resolve to the
-    // live defaultTextFamily() instead. macOS keeps the real families (this block
-    // is skipped there). This is the render-layer home of the VemCAD
-    // STFangsong/STSong fontconfig alias — so that image-side alias can be removed.
+    // The DXF importer (resolveFontFamily) bakes macOS-only CJK family names for
+    // both empty-style (STFangsong) and explicit styles (STSong/STKaiti/STHeiti).
+    // On Linux/Windows render hosts those families are usually absent; requesting
+    // them lets Qt pick a Latin sans primary face (DejaVu Sans on Linux) and merge
+    // CJK glyphs. Remap each to a portable, typeface-class-correct host family:
+    //   song/仿宋 (STFangsong/STSong) → defaultTextFamily()  [CJK serif]
+    //   楷 (STKaiti)                  → defaultKaiFamily()    [LXGW WenKai / serif]
+    //   黑/sans (STHeiti)             → defaultSansFamily()   [Noto Sans CJK SC]
+    // macOS keeps the real families (this block is skipped there). This is the
+    // render-layer home of the VemCAD fontconfig alias — so the image-side alias
+    // is no longer needed for any of them.
     if (folded == QStringLiteral("stfangsong")) return defaultTextFamily();
     if (folded == QStringLiteral("stsong")) return defaultTextFamily();
+    if (folded == QStringLiteral("stkaiti")) return defaultKaiFamily();
+    if (folded == QStringLiteral("stheiti")) return defaultSansFamily();
 #endif
     if (folded == QStringLiteral("sans serif") ||
         folded.contains(QStringLiteral("dejavu sans")) ||

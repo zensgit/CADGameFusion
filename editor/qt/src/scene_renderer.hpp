@@ -77,6 +77,11 @@ QVector<qreal> linetypeDashPattern(const std::string& lt, double scale,
 // song family (e.g. Noto Serif CJK SC) rather than letting Qt fall back to a sans
 // (DejaVu Sans → Noto Sans CJK). Resolved once against the live font DB.
 QString defaultTextFamily();
+// Best-available 楷体 (kai) family for explicit STKaiti, and 黑体 (CJK sans) family
+// for explicit STHeiti — the macOS-only families the importer bakes for those
+// explicit styles. Same host-probe as defaultTextFamily(), typeface-class-correct.
+QString defaultKaiFamily();
+QString defaultSansFamily();
 // Normalize an importer/style-provided family into the family renderScene will
 // actually request. Empty/default SHX text and platform-specific missing
 // defaults (notably STFangsong outside macOS) resolve to defaultTextFamily().
