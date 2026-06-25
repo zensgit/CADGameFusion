@@ -1713,11 +1713,13 @@ void addDimText(cadgf_document* doc, const DRW_Dimension* dim, int lid,
 
 // Check if a dimension entity's *D block exists with geometry.
 // If so, expandUnreferencedBlocks() will render it — skip programmatic construction.
-bool hasDimBlock(const DRW_Dimension* dim, const std::map<std::string, std::vector<BlockEntity>>& blocks) {
+bool CadgfDrwAdapter::useDimBlock(const DRW_Dimension* dim) {
     std::string bn = const_cast<DRW_Dimension*>(dim)->getName();
     if (bn.empty()) return false;
-    auto it = blocks.find(bn);
-    return it != blocks.end() && !it->second.empty();
+    auto it = m_blocks.find(bn);
+    if (it == m_blocks.end() || it->second.empty()) return false;
+    m_referencedDimensionBlocks.insert(bn);
+    return true;
 }
 
 // Draw proper aligned dimension: extension lines + offset dimension line
@@ -1725,7 +1727,7 @@ void CadgfDrwAdapter::addDimAlign(const DRW_DimAligned* data) {
     if (!data) return;
     if (!m_inBlock && shouldSkipEntity(*data)) return;
     // Prefer AutoCAD's *D block geometry over programmatic construction
-    if (!m_inBlock && hasDimBlock(data, m_blocks)) return;
+    if (!m_inBlock && useDimBlock(data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
 
@@ -1779,7 +1781,7 @@ void CadgfDrwAdapter::addDimAlign(const DRW_DimAligned* data) {
 void CadgfDrwAdapter::addDimLinear(const DRW_DimLinear* data) {
     if (!data) return;
     if (!m_inBlock && shouldSkipEntity(*data)) return;
-    if (!m_inBlock && hasDimBlock(data, m_blocks)) return;
+    if (!m_inBlock && useDimBlock(data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
 
@@ -1830,7 +1832,7 @@ void CadgfDrwAdapter::addDimLinear(const DRW_DimLinear* data) {
 void CadgfDrwAdapter::addDimRadial(const DRW_DimRadial* data) {
     if (!data) return;
     if (!m_inBlock && shouldSkipEntity(*data)) return;
-    if (!m_inBlock && hasDimBlock(data, m_blocks)) return;
+    if (!m_inBlock && useDimBlock(data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
     double cx = data->getCenterPoint().x, cy = data->getCenterPoint().y;
@@ -1851,7 +1853,7 @@ void CadgfDrwAdapter::addDimRadial(const DRW_DimRadial* data) {
 void CadgfDrwAdapter::addDimDiametric(const DRW_DimDiametric* data) {
     if (!data) return;
     if (!m_inBlock && shouldSkipEntity(*data)) return;
-    if (!m_inBlock && hasDimBlock(data, m_blocks)) return;
+    if (!m_inBlock && useDimBlock(data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
     double d1x = data->getDiameter1Point().x, d1y = data->getDiameter1Point().y;
@@ -1873,7 +1875,7 @@ void CadgfDrwAdapter::addDimDiametric(const DRW_DimDiametric* data) {
 void CadgfDrwAdapter::addDimAngular(const DRW_DimAngular* data) {
     if (!data) return;
     if (!m_inBlock && shouldSkipEntity(*data)) return;
-    if (!m_inBlock && hasDimBlock(data, m_blocks)) return;
+    if (!m_inBlock && useDimBlock(data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
 
@@ -1968,7 +1970,7 @@ void CadgfDrwAdapter::addDimAngular(const DRW_DimAngular* data) {
 void CadgfDrwAdapter::addDimAngular3P(const DRW_DimAngular3p* data) {
     if (!data) return;
     if (!m_inBlock && shouldSkipEntity(*data)) return;
-    if (!m_inBlock && hasDimBlock(data, m_blocks)) return;
+    if (!m_inBlock && useDimBlock(data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
     // Center = getDefPoint, points = getFirstLine, getSecondLine
@@ -1998,7 +2000,7 @@ void CadgfDrwAdapter::addDimAngular3P(const DRW_DimAngular3p* data) {
 void CadgfDrwAdapter::addDimOrdinate(const DRW_DimOrdinate* data) {
     if (!data) return;
     if (!m_inBlock && shouldSkipEntity(*data)) return;
-    if (!m_inBlock && hasDimBlock(data, m_blocks)) return;
+    if (!m_inBlock && useDimBlock(data)) return;
     int lid = resolveLayer(data->layer);
     uint32_t col = drw_entity_color(*data);
     // Feature point → leader end point line
@@ -2029,12 +2031,17 @@ void CadgfDrwAdapter::expandUnreferencedBlocks() {
         if (m_referencedBlocks.count(name)) continue;
         if (name.empty()) continue;
         if (entities.empty()) continue;
-        // Allow *D blocks (AutoCAD-generated dimension geometry) to be expanded.
+        // Allow only *D blocks that are referenced by a top-level DIMENSION to
+        // be expanded. DXF files can carry orphan AutoCAD-generated *D blocks
+        // from prior edits; AutoCAD does not render those as standalone model
+        // geometry, and expanding every unreferenced *D block leaks stale
+        // dimensions onto the sheet.
         if (name[0] == '*') {
             if (name.size() > 1 && name[1] == 'D' &&
                 (name.size() == 2 || std::isdigit(static_cast<unsigned char>(name[2])))) {
-                // *D# dimension block — expand it
-                expandBlock(name, 0, 0, 1, 1, 0, 0);
+                if (m_referencedDimensionBlocks.count(name)) {
+                    expandBlock(name, 0, 0, 1, 1, 0, 0);
+                }
             }
             continue; // skip other system blocks (*T#, *U#, *X#, *MODEL_SPACE, …)
         }
