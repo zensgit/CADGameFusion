@@ -43,6 +43,17 @@ add_test(NAME test_dxf_text_metadata_run
         $<TARGET_FILE:cadgf_dxf_importer_plugin>
         ${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_text_metadata.dxf)
 
+add_executable(test_dxf_text_default_family test_dxf_text_default_family.cpp)
+target_link_libraries(test_dxf_text_default_family PRIVATE core_c ${CMAKE_DL_LIBS})
+target_include_directories(test_dxf_text_default_family PRIVATE ${CMAKE_SOURCE_DIR}/core/include ${CMAKE_SOURCE_DIR}/tools)
+set_target_properties(test_dxf_text_default_family PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+add_dependencies(test_dxf_text_default_family cadgf_dxf_importer_plugin)
+
+add_test(NAME test_dxf_text_default_family_run
+    COMMAND test_dxf_text_default_family
+        $<TARGET_FILE:cadgf_dxf_importer_plugin>
+        ${CMAKE_SOURCE_DIR}/tests/plugin_data/cjk_default_family.dxf)
+
 add_executable(test_dxf_mleader_metadata test_dxf_mleader_metadata.cpp)
 target_link_libraries(test_dxf_mleader_metadata PRIVATE core_c ${CMAKE_DL_LIBS})
 target_include_directories(test_dxf_mleader_metadata PRIVATE ${CMAKE_SOURCE_DIR}/core/include ${CMAKE_SOURCE_DIR}/tools)

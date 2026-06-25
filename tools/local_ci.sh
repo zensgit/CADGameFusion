@@ -249,6 +249,7 @@ CTEST_TEXT_ALIGN_EXT_STATUS="skipped"
 CTEST_HATCH_DENSE_STATUS="skipped"
 CTEST_HATCH_LARGE_BOUNDARY_STATUS="skipped"
 CTEST_NONFINITE_STATUS="skipped"
+CTEST_CJK_DEFAULT_FAMILY_STATUS="skipped"
 CTEST_CONSTRAINTS_BASIC_STATUS="skipped"
 CTEST_DWG_MATRIX_STATUS="skipped"
 CTEST_CONVERT_ROUNDTRIP_STATUS="skipped"
@@ -967,6 +968,7 @@ main() {
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target test_dxf_hatch_dense_cap --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target test_dxf_hatch_large_boundary_budget --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target test_dxf_nonfinite_numbers --parallel || true
+  cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target test_dxf_text_default_family --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target cadgf_json_importer_plugin --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target cadgf_dxf_importer_plugin --parallel || true
   cmake --build "$BUILD_DIR" --config "$BUILD_TYPE" --target cadgf_dxf_exporter_plugin --parallel || true
@@ -2666,6 +2668,7 @@ PY
   run_ctest_check test_dxf_hatch_dense_cap_run "hatch dense cap" CTEST_HATCH_DENSE_STATUS
   run_ctest_check test_dxf_hatch_large_boundary_budget_run "hatch large boundary budget" CTEST_HATCH_LARGE_BOUNDARY_STATUS
   run_ctest_check test_dxf_nonfinite_numbers_run "nonfinite numbers" CTEST_NONFINITE_STATUS
+  run_ctest_check test_dxf_text_default_family_run "CJK default family regression" CTEST_CJK_DEFAULT_FAMILY_STATUS
   run_ctest_check test_dxf_exporter_plugin_smoke_run "DXF exporter plugin" CTEST_DXF_EXPORTER_STATUS
   run_ctest_check test_dwg_matrix_run "DWG matrix (40 samples)" CTEST_DWG_MATRIX_STATUS
   run_ctest_check test_convert_roundtrip_run "DWG→DXF roundtrip (simple)" CTEST_CONVERT_ROUNDTRIP_STATUS
@@ -3598,6 +3601,10 @@ PY
     if [[ "$CTEST_HATCH_STATUS" == "fail" || "$CTEST_HATCH_STATUS" == "missing" ]]; then
       FAIL_FLAG=1
       FAIL_REASONS+=("ctestHatchDash=$CTEST_HATCH_STATUS")
+    fi
+    if [[ "$CTEST_CJK_DEFAULT_FAMILY_STATUS" == "fail" || "$CTEST_CJK_DEFAULT_FAMILY_STATUS" == "missing" ]]; then
+      FAIL_FLAG=1
+      FAIL_REASONS+=("ctestCjkDefaultFamilyRegression=$CTEST_CJK_DEFAULT_FAMILY_STATUS")
     fi
     if [[ "$CTEST_TEXT_ALIGN_STATUS" == "fail" || "$CTEST_TEXT_ALIGN_STATUS" == "missing" ]]; then
       FAIL_FLAG=1
