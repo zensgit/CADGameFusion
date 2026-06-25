@@ -12,6 +12,7 @@
 #include "core/geometry2d.hpp"
 #include "canvas.hpp"
 #include "command/command_manager.hpp"
+#include "scene_renderer.hpp"
 
 static core::Polyline makeSquare(double size) {
     core::Polyline pl;
@@ -164,9 +165,33 @@ private:
     QVector<core::EntityId> ids_;
 };
 
+// CJK font-family normalization (render layer). The DXF importer bakes macOS-only
+// families — STFangsong for empty/SHX-default styles, STSong for explicit
+// 宋体/SimSun styles. On non-macOS render hosts resolveTextFamily() must remap them
+// to the portable defaultTextFamily() (a CJK serif: Noto Serif CJK SC on the Linux
+// render image) so they don't fall back to DejaVu Sans. This is the render-layer
+// home of the VemCAD STFangsong/STSong fontconfig alias, letting that alias be
+// removed. (Coverage note: CADGF has no gating path for Qt tests — qt-tests-trial
+// is advisory — so this matches STFangsong's existing advisory-only coverage.)
+static void testCjkFamilyResolution() {
+    const QString def = scene_render::defaultTextFamily();
+    assert(!def.isEmpty());
+#if !defined(Q_OS_MACOS)
+    // Non-macOS: STSong / STFangsong are absent → remapped to the portable default.
+    assert(scene_render::resolveTextFamily(QStringLiteral("STSong")) == def);
+    assert(scene_render::resolveTextFamily(QStringLiteral("STSong")) != QStringLiteral("STSong"));
+    assert(scene_render::resolveTextFamily(QStringLiteral("STFangsong")) == def);
+#else
+    // macOS: the real families exist → pass through unchanged.
+    assert(scene_render::resolveTextFamily(QStringLiteral("STSong")) == QStringLiteral("STSong"));
+#endif
+}
+
 int main(int argc, char** argv) {
     qputenv("QT_QPA_PLATFORM", QByteArray("offscreen"));
     QApplication app(argc, argv);
+
+    testCjkFamilyResolution();
 
     core::Document doc;
     CanvasWidget canvas;
