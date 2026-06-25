@@ -88,12 +88,17 @@ QString resolveTextFamily(const QString& family) {
 
     const QString folded = fam.toCaseFolded();
 #if !defined(Q_OS_MACOS)
-    // STFangsong is the macOS 华文仿宋 family. On Linux/Windows render hosts it
-    // is usually absent; requesting it lets Qt pick a Latin sans primary face
-    // (reported as DejaVu Sans on Linux) and then merge CJK glyphs. Treat it as
-    // the platform-independent "AutoCAD-like CJK default" and resolve to the
-    // live defaultTextFamily() instead.
+    // STFangsong / STSong are the macOS 华文仿宋 / 华文宋体 families the DXF
+    // importer bakes (resolveFontFamily): STFangsong for empty/SHX-default styles,
+    // STSong for explicit 宋体/SimSun styles. On Linux/Windows render hosts they
+    // are usually absent; requesting them lets Qt pick a Latin sans primary face
+    // (reported as DejaVu Sans on Linux) and then merge CJK glyphs. Treat them as
+    // the platform-independent "AutoCAD-like CJK serif default" and resolve to the
+    // live defaultTextFamily() instead. macOS keeps the real families (this block
+    // is skipped there). This is the render-layer home of the VemCAD
+    // STFangsong/STSong fontconfig alias — so that image-side alias can be removed.
     if (folded == QStringLiteral("stfangsong")) return defaultTextFamily();
+    if (folded == QStringLiteral("stsong")) return defaultTextFamily();
 #endif
     if (folded == QStringLiteral("sans serif") ||
         folded.contains(QStringLiteral("dejavu sans")) ||
