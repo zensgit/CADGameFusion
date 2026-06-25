@@ -96,8 +96,10 @@ int main(int argc, char** argv) {
     if (sep != std::string::npos) family = family.substr(0, sep);
     assert(family.empty());
 
-    // Emit the name byte-count so the CI log visibly shows a non-empty name was
-    // exercised (the substring check would also pass vacuously on an empty name).
+    // Emit the resolved-name byte-count so the CI log records what the importer
+    // produced (0 bytes = family fully deferred to the render layer). The pass is
+    // non-vacuous regardless of the count: before the fix the name carried
+    // "STFangsong" and the substring assert above fails.
     std::printf("test_dxf_text_default_family OK (entity name = %zu bytes, no STFangsong;"
                 " family deferred to render layer)\n", name.size());
     cadgf_document_destroy(doc);
