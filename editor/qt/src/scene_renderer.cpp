@@ -20,8 +20,9 @@ namespace scene_render {
 // Ordered by closeness to AutoCAD's 仿宋. Trust Qt's actual QFontInfo resolution,
 // not just QFontDatabase::families(): headless fontconfig can omit a family from
 // the list while still resolving it, and aliases can also resolve to a generic
-// UI/sans fallback. On the Linux render host this should pick Noto Serif CJK SC
-// (song) instead of the silent DejaVu Sans → Noto Sans CJK fallback. Resolved
+// UI/sans fallback. On the Linux render host this picks Zhuque Fangsong (the authentic
+// 仿宋) when the OFL font is bundled (VemCAD render-image), else Noto Serif CJK SC
+// (song) — never the silent DejaVu Sans → Noto Sans CJK fallback. Resolved
 // once — render_cli loads --font-dir before first use.
 QString defaultTextFamily() {
     static const QString fam = [] {
@@ -36,10 +37,10 @@ QString defaultTextFamily() {
             QStringLiteral("Noto Serif CJK SC"),
             QStringLiteral("Zhuque Fangsong"),
 #else
-            QStringLiteral("Noto Serif CJK SC"),   // render-image Linux host (fonts-noto-cjk)
+            QStringLiteral("Zhuque Fangsong"),     // 朱雀仿宋 (bundled OFL via the render-image) — preferred 仿宋 when present
+            QStringLiteral("Noto Serif CJK SC"),   // render-image Linux host (fonts-noto-cjk) — guaranteed song fallback
             QStringLiteral("Source Han Serif SC"),
             QStringLiteral("Noto Serif CJK TC"),
-            QStringLiteral("Zhuque Fangsong"),
             QStringLiteral("FangSong"),
             QStringLiteral("仿宋"),
             QStringLiteral("STFangsong"),
