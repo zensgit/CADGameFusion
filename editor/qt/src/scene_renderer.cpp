@@ -13,6 +13,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <vector>
 
 namespace scene_render {
 
@@ -274,6 +275,10 @@ const core::Layer* layer_for(const core::Document* doc, int layerId) {
     return doc->get_layer(layerId);
 }
 
+QColor color_from_rgb(uint32_t rgb) {
+    return QColor((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+}
+
 } // namespace
 
 QPointF worldToScreen(const View& view, const QPointF& p) {
@@ -392,6 +397,57 @@ QColor resolveEntityColor(const core::Document* doc, const core::Entity& entity,
 
     if (color == 0) color = layer_color ? layer_color : 0xDCDCE6u;
     return finalize_color(color, flipWhiteOnLight);
+}
+
+std::vector<std::string> semanticClassOrder() {
+    return {
+        "geometry",
+        "text",
+        "dimension",
+        "hatch",
+        "insert_text",
+        "other",
+    };
+}
+
+uint32_t semanticClassRgb(const std::string& name) {
+    if (name == "geometry") return 0x1F77B4u;    // blue
+    if (name == "text") return 0xFF7F0Eu;        // orange
+    if (name == "dimension") return 0xD62728u;   // red
+    if (name == "hatch") return 0x2CA02Cu;       // green
+    if (name == "insert_text") return 0x9467BDu; // purple
+    return 0x8C8C8Cu;                            // other/unknown
+}
+
+std::string semanticClassName(const core::Document* doc, const core::Entity& entity) {
+    const std::string source = lookup_entity_meta(doc, entity.id, "source_type");
+    const std::string textKind = lookup_entity_meta(doc, entity.id, "text_kind");
+    const std::string attributeTag = lookup_entity_meta(doc, entity.id, "attribute_tag");
+
+    if (source == "DIMENSION" || textKind == "dimension") return "dimension";
+    if (source == "HATCH" || entity.line_type == "__HATCH_FILL__") return "hatch";
+
+    if (entity.type == core::EntityType::Text) {
+        // Insert-sourced text includes title-block attributes in the G11 class
+        // of drawings. Keep it separate from direct modelspace TEXT/MTEXT.
+        if (source == "INSERT" || !attributeTag.empty() ||
+            textKind == "attrib" || textKind == "attdef") {
+            return "insert_text";
+        }
+        return "text";
+    }
+
+    switch (entity.type) {
+        case core::EntityType::Polyline:
+        case core::EntityType::Line:
+        case core::EntityType::Arc:
+        case core::EntityType::Circle:
+        case core::EntityType::Ellipse:
+        case core::EntityType::Spline:
+            return "geometry";
+        default:
+            return "other";
+    }
 }
 
 // Standard DXF linetype patterns: {dash_mm, gap_mm, dash_mm, gap_mm, ...}
@@ -518,7 +574,8 @@ bool fitToContent(const core::Document& doc, const QSize& viewport, View* out) {
 void renderScene(QPainter& pr, const core::Document* doc,
                  const QVector<PolyVis>& polylines, const View& view,
                  const LinetypeTable& linetypes,
-                 const QSet<EntityId>* selection) {
+                 const QSet<EntityId>* selection,
+                 bool semanticClassMask) {
     if (!doc) return;
 
     QTransform transform;
@@ -548,7 +605,9 @@ void renderScene(QPainter& pr, const core::Document* doc,
             if (!isEntityVisible(doc, e)) continue;
             const auto* txt = std::get_if<core::Text>(&e.payload);
             if (!txt || txt->text.empty()) continue;
-            QColor col = resolveEntityColor(doc, e, view.lightBackground);
+            QColor col = semanticClassMask
+                ? color_from_rgb(semanticClassRgb(semanticClassName(doc, e)))
+                : resolveEntityColor(doc, e, view.lightBackground);
             pr.setPen(col);
             QPointF screenPos = worldToScreen(view, QPointF(txt->pos.x, txt->pos.y));
             // Importer carries "family" or "family\x1f<widthFactor>" on
@@ -619,7 +678,10 @@ void renderScene(QPainter& pr, const core::Document* doc,
         if (!isEntityVisible(doc, e)) continue;
         const auto* ell = std::get_if<core::Ellipse>(&e.payload);
         if (!ell) continue;
-        QPen pen(resolveEntityColor(doc, e, view.lightBackground), 1); pen.setCosmetic(true);
+        QColor color = semanticClassMask
+            ? color_from_rgb(semanticClassRgb(semanticClassName(doc, e)))
+            : resolveEntityColor(doc, e, view.lightBackground);
+        QPen pen(color, 1); pen.setCosmetic(true);
         // Apply line width and line type (same logic as polylines)
         {
             double lwPx = 0.0;
@@ -671,7 +733,10 @@ void renderScene(QPainter& pr, const core::Document* doc,
         if (!entity) continue;
         if (!isEntityVisible(doc, *entity)) continue;
 
-        QPen pen(resolveEntityColor(doc, *entity, view.lightBackground), 1);
+        QColor color = semanticClassMask
+            ? color_from_rgb(semanticClassRgb(semanticClassName(doc, *entity)))
+            : resolveEntityColor(doc, *entity, view.lightBackground);
+        QPen pen(color, 1);
         pen.setCosmetic(true);
 
         // Line weight: entity → layer → layer-name fallback
@@ -720,7 +785,7 @@ void renderScene(QPainter& pr, const core::Document* doc,
             }
         }
 
-        if (selection && selection->contains(pv.entityId)) {
+        if (!semanticClassMask && selection && selection->contains(pv.entityId)) {
             pen.setColor(QColor(255,220,100));
             pen.setStyle(Qt::SolidLine);
             pen.setWidthF(2.5);
