@@ -71,6 +71,12 @@ QColor resolveEntityColor(const core::Document* doc, const core::Entity& entity,
 QVector<qreal> linetypeDashPattern(const std::string& lt, double scale,
                                    const LinetypeTable& linetypes);
 
+// Semantic render classes for diagnostic mask buffers. These are renderer-side
+// classes for the ink we actually draw, not AutoCAD reference truth.
+std::vector<std::string> semanticClassOrder();
+uint32_t semanticClassRgb(const std::string& name);
+std::string semanticClassName(const core::Document* doc, const core::Entity& entity);
+
 // Best-available FangSong/song-style CJK family for empty-style (SHX) text.
 // AutoCAD draws such Chinese mechanical text in a 仿宋 style; the macOS family
 // (STFangsong) is absent on the Linux render host, so pick the closest installed
@@ -104,6 +110,7 @@ bool fitToContent(const core::Document& doc, const QSize& viewport, View* out);
 void renderScene(QPainter& pr, const core::Document* doc,
                  const QVector<PolyVis>& polylines, const View& view,
                  const LinetypeTable& linetypes,
-                 const QSet<EntityId>* selection = nullptr);
+                 const QSet<EntityId>* selection = nullptr,
+                 bool semanticClassMask = false);
 
 } // namespace scene_render

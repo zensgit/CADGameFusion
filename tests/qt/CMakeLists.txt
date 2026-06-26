@@ -189,6 +189,34 @@ if(BUILD_EDITOR_QT)
   )
   add_test(NAME qt_canvas_color_metadata_run COMMAND test_qt_canvas_color_metadata)
 
+  add_executable(test_qt_semantic_class_mask
+    test_qt_semantic_class_mask.cpp
+    ${CMAKE_SOURCE_DIR}/editor/qt/src/scene_renderer.cpp
+  )
+  target_include_directories(test_qt_semantic_class_mask PRIVATE
+    ${CMAKE_SOURCE_DIR}/editor/qt/src
+    ${CMAKE_SOURCE_DIR}/core/include
+  )
+  target_link_libraries(test_qt_semantic_class_mask PRIVATE Qt6::Gui core)
+  set_target_properties(test_qt_semantic_class_mask PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+    AUTOMOC OFF
+  )
+  add_test(NAME qt_semantic_class_mask_run COMMAND test_qt_semantic_class_mask)
+
+  if(TARGET render_cli)
+    set(RENDER_CLI_SEMANTIC_MASK_OUT_DIR "${CMAKE_BINARY_DIR}/render_cli_semantic_class_mask_smoke")
+    add_test(NAME render_cli_semantic_class_mask_smoke
+      COMMAND ${CMAKE_COMMAND}
+        -Dexe=$<TARGET_FILE:render_cli>
+        -Dinput=${CMAKE_SOURCE_DIR}/tests/plugin_data/importer_entities.dxf
+        -Dout=${RENDER_CLI_SEMANTIC_MASK_OUT_DIR}/render.png
+        -Dmask=${RENDER_CLI_SEMANTIC_MASK_OUT_DIR}/classes.png
+        -Dreport=${RENDER_CLI_SEMANTIC_MASK_OUT_DIR}/report.json
+        -P ${CMAKE_SOURCE_DIR}/cmake/RunRenderCliSemanticClassMask.cmake)
+  endif()
+
   add_executable(test_qt_snap_manager
     test_qt_snap_manager.cpp
     ${CMAKE_SOURCE_DIR}/editor/qt/src/snap_manager.cpp

@@ -210,6 +210,39 @@ int textEntityCount(const core::Document& doc) {
     return n;
 }
 
+bool willDrawEntity(const core::Document& doc, const core::Entity& e) {
+    if (!scene_render::isEntityVisible(&doc, e)) return false;
+    if (e.type == core::EntityType::Text) return willDrawText(doc, e);
+    if (e.type == core::EntityType::Polyline) return true;
+    if (e.type == core::EntityType::Ellipse) return true;
+    return false;
+}
+
+QJsonObject semanticClassCounts(const core::Document& doc) {
+    QJsonObject counts;
+    for (const auto& name : scene_render::semanticClassOrder()) {
+        counts[QString::fromStdString(name)] = 0;
+    }
+    for (const auto& e : doc.entities()) {
+        if (!willDrawEntity(doc, e)) continue;
+        const QString name = QString::fromStdString(scene_render::semanticClassName(&doc, e));
+        counts[name] = counts.value(name).toInt() + 1;
+    }
+    return counts;
+}
+
+QJsonArray semanticClassPalette() {
+    QJsonArray palette;
+    for (const auto& name : scene_render::semanticClassOrder()) {
+        const uint32_t rgb = scene_render::semanticClassRgb(name);
+        QJsonObject row;
+        row["name"] = QString::fromStdString(name);
+        row["rgb"] = QString("#%1").arg(rgb, 6, 16, QLatin1Char('0')).toUpper();
+        palette.append(row);
+    }
+    return palette;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -233,6 +266,7 @@ int main(int argc, char** argv) {
     parser.addOption({"window", "Frame a specific world rect 'x1,y1,x2,y2' (with the standard margin) instead of the drawing extents — e.g. the sheet frame for a garbage-extents drawing.", "rect"});
     parser.addOption({"font-dir", "Directory of font files (ttf/ttc/otf) to load before rendering.", "dir"});
     parser.addOption({"report",  "Write a render report JSON (params, view, counts, font records) to this path.", "file"});
+    parser.addOption({"class-mask-out", "Write a semantic class-buffer PNG using the exact same view as --out. Background is black; class colors are listed in the report.", "file"});
     parser.process(app);
 
     QStringList loadedFamilies;
@@ -253,6 +287,11 @@ int main(int argc, char** argv) {
     if (outSuffix != "png" && outSuffix != "svg") {
         std::fprintf(stderr, "error: unsupported output format .%s (use .png or .svg)\n",
                      qPrintable(outSuffix));
+        return 2;
+    }
+    const QString classMaskOut = parser.value("class-mask-out");
+    if (parser.isSet("class-mask-out") && classMaskOut.isEmpty()) {
+        std::fprintf(stderr, "error: --class-mask-out requires a file path\n");
         return 2;
     }
     bool wOk = false, hOk = false;
@@ -367,6 +406,19 @@ int main(int argc, char** argv) {
         written = img.save(outPath);
     }
 
+    bool classMaskWritten = true;
+    if (parser.isSet("class-mask-out")) {
+        QImage mask(viewport, QImage::Format_ARGB32_Premultiplied);
+        mask.fill(QColor(0, 0, 0));
+        QPainter pr(&mask);
+        // The semantic class buffer must ride the exact same View as the color
+        // render above; otherwise downstream per-class diagnostics measure
+        // registration drift instead of renderer fidelity.
+        scene_render::renderScene(pr, doc, polylines, view, linetypes, nullptr, true);
+        pr.end();
+        classMaskWritten = mask.save(classMaskOut);
+    }
+
     const int entityCount = imp.adapter->entityCount();
 
     // Render report (B1): consumed by the regression harness (view rect/scale
@@ -417,6 +469,19 @@ int main(int argc, char** argv) {
         counts["polylines"] = polylines.size();
         counts["text_entities"] = textEntityCount(*doc);
         rep["counts"] = counts;
+        QJsonObject classes;
+        classes["schema"] = "vemcad.render_semantic_classes";
+        classes["schema_version"] = "0.1";
+        classes["mask_kind"] = "candidate-renderer-semantic-class-buffer";
+        classes["reference_semantics"] = "unknown";
+        classes["background"] = "#000000";
+        classes["view_space"] = "same_as_color_render";
+        classes["palette"] = semanticClassPalette();
+        classes["entity_counts"] = semanticClassCounts(*doc);
+        if (parser.isSet("class-mask-out")) {
+            classes["mask_path"] = classMaskOut;
+        }
+        rep["semantic_classes"] = classes;
         QJsonObject fonts;
         fonts["loaded_dir"] = parser.isSet("font-dir") ? parser.value("font-dir") : QString();
         fonts["loaded_families"] = QJsonArray::fromStringList(loadedFamilies);
@@ -437,6 +502,10 @@ int main(int argc, char** argv) {
 
     if (!written) {
         std::fprintf(stderr, "error: failed to write %s\n", qPrintable(outPath));
+        return 5;
+    }
+    if (!classMaskWritten) {
+        std::fprintf(stderr, "error: failed to write class mask %s\n", qPrintable(classMaskOut));
         return 5;
     }
     std::printf("rendered %s -> %s (%dx%d, %d entities%s)\n",
