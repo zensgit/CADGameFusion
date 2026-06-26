@@ -14,6 +14,7 @@ add_library(cadgf_dxf_importer_plugin SHARED
     dxf_importer_plugin.cpp
     dxf_block_entry_committers.cpp
     dxf_root_block_committers.cpp
+    dxf_top_level_insert_committers.cpp
     dxf_block_leaf_entity_emitters.cpp
     dxf_block_header.cpp
     dxf_parser_helpers.cpp
