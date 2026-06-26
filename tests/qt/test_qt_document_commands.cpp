@@ -181,9 +181,17 @@ static void testCjkFamilyResolution() {
     assert(scene_render::resolveTextFamily(QStringLiteral("STSong")) == def);
     assert(scene_render::resolveTextFamily(QStringLiteral("STSong")) != QStringLiteral("STSong"));
     assert(scene_render::resolveTextFamily(QStringLiteral("STFangsong")) == def);
+    // STKaiti (楷) → defaultKaiFamily(); STHeiti (黑/sans) → defaultSansFamily().
+    // Typeface-class-correct (kai/hei are NOT the song default) and never STKaiti/STHeiti.
+    assert(scene_render::resolveTextFamily(QStringLiteral("STKaiti")) == scene_render::defaultKaiFamily());
+    assert(scene_render::resolveTextFamily(QStringLiteral("STKaiti")) != QStringLiteral("STKaiti"));
+    assert(scene_render::resolveTextFamily(QStringLiteral("STHeiti")) == scene_render::defaultSansFamily());
+    assert(scene_render::resolveTextFamily(QStringLiteral("STHeiti")) != QStringLiteral("STHeiti"));
 #else
     // macOS: the real families exist → pass through unchanged.
     assert(scene_render::resolveTextFamily(QStringLiteral("STSong")) == QStringLiteral("STSong"));
+    assert(scene_render::resolveTextFamily(QStringLiteral("STKaiti")) == QStringLiteral("STKaiti"));
+    assert(scene_render::resolveTextFamily(QStringLiteral("STHeiti")) == QStringLiteral("STHeiti"));
 #endif
 }
 
