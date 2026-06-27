@@ -4,6 +4,8 @@
 #include <QtCore/QObject>
 #include <QtCore/QSet>
 #include <QtCore/QVector>
+#include <QtGui/QFont>
+#include <QtGui/QFontInfo>
 
 #include <cassert>
 #include <memory>
@@ -187,6 +189,19 @@ static void testCjkFamilyResolution() {
     assert(scene_render::resolveTextFamily(QStringLiteral("STKaiti")) != QStringLiteral("STKaiti"));
     assert(scene_render::resolveTextFamily(QStringLiteral("STHeiti")) == scene_render::defaultSansFamily());
     assert(scene_render::resolveTextFamily(QStringLiteral("STHeiti")) != QStringLiteral("STHeiti"));
+    {
+        QFont zhuqueProbe(QStringLiteral("Zhuque Fangsong"));
+        zhuqueProbe.setStyleHint(QFont::Serif);
+        const QString qtResolved = QFontInfo(zhuqueProbe).family().toCaseFolded();
+        const bool shortNameFallsToSans = qtResolved.contains(QStringLiteral("dejavu sans")) ||
+            qtResolved.contains(QStringLiteral("noto sans")) ||
+            qtResolved.contains(QStringLiteral("helvetica")) ||
+            qtResolved == QStringLiteral("sans serif");
+        if (shortNameFallsToSans) {
+            assert(scene_render::resolveTextFamily(QStringLiteral("Zhuque Fangsong")) == def);
+            assert(scene_render::resolveTextFamily(QStringLiteral("Zhuque Fangsong")) != QStringLiteral("Zhuque Fangsong"));
+        }
+    }
 #else
     // macOS: the real families exist → pass through unchanged.
     assert(scene_render::resolveTextFamily(QStringLiteral("STSong")) == QStringLiteral("STSong"));
