@@ -232,6 +232,22 @@ if(BUILD_EDITOR_QT)
         -Dreport=${RENDER_CLI_DIMENSION_OUT_DIR}/report.json
         -Dexpect_nonzero_class=dimension
         -P ${CMAKE_SOURCE_DIR}/cmake/RunRenderCliSemanticClassMask.cmake)
+
+    # Full semantic-provenance regression (LOCAL — same gating caveat as above; the
+    # per-PR CI gate is the VemCAD render-image golden-E2E at bump time). ONE
+    # synthetic drawing exercises a *D dimension block, a block-nested SOLID hatch,
+    # and INSERT-sourced text; all three classes must be non-zero, proving the
+    # adapter emits source_type provenance for each across the block-expansion seam.
+    set(RENDER_CLI_SEMANTIC_OUT_DIR "${CMAKE_BINARY_DIR}/render_cli_semantic_classes")
+    add_test(NAME render_cli_semantic_class_provenance
+      COMMAND ${CMAKE_COMMAND}
+        -Dexe=$<TARGET_FILE:render_cli>
+        -Dinput=${CMAKE_SOURCE_DIR}/tests/plugin_data/render_cli_semantic_sample.dxf
+        -Dout=${RENDER_CLI_SEMANTIC_OUT_DIR}/render.png
+        -Dmask=${RENDER_CLI_SEMANTIC_OUT_DIR}/classes.png
+        -Dreport=${RENDER_CLI_SEMANTIC_OUT_DIR}/report.json
+        -Dexpect_nonzero_class=dimension\;hatch\;insert_text
+        -P ${CMAKE_SOURCE_DIR}/cmake/RunRenderCliSemanticClassMask.cmake)
   endif()
 
   add_executable(test_qt_snap_manager

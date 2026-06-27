@@ -432,7 +432,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             cadgf_entity_id pid = addPolylineToDoc(transformed, elid, effectiveColor,
                              isSolid ? "" : ent.linetype, ent.layerName, 0.0,
                              isSolid ? "__SOLID__" : nullptr);
-            setEntitySourceType(pid, originType);
+            setEntitySourceType(pid, !ent.sourceType.empty() ? ent.sourceType : originType);
             break;
         }
         case BlockEntity::Circle: {
@@ -1465,6 +1465,7 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                 BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = pts;
                 be.layerName = data->layer; be.color = hcol;
                 if (isSolid) be.linetype = "__SOLID__";
+                be.sourceType = "HATCH"; // carry provenance across the block seam (linetype is taken by __SOLID__)
                 m_blocks[m_currentBlockName].push_back(be);
             } else if (isSolid) {
                 // Close the polygon if not already closed
@@ -1472,7 +1473,7 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                     (std::abs(pts.front().first - pts.back().first) > 1e-6 ||
                      std::abs(pts.front().second - pts.back().second) > 1e-6))
                     pts.push_back(pts.front());
-                addPolylineToDoc(pts, lid, hcol, "", data->layer, 0.0, "__SOLID__");
+                setEntitySourceType(addPolylineToDoc(pts, lid, hcol, "", data->layer, 0.0, "__SOLID__"), "HATCH");
             } else {
                 addPolylineToDoc(pts, lid, hcol);
             }
@@ -1638,6 +1639,7 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                         be.pts = {{x1,y1},{x2,y2}};
                         be.layerName = data->layer; be.color = fillCol;
                         be.linetype = "__HATCH_FILL__";
+                        be.sourceType = "HATCH"; // provenance independent of the linetype hack
                         m_blocks[m_currentBlockName].push_back(be);
                     } else {
                         // Tag pattern-fill lines so the canvas can render them
@@ -2117,7 +2119,7 @@ void CadgfDrwAdapter::addInsert(const DRW_Insert& data) {
             expandBlock(data.name,
                         data.basePoint.x + wx,
                         data.basePoint.y + wy,
-                        data.xscale, data.yscale, data.angle, lid, insertColor);
+                        data.xscale, data.yscale, data.angle, lid, insertColor, "INSERT");
         }
     }
 }

@@ -28,6 +28,7 @@ struct BlockEntity {
     std::string layerName;
     uint32_t color{0};
     std::string linetype; // entity-level linetype (empty = bylayer)
+    std::string sourceType; // DXF provenance for the semantic classifier (e.g. "HATCH"); empty = inherit the INSERT's originType
     // Insert-specific
     std::string blockName;
     double insX{0}, insY{0}, xscale{1}, yscale{1}, insAngle{0};
