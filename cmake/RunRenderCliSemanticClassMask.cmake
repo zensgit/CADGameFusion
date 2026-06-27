@@ -50,3 +50,20 @@ foreach(needle IN ITEMS
     message(FATAL_ERROR "report missing ${needle}: ${report}")
   endif()
 endforeach()
+
+# Optional: assert a specific semantic class is populated (non-zero entity_counts).
+# Used by the dimension-provenance regression test. render_cli's import path
+# (CadgfDrwAdapter) must emit "source_type" entity metadata for *D dimension-block
+# primitives; without it they silently fall back to geometry/text and the class
+# count stays 0. "<class>":  appears only in entity_counts (palette uses "name").
+if(DEFINED expect_nonzero_class)
+  string(FIND "${rep}" "\"${expect_nonzero_class}\":" present_idx)
+  if(present_idx LESS 0)
+    message(FATAL_ERROR "report has no '${expect_nonzero_class}' class entry: ${report}")
+  endif()
+  string(FIND "${rep}" "\"${expect_nonzero_class}\": 0" zero_idx)
+  if(NOT zero_idx LESS 0)
+    message(FATAL_ERROR "expected '${expect_nonzero_class}' semantic class to be non-zero "
+      "(import-path provenance metadata missing?): ${report}")
+  endif()
+endif()

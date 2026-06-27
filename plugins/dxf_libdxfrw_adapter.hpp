@@ -128,7 +128,7 @@ private:
     bool shouldSkipEntity(const DRW_Entity& ent) const;
     bool useDimBlock(const DRW_Dimension* dim);
     int resolveLayer(const std::string& name);
-    void addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid,
+    cadgf_entity_id addPolylineToDoc(const std::vector<std::pair<double,double>>& pts, int lid,
                           uint32_t color = 0, const std::string& linetype = "",
                           const std::string& layerName = "", double lweightMm = 0.0,
                           const char* entityName = nullptr);
@@ -139,7 +139,12 @@ private:
     // insColor: INSERT entity's effective color for BYBLOCK (0xFFFFFFFF) entities; 0 = BYLAYER
     void expandBlock(const std::string& blockName, double insX, double insY,
                      double xscale, double yscale, double angle, int lid,
-                     uint32_t insColor = 0);
+                     uint32_t insColor = 0, const std::string& originType = "");
+    // Tag an entity with DXF provenance (source_type) so render_cli's semantic
+    // class buffer (scene_renderer semanticClassName) can classify expanded
+    // primitives. Mirrors the plugin import path's metadata contract; the key
+    // format must match scene_renderer's lookup_entity_meta.
+    void setEntitySourceType(cadgf_entity_id id, const std::string& originType);
 
     // Resolve effective linetype name for a DRW entity (entity-level overrides layer)
     std::string resolveLinetype(const std::string& entLinetype,
