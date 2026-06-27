@@ -288,6 +288,20 @@ if(TARGET dxfrw)
     add_test(NAME test_dxf_libdxfrw_orphan_dimension_blocks_run
         COMMAND test_dxf_libdxfrw_orphan_dimension_blocks
             ${CMAKE_SOURCE_DIR}/tests/plugin_data/libdxfrw_orphan_dimension_block.dxf)
+
+    add_executable(test_dxf_libdxfrw_truewhite_dimension_child_colors
+        test_dxf_libdxfrw_truewhite_dimension_child_colors.cpp
+        ${CMAKE_SOURCE_DIR}/plugins/dxf_libdxfrw_adapter.cpp)
+    target_link_libraries(test_dxf_libdxfrw_truewhite_dimension_child_colors PRIVATE core_c dxfrw)
+    target_include_directories(test_dxf_libdxfrw_truewhite_dimension_child_colors PRIVATE
+        ${CMAKE_SOURCE_DIR}/core/include
+        ${CMAKE_SOURCE_DIR}/plugins
+        ${CMAKE_SOURCE_DIR}/deps/libdxfrw/src)
+    set_target_properties(test_dxf_libdxfrw_truewhite_dimension_child_colors PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+
+    add_test(NAME test_dxf_libdxfrw_truewhite_dimension_child_colors_run
+        COMMAND test_dxf_libdxfrw_truewhite_dimension_child_colors
+            ${CMAKE_SOURCE_DIR}/tests/plugin_data/libdxfrw_truewhite_dimension_explicit_child_colors.dxf)
 endif()
 
 add_executable(test_dxf_roundtrip test_dxf_roundtrip.cpp)

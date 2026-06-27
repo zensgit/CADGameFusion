@@ -431,8 +431,15 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
         int elid = dimensionTrueWhiteLayer ? lid : resolveLayer(ent.layerName.empty() ? "" : ent.layerName);
         if (elid == 0) elid = lid;
 
-        // Resolve BYBLOCK color: use INSERT's color; fallback to BYLAYER (0)
-        uint32_t effectiveColor = dimensionTrueWhiteLayer ? 0 : ent.color;
+        // Resolve BYBLOCK color: use INSERT's color; fallback to BYLAYER (0).
+        // For DIMENSION-owned *D blocks on an ACI 255 layer, only BYLAYER
+        // children inherit the true-white parent. Explicit child ACI colours
+        // are meaningful in AutoCAD-generated dimension blocks and must remain
+        // visible (corpus G11).
+        uint32_t effectiveColor = ent.color;
+        if (dimensionTrueWhiteLayer && effectiveColor == BYBLOCK_COLOR) {
+            effectiveColor = 0;
+        }
         if (!dimensionTrueWhiteLayer && effectiveColor == BYBLOCK_COLOR)
             effectiveColor = (insColor != BYBLOCK_COLOR) ? insColor : 0;
 
