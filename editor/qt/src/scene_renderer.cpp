@@ -711,15 +711,18 @@ void renderScene(QPainter& pr, const core::Document* doc,
                 if (cjkSerifTextOverdraw) {
                     // AutoCAD's mechanical plots render default SHX/CJK 仿宋
                     // text with a slightly heavier stroke than headless Qt's
-                    // regular Zhuque/Noto serif rasterization. A sub-pixel
-                    // color-pass overdraw is deterministic and visibly safer
-                    // than relying on QFont::DemiBold, which fontconfig/Qt can
-                    // ignore for single-weight bundled CJK fonts. Keep semantic
+                    // regular Zhuque/Noto serif rasterization. A symmetric
+                    // one-pixel color-pass overdraw tracks the measured
+                    // text-mask dilation that improves the AutoCAD comparison;
+                    // relying on QFont::DemiBold was ignored by Qt/fontconfig
+                    // for the single-weight bundled Zhuque font. Keep semantic
                     // class masks unmodified so diagnostics still report entity
                     // coverage rather than display-weight inflation.
-                    constexpr qreal kCjkSerifOverdrawPx = 0.35;
+                    constexpr qreal kCjkSerifOverdrawPx = 1.0;
                     pr.drawText(origin + QPointF(kCjkSerifOverdrawPx, 0), lines[li]);
+                    pr.drawText(origin + QPointF(-kCjkSerifOverdrawPx, 0), lines[li]);
                     pr.drawText(origin + QPointF(0, kCjkSerifOverdrawPx), lines[li]);
+                    pr.drawText(origin + QPointF(0, -kCjkSerifOverdrawPx), lines[li]);
                 }
             }
             pr.restore();
