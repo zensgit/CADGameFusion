@@ -50,6 +50,7 @@ import {
   isReadOnlyEntity,
   hasSameEntityIds,
 } from './shared/selection.js';
+import { runApplyGeometry, buildSolverProject } from './solver/bridge.js';
 
 function isTransformSafeSourceGroupProxy(entity) {
   if (!entity || !isSourceGroupEntity(entity)) return false;
@@ -5011,28 +5012,6 @@ function runCreateEntities(ctx, payload) {
 // agnostic (the patch is editor-native geometry, e.g. {start,end} for a line); used by the
 // product layer to write solved sketch geometry back into the editor. Undo/redo come from the
 // withSnapshot wrapper at the command site, so this is one native, Ctrl-Z-reversible step.
-function runApplyGeometry(ctx, payload) {
-  const updates = Array.isArray(payload?.updates) ? payload.updates : [];
-  if (updates.length === 0) {
-    return { ok: false, changed: false, error_code: 'INVALID_GEOMETRY_UPDATES', message: 'No geometry updates provided' };
-  }
-  let applied = 0;
-  let skipped = 0;
-  for (const update of updates) {
-    if (!update || !Number.isFinite(update.id) || !update.patch || typeof update.patch !== 'object') {
-      skipped += 1;
-      continue;
-    }
-    if (ctx.document.updateEntity(update.id, update.patch)) applied += 1;
-    else skipped += 1;
-  }
-  return {
-    ok: true,
-    changed: applied > 0,
-    message: `Applied geometry to ${applied} ${applied === 1 ? 'entity' : 'entities'}${skipped ? ` (${skipped} skipped)` : ''}`,
-  };
-}
-
 function runSelectByBox(ctx, payload) {
   const rect = payload?.rect;
   if (!rect) {
@@ -5329,39 +5308,7 @@ export function registerCadCommands(commandBus, context) {
         if (constraints.length === 0) {
           return commandResult(false, false, { message: 'No constraints to export', error_code: 'NO_CONSTRAINTS' });
         }
-        const entities = ctx.document.listEntities();
-        const pointEntities = [];
-        for (const entity of entities) {
-          if (entity.type === 'line') {
-            pointEntities.push(
-              { id: `e${entity.id}_start`, type: 'point', params: { x: entity.start.x, y: entity.start.y } },
-              { id: `e${entity.id}_end`, type: 'point', params: { x: entity.end.x, y: entity.end.y } },
-            );
-          } else if (entity.type === 'circle') {
-            pointEntities.push(
-              { id: `e${entity.id}_center`, type: 'point', params: { x: entity.center.x, y: entity.center.y } },
-            );
-          } else if (entity.type === 'arc') {
-            pointEntities.push(
-              { id: `e${entity.id}_center`, type: 'point', params: { x: entity.center.x, y: entity.center.y } },
-            );
-          }
-        }
-        const project = {
-          header: { format: 'CADGF-PROJ', version: 1 },
-          project: { id: ctx.document.meta.label || 'web-editor', units: ctx.document.meta.unit || 'mm' },
-          scene: {
-            entities: pointEntities,
-            constraints: constraints.map((c) => {
-              const spec = { id: c.id, type: c.type, refs: c.refs };
-              if (c.value !== undefined) spec.value = c.value;
-              return spec;
-            }),
-          },
-          featureTree: { nodes: [], edges: [] },
-          resources: {},
-          meta: {},
-        };
+        const project = buildSolverProject(ctx);
         return commandResult(true, false, { message: `Exported ${constraints.length} constraints`, project });
       },
     },
