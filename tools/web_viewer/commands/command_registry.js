@@ -37,101 +37,19 @@ import {
 } from '../insert_group.js';
 import { suggestFilletRadius, suggestChamferDistance } from '../tools/two_target_pick_tool_helpers.js';
 import { resolveEffectiveEntityColor } from '../line_style.js';
-
-function nowMs() {
-  if (typeof performance !== 'undefined' && performance && typeof performance.now === 'function') {
-    return performance.now();
-  }
-  return Date.now();
-}
-
-function emitPerfProfile(ctx, profile) {
-  const hook = ctx?.__perfHooks?.onSnapshotProfile;
-  if (typeof hook !== 'function') return;
-  try {
-    hook(profile);
-  } catch {
-    // Ignore perf hook failures; command behavior must stay deterministic.
-  }
-}
-
-function captureState(ctx) {
-  return {
-    // snapshot()/toJSON() already return detached data; avoid duplicate deep-clone here.
-    document: ctx.document.snapshot(),
-    selection: ctx.selection.toJSON(),
-    snap: ctx.snap.toJSON(),
-    view: ctx.viewport.toJSON(),
-  };
-}
-
-function restoreState(ctx, snapshot) {
-  ctx.document.restore(snapshot.document);
-  ctx.selection.restore(snapshot.selection);
-  ctx.snap.restore(snapshot.snap);
-  ctx.viewport.restore(snapshot.view);
-}
-
-function withSnapshot(ctx, id, mutator) {
-  const tBefore = nowMs();
-  const before = captureState(ctx);
-  const beforeMs = nowMs() - tBefore;
-  emitPerfProfile(ctx, { commandId: id, phase: 'before', ms: beforeMs });
-
-  const tMutator = nowMs();
-  const outcome = mutator();
-  const mutatorMs = nowMs() - tMutator;
-  emitPerfProfile(ctx, { commandId: id, phase: 'mutator', ms: mutatorMs });
-
-  if (!outcome.ok) {
-    return commandResult(false, false, {
-      message: outcome.message,
-      error_code: outcome.error_code || 'COMMAND_FAILED',
-    });
-  }
-  if (!outcome.changed) {
-    return commandResult(true, false, {
-      message: outcome.message || `${id}: no changes`,
-    });
-  }
-
-  const tAfter = nowMs();
-  const after = captureState(ctx);
-  const afterMs = nowMs() - tAfter;
-  emitPerfProfile(ctx, { commandId: id, phase: 'after', ms: afterMs });
-
-  return commandResult(true, true, {
-    message: outcome.message || `${id}: applied`,
-    undo: () => restoreState(ctx, before),
-    redo: () => restoreState(ctx, after),
-  });
-}
-
-function hasSelection(ctx) {
-  return Array.isArray(ctx.selection.entityIds) && ctx.selection.entityIds.length > 0;
-}
-
-function selectedEntities(ctx) {
-  return ctx.selection.entityIds
-    .map((id) => ctx.document.getEntity(id))
-    .filter((entity) => !!entity);
-}
-
-function isReadOnlyEntity(entity) {
-  return !!entity && (entity.readOnly === true || entity.type === 'unsupported' || entity.editMode === 'proxy');
-}
-
-function hasSameEntityIds(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false;
-  const expected = new Set(right.map((id) => Math.trunc(Number(id))));
-  for (const id of left) {
-    const normalized = Math.trunc(Number(id));
-    if (!expected.has(normalized)) {
-      return false;
-    }
-  }
-  return true;
-}
+import {
+  nowMs,
+  emitPerfProfile,
+  captureState,
+  restoreState,
+  withSnapshot,
+} from './shared/snapshot.js';
+import {
+  hasSelection,
+  selectedEntities,
+  isReadOnlyEntity,
+  hasSameEntityIds,
+} from './shared/selection.js';
 
 function isTransformSafeSourceGroupProxy(entity) {
   if (!entity || !isSourceGroupEntity(entity)) return false;
