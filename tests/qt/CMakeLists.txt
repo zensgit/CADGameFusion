@@ -215,6 +215,23 @@ if(BUILD_EDITOR_QT)
         -Dmask=${RENDER_CLI_SEMANTIC_MASK_OUT_DIR}/classes.png
         -Dreport=${RENDER_CLI_SEMANTIC_MASK_OUT_DIR}/report.json
         -P ${CMAKE_SOURCE_DIR}/cmake/RunRenderCliSemanticClassMask.cmake)
+
+    # Dimension-provenance regression (LOCAL / wherever render_cli is built — note
+    # CADGF per-PR CI does not build render_cli; the gating CI check lives in the
+    # VemCAD render-image golden-E2E at submodule-bump time). A synthetic drawing
+    # with a *D dimension block must classify as "dimension" (non-zero), proving
+    # render_cli's import path emits source_type metadata; guards the geometry/
+    # text-only fallback.
+    set(RENDER_CLI_DIMENSION_OUT_DIR "${CMAKE_BINARY_DIR}/render_cli_dimension_class")
+    add_test(NAME render_cli_dimension_class_provenance
+      COMMAND ${CMAKE_COMMAND}
+        -Dexe=$<TARGET_FILE:render_cli>
+        -Dinput=${CMAKE_SOURCE_DIR}/tests/plugin_data/render_cli_dimension_sample.dxf
+        -Dout=${RENDER_CLI_DIMENSION_OUT_DIR}/render.png
+        -Dmask=${RENDER_CLI_DIMENSION_OUT_DIR}/classes.png
+        -Dreport=${RENDER_CLI_DIMENSION_OUT_DIR}/report.json
+        -Dexpect_nonzero_class=dimension
+        -P ${CMAKE_SOURCE_DIR}/cmake/RunRenderCliSemanticClassMask.cmake)
   endif()
 
   add_executable(test_qt_snap_manager

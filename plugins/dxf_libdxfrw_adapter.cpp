@@ -366,11 +366,11 @@ std::pair<double,double> CadgfDrwAdapter::transformPoint(
     return {rx + insX, ry + insY};
 }
 
-void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double>>& pts,
+cadgf_entity_id CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double>>& pts,
                                         int lid, uint32_t color,
                                         const std::string& linetype, const std::string& layerName,
                                         double lweightMm, const char* entityName) {
-    if (pts.empty()) return;
+    if (pts.empty()) return 0;
     std::vector<cadgf_vec2> vecs;
     vecs.reserve(pts.size());
     for (const auto& [x, y] : pts) vecs.push_back({x, y});
@@ -389,14 +389,26 @@ void CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<double,double
         if (eff_lw > 0.0) cadgf_document_set_entity_line_weight(m_doc, eid, eff_lw);
     }
     ++m_entityCount;
+    return eid;
 }
 
 // Defined below (after fontFamilyForStyle); used here in expandBlock.
 static std::string encodeTextName(const std::string& family, double widthFactor);
 
+void CadgfDrwAdapter::setEntitySourceType(cadgf_entity_id id, const std::string& originType) {
+    if (id == 0 || originType.empty()) return;
+    // Mirror the plugin import path's provenance contract so render_cli's
+    // semantic class buffer (scene_renderer::semanticClassName) can classify
+    // expanded primitives by DXF origin. The key format MUST match
+    // scene_renderer::lookup_entity_meta: "dxf.entity." + <id> + ".source_type".
+    const std::string key = "dxf.entity." +
+        std::to_string(static_cast<unsigned long long>(id)) + ".source_type";
+    cadgf_document_set_meta_value(m_doc, key.c_str(), originType.c_str());
+}
+
 void CadgfDrwAdapter::expandBlock(const std::string& blockName,
     double insX, double insY, double xscale, double yscale, double angle, int lid,
-    uint32_t insColor) {
+    uint32_t insColor, const std::string& originType) {
     auto it = m_blocks.find(blockName);
     if (it == m_blocks.end()) return;
 
@@ -417,9 +429,10 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             for (const auto& [px, py] : ent.pts)
                 transformed.push_back(transformPoint(px, py, insX, insY, xscale, yscale, angle));
             bool isSolid = (ent.linetype == "__SOLID__");
-            addPolylineToDoc(transformed, elid, effectiveColor,
+            cadgf_entity_id pid = addPolylineToDoc(transformed, elid, effectiveColor,
                              isSolid ? "" : ent.linetype, ent.layerName, 0.0,
                              isSolid ? "__SOLID__" : nullptr);
+            setEntitySourceType(pid, originType);
             break;
         }
         case BlockEntity::Circle: {
@@ -430,7 +443,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 double a = 2.0 * M_PI * s / 64;
                 circ.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
             }
-            addPolylineToDoc(circ, elid, effectiveColor, ent.linetype, ent.layerName);
+            setEntitySourceType(addPolylineToDoc(circ, elid, effectiveColor, ent.linetype, ent.layerName), originType);
             break;
         }
         case BlockEntity::Arc: {
@@ -447,7 +460,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 double a = sa + (ea - sa) * s / segs;
                 arc.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
             }
-            addPolylineToDoc(arc, elid, effectiveColor, ent.linetype, ent.layerName);
+            setEntitySourceType(addPolylineToDoc(arc, elid, effectiveColor, ent.linetype, ent.layerName), originType);
             break;
         }
         case BlockEntity::Point: {
@@ -456,7 +469,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                                                insX, insY, xscale, yscale, angle);
                 cadgf_point pt;
                 pt.p = {px, py};
-                cadgf_document_add_point(m_doc, &pt, "", elid);
+                setEntitySourceType(cadgf_document_add_point(m_doc, &pt, "", elid), originType);
                 ++m_entityCount;
             }
             break;
@@ -490,6 +503,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                     tname.c_str(), elid);
                 if (tid && effectiveColor != 0 && effectiveColor != BYBLOCK_COLOR)
                     cadgf_document_set_entity_color(m_doc, tid, effectiveColor);
+                setEntitySourceType(tid, originType);
                 ++m_entityCount;
             }
             break;
@@ -509,6 +523,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                     cadgf_document_set_entity_color(m_doc, eeid, effectiveColor);
                 applyLinetype(eeid, ent.linetype, ent.layerName);
             }
+            setEntitySourceType(eeid, originType);
             ++m_entityCount;
             break;
         }
@@ -526,7 +541,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             // Propagate insert color: nested BYBLOCK uses the closest non-BYBLOCK color
             uint32_t nestedInsColor = (ent.color == BYBLOCK_COLOR) ? insColor : ent.color;
             expandBlock(ent.blockName, combinedX, combinedY,
-                        combinedXS, combinedYS, combinedAngle, elid, nestedInsColor);
+                        combinedXS, combinedYS, combinedAngle, elid, nestedInsColor, originType);
             break;
         }
         }
@@ -2047,7 +2062,7 @@ void CadgfDrwAdapter::expandUnreferencedBlocks() {
             if (name.size() > 1 && name[1] == 'D' &&
                 (name.size() == 2 || std::isdigit(static_cast<unsigned char>(name[2])))) {
                 if (m_referencedDimensionBlocks.count(name)) {
-                    expandBlock(name, 0, 0, 1, 1, 0, 0);
+                    expandBlock(name, 0, 0, 1, 1, 0, 0, 0, "DIMENSION");
                 }
             }
             continue; // skip other system blocks (*T#, *U#, *X#, *MODEL_SPACE, …)
