@@ -17,6 +17,44 @@
 
 namespace scene_render {
 
+namespace {
+
+bool familyContainsAny(const QString& folded, const QStringList& tokens) {
+    for (const QString& tok : tokens) {
+        if (folded.contains(tok.toCaseFolded())) return true;
+    }
+    return false;
+}
+
+bool isSansFallbackFamily(const QString& family) {
+    const QString folded = family.toCaseFolded();
+    return folded.contains(QStringLiteral("dejavu sans")) ||
+           folded.contains(QStringLiteral("noto sans")) ||
+           folded.contains(QStringLiteral("helvetica")) ||
+           folded.contains(QStringLiteral("applesystem")) ||
+           folded == QStringLiteral("sans serif");
+}
+
+bool isSongLikeCjkRequest(const QString& family) {
+    const QString folded = family.toCaseFolded();
+    return familyContainsAny(folded, {
+        QStringLiteral("serif"),
+        QStringLiteral("song"),
+        QStringLiteral("fang"),
+        QStringLiteral("仿宋"),
+        QStringLiteral("宋"),
+        QStringLiteral("zhuque")
+    });
+}
+
+bool resolvesToSansFallback(const QString& family, QFont::StyleHint hint = QFont::Serif) {
+    QFont probe(family);
+    probe.setStyleHint(hint);
+    return isSansFallbackFamily(QFontInfo(probe).family());
+}
+
+} // namespace
+
 // Best-available FangSong/song-style CJK family for empty-style text (see header).
 // Ordered by closeness to AutoCAD's 仿宋. Trust Qt's actual QFontInfo resolution,
 // not just QFontDatabase::families(): headless fontconfig can omit a family from
@@ -30,15 +68,24 @@ QString defaultTextFamily() {
         const QStringList prefer = {
 #if defined(Q_OS_MACOS)
             QStringLiteral("STFangsong"),          // macOS 华文仿宋 (editor parity)
+            QStringLiteral("Zhuque Fangsong (technical preview)"),
+            QStringLiteral("朱雀仿宋（预览测试版）"),
             QStringLiteral("Zhuque Fangsong"),     // 朱雀仿宋 (bundled OFL, if present)
             QStringLiteral("Noto Serif CJK SC"),
 #elif defined(Q_OS_WIN)
             QStringLiteral("FangSong"),            // Windows / generic
             QStringLiteral("仿宋"),        // 仿宋
             QStringLiteral("Noto Serif CJK SC"),
+            QStringLiteral("Zhuque Fangsong (technical preview)"),
+            QStringLiteral("朱雀仿宋（预览测试版）"),
             QStringLiteral("Zhuque Fangsong"),
 #else
-            QStringLiteral("Zhuque Fangsong"),     // 朱雀仿宋 (bundled OFL via the render-image) — preferred 仿宋 when present
+            // The bundled OFL file advertises this full family name. Requesting
+            // the short alias "Zhuque Fangsong" can resolve to DejaVu Sans on
+            // headless Linux, so probe the real family name first.
+            QStringLiteral("Zhuque Fangsong (technical preview)"),
+            QStringLiteral("朱雀仿宋（预览测试版）"),
+            QStringLiteral("Zhuque Fangsong"),     // legacy/alias spelling
             QStringLiteral("Noto Serif CJK SC"),   // render-image Linux host (fonts-noto-cjk) — guaranteed song fallback
             QStringLiteral("Source Han Serif SC"),
             QStringLiteral("Noto Serif CJK TC"),
@@ -54,6 +101,7 @@ QString defaultTextFamily() {
             QStringLiteral("song"),
             QStringLiteral("fang"),
             QStringLiteral("仿宋"),
+            QStringLiteral("朱雀"),
             QStringLiteral("stfang"),
             QStringLiteral("zhuque"),
             QStringLiteral("lxgw")
@@ -64,13 +112,7 @@ QString defaultTextFamily() {
             const QString resolved = QFontInfo(probe).family();
             const QString folded = resolved.toCaseFolded();
             if (folded.isEmpty()) continue;
-            if (folded.contains(QStringLiteral("dejavu sans")) ||
-                folded.contains(QStringLiteral("noto sans")) ||
-                folded.contains(QStringLiteral("helvetica")) ||
-                folded.contains(QStringLiteral("applesystem")) ||
-                folded == QStringLiteral("sans serif")) {
-                continue;
-            }
+            if (isSansFallbackFamily(resolved)) continue;
             for (const QString& tok : acceptableResolvedTokens) {
                 if (folded.contains(tok.toCaseFolded())) return f;
             }
@@ -115,13 +157,7 @@ QString defaultKaiFamily() {
             probe.setStyleHint(QFont::Serif);
             const QString folded = QFontInfo(probe).family().toCaseFolded();
             if (folded.isEmpty()) continue;
-            if (folded.contains(QStringLiteral("dejavu sans")) ||
-                folded.contains(QStringLiteral("noto sans")) ||
-                folded.contains(QStringLiteral("helvetica")) ||
-                folded.contains(QStringLiteral("applesystem")) ||
-                folded == QStringLiteral("sans serif")) {
-                continue;
-            }
+            if (isSansFallbackFamily(folded)) continue;
             for (const QString& tok : acceptable) {
                 if (folded.contains(tok.toCaseFolded())) return f;
             }
@@ -199,6 +235,9 @@ QString resolveTextFamily(const QString& family) {
     if (folded == QStringLiteral("stsong")) return defaultTextFamily();
     if (folded == QStringLiteral("stkaiti")) return defaultKaiFamily();
     if (folded == QStringLiteral("stheiti")) return defaultSansFamily();
+    if (isSongLikeCjkRequest(fam) && resolvesToSansFallback(fam, QFont::Serif)) {
+        return defaultTextFamily();
+    }
 #endif
     if (folded == QStringLiteral("sans serif") ||
         folded.contains(QStringLiteral("dejavu sans")) ||
