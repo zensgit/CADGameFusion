@@ -309,6 +309,15 @@ std::string lookup_entity_meta(const core::Document* doc, EntityId id, const cha
     return it->second;
 }
 
+std::string lookup_layer_meta(const core::Document* doc, int layerId, const char* suffix) {
+    if (!doc || layerId < 0 || !suffix || !*suffix) return {};
+    const auto& meta = doc->metadata().meta;
+    const std::string key = "dxf.layer." + std::to_string(layerId) + "." + suffix;
+    const auto it = meta.find(key);
+    if (it == meta.end()) return {};
+    return it->second;
+}
+
 const core::Layer* layer_for(const core::Document* doc, int layerId) {
     if (!doc) return nullptr;
     return doc->get_layer(layerId);
@@ -390,12 +399,21 @@ QColor resolveEntityColor(const core::Document* doc, const core::Entity& entity,
     uint32_t color = entity.color;
     const auto* layer = layer_for(doc, entity.layerId);
     const uint32_t layer_color = layer ? layer->color : 0xDCDCE6u;
+    const bool inheritsLayerColor = (color == 0);
+    bool layerTrueWhiteAci = false;
+    if (inheritsLayerColor && layer && layer_color == 0xFFFFFFu) {
+        int layerAci = 0;
+        const std::string layerAciText = lookup_layer_meta(doc, layer->id, "color_aci");
+        layerTrueWhiteAci = parse_int(layerAciText, &layerAci) && layerAci == 255;
+    }
 
     // For DXF/DWG imported entities: color is already RGB (set by adapter).
-    // If color is 0, fall back to layer color. No need for metadata lookup.
+    // If color is 0, fall back to layer color. Keep layer ACI metadata only
+    // for the AutoCAD light-background distinction between color 7 (black on
+    // white) and color 255 (true white, often intentionally invisible).
     if (color == 0) color = layer_color;
     if (color != 0 && color != 0xDCDCE6u)
-        return finalize_color(color, flipWhiteOnLight);
+        return finalize_color(color, flipWhiteOnLight && !layerTrueWhiteAci);
 
     const std::string source = lookup_entity_meta(doc, entity.id, "color_source");
     if (!source.empty()) {
@@ -435,7 +453,7 @@ QColor resolveEntityColor(const core::Document* doc, const core::Entity& entity,
     }
 
     if (color == 0) color = layer_color ? layer_color : 0xDCDCE6u;
-    return finalize_color(color, flipWhiteOnLight);
+    return finalize_color(color, flipWhiteOnLight && !layerTrueWhiteAci);
 }
 
 std::vector<std::string> semanticClassOrder() {

@@ -6,6 +6,7 @@
 #include "canvas.hpp"
 #include "core/document.hpp"
 #include "core/geometry2d.hpp"
+#include "scene_renderer.hpp"
 
 static core::Polyline makeSegment(double x0, double y0, double x1, double y1) {
     core::Polyline pl;
@@ -18,6 +19,11 @@ static core::Polyline makeSegment(double x0, double y0, double x1, double y1) {
 
 static void setMeta(core::Document& doc, core::EntityId id, const char* suffix, const std::string& value) {
     const std::string key = "dxf.entity." + std::to_string(static_cast<unsigned long long>(id)) + "." + suffix;
+    assert(doc.set_meta_value(key, value));
+}
+
+static void setLayerMeta(core::Document& doc, int id, const char* suffix, const std::string& value) {
+    const std::string key = "dxf.layer." + std::to_string(id) + "." + suffix;
     assert(doc.set_meta_value(key, value));
 }
 
@@ -73,6 +79,25 @@ int main(int argc, char** argv) {
 
     const auto byBlock = findState(states, byBlockId);
     assert(rgbOf(byBlock.color) == 0xFF0000u);
+
+    // Light-background render_cli behavior: AutoCAD color 7/default-white ink is
+    // drawn black on white, but ACI 255 is true white and must stay white. This
+    // matters for ODA/AutoCAD audit layers that intentionally use ACI 255 for
+    // non-visible helper dimensions.
+    core::Document lightDoc;
+    const int aci7Layer = lightDoc.add_layer("aci7", 0xFFFFFFu);
+    setLayerMeta(lightDoc, aci7Layer, "color_aci", "7");
+    const auto aci7Id = lightDoc.add_polyline(makeSegment(0, 0, 1, 0), "aci7", aci7Layer);
+
+    const int aci255Layer = lightDoc.add_layer("aci255", 0xFFFFFFu);
+    setLayerMeta(lightDoc, aci255Layer, "color_aci", "255");
+    const auto aci255Id = lightDoc.add_polyline(makeSegment(2, 0, 3, 0), "aci255", aci255Layer);
+
+    const auto* aci7Entity = lightDoc.get_entity(aci7Id);
+    const auto* aci255Entity = lightDoc.get_entity(aci255Id);
+    assert(aci7Entity && aci255Entity);
+    assert(rgbOf(scene_render::resolveEntityColor(&lightDoc, *aci7Entity, true)) == 0x000000u);
+    assert(rgbOf(scene_render::resolveEntityColor(&lightDoc, *aci255Entity, true)) == 0xFFFFFFu);
 
     return 0;
 }
