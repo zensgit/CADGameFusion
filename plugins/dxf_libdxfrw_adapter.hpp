@@ -159,6 +159,7 @@ private:
     int m_entityCount{0};
     int m_layerCount{0};
     std::map<std::string, int> m_layerMap;
+    std::map<std::string, int> m_layerColorAci;
     // layer name → linetype name
     std::map<std::string, std::string> m_layerLineType;
     // layer name → line weight in mm (0 = default)
@@ -195,4 +196,6 @@ private:
     std::map<std::string, int> m_blockFlags;     // DXF code 70 per block name
     std::set<std::string> m_referencedBlocks; // blocks referenced by INSERT
     std::set<std::string> m_referencedDimensionBlocks;  // *D blocks referenced by DIMENSION
+    std::map<std::string, std::string> m_dimensionBlockLayerName; // *D block name -> parent DIMENSION layer
+    std::set<std::string> m_dimensionBlocksOnTrueWhiteLayer; // parent DIMENSION layer has ACI 255
 };

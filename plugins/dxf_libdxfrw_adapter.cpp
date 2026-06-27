@@ -411,14 +411,29 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
     uint32_t insColor, const std::string& originType) {
     auto it = m_blocks.find(blockName);
     if (it == m_blocks.end()) return;
+    // AutoCAD-generated *D blocks can contain explicit child ACI colours even
+    // when the owning DIMENSION sits on an ACI 255 "true white" helper/audit
+    // layer. AutoCAD keeps those dimensions effectively invisible on white
+    // backgrounds; preserve that parent-layer visibility only for such blocks.
+    const bool dimensionTrueWhiteLayer =
+        originType == "DIMENSION" && m_dimensionBlocksOnTrueWhiteLayer.count(blockName) > 0;
+    std::string dimensionLayerName;
+    if (dimensionTrueWhiteLayer) {
+        auto layerIt = m_dimensionBlockLayerName.find(blockName);
+        if (layerIt != m_dimensionBlockLayerName.end()) {
+            dimensionLayerName = layerIt->second;
+        }
+    }
 
     for (const auto& ent : it->second) {
-        int elid = resolveLayer(ent.layerName.empty() ? "" : ent.layerName);
+        const std::string effectiveLayerName =
+            dimensionTrueWhiteLayer ? dimensionLayerName : ent.layerName;
+        int elid = dimensionTrueWhiteLayer ? lid : resolveLayer(ent.layerName.empty() ? "" : ent.layerName);
         if (elid == 0) elid = lid;
 
         // Resolve BYBLOCK color: use INSERT's color; fallback to BYLAYER (0)
-        uint32_t effectiveColor = ent.color;
-        if (effectiveColor == BYBLOCK_COLOR)
+        uint32_t effectiveColor = dimensionTrueWhiteLayer ? 0 : ent.color;
+        if (!dimensionTrueWhiteLayer && effectiveColor == BYBLOCK_COLOR)
             effectiveColor = (insColor != BYBLOCK_COLOR) ? insColor : 0;
 
         switch (ent.type) {
@@ -430,7 +445,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 transformed.push_back(transformPoint(px, py, insX, insY, xscale, yscale, angle));
             bool isSolid = (ent.linetype == "__SOLID__");
             cadgf_entity_id pid = addPolylineToDoc(transformed, elid, effectiveColor,
-                             isSolid ? "" : ent.linetype, ent.layerName, 0.0,
+                             isSolid ? "" : ent.linetype, effectiveLayerName, 0.0,
                              isSolid ? "__SOLID__" : nullptr);
             setEntitySourceType(pid, !ent.sourceType.empty() ? ent.sourceType : originType);
             break;
@@ -443,7 +458,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 double a = 2.0 * M_PI * s / 64;
                 circ.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
             }
-            setEntitySourceType(addPolylineToDoc(circ, elid, effectiveColor, ent.linetype, ent.layerName), originType);
+            setEntitySourceType(addPolylineToDoc(circ, elid, effectiveColor, ent.linetype, effectiveLayerName), originType);
             break;
         }
         case BlockEntity::Arc: {
@@ -460,7 +475,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 double a = sa + (ea - sa) * s / segs;
                 arc.push_back({cx + r * std::cos(a), cy + r * std::sin(a)});
             }
-            setEntitySourceType(addPolylineToDoc(arc, elid, effectiveColor, ent.linetype, ent.layerName), originType);
+            setEntitySourceType(addPolylineToDoc(arc, elid, effectiveColor, ent.linetype, effectiveLayerName), originType);
             break;
         }
         case BlockEntity::Point: {
@@ -521,7 +536,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
             if (eeid != 0) {
                 if (effectiveColor != 0 && effectiveColor != BYBLOCK_COLOR)
                     cadgf_document_set_entity_color(m_doc, eeid, effectiveColor);
-                applyLinetype(eeid, ent.linetype, ent.layerName);
+                applyLinetype(eeid, ent.linetype, effectiveLayerName);
             }
             setEntitySourceType(eeid, originType);
             ++m_entityCount;
@@ -675,6 +690,7 @@ void CadgfDrwAdapter::addLayer(const DRW_Layer& data) {
         color = aci_to_rgb(absColor);
     int id = 0;
     cadgf_document_add_layer(m_doc, data.name.c_str(), color, &id);
+    m_layerColorAci[data.name] = absColor;
     if (id >= 0) {
         const std::string key = "dxf.layer." + std::to_string(id) + ".color_aci";
         cadgf_document_set_meta_value(m_doc, key.c_str(), std::to_string(absColor).c_str());
@@ -1747,6 +1763,11 @@ bool CadgfDrwAdapter::useDimBlock(const DRW_Dimension* dim) {
     auto it = m_blocks.find(bn);
     if (it == m_blocks.end() || it->second.empty()) return false;
     m_referencedDimensionBlocks.insert(bn);
+    m_dimensionBlockLayerName[bn] = dim->layer;
+    auto aciIt = m_layerColorAci.find(dim->layer);
+    if (aciIt != m_layerColorAci.end() && aciIt->second == 255) {
+        m_dimensionBlocksOnTrueWhiteLayer.insert(bn);
+    }
     return true;
 }
 
@@ -2068,7 +2089,12 @@ void CadgfDrwAdapter::expandUnreferencedBlocks() {
             if (name.size() > 1 && name[1] == 'D' &&
                 (name.size() == 2 || std::isdigit(static_cast<unsigned char>(name[2])))) {
                 if (m_referencedDimensionBlocks.count(name)) {
-                    expandBlock(name, 0, 0, 1, 1, 0, 0, 0, "DIMENSION");
+                    int dimensionLayerId = 0;
+                    auto layerIt = m_dimensionBlockLayerName.find(name);
+                    if (layerIt != m_dimensionBlockLayerName.end()) {
+                        dimensionLayerId = resolveLayer(layerIt->second);
+                    }
+                    expandBlock(name, 0, 0, 1, 1, 0, dimensionLayerId, 0, "DIMENSION");
                 }
             }
             continue; // skip other system blocks (*T#, *U#, *X#, *MODEL_SPACE, …)
