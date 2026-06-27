@@ -675,6 +675,10 @@ void CadgfDrwAdapter::addLayer(const DRW_Layer& data) {
         color = aci_to_rgb(absColor);
     int id = 0;
     cadgf_document_add_layer(m_doc, data.name.c_str(), color, &id);
+    if (id >= 0) {
+        const std::string key = "dxf.layer." + std::to_string(id) + ".color_aci";
+        cadgf_document_set_meta_value(m_doc, key.c_str(), std::to_string(absColor).c_str());
+    }
     m_layerMap[data.name] = id;
     ++m_layerCount;
     // Store linetype association for later entity resolution
