@@ -693,6 +693,13 @@ void renderScene(QPainter& pr, const core::Document* doc,
             QFont font;
             font.setFamily(fam);
             font.setPixelSize(static_cast<int>(fontSize));
+            // Headless Qt renders regular CJK serif text slightly thinner than
+            // AutoCAD's mechanical plot output. Use a modest synthetic weight
+            // only for song/fangsong-style CJK text; geometry, hatch, sans/kai,
+            // width factor, and positioning stay unchanged.
+            if (isSongLikeCjkRequest(fam)) {
+                font.setWeight(QFont::DemiBold);
+            }
             pr.setFont(font);
             pr.save();
             pr.translate(screenPos);
