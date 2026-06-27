@@ -693,13 +693,7 @@ void renderScene(QPainter& pr, const core::Document* doc,
             QFont font;
             font.setFamily(fam);
             font.setPixelSize(static_cast<int>(fontSize));
-            // Headless Qt renders regular CJK serif text slightly thinner than
-            // AutoCAD's mechanical plot output. Use a modest synthetic weight
-            // only for song/fangsong-style CJK text; geometry, hatch, sans/kai,
-            // width factor, and positioning stay unchanged.
-            if (isSongLikeCjkRequest(fam)) {
-                font.setWeight(QFont::DemiBold);
-            }
+            const bool cjkSerifTextOverdraw = !semanticClassMask && isSongLikeCjkRequest(fam);
             pr.setFont(font);
             pr.save();
             pr.translate(screenPos);
@@ -710,9 +704,24 @@ void renderScene(QPainter& pr, const core::Document* doc,
             if (std::abs(widthFactor - 1.0) > 0.01)
                 pr.scale(widthFactor, 1.0);
             double lineH = fontSize * 1.4;
-            for (int li = 0; li < lines.size(); ++li)
-                if (!lines[li].isEmpty())
-                    pr.drawText(QPointF(0, li * lineH), lines[li]);
+            for (int li = 0; li < lines.size(); ++li) {
+                if (lines[li].isEmpty()) continue;
+                const QPointF origin(0, li * lineH);
+                pr.drawText(origin, lines[li]);
+                if (cjkSerifTextOverdraw) {
+                    // AutoCAD's mechanical plots render default SHX/CJK 仿宋
+                    // text with a slightly heavier stroke than headless Qt's
+                    // regular Zhuque/Noto serif rasterization. A sub-pixel
+                    // color-pass overdraw is deterministic and visibly safer
+                    // than relying on QFont::DemiBold, which fontconfig/Qt can
+                    // ignore for single-weight bundled CJK fonts. Keep semantic
+                    // class masks unmodified so diagnostics still report entity
+                    // coverage rather than display-weight inflation.
+                    constexpr qreal kCjkSerifOverdrawPx = 0.35;
+                    pr.drawText(origin + QPointF(kCjkSerifOverdrawPx, 0), lines[li]);
+                    pr.drawText(origin + QPointF(0, kCjkSerifOverdrawPx), lines[li]);
+                }
+            }
             pr.restore();
         }
         pr.restore(); // restore world transform for subsequent drawing

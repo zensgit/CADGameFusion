@@ -50,6 +50,19 @@ static bool hasApproxColor(const QImage& img, unsigned int rgb, int tol = 12) {
     return false;
 }
 
+static int countInkPixels(const QImage& img) {
+    int count = 0;
+    for (int y = 0; y < img.height(); ++y) {
+        for (int x = 0; x < img.width(); ++x) {
+            const QColor c(img.pixelColor(x, y));
+            if (c.alpha() > 0 && (c.red() > 24 || c.green() > 24 || c.blue() > 24)) {
+                ++count;
+            }
+        }
+    }
+    return count;
+}
+
 int main(int argc, char** argv) {
     qputenv("QT_QPA_PLATFORM", QByteArray("offscreen"));
     QGuiApplication app(argc, argv);
@@ -90,6 +103,37 @@ int main(int argc, char** argv) {
     for (const auto& name : scene_render::semanticClassOrder()) {
         if (name == "other") continue;
         assert(hasApproxColor(mask, scene_render::semanticClassRgb(name)));
+    }
+
+    {
+        core::Document cjkDoc;
+        const std::string cjkFamily = scene_render::defaultTextFamily().toStdString();
+        const auto textOnlyId = cjkDoc.add_text(makeText(0, 0, "罐体支腿"), cjkFamily);
+        cjkDoc.set_entity_color(textOnlyId, 0xFFFFFFu);
+
+        scene_render::View textView;
+        textView.scale = 18.0;
+        textView.pan = QPointF(40, 150);
+        textView.lightBackground = false;
+        scene_render::LinetypeTable textLinetypes;
+        const QVector<scene_render::PolyVis> noPolylines = scene_render::buildPolyCache(cjkDoc);
+
+        QImage colorText(QSize(360, 220), QImage::Format_ARGB32_Premultiplied);
+        colorText.fill(QColor(0, 0, 0));
+        QPainter colorPainter(&colorText);
+        scene_render::renderScene(colorPainter, &cjkDoc, noPolylines, textView, textLinetypes, nullptr, false);
+        colorPainter.end();
+
+        QImage semanticText(QSize(360, 220), QImage::Format_ARGB32_Premultiplied);
+        semanticText.fill(QColor(0, 0, 0));
+        QPainter semanticPainter(&semanticText);
+        scene_render::renderScene(semanticPainter, &cjkDoc, noPolylines, textView, textLinetypes, nullptr, true);
+        semanticPainter.end();
+
+        const int colorInk = countInkPixels(colorText);
+        const int semanticInk = countInkPixels(semanticText);
+        assert(semanticInk > 0);
+        assert(colorInk > semanticInk + 8);
     }
 
     return 0;
