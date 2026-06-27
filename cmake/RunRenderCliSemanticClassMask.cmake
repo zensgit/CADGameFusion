@@ -51,19 +51,22 @@ foreach(needle IN ITEMS
   endif()
 endforeach()
 
-# Optional: assert a specific semantic class is populated (non-zero entity_counts).
-# Used by the dimension-provenance regression test. render_cli's import path
-# (CadgfDrwAdapter) must emit "source_type" entity metadata for *D dimension-block
-# primitives; without it they silently fall back to geometry/text and the class
-# count stays 0. "<class>":  appears only in entity_counts (palette uses "name").
+# Optional: assert one OR MORE semantic classes are populated (non-zero entity_counts).
+# expect_nonzero_class may be a single class or a CMake list (e.g. "dimension;hatch;insert_text").
+# Used by the provenance regression tests. render_cli's import path (CadgfDrwAdapter)
+# must emit "source_type" entity metadata for *D dimension blocks, block-nested solid
+# hatches, and INSERT-sourced text; without it they silently fall back to geometry/text
+# and the class count stays 0. "<class>":  appears only in entity_counts (palette uses "name").
 if(DEFINED expect_nonzero_class)
-  string(FIND "${rep}" "\"${expect_nonzero_class}\":" present_idx)
-  if(present_idx LESS 0)
-    message(FATAL_ERROR "report has no '${expect_nonzero_class}' class entry: ${report}")
-  endif()
-  string(FIND "${rep}" "\"${expect_nonzero_class}\": 0" zero_idx)
-  if(NOT zero_idx LESS 0)
-    message(FATAL_ERROR "expected '${expect_nonzero_class}' semantic class to be non-zero "
-      "(import-path provenance metadata missing?): ${report}")
-  endif()
+  foreach(_cls IN LISTS expect_nonzero_class)
+    string(FIND "${rep}" "\"${_cls}\":" present_idx)
+    if(present_idx LESS 0)
+      message(FATAL_ERROR "report has no '${_cls}' class entry: ${report}")
+    endif()
+    string(FIND "${rep}" "\"${_cls}\": 0" zero_idx)
+    if(NOT zero_idx LESS 0)
+      message(FATAL_ERROR "expected '${_cls}' semantic class to be non-zero "
+        "(import-path provenance metadata missing?): ${report}")
+    endif()
+  endforeach()
 endif()
