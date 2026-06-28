@@ -23,6 +23,8 @@ struct BlockEntity {
     double widthFactor{1.0};  // DXF text-style width × entity widthscale
     std::string fontFam;      // resolved Qt family (empty → engineering 仿宋)
     std::string textStyleName;
+    std::string textKind;      // "text" / "mtext" provenance for report-only diagnostics
+    std::string attributeTag;
     bool isAttDef{false}; // ATTDEF tag text: hidden during INSERT expansion
     // Ellipse
     double rx{0}, ry{0}, ellRot{0}, ellStart{0}, ellEnd{0};

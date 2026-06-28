@@ -132,6 +132,16 @@ static void write_entity_double_metadata(cadgf_document* doc,
     (void)cadgf_document_set_meta_value(doc, key.c_str(), buf);
 }
 
+static void write_entity_string_metadata(cadgf_document* doc,
+                                         cadgf_entity_id id,
+                                         const char* suffix,
+                                         const std::string& value) {
+    if (!doc || id == 0 || !suffix || !*suffix || value.empty()) return;
+    const std::string key = "dxf.entity." +
+        std::to_string(static_cast<unsigned long long>(id)) + "." + suffix;
+    (void)cadgf_document_set_meta_value(doc, key.c_str(), value.c_str());
+}
+
 // Convert DRW lineWidth enum to mm (0 = use layer/default)
 static double drw_lweight_mm(DRW_LW_Conv::lineWidth lw) {
     int dxfVal = DRW_LW_Conv::lineWidth2dxfInt(lw);
@@ -441,6 +451,12 @@ cadgf_entity_id CadgfDrwAdapter::addPolylineToDoc(const std::vector<std::pair<do
 // Defined below (after fontFamilyForStyle); used here in expandBlock.
 static std::string encodeTextName(const std::string& family, double widthFactor);
 
+static std::string textKindForTextEntity(const DRW_Text& data) {
+    if (data.eType == DRW::ATTRIB) return "attrib";
+    if (data.eType == DRW::ATTDEF) return "attdef";
+    return "text";
+}
+
 void CadgfDrwAdapter::setEntitySourceType(cadgf_entity_id id, const std::string& originType) {
     if (id == 0 || originType.empty()) return;
     // Mirror the plugin import path's provenance contract so render_cli's
@@ -603,6 +619,9 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 if (tid && effectiveColor != 0 && effectiveColor != BYBLOCK_COLOR)
                     cadgf_document_set_entity_color(m_doc, tid, effectiveColor);
                 setEntitySourceType(tid, originType);
+                write_entity_string_metadata(m_doc, tid, "block_name", blockName);
+                write_entity_string_metadata(m_doc, tid, "text_kind", ent.textKind);
+                write_entity_string_metadata(m_doc, tid, "attribute_tag", ent.attributeTag);
                 writeTextStyleMetadata(tid, ent.textStyleName, ent.widthFactor);
                 ++m_entityCount;
             }
@@ -1177,6 +1196,8 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
         be.widthFactor = effectiveWidthFactor;
         be.fontFam = fontFamilyForStyle(data.style);
         be.textStyleName = data.style;
+        be.textKind = textKindForTextEntity(data);
+        be.attributeTag = data.attributeTag;
         be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
@@ -1191,6 +1212,8 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
     uint32_t col = drw_entity_color(data);
     if (eid && col != 0 && col != BYBLOCK_COLOR)
         cadgf_document_set_entity_color(m_doc, eid, col);
+    write_entity_string_metadata(m_doc, eid, "text_kind", textKindForTextEntity(data));
+    write_entity_string_metadata(m_doc, eid, "attribute_tag", data.attributeTag);
     writeTextStyleMetadata(eid, data.style, effectiveWidthFactor);
     ++m_entityCount;
 }
@@ -1286,6 +1309,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         be.widthFactor = widthFactorForStyle(data.style); // MTEXT: code-41 = box width, not glyph factor
         be.fontFam = fontFamilyForStyle(data.style);
         be.textStyleName = data.style;
+        be.textKind = "mtext";
         be.layerName = data.layer; be.color = inlineColor != 0 ? inlineColor : drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
@@ -1301,6 +1325,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         cadgf_document_set_entity_color(m_doc, eid, col);
     if (eid && inlineColorAci > 0)
         write_entity_index_color_metadata(m_doc, eid, inlineColorAci);
+    write_entity_string_metadata(m_doc, eid, "text_kind", "mtext");
     writeTextStyleMetadata(eid, data.style, widthFactorForStyle(data.style));
     ++m_entityCount;
 }

@@ -329,6 +329,19 @@ if(TARGET dxfrw)
     add_test(NAME test_dxf_libdxfrw_fit_text_run
         COMMAND test_dxf_libdxfrw_fit_text)
 
+    add_executable(test_dxf_libdxfrw_block_text_provenance
+        test_dxf_libdxfrw_block_text_provenance.cpp
+        ${CMAKE_SOURCE_DIR}/plugins/dxf_libdxfrw_adapter.cpp)
+    target_link_libraries(test_dxf_libdxfrw_block_text_provenance PRIVATE core_c dxfrw)
+    target_include_directories(test_dxf_libdxfrw_block_text_provenance PRIVATE
+        ${CMAKE_SOURCE_DIR}/core/include
+        ${CMAKE_SOURCE_DIR}/plugins
+        ${CMAKE_SOURCE_DIR}/deps/libdxfrw/src)
+    set_target_properties(test_dxf_libdxfrw_block_text_provenance PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+
+    add_test(NAME test_dxf_libdxfrw_block_text_provenance_run
+        COMMAND test_dxf_libdxfrw_block_text_provenance)
+
     add_executable(test_dxf_libdxfrw_hatch_clockwise_arc
         test_dxf_libdxfrw_hatch_clockwise_arc.cpp
         ${CMAKE_SOURCE_DIR}/plugins/dxf_libdxfrw_adapter.cpp)
@@ -482,6 +495,7 @@ set_tests_properties(test_dxf_nonfinite_numbers_run PROPERTIES ENVIRONMENT "${_p
 if(TARGET dxfrw)
     set_tests_properties(test_dxf_libdxfrw_orphan_dimension_blocks_run PROPERTIES ENVIRONMENT "${_plugin_env}")
     set_tests_properties(test_dxf_libdxfrw_hatch_boundary_visibility_run PROPERTIES ENVIRONMENT "${_plugin_env}")
+    set_tests_properties(test_dxf_libdxfrw_block_text_provenance_run PROPERTIES ENVIRONMENT "${_plugin_env}")
     set_tests_properties(test_dxf_libdxfrw_hatch_clockwise_arc_run PROPERTIES ENVIRONMENT "${_plugin_env}")
     set_tests_properties(test_dxf_libdxfrw_hatch_diagnostics_run PROPERTIES ENVIRONMENT "${_plugin_env}")
 endif()
