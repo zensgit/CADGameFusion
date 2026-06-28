@@ -1456,6 +1456,27 @@ void CadgfDrwAdapter::addLeader(const DRW_Leader* data) {
 void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
     if (!data) return;
     if (!m_inBlock && shouldSkipEntity(*data)) return;
+    HatchPatternDiagnostic hatchDiag;
+    hatchDiag.patternName = data->name;
+    hatchDiag.layerName = data->layer;
+    hatchDiag.inBlock = m_inBlock;
+    hatchDiag.solid = data->solid != 0;
+    hatchDiag.hatchStyle = data->hstyle;
+    hatchDiag.hatchPattern = data->hpattern;
+    hatchDiag.doubleFlag = data->doubleflag;
+    hatchDiag.defLines = data->deflines;
+    hatchDiag.loopCount = static_cast<int>(data->looplist.size());
+    hatchDiag.angleDeg = data->angle;
+    hatchDiag.scale = data->scale;
+    hatchDiag.colorRgb = drw_entity_color(*data);
+    if (data->color > 0 && data->color <= 255) {
+        hatchDiag.colorAci = data->color;
+    } else {
+        auto layerColorIt = m_layerColorAci.find(data->layer);
+        if (data->color == 256 && layerColorIt != m_layerColorAci.end()) {
+            hatchDiag.colorAci = layerColorIt->second;
+        }
+    }
     int lid = resolveLayer(data->layer);
     for (const auto* loop : data->looplist) {
         // Each loop contains edge entities (lines, arcs, etc.)
@@ -1548,6 +1569,7 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                 be.linetype = "__SOLID__";
                 be.sourceType = "HATCH"; // carry provenance across the block seam (linetype is taken by __SOLID__)
                 m_blocks[m_currentBlockName].push_back(be);
+                ++hatchDiag.emittedSegments;
             } else if (isSolid) {
                 // Close the polygon if not already closed
                 if (pts.size() >= 3 &&
@@ -1555,6 +1577,7 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                      std::abs(pts.front().second - pts.back().second) > 1e-6))
                     pts.push_back(pts.front());
                 setEntitySourceType(addPolylineToDoc(pts, lid, hcol, "", data->layer, 0.0, "__SOLID__"), "HATCH");
+                ++hatchDiag.emittedSegments;
             }
         }
     }
@@ -1633,8 +1656,11 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                 loops.push_back(std::move(boundary));
             }
         }
+        hatchDiag.usableLoopCount = static_cast<int>(loops.size());
 
         double hW = hMaxX - hMinX, hH = hMaxY - hMinY;
+        hatchDiag.bboxWidth = (hW > 0.0) ? hW : 0.0;
+        hatchDiag.bboxHeight = (hH > 0.0) ? hH : 0.0;
         if (hW > 0.1 && hH > 0.1 && !loops.empty()) {
             // True AutoCAD hatch spacing: ANSI pattern base perpendicular
             // offset = 0.125in = 3.175mm, multiplied by the hatch pattern
@@ -1645,11 +1671,14 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
             // gate/sign bugs (fixed) and made hatches ~27× too dense (looked
             // like solid gray). Use the true spacing; AutoCAD does.
             double spacing = (data->scale > 0.01) ? data->scale * 3.175 : 3.175;
+            const double requestedSpacing = spacing;
             double diag = std::sqrt(hW*hW + hH*hH);
             // Safety rails only: anti-infinite-loop floor + a hard cap on
             // total lines so a tiny scale or huge region can't hang import.
             if (spacing < 0.1) spacing = 0.1;
             if (diag / spacing > 2000) spacing = diag / 2000.0;
+            hatchDiag.spacing = spacing;
+            hatchDiag.spacingCapped = std::abs(spacing - requestedSpacing) > 1e-9;
             uint32_t hcol = drw_entity_color(*data);
             // Pattern base angle(s), one per line-family. libdxfrw exposes only
             // the pattern NAME (code 2) and rotation (code 52) — NOT the
@@ -1668,6 +1697,7 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                 if (data->doubleflag && famBases.size() == 1)
                     famBases.push_back(famBases[0] + 90.0);
             }
+            hatchDiag.familyCount = static_cast<int>(famBases.size());
             for (double baseAngle : famBases) {
             double ang = (baseAngle + data->angle) * M_PI / 180.0;
             double cosA = std::cos(ang), sinA = std::sin(ang);
@@ -1724,6 +1754,7 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                         be.linetype = "__HATCH_FILL__";
                         be.sourceType = "HATCH"; // provenance independent of the linetype hack
                         m_blocks[m_currentBlockName].push_back(be);
+                        ++hatchDiag.emittedSegments;
                     } else {
                         // Tag pattern-fill lines so the canvas can render them
                         // as 1-device-px hairlines. With pattern spacing often
@@ -1733,12 +1764,14 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                         // visible as distinct strokes.
                         addPolylineToDoc({{x1,y1},{x2,y2}}, lid, fillCol,
                                          "__HATCH_FILL__", data->layer);
+                        ++hatchDiag.emittedSegments;
                     }
                 }
             }
             } // for each pattern line-family
         }
     }
+    m_hatchPatternDiagnostics.push_back(hatchDiag);
 }
 
 // ─── DIMENSIONS: render as lines + text ───

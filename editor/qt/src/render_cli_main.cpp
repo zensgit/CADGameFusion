@@ -243,6 +243,57 @@ QJsonArray semanticClassPalette() {
     return palette;
 }
 
+QJsonObject hatchPatternReport(const CadgfDrwAdapter& adapter) {
+    QJsonObject report;
+    report["schema"] = "vemcad.render_hatch_patterns";
+    report["schema_version"] = "0.1";
+
+    QJsonArray records;
+    int solidCount = 0;
+    int patternCount = 0;
+    int emittedSegments = 0;
+    for (const auto& hatch : adapter.hatchPatternDiagnostics()) {
+        QJsonObject row;
+        row["pattern"] = QString::fromStdString(hatch.patternName);
+        row["layer"] = QString::fromStdString(hatch.layerName);
+        row["in_block"] = hatch.inBlock;
+        row["solid"] = hatch.solid;
+        row["hatch_style"] = hatch.hatchStyle;
+        row["hatch_pattern"] = hatch.hatchPattern;
+        row["double_flag"] = hatch.doubleFlag;
+        row["def_lines"] = hatch.defLines;
+        row["loop_count"] = hatch.loopCount;
+        row["usable_loop_count"] = hatch.usableLoopCount;
+        row["family_count"] = hatch.familyCount;
+        row["emitted_segments"] = hatch.emittedSegments;
+        row["angle_deg"] = hatch.angleDeg;
+        row["scale"] = hatch.scale;
+        row["spacing"] = hatch.spacing;
+        row["spacing_capped"] = hatch.spacingCapped;
+        row["bbox_w"] = hatch.bboxWidth;
+        row["bbox_h"] = hatch.bboxHeight;
+        row["color_aci"] = hatch.colorAci;
+        row["color_rgb"] = QString("#%1").arg(hatch.colorRgb, 6, 16, QLatin1Char('0')).toUpper();
+        records.append(row);
+
+        if (hatch.solid) {
+            ++solidCount;
+        } else {
+            ++patternCount;
+        }
+        emittedSegments += hatch.emittedSegments;
+    }
+
+    QJsonObject summary;
+    summary["total"] = records.size();
+    summary["solid"] = solidCount;
+    summary["pattern"] = patternCount;
+    summary["emitted_segments"] = emittedSegments;
+    report["summary"] = summary;
+    report["records"] = records;
+    return report;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -482,6 +533,7 @@ int main(int argc, char** argv) {
             classes["mask_path"] = classMaskOut;
         }
         rep["semantic_classes"] = classes;
+        rep["hatch_patterns"] = hatchPatternReport(*imp.adapter);
         QJsonObject fonts;
         fonts["loaded_dir"] = parser.isSet("font-dir") ? parser.value("font-dir") : QString();
         fonts["loaded_families"] = QJsonArray::fromStringList(loadedFamilies);
