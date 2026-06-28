@@ -1485,13 +1485,20 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
             }
         }
         if (pts.size() >= 2) {
-            // For SOLID hatches: render boundary as filled polygon
+            // For SOLID hatches: render boundary as filled polygon. For
+            // pattern hatches, do NOT materialize the boundary loop as a
+            // visible polyline: AutoCAD displays the hatch strokes, not the
+            // hatch's implicit boundary, unless the drawing also contains
+            // explicit boundary entities. Rendering those implicit loops leaks
+            // construction outlines on drawings whose hatch boundary extends
+            // beyond the plotted sheet.
             bool isSolid = (data->solid != 0);
             uint32_t hcol = drw_entity_color(*data);
+            if (!isSolid) continue;
             if (m_inBlock) {
                 BlockEntity be; be.type = BlockEntity::LWPolyline; be.pts = pts;
                 be.layerName = data->layer; be.color = hcol;
-                if (isSolid) be.linetype = "__SOLID__";
+                be.linetype = "__SOLID__";
                 be.sourceType = "HATCH"; // carry provenance across the block seam (linetype is taken by __SOLID__)
                 m_blocks[m_currentBlockName].push_back(be);
             } else if (isSolid) {
@@ -1501,8 +1508,6 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                      std::abs(pts.front().second - pts.back().second) > 1e-6))
                     pts.push_back(pts.front());
                 setEntitySourceType(addPolylineToDoc(pts, lid, hcol, "", data->layer, 0.0, "__SOLID__"), "HATCH");
-            } else {
-                addPolylineToDoc(pts, lid, hcol);
             }
         }
     }
