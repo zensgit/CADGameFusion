@@ -269,7 +269,7 @@ QJsonObject textPlacementReport(const core::Document& doc,
                                 const scene_render::View& view) {
     QJsonObject report;
     report["schema"] = "vemcad.render_text_placement";
-    report["schema_version"] = "0.3";
+    report["schema_version"] = "0.4";
     report["view_space"] = "same_as_color_render";
 
     QJsonArray records;
@@ -340,6 +340,8 @@ QJsonObject textPlacementReport(const core::Document& doc,
             scene_render::semanticClassName(&doc, e));
         rec["source_type"] = QString::fromStdString(
             lookupEntityMeta(doc, e.id, "source_type"));
+        rec["block_name"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "block_name"));
         rec["text_kind"] = QString::fromStdString(
             lookupEntityMeta(doc, e.id, "text_kind"));
         rec["attribute_tag"] = QString::fromStdString(
