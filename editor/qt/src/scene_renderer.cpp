@@ -12,6 +12,7 @@
 #include <QtGlobal>
 
 #include <cmath>
+#include <cctype>
 #include <cstdlib>
 #include <vector>
 
@@ -307,6 +308,16 @@ std::string lookup_entity_meta(const core::Document* doc, EntityId id, const cha
     const auto it = meta.find(key);
     if (it == meta.end()) return {};
     return it->second;
+}
+
+bool isHgcadShxTextStyle(const core::Document* doc, EntityId id) {
+    auto hasHgcad = [](std::string value) {
+        for (char& c : value)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return value.find("hgcad") != std::string::npos;
+    };
+    return hasHgcad(lookup_entity_meta(doc, id, "text_font_file")) ||
+           hasHgcad(lookup_entity_meta(doc, id, "text_bigfont_file"));
 }
 
 std::string lookup_layer_meta(const core::Document* doc, int layerId, const char* suffix) {
@@ -711,7 +722,13 @@ void renderScene(QPainter& pr, const core::Document* doc,
             QFont font;
             font.setFamily(fam);
             font.setPixelSize(static_cast<int>(fontSize));
-            const bool cjkSerifTextOverdraw = !semanticClassMask && isSongLikeCjkRequest(fam);
+            // HGCAD.SHX/HGCADHZ.SHX behaves closer to AutoCAD's single-stroke
+            // engineering SHX text than to regular CJK song/仿宋 outlines.
+            // Keep the heavier fallback overdraw for normal song-like defaults,
+            // but avoid it for this provenance-confirmed SHX style.
+            const bool hgcadShxTextStyle = isHgcadShxTextStyle(doc, e.id);
+            const bool cjkSerifTextOverdraw =
+                !semanticClassMask && !hgcadShxTextStyle && isSongLikeCjkRequest(fam);
             pr.setFont(font);
             pr.save();
             pr.translate(screenPos);
