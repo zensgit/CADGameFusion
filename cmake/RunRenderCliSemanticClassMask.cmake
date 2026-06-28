@@ -47,6 +47,10 @@ foreach(needle IN ITEMS
     "\"schema\": \"vemcad.render_text_placement\""
     "\"view_space\": \"same_as_color_render\""
     "\"records\""
+    "\"text_style\""
+    "\"text_font_file\""
+    "\"text_bigfont_file\""
+    "\"text_effective_width_factor\""
     "\"geometry\""
     "\"text\"")
   string(FIND "${rep}" "${needle}" idx)

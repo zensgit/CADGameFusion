@@ -250,7 +250,7 @@ QJsonObject textPlacementReport(const core::Document& doc,
                                 const scene_render::View& view) {
     QJsonObject report;
     report["schema"] = "vemcad.render_text_placement";
-    report["schema_version"] = "0.1";
+    report["schema_version"] = "0.2";
     report["view_space"] = "same_as_color_render";
 
     QJsonArray records;
@@ -327,6 +327,20 @@ QJsonObject textPlacementReport(const core::Document& doc,
             lookupEntityMeta(doc, e.id, "text_halign"));
         rec["valign"] = QString::fromStdString(
             lookupEntityMeta(doc, e.id, "text_valign"));
+        rec["text_style"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "text_style"));
+        rec["text_style_known"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "text_style_known"));
+        rec["text_font_file"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "text_font_file"));
+        rec["text_bigfont_file"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "text_bigfont_file"));
+        rec["text_style_width_factor"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "text_style_width_factor"));
+        rec["text_style_char_ratio"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "text_style_char_ratio"));
+        rec["text_effective_width_factor"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "text_effective_width_factor"));
         rec["requested_family"] = parts.requestedFamily;
         rec["resolved_family"] = parts.resolvedFamily;
         rec["width_factor"] = parts.widthFactor;
