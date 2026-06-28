@@ -36,6 +36,7 @@
 #include <QSvgGenerator>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -183,6 +184,24 @@ bool containsFoldedToken(const QString& value, const QStringList& tokens) {
     return false;
 }
 
+bool isRomansHzdxShxTextStyle(const core::Document& doc, core::EntityId id) {
+    auto fold = [](std::string value) {
+        for (char& c : value)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return value;
+    };
+    const std::string font = fold(lookupEntityMeta(doc, id, "text_font_file"));
+    const std::string bigfont = fold(lookupEntityMeta(doc, id, "text_bigfont_file"));
+    return font.find("romans") != std::string::npos &&
+           bigfont.find("hzdx") != std::string::npos;
+}
+
+double romansHzdxBaselineAdjustPx(const core::Document& doc, core::EntityId id,
+                                  double targetPx) {
+    if (!isRomansHzdxShxTextStyle(doc, id)) return 0.0;
+    return targetPx * -0.05;
+}
+
 bool isSansFallbackFamily(const QString& family) {
     return containsFoldedToken(family, {
         QStringLiteral("dejavu sans"),
@@ -250,7 +269,7 @@ QJsonObject textPlacementReport(const core::Document& doc,
                                 const scene_render::View& view) {
     QJsonObject report;
     report["schema"] = "vemcad.render_text_placement";
-    report["schema_version"] = "0.2";
+    report["schema_version"] = "0.3";
     report["view_space"] = "same_as_color_render";
 
     QJsonArray records;
@@ -309,6 +328,10 @@ QJsonObject textPlacementReport(const core::Document& doc,
 
         const QPointF screen = scene_render::worldToScreen(
             view, QPointF(txt->pos.x, txt->pos.y));
+        const double baselineAdjustPx =
+            romansHzdxBaselineAdjustPx(doc, e.id, targetPx);
+        const double baselineAdjustWorld =
+            view.scale > 0.0 ? baselineAdjustPx / view.scale : 0.0;
 
         QJsonObject rec;
         rec["entity_id"] = QString::number(
@@ -353,6 +376,8 @@ QJsonObject textPlacementReport(const core::Document& doc,
         rec["font_px"] = fontSize;
         rec["screen_x"] = screen.x();
         rec["screen_y"] = screen.y();
+        rec["render_baseline_adjust_px"] = baselineAdjustPx;
+        rec["render_baseline_adjust_world"] = baselineAdjustWorld;
         rec["max_line_width_px"] = maxLineWidthPx;
         rec["block_height_px"] = blockHeightPx;
         rec["max_line_width_world"] = widthWorld;

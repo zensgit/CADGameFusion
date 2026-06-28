@@ -320,6 +320,28 @@ bool isHgcadShxTextStyle(const core::Document* doc, EntityId id) {
            hasHgcad(lookup_entity_meta(doc, id, "text_bigfont_file"));
 }
 
+bool isRomansHzdxShxTextStyle(const core::Document* doc, EntityId id) {
+    auto fold = [](std::string value) {
+        for (char& c : value)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return value;
+    };
+    const std::string font = fold(lookup_entity_meta(doc, id, "text_font_file"));
+    const std::string bigfont = fold(lookup_entity_meta(doc, id, "text_bigfont_file"));
+    return font.find("romans") != std::string::npos &&
+           bigfont.find("hzdx") != std::string::npos;
+}
+
+double romansHzdxBaselineAdjustPx(const core::Document* doc, EntityId id, double targetPx) {
+    if (!isRomansHzdxShxTextStyle(doc, id)) return 0.0;
+    // The romans.shx + hzdx.shx pair uses the normal serif CJK fallback for
+    // glyph coverage, but AutoCAD positions this SHX stack slightly closer to
+    // the cap/top line. A small screen-space upward baseline adjustment reduced
+    // the measured G10/G11 text residuals without the G04 regression caused by
+    // changing the font family or disabling overdraw.
+    return targetPx * -0.05;
+}
+
 std::string lookup_layer_meta(const core::Document* doc, int layerId, const char* suffix) {
     if (!doc || layerId < 0 || !suffix || !*suffix) return {};
     const auto& meta = doc->metadata().meta;
@@ -739,9 +761,10 @@ void renderScene(QPainter& pr, const core::Document* doc,
             if (std::abs(widthFactor - 1.0) > 0.01)
                 pr.scale(widthFactor, 1.0);
             double lineH = fontSize * 1.4;
+            const double baselineAdjustPx = romansHzdxBaselineAdjustPx(doc, e.id, targetPx);
             for (int li = 0; li < lines.size(); ++li) {
                 if (lines[li].isEmpty()) continue;
-                const QPointF origin(0, li * lineH);
+                const QPointF origin(0, li * lineH + baselineAdjustPx);
                 pr.drawText(origin, lines[li]);
                 if (cjkSerifTextOverdraw) {
                     // AutoCAD's mechanical plots render default SHX/CJK 仿宋
