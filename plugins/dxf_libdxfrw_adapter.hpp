@@ -34,6 +34,29 @@ struct BlockEntity {
     double insX{0}, insY{0}, xscale{1}, yscale{1}, insAngle{0};
 };
 
+struct HatchPatternDiagnostic {
+    std::string patternName;
+    std::string layerName;
+    bool inBlock{false};
+    bool solid{false};
+    int hatchStyle{0};
+    int hatchPattern{0};
+    int doubleFlag{0};
+    int defLines{0};
+    int loopCount{0};
+    int usableLoopCount{0};
+    int familyCount{0};
+    int emittedSegments{0};
+    double angleDeg{0.0};
+    double scale{0.0};
+    double spacing{0.0};
+    bool spacingCapped{false};
+    double bboxWidth{0.0};
+    double bboxHeight{0.0};
+    int colorAci{0};
+    uint32_t colorRgb{0};
+};
+
 // Adapter: bridges libdxfrw DRW_Interface callbacks to cadgf_document C API.
 class CadgfDrwAdapter : public DRW_Interface {
 public:
@@ -41,6 +64,7 @@ public:
 
     int entityCount() const { return m_entityCount; }
     int layerCount() const { return m_layerCount; }
+    const std::vector<HatchPatternDiagnostic>& hatchPatternDiagnostics() const { return m_hatchPatternDiagnostics; }
 
     // Real DXF linetype patterns: name → dash/gap vector (positive=dash, negative=gap, 0=dot)
     const std::map<std::string, std::vector<double>>& linetypes() const { return m_linetypes; }
@@ -198,4 +222,5 @@ private:
     std::set<std::string> m_referencedDimensionBlocks;  // *D blocks referenced by DIMENSION
     std::map<std::string, std::string> m_dimensionBlockLayerName; // *D block name -> parent DIMENSION layer
     std::set<std::string> m_dimensionBlocksOnTrueWhiteLayer; // parent DIMENSION layer has ACI 255
+    std::vector<HatchPatternDiagnostic> m_hatchPatternDiagnostics;
 };
