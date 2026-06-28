@@ -1442,6 +1442,17 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                 // wrong direction — boundary blew up to the full circle and
                 // the scanline fill painted the entire bbox.
                 double sa = arc->staangle, ea = arc->endangle;
+                if (arc->isccw == 0) {
+                    // libdxfrw exposes clockwise HATCH arc angles in the
+                    // mirrored DXF form (for example 278°/279° for the
+                    // visible 80°/81° arc). Convert to the geometric arc
+                    // before sampling; using the raw angles sends points to
+                    // the opposite side of large-radius arcs and lets hatch
+                    // fills escape far outside the boundary.
+                    const double oldSa = sa;
+                    sa = 2.0 * M_PI - ea;
+                    ea = 2.0 * M_PI - oldSa;
+                }
                 if (ea < sa) ea += 2.0 * M_PI;
                 int segs = 32;
                 std::vector<std::pair<double,double>> arcPts;
@@ -1451,7 +1462,6 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                     arcPts.push_back({arc->basePoint.x + arc->radious * std::cos(a),
                                       arc->basePoint.y + arc->radious * std::sin(a)});
                 }
-                if (arc->isccw == 0) std::reverse(arcPts.begin(), arcPts.end());
                 for (auto& p : arcPts) pts.push_back(p);
             } else if (obj->eType == DRW::ELLIPSE) {
                 auto* ell = static_cast<const DRW_Ellipse*>(obj);
@@ -1533,6 +1543,11 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                     // Same short-arc convention as the outline path above.
                     auto* arc = static_cast<const DRW_Arc*>(obj);
                     double sa = arc->staangle, ea = arc->endangle;
+                    if (arc->isccw == 0) {
+                        const double oldSa = sa;
+                        sa = 2.0 * M_PI - ea;
+                        ea = 2.0 * M_PI - oldSa;
+                    }
                     if (ea < sa) ea += 2.0 * M_PI;
                     std::vector<std::pair<double,double>> arcPts;
                     arcPts.reserve(33);
@@ -1541,7 +1556,6 @@ void CadgfDrwAdapter::addHatch(const DRW_Hatch* data) {
                         arcPts.push_back({arc->basePoint.x + arc->radious * std::cos(a),
                                           arc->basePoint.y + arc->radious * std::sin(a)});
                     }
-                    if (arc->isccw == 0) std::reverse(arcPts.begin(), arcPts.end());
                     for (auto& p : arcPts) boundary.push_back(p);
                 } else if (obj->eType == DRW::ELLIPSE) {
                     auto* ell = static_cast<const DRW_Ellipse*>(obj);
