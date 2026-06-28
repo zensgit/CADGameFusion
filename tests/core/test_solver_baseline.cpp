@@ -197,6 +197,20 @@ static std::vector<Scenario> build_scenarios() {
         scenarios.push_back(s);
     }
 
+    {
+        Scenario s;
+        s.name = "point_on_line";
+        s.vars = {{"p.x", 1.0}, {"p.y", 0.5},
+                  {"a.x", 0.0}, {"a.y", 0.0}, {"b.x", 2.0}, {"b.y", 0.0}};
+        ConstraintSpec c; c.type = "point_on_line";
+        c.vars = {VarRef{"p","x"}, VarRef{"p","y"},
+                  VarRef{"a","x"}, VarRef{"a","y"}, VarRef{"b","x"}, VarRef{"b","y"}};
+        s.constraints = {c};
+        s.expect_ok = true;
+        s.tol = 1e-4;
+        scenarios.push_back(s);
+    }
+
     return scenarios;
 }
 
