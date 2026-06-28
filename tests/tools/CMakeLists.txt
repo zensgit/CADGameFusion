@@ -328,6 +328,19 @@ if(TARGET dxfrw)
 
     add_test(NAME test_dxf_libdxfrw_hatch_clockwise_arc_run
         COMMAND test_dxf_libdxfrw_hatch_clockwise_arc)
+
+    add_executable(test_dxf_libdxfrw_mtext_inline_color
+        test_dxf_libdxfrw_mtext_inline_color.cpp
+        ${CMAKE_SOURCE_DIR}/plugins/dxf_libdxfrw_adapter.cpp)
+    target_link_libraries(test_dxf_libdxfrw_mtext_inline_color PRIVATE core_c dxfrw)
+    target_include_directories(test_dxf_libdxfrw_mtext_inline_color PRIVATE
+        ${CMAKE_SOURCE_DIR}/core/include
+        ${CMAKE_SOURCE_DIR}/plugins
+        ${CMAKE_SOURCE_DIR}/deps/libdxfrw/src)
+    set_target_properties(test_dxf_libdxfrw_mtext_inline_color PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+
+    add_test(NAME test_dxf_libdxfrw_mtext_inline_color_run
+        COMMAND test_dxf_libdxfrw_mtext_inline_color)
 endif()
 
 add_executable(test_dxf_roundtrip test_dxf_roundtrip.cpp)
