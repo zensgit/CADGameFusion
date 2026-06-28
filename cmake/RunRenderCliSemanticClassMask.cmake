@@ -51,6 +51,7 @@ foreach(needle IN ITEMS
     "\"text_font_file\""
     "\"text_bigfont_file\""
     "\"text_effective_width_factor\""
+    "\"render_baseline_adjust_px\""
     "\"geometry\""
     "\"text\"")
   string(FIND "${rep}" "${needle}" idx)
