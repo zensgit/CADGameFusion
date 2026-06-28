@@ -43,6 +43,10 @@ foreach(needle IN ITEMS
     "\"schema\": \"vemcad.render_semantic_classes\""
     "\"mask_kind\": \"candidate-renderer-semantic-class-buffer\""
     "\"reference_semantics\": \"unknown\""
+    "\"text_placement\""
+    "\"schema\": \"vemcad.render_text_placement\""
+    "\"view_space\": \"same_as_color_render\""
+    "\"records\""
     "\"geometry\""
     "\"text\"")
   string(FIND "${rep}" "${needle}" idx)
