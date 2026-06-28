@@ -22,6 +22,7 @@ struct BlockEntity {
     std::string text;
     double widthFactor{1.0};  // DXF text-style width × entity widthscale
     std::string fontFam;      // resolved Qt family (empty → engineering 仿宋)
+    std::string textStyleName;
     bool isAttDef{false}; // ATTDEF tag text: hidden during INSERT expansion
     // Ellipse
     double rx{0}, ry{0}, ellRot{0}, ellStart{0}, ellEnd{0};
@@ -170,6 +171,9 @@ private:
     // primitives. Mirrors the plugin import path's metadata contract; the key
     // format must match scene_renderer's lookup_entity_meta.
     void setEntitySourceType(cadgf_entity_id id, const std::string& originType);
+    void writeTextStyleMetadata(cadgf_entity_id id,
+                                const std::string& styleName,
+                                double effectiveWidthFactor) const;
 
     // Resolve effective linetype name for a DRW entity (entity-level overrides layer)
     std::string resolveLinetype(const std::string& entLinetype,
@@ -208,6 +212,7 @@ private:
     // Text style info: style name → {font file, width factor, char width ratio}
     struct TextStyleInfo {
         std::string fontFile;      // e.g., "romans.shx"
+        std::string bigFontFile;   // e.g., "hzdx.shx" / CJK bigfont
         double widthFactor{1.0};   // DXF code 41 (style-level width scale)
         double charRatio{0.6};     // base char width/height ratio for this font
     };

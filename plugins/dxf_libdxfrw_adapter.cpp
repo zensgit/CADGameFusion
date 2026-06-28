@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #if !defined(_WIN32)
 #include <iconv.h>
 #endif
@@ -117,6 +118,18 @@ static void write_entity_index_color_metadata(cadgf_document* doc, cadgf_entity_
     const std::string aciValue = std::to_string(aci);
     (void)cadgf_document_set_meta_value(doc, (base + ".color_source").c_str(), "INDEX");
     (void)cadgf_document_set_meta_value(doc, (base + ".color_aci").c_str(), aciValue.c_str());
+}
+
+static void write_entity_double_metadata(cadgf_document* doc,
+                                         cadgf_entity_id id,
+                                         const char* suffix,
+                                         double value) {
+    if (!doc || id == 0 || !suffix || !*suffix) return;
+    char buf[64]{};
+    std::snprintf(buf, sizeof(buf), "%.6f", value);
+    const std::string key = "dxf.entity." +
+        std::to_string(static_cast<unsigned long long>(id)) + "." + suffix;
+    (void)cadgf_document_set_meta_value(doc, key.c_str(), buf);
 }
 
 // Convert DRW lineWidth enum to mm (0 = use layer/default)
@@ -439,6 +452,37 @@ void CadgfDrwAdapter::setEntitySourceType(cadgf_entity_id id, const std::string&
     cadgf_document_set_meta_value(m_doc, key.c_str(), originType.c_str());
 }
 
+void CadgfDrwAdapter::writeTextStyleMetadata(cadgf_entity_id id,
+                                             const std::string& styleName,
+                                             double effectiveWidthFactor) const {
+    if (!m_doc || id == 0) return;
+    const std::string base = "dxf.entity." +
+        std::to_string(static_cast<unsigned long long>(id));
+    (void)cadgf_document_set_meta_value(m_doc, (base + ".text_style").c_str(), styleName.c_str());
+
+    const auto sit = m_textStyles.find(styleName);
+    const bool knownStyle = sit != m_textStyles.end();
+    (void)cadgf_document_set_meta_value(m_doc, (base + ".text_style_known").c_str(),
+                                        knownStyle ? "1" : "0");
+    if (knownStyle) {
+        (void)cadgf_document_set_meta_value(m_doc, (base + ".text_font_file").c_str(),
+                                            sit->second.fontFile.c_str());
+        (void)cadgf_document_set_meta_value(m_doc, (base + ".text_bigfont_file").c_str(),
+                                            sit->second.bigFontFile.c_str());
+        write_entity_double_metadata(m_doc, id, "text_style_width_factor",
+                                     sit->second.widthFactor);
+        write_entity_double_metadata(m_doc, id, "text_style_char_ratio",
+                                     sit->second.charRatio);
+    } else {
+        (void)cadgf_document_set_meta_value(m_doc, (base + ".text_font_file").c_str(), "");
+        (void)cadgf_document_set_meta_value(m_doc, (base + ".text_bigfont_file").c_str(), "");
+        write_entity_double_metadata(m_doc, id, "text_style_width_factor", 1.0);
+        write_entity_double_metadata(m_doc, id, "text_style_char_ratio", 0.0);
+    }
+    write_entity_double_metadata(m_doc, id, "text_effective_width_factor",
+                                 effectiveWidthFactor > 0.0 ? effectiveWidthFactor : 1.0);
+}
+
 void CadgfDrwAdapter::expandBlock(const std::string& blockName,
     double insX, double insY, double xscale, double yscale, double angle, int lid,
     uint32_t insColor, const std::string& originType) {
@@ -559,6 +603,7 @@ void CadgfDrwAdapter::expandBlock(const std::string& blockName,
                 if (tid && effectiveColor != 0 && effectiveColor != BYBLOCK_COLOR)
                     cadgf_document_set_entity_color(m_doc, tid, effectiveColor);
                 setEntitySourceType(tid, originType);
+                writeTextStyleMetadata(tid, ent.textStyleName, ent.widthFactor);
                 ++m_entityCount;
             }
             break;
@@ -697,6 +742,7 @@ void CadgfDrwAdapter::addDimStyle(const DRW_Dimstyle& data) {
 void CadgfDrwAdapter::addTextStyle(const DRW_Textstyle& data) {
     TextStyleInfo info;
     info.fontFile = data.font;
+    info.bigFontFile = data.bigFont;
     info.widthFactor = (data.width > 0.01) ? data.width : 1.0;
     // Map SHX font file names to known character width/height ratios
     std::string fn = data.font;
@@ -1111,6 +1157,7 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
         be.text = txt;
         be.widthFactor = widthFactorForStyle(data.style) * data.widthscale;
         be.fontFam = fontFamilyForStyle(data.style);
+        be.textStyleName = data.style;
         be.layerName = data.layer; be.color = drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
@@ -1125,6 +1172,8 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
     uint32_t col = drw_entity_color(data);
     if (eid && col != 0 && col != BYBLOCK_COLOR)
         cadgf_document_set_entity_color(m_doc, eid, col);
+    writeTextStyleMetadata(eid, data.style,
+                           widthFactorForStyle(data.style) * data.widthscale);
     ++m_entityCount;
 }
 
@@ -1218,6 +1267,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         be.text = txt;
         be.widthFactor = widthFactorForStyle(data.style); // MTEXT: code-41 = box width, not glyph factor
         be.fontFam = fontFamilyForStyle(data.style);
+        be.textStyleName = data.style;
         be.layerName = data.layer; be.color = inlineColor != 0 ? inlineColor : drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
@@ -1233,6 +1283,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         cadgf_document_set_entity_color(m_doc, eid, col);
     if (eid && inlineColorAci > 0)
         write_entity_index_color_metadata(m_doc, eid, inlineColorAci);
+    writeTextStyleMetadata(eid, data.style, widthFactorForStyle(data.style));
     ++m_entityCount;
 }
 
