@@ -23,6 +23,7 @@
 #include <QFont>
 #include <QFontDatabase>
 #include <QFontInfo>
+#include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QImage>
 #include <QJsonArray>
@@ -34,6 +35,7 @@
 #include <QStringList>
 #include <QSvgGenerator>
 
+#include <algorithm>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -42,6 +44,8 @@
 #include "core/document.hpp"
 
 namespace {
+
+static constexpr double kPi = 3.14159265358979323846;
 
 struct ImportResult {
     cadgf_document* doc = nullptr;
@@ -129,6 +133,38 @@ QString familyOf(const core::Entity& e) {
     return scene_render::resolveTextFamily(fam);
 }
 
+struct TextNameParts {
+    QString requestedFamily;
+    QString resolvedFamily;
+    double widthFactor{1.0};
+};
+
+TextNameParts textNameParts(const core::Entity& e) {
+    TextNameParts out;
+    const QString nm = QString::fromStdString(e.name);
+    const int sep = nm.indexOf(QChar(0x1f));
+    if (sep >= 0) {
+        out.requestedFamily = nm.left(sep);
+        bool ok = false;
+        const double w = nm.mid(sep + 1).toDouble(&ok);
+        if (ok && w > 0.05 && w < 20.0) out.widthFactor = w;
+    } else {
+        out.requestedFamily = nm;
+    }
+    out.resolvedFamily = scene_render::resolveTextFamily(out.requestedFamily);
+    return out;
+}
+
+std::string lookupEntityMeta(const core::Document& doc, core::EntityId id,
+                             const char* suffix) {
+    if (!suffix || !*suffix) return {};
+    const std::string key = "dxf.entity." +
+        std::to_string(static_cast<unsigned long long>(id)) + "." + suffix;
+    const auto it = doc.metadata().meta.find(key);
+    if (it == doc.metadata().meta.end()) return {};
+    return it->second;
+}
+
 // Counts only the text entities renderScene will actually draw — same
 // visibility + degenerate-height gates as scene_renderer, so the report
 // reflects the render path rather than the raw entity list.
@@ -208,6 +244,116 @@ int textEntityCount(const core::Document& doc) {
     for (const auto& e : doc.entities())
         if (willDrawText(doc, e)) ++n;
     return n;
+}
+
+QJsonObject textPlacementReport(const core::Document& doc,
+                                const scene_render::View& view) {
+    QJsonObject report;
+    report["schema"] = "vemcad.render_text_placement";
+    report["schema_version"] = "0.1";
+    report["view_space"] = "same_as_color_render";
+
+    QJsonArray records;
+    int wrappedRecords = 0;
+    double maxWidthWorld = 0.0;
+    double maxHeightWorld = 0.0;
+    for (const auto& e : doc.entities()) {
+        if (!willDrawText(doc, e)) continue;
+        const auto* txt = std::get_if<core::Text>(&e.payload);
+        if (!txt) continue;
+
+        const TextNameParts parts = textNameParts(e);
+        const double targetPx = txt->height * view.scale;
+        if (!(targetPx > 0.0) || txt->height <= 0.0) continue;
+        const QString qtext = QString::fromStdString(txt->text);
+        const QStringList lines = qtext.split('\n');
+        QString sample;
+        for (const QString& ln : lines) {
+            if (!ln.isEmpty()) {
+                sample = ln;
+                break;
+            }
+        }
+        if (sample.isEmpty()) continue;
+
+        constexpr double kProbe = 256.0;
+        QFont probe;
+        probe.setFamily(parts.resolvedFamily);
+        probe.setPixelSize(static_cast<int>(kProbe));
+        const double glyphHeight = QFontMetricsF(probe).tightBoundingRect(sample).height();
+        const double ratio = (glyphHeight > 1.0) ? glyphHeight / kProbe : 0.72;
+        double fontSize = targetPx / ratio;
+        if (fontSize < 1.0) fontSize = 1.0;
+        if (fontSize > 4000.0) fontSize = 4000.0;
+
+        QFont font;
+        font.setFamily(parts.resolvedFamily);
+        font.setPixelSize(static_cast<int>(fontSize));
+        QFontMetricsF metrics(font);
+        double maxLineWidthPx = 0.0;
+        int nonEmptyLines = 0;
+        for (const QString& ln : lines) {
+            if (ln.isEmpty()) continue;
+            ++nonEmptyLines;
+            maxLineWidthPx = std::max(maxLineWidthPx,
+                                      metrics.horizontalAdvance(ln) * parts.widthFactor);
+        }
+        const double lineH = fontSize * 1.4;
+        const double blockHeightPx = nonEmptyLines <= 0 ? 0.0 :
+            (lines.size() - 1) * lineH + metrics.tightBoundingRect(sample).height();
+        const double widthWorld = view.scale > 0.0 ? maxLineWidthPx / view.scale : 0.0;
+        const double heightWorld = view.scale > 0.0 ? blockHeightPx / view.scale : 0.0;
+        maxWidthWorld = std::max(maxWidthWorld, widthWorld);
+        maxHeightWorld = std::max(maxHeightWorld, heightWorld);
+        if (lines.size() > 1) ++wrappedRecords;
+
+        const QPointF screen = scene_render::worldToScreen(
+            view, QPointF(txt->pos.x, txt->pos.y));
+
+        QJsonObject rec;
+        rec["entity_id"] = QString::number(
+            static_cast<unsigned long long>(e.id));
+        rec["semantic_class"] = QString::fromStdString(
+            scene_render::semanticClassName(&doc, e));
+        rec["source_type"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "source_type"));
+        rec["text_kind"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "text_kind"));
+        rec["attribute_tag"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "attribute_tag"));
+        rec["attachment"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "text_attachment"));
+        rec["halign"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "text_halign"));
+        rec["valign"] = QString::fromStdString(
+            lookupEntityMeta(doc, e.id, "text_valign"));
+        rec["requested_family"] = parts.requestedFamily;
+        rec["resolved_family"] = parts.resolvedFamily;
+        rec["width_factor"] = parts.widthFactor;
+        rec["height_world"] = txt->height;
+        rec["rotation_deg"] = txt->rotation * 180.0 / kPi;
+        rec["line_count"] = lines.size();
+        rec["non_empty_line_count"] = nonEmptyLines;
+        rec["text_length"] = qtext.size();
+        rec["target_px"] = targetPx;
+        rec["font_px"] = fontSize;
+        rec["screen_x"] = screen.x();
+        rec["screen_y"] = screen.y();
+        rec["max_line_width_px"] = maxLineWidthPx;
+        rec["block_height_px"] = blockHeightPx;
+        rec["max_line_width_world"] = widthWorld;
+        rec["block_height_world"] = heightWorld;
+        records.append(rec);
+    }
+
+    QJsonObject summary;
+    summary["total"] = records.size();
+    summary["wrapped"] = wrappedRecords;
+    summary["max_line_width_world"] = maxWidthWorld;
+    summary["max_block_height_world"] = maxHeightWorld;
+    report["summary"] = summary;
+    report["records"] = records;
+    return report;
 }
 
 bool willDrawEntity(const core::Document& doc, const core::Entity& e) {
@@ -534,6 +680,7 @@ int main(int argc, char** argv) {
         }
         rep["semantic_classes"] = classes;
         rep["hatch_patterns"] = hatchPatternReport(*imp.adapter);
+        rep["text_placement"] = textPlacementReport(*doc, view);
         QJsonObject fonts;
         fonts["loaded_dir"] = parser.isSet("font-dir") ? parser.value("font-dir") : QString();
         fonts["loaded_families"] = QJsonArray::fromStringList(loadedFamilies);
