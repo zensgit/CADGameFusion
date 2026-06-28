@@ -1108,27 +1108,46 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
     if (!m_inBlock && shouldSkipEntity(data)) return;
     std::string txt = stripDxfFormatting(data.text);
     if (txt.empty()) return;
-    // Use secPoint (alignment point) when non-default alignment is specified
-    bool useSecPoint = (data.alignH != DRW_Text::HLeft || data.alignV != DRW_Text::VBaseLine)
-                       && (data.secPoint.x != 0.0 || data.secPoint.y != 0.0);
-    double px = useSecPoint ? data.secPoint.x : data.basePoint.x;
-    double py = useSecPoint ? data.secPoint.y : data.basePoint.y;
     // DRW_Text::angle is in degrees; cadgf_document_add_text expects radians
     double rotRad = data.angle * M_PI / 180.0;
+
+    // Text-style metrics used for both alignment offsets and FIT width.
+    double latinR = 0.6;
+    std::string fontName;
+    auto sit = m_textStyles.find(data.style);
+    if (sit != m_textStyles.end()) {
+        latinR = sit->second.charRatio;
+        fontName = sit->second.fontFile;
+        for (char& c : fontName) c = (char)std::tolower((unsigned char)c);
+    }
+    double effectiveWidthFactor = widthFactorForStyle(data.style) * data.widthscale;
+
+    const bool hasSecondPoint = (data.secPoint.x != 0.0 || data.secPoint.y != 0.0);
+    const bool fitText = data.alignH == DRW_Text::HFit &&
+                         hasSecondPoint && data.height > 0.0;
+    const bool useSecPoint = !fitText &&
+        (data.alignH != DRW_Text::HLeft || data.alignV != DRW_Text::VBaseLine) &&
+        hasSecondPoint;
+    double px = useSecPoint ? data.secPoint.x : data.basePoint.x;
+    double py = useSecPoint ? data.secPoint.y : data.basePoint.y;
+
+    if (fitText) {
+        const double vx = data.secPoint.x - data.basePoint.x;
+        const double vy = data.secPoint.y - data.basePoint.y;
+        const double axisX = std::cos(rotRad);
+        const double axisY = std::sin(rotRad);
+        double targetWidth = std::abs(vx * axisX + vy * axisY);
+        if (!(targetWidth > 0.0)) targetWidth = std::hypot(vx, vy);
+        const double currentWidth = estimateTextWidth(
+            txt, data.height, latinR, effectiveWidthFactor, fontName);
+        if (targetWidth > 0.0 && currentWidth > 1e-9) {
+            effectiveWidthFactor *= targetWidth / currentWidth;
+        }
+    }
+
     // Approximate horizontal alignment offset (since core::Text has no alignment fields)
     if (useSecPoint && data.height > 0.0) {
-        // Look up font-specific width ratio from text style
-        double latinR = 0.6, wFac = 1.0;
-        std::string fontName;
-        auto sit = m_textStyles.find(data.style);
-        if (sit != m_textStyles.end()) {
-            latinR = sit->second.charRatio;
-            wFac = sit->second.widthFactor;
-            fontName = sit->second.fontFile;
-            for (char& c : fontName) c = (char)std::tolower((unsigned char)c);
-        }
-        wFac *= data.widthscale;
-        double tw = estimateTextWidth(txt, data.height, latinR, wFac, fontName);
+        double tw = estimateTextWidth(txt, data.height, latinR, effectiveWidthFactor, fontName);
         double cosR = std::cos(rotRad), sinR = std::sin(rotRad);
         double dx = 0.0, dy = 0.0;
         switch (data.alignH) {
@@ -1155,7 +1174,7 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
         be.pts.push_back({px, py});
         be.height = data.height; be.rotation = rotRad;
         be.text = txt;
-        be.widthFactor = widthFactorForStyle(data.style) * data.widthscale;
+        be.widthFactor = effectiveWidthFactor;
         be.fontFam = fontFamilyForStyle(data.style);
         be.textStyleName = data.style;
         be.layerName = data.layer; be.color = drw_entity_color(data);
@@ -1166,14 +1185,13 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
     int lid = resolveLayer(data.layer);
     // Carry resolved Qt font family (+ width factor) on the entity name.
     std::string fam = encodeTextName(fontFamilyForStyle(data.style),
-                                     widthFactorForStyle(data.style) * data.widthscale);
+                                     effectiveWidthFactor);
     cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, data.height, rotRad, txt.c_str(), fam.c_str(), lid);
     // Set explicit entity color (BYLAYER entities keep color=0)
     uint32_t col = drw_entity_color(data);
     if (eid && col != 0 && col != BYBLOCK_COLOR)
         cadgf_document_set_entity_color(m_doc, eid, col);
-    writeTextStyleMetadata(eid, data.style,
-                           widthFactorForStyle(data.style) * data.widthscale);
+    writeTextStyleMetadata(eid, data.style, effectiveWidthFactor);
     ++m_entityCount;
 }
 

@@ -316,6 +316,19 @@ if(TARGET dxfrw)
     add_test(NAME test_dxf_libdxfrw_hatch_boundary_visibility_run
         COMMAND test_dxf_libdxfrw_hatch_boundary_visibility)
 
+    add_executable(test_dxf_libdxfrw_fit_text
+        test_dxf_libdxfrw_fit_text.cpp
+        ${CMAKE_SOURCE_DIR}/plugins/dxf_libdxfrw_adapter.cpp)
+    target_link_libraries(test_dxf_libdxfrw_fit_text PRIVATE core_c dxfrw)
+    target_include_directories(test_dxf_libdxfrw_fit_text PRIVATE
+        ${CMAKE_SOURCE_DIR}/core/include
+        ${CMAKE_SOURCE_DIR}/plugins
+        ${CMAKE_SOURCE_DIR}/deps/libdxfrw/src)
+    set_target_properties(test_dxf_libdxfrw_fit_text PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+
+    add_test(NAME test_dxf_libdxfrw_fit_text_run
+        COMMAND test_dxf_libdxfrw_fit_text)
+
     add_executable(test_dxf_libdxfrw_hatch_clockwise_arc
         test_dxf_libdxfrw_hatch_clockwise_arc.cpp
         ${CMAKE_SOURCE_DIR}/plugins/dxf_libdxfrw_adapter.cpp)
