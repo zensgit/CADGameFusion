@@ -2,6 +2,7 @@
 #include "core/document.hpp"
 #include <vector>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #if !defined(_WIN32)
 #include <iconv.h>
@@ -84,6 +85,38 @@ static uint32_t drw_entity_color(const DRW_Entity& ent) {
     if (ent.color > 0 && ent.color <= 255) return aci_to_rgb(ent.color);
     if (ent.color == 0) return BYBLOCK_COLOR; // BYBLOCK: inherit from INSERT
     return 0; // BYLAYER (color == 256)
+}
+
+// Minimal MTEXT inline color support. AutoCAD applies top-level "\C<aci>;"
+// overrides before layer/BYLAYER color; core::Text is single-color, so use the
+// first ACI override as the entity color rather than trying to model spans.
+static int first_mtext_inline_color_aci(const std::string& raw) {
+    for (size_t i = 0; i + 3 < raw.size(); ++i) {
+        if (raw[i] != '\\' || raw[i + 1] != 'C') continue;
+        if (i > 0 && raw[i - 1] == '\\') continue;
+        size_t j = i + 2;
+        int aci = 0;
+        bool sawDigit = false;
+        while (j < raw.size() && std::isdigit(static_cast<unsigned char>(raw[j]))) {
+            sawDigit = true;
+            aci = aci * 10 + (raw[j] - '0');
+            if (aci > 255) break;
+            ++j;
+        }
+        if (sawDigit && aci >= 1 && aci <= 255 && j < raw.size() && raw[j] == ';') {
+            return aci;
+        }
+    }
+    return 0;
+}
+
+static void write_entity_index_color_metadata(cadgf_document* doc, cadgf_entity_id id, int aci) {
+    if (!doc || id == 0 || aci <= 0 || aci > 255) return;
+    const std::string base = "dxf.entity." +
+        std::to_string(static_cast<unsigned long long>(id));
+    const std::string aciValue = std::to_string(aci);
+    (void)cadgf_document_set_meta_value(doc, (base + ".color_source").c_str(), "INDEX");
+    (void)cadgf_document_set_meta_value(doc, (base + ".color_aci").c_str(), aciValue.c_str());
 }
 
 // Convert DRW lineWidth enum to mm (0 = use layer/default)
@@ -1097,6 +1130,8 @@ void CadgfDrwAdapter::addText(const DRW_Text& data) {
 
 void CadgfDrwAdapter::addMText(const DRW_MText& data) {
     if (!m_inBlock && shouldSkipEntity(data)) return;
+    const int inlineColorAci = first_mtext_inline_color_aci(data.text);
+    const uint32_t inlineColor = inlineColorAci > 0 ? aci_to_rgb(inlineColorAci) : 0;
     std::string txt = stripDxfFormatting(data.text);
     if (txt.empty()) return;
 
@@ -1183,7 +1218,7 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
         be.text = txt;
         be.widthFactor = widthFactorForStyle(data.style); // MTEXT: code-41 = box width, not glyph factor
         be.fontFam = fontFamilyForStyle(data.style);
-        be.layerName = data.layer; be.color = drw_entity_color(data);
+        be.layerName = data.layer; be.color = inlineColor != 0 ? inlineColor : drw_entity_color(data);
         m_blocks[m_currentBlockName].push_back(be);
         return;
     }
@@ -1193,9 +1228,11 @@ void CadgfDrwAdapter::addMText(const DRW_MText& data) {
     std::string fam = encodeTextName(fontFamilyForStyle(data.style),
                                      widthFactorForStyle(data.style)); // MTEXT: not * data.widthscale
     cadgf_entity_id eid = cadgf_document_add_text(m_doc, &pos, mHeight, rotRad, txt.c_str(), fam.c_str(), lid);
-    uint32_t col = drw_entity_color(data);
+    uint32_t col = inlineColor != 0 ? inlineColor : drw_entity_color(data);
     if (eid && col != 0 && col != BYBLOCK_COLOR)
         cadgf_document_set_entity_color(m_doc, eid, col);
+    if (eid && inlineColorAci > 0)
+        write_entity_index_color_metadata(m_doc, eid, inlineColorAci);
     ++m_entityCount;
 }
 
